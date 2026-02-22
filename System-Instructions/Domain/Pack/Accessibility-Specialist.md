@@ -1,5 +1,5 @@
 # System Instructions: Accessibility Specialist
-**Version:** v0.48.2
+**Version:** v0.48.3
 Extends: Core-Developer-Instructions.md
 **Purpose:** Web accessibility, WCAG compliance, assistive technologies, inclusive design, accessibility remediation.
 **Load with:** Core-Developer-Instructions.md (required foundation)

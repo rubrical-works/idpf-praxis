@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * @framework-script 0.48.2
+ * @framework-script 0.48.3
  * CI Watch — Monitor GitHub Actions workflow runs by commit SHA
  *
  * Polls for CI run status and reports structured JSON results.
@@ -20,6 +20,8 @@
  */
 
 const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 // --- Argument Parsing ---
 
@@ -238,6 +240,137 @@ function matchesGlob(filePath, pattern) {
   return regex.test(filePath);
 }
 
+// --- Workflow Detection ---
+
+/**
+ * Check if any GitHub Actions workflow has a push trigger with branch patterns.
+ * Tag-only push triggers (e.g., push: tags: ['v*']) are excluded.
+ * A bare `on: push` (no branches or tags) is treated as push+branches (triggers on all branches).
+ *
+ * @param {Object} [deps] - Injectable dependencies for testing
+ * @param {Function} [deps.readDir] - Returns array of filenames in workflows dir
+ * @param {Function} [deps.readFile] - Returns file content given a filename
+ * @param {string} [deps.workflowsDir] - Path to .github/workflows/
+ * @returns {boolean} True if at least one workflow triggers on push with branches
+ */
+function hasPushWorkflows({ readDir, readFile, workflowsDir } = {}) {
+  const dir = workflowsDir || path.join(process.cwd(), '.github', 'workflows');
+
+  const defaultReadDir = () => {
+    return fs.readdirSync(dir).filter(f => f.endsWith('.yml') || f.endsWith('.yaml'));
+  };
+
+  const defaultReadFile = (filename) => {
+    return fs.readFileSync(path.join(dir, filename), 'utf-8');
+  };
+
+  const listFiles = readDir || defaultReadDir;
+  const getContent = readFile || defaultReadFile;
+
+  let files;
+  try {
+    files = listFiles();
+  } catch {
+    return false;
+  }
+
+  if (files.length === 0) return false;
+
+  for (const file of files) {
+    try {
+      const content = getContent(file);
+      if (hasPushBranchTrigger(content)) return true;
+    } catch {
+      // Skip unreadable files
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if workflow YAML content contains a push trigger with branch patterns.
+ * Uses line-by-line parsing (no YAML library dependency).
+ *
+ * Patterns detected:
+ *   on: push: branches: [...]  → true (push with branches)
+ *   on: push: tags: [...]      → false (tag-only)
+ *   on: push:                  → true (bare push = all branches)
+ *   on: pull_request:          → false (no push trigger)
+ *
+ * @param {string} content - Raw YAML content
+ * @returns {boolean}
+ */
+function hasPushBranchTrigger(content) {
+  const lines = content.split('\n');
+  let inOn = false;
+  let inPush = false;
+  let pushIndent = -1;
+  let hasBranches = false;
+  let hasTagsOnly = false;
+  let pushIsBareLike = true; // becomes false if push has sub-keys
+
+  for (const line of lines) {
+    const trimmed = line.trimEnd();
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+
+    const indent = line.length - line.trimStart().length;
+
+    // Detect `on:` block
+    if (/^on\s*:/.test(trimmed)) {
+      inOn = true;
+      continue;
+    }
+
+    if (inOn && !inPush) {
+      // Look for `push:` inside `on:` block
+      if (/^\s+push\s*:/.test(line)) {
+        inPush = true;
+        pushIndent = indent;
+        continue;
+      }
+      // Another top-level key under on: (like pull_request:) — skip
+      if (indent === 0 && !trimmed.startsWith('#')) {
+        inOn = false;
+        continue;
+      }
+    }
+
+    if (inPush) {
+      // If we're back at push indent or lower, push block is over
+      if (indent <= pushIndent && trimmed !== '') {
+        break;
+      }
+
+      // Check for branches: or tags: inside push block
+      if (/^\s+branches\s*:/.test(line) || /^\s+branches-ignore\s*:/.test(line)) {
+        hasBranches = true;
+        pushIsBareLike = false;
+      }
+      if (/^\s+tags\s*:/.test(line) || /^\s+tags-ignore\s*:/.test(line)) {
+        hasTagsOnly = true;
+        pushIsBareLike = false;
+      }
+      if (/^\s+paths\s*:/.test(line) || /^\s+paths-ignore\s*:/.test(line)) {
+        pushIsBareLike = false;
+      }
+    }
+  }
+
+  if (!inPush) return false;
+
+  // Bare push (no sub-keys) triggers on all branches
+  if (pushIsBareLike) return true;
+
+  // Has explicit branches: → triggers on push with branches
+  if (hasBranches) return true;
+
+  // Has only tags: (no branches:) → tag-only trigger
+  if (hasTagsOnly && !hasBranches) return false;
+
+  return false;
+}
+
 // --- Output Formatting ---
 
 /**
@@ -428,6 +561,7 @@ module.exports = {
   mapExitCode,
   computeDuration,
   shouldSkipMonitoring,
+  hasPushWorkflows,
   formatOutput,
   formatMultiOutput,
   findRuns,

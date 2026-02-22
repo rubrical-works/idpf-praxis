@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.48.2
+ * @framework-script 0.48.3
  * install-skill.js - Skill package extraction and deployment
  *
  * Shared script for deploying skills from framework packages to projects.

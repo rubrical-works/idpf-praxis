@@ -1,5 +1,5 @@
 # System Instructions: Core Developer
-**Version:** v0.48.2
+**Version:** v0.48.3
 **Purpose:** Foundation competencies for all domain specialists. Use with domain-specific instructions.
 **Architecture:** Core + Domain pattern (this file: universal competencies; domain files: specialized expertise)
 ---

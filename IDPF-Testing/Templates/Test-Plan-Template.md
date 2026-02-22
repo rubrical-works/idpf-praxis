@@ -1,5 +1,5 @@
 # Test Plan: [Test Suite Name]
-**Version:** v0.48.2
+**Version:** v0.48.3
 **Date:** YYYY-MM-DD
 **Author:** [Name]
 **Testing Framework:** [IDPF-QA-Automation | IDPF-Performance | IDPF-Security | etc.]

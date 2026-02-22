@@ -1,5 +1,5 @@
 # System Instructions: DevOps Engineer
-**Version:** v0.48.2
+**Version:** v0.48.3
 Extends: Core-Developer-Instructions.md
 **Purpose:** Deployment pipelines, infrastructure, automation, CI/CD, bridging development and operations.
 **Load with:** Core-Developer-Instructions.md (required foundation)
