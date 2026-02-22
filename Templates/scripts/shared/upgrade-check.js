@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.48.1
+ * @framework-script 0.48.2
  * @description Check for third-party framework/dependency upgrades
  *
  * This script is provided by the framework and may be updated.

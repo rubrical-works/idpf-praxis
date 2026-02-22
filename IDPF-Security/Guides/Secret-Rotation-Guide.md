@@ -1,5 +1,5 @@
 # Secret Rotation Guide
-**Version:** v0.48.1
+**Version:** v0.48.2
 
 **Framework:** IDPF-Security
 

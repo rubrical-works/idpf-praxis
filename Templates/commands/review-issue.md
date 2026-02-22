@@ -1,5 +1,5 @@
 ---
-version: "v0.48.1"
+version: "v0.48.2"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...]"
 ---
@@ -83,18 +83,18 @@ For each **objective** criterion applicable to the current reviewMode, evaluate 
 **Common Objective Criteria:** Evaluate each criterion from `.claude/metadata/review-mode-criteria.json` where `type: "objective"` and `shouldEvaluate()` returns true for the current reviewMode. Use the `autoCheck` field for evaluation guidance.
 **Type-Specific Objective Checks:** Load criteria from `.claude/metadata/review-criteria.json` for the detected issue type. Each entry has `name` and `autoCheck` fields describing what to check. For epic type, the `sub-issue-review` criterion requires recursive review of each sub-issue through Steps 3b-3c.
 Emit ✅ for pass, ⚠️ for partial/uncertain, ❌ for missing/fail. Include brief evidence.
-**Step 3b-ii: Auto-Generate Proposed Solution/Fix (Enhancement and Bug Only)**
-**Trigger:** (Enhancement type AND `proposed-solution` check is ❌/⚠️) OR (Bug type AND `proposed-fix-described` check is ❌/⚠️). Does NOT apply to story or epic types.
+**Step 3b-ii: Auto-Generate Proposed Solution/Fix (Enhancement, Bug, and Story)**
+**Trigger:** (Enhancement or Story type AND `proposed-solution` check is ❌/⚠️) OR (Bug type AND `proposed-fix-described` check is ❌/⚠️). Does NOT apply to epic types.
 **Placeholder detection:** Treat as missing if section body is under 20 characters or matches: "To be documented", "TBD", "...", or empty section.
 **When triggered:**
-1. Read the issue Description, Motivation (enhancement) or Repro/Expected/Actual (bug) sections
+1. Read the issue Description, Motivation (enhancement/story) or Repro/Expected/Actual (bug) sections
 2. Use Glob/Grep/Read tools to identify relevant codebase files based on keywords from the issue
 3. Generate a structured section:
    - **Approach:** 1-2 sentence summary
    - **Files to modify:** table with file path, change description, rationale
    - **Implementation steps:** numbered list of concrete steps
-   - **Testing considerations:** regression tests (bugs) or feature tests (enhancements)
-4. Present in review output: Enhancement: `#### Proposed Solution (Auto-Generated)`, Bug: `#### Proposed Fix (Auto-Generated)`
+   - **Testing considerations:** regression tests (bugs) or feature tests (enhancements/stories)
+4. Present in review output: Enhancement/Story: `#### Proposed Solution (Auto-Generated)`, Bug: `#### Proposed Fix (Auto-Generated)`
 5. Append to issue body automatically during Step 4 — add or replace the Proposed Solution/Fix section alongside `**Reviews:** N` update
 **When NOT triggered:** Issue already has substantive section (>20 chars, no placeholders). Continue normally.
 **Step 3c: Ask Subjective Criteria**

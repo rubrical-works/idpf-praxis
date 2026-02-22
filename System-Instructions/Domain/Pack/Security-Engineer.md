@@ -1,5 +1,5 @@
 # System Instructions: Security Engineer
-**Version:** v0.48.1
+**Version:** v0.48.2
 Extends: Core-Developer-Instructions.md
 **Purpose:** Application security, vulnerability identification, security best practices, compliance.
 **Load with:** Core-Developer-Instructions.md (required foundation)

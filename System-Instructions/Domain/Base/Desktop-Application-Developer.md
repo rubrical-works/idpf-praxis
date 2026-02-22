@@ -1,5 +1,5 @@
 # System Instructions: Desktop Application Developer
-**Version:** v0.48.1
+**Version:** v0.48.2
 Extends: Core-Developer-Instructions.md
 **Purpose:** Desktop development using Electron, Tauri, and native frameworks for Windows, macOS, Linux.
 **Load with:** Core-Developer-Instructions.md (required foundation)

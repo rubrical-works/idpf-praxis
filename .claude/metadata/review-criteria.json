@@ -67,6 +67,11 @@
           "id": "test-coverage-story",
           "name": "Test coverage proportionate (story)",
           "autoCheck": "Infer scope from ACs and description. If story adds or modifies code paths, ACs should include test requirements proportionate to scope"
+        },
+        {
+          "id": "proposed-solution",
+          "name": "Proposed solution described",
+          "autoCheck": "Check for 'Proposed Solution' or solution description section. Treat as missing if section body is under 20 characters or contains placeholder text ('To be documented', 'TBD', '...'). Standalone stories (not from PRD decomposition) benefit from auto-generated solutions."
         }
       ]
     },

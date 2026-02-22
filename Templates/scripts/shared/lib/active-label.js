@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.48.1
+ * @framework-script 0.48.2
  * lib/active-label.js
  *
  * Manages the 'active' label on branch tracker issues.
