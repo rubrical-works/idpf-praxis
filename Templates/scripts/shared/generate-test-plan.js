@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.48.0
+ * @framework-script 0.48.1
  * generate-test-plan.js - Generate test plan skeleton from branch issues
  * @module scripts/shared/generate-test-plan
  *
@@ -63,10 +63,13 @@ function getVersion(argVersion) {
   // Try to get from framework-manifest.json
   try {
     const manifest = JSON.parse(fs.readFileSync('framework-manifest.json', 'utf8'));
-    return manifest.version.startsWith('v') ? manifest.version : `v${manifest.version}`;
+    if (manifest.version && !manifest.version.includes('{{')) {
+      return manifest.version.startsWith('v') ? manifest.version : `v${manifest.version}`;
+    }
   } catch {
-    return 'vX.Y.Z';
+    // Fall through to placeholder
   }
+  return 'vX.Y.Z';
 }
 
 /**

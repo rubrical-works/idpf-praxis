@@ -1,5 +1,5 @@
 # Framework Skills Reference
-**Version:** v0.48.0
+**Version:** v0.48.1
 **Purpose:** Reference for all Skills
 ## Skills Overview
 **Location:** `Skills/` | **Total:** 25 skills

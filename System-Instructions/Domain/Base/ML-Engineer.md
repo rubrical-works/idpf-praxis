@@ -1,5 +1,5 @@
 # System Instructions: Machine Learning Engineer
-**Version:** v0.48.0
+**Version:** v0.48.1
 Extends: Core-Developer-Instructions.md
 **Purpose:** ML model development, training, deployment (MLOps), production ML systems.
 **Load with:** Core-Developer-Instructions.md (required foundation)

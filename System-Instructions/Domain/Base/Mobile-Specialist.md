@@ -1,5 +1,5 @@
 # System Instructions: Mobile Specialist
-**Version:** v0.48.0
+**Version:** v0.48.1
 Extends: Core-Developer-Instructions.md
 **Purpose:** Native and cross-platform mobile development for iOS and Android.
 **Load with:** Core-Developer-Instructions.md (required foundation)

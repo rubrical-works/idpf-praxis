@@ -1,5 +1,5 @@
 # System Instructions: Backend Specialist
-**Version:** v0.48.0
+**Version:** v0.48.1
 Extends: Core-Developer-Instructions.md
 **Purpose:** Server-side development, APIs, business logic, backend architecture.
 **Load with:** Core-Developer-Instructions.md (required foundation)

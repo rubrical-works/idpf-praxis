@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.48.0
+ * @framework-script 0.48.1
  * IDPF Hub Installer
  * Creates a central IDPF installation that can serve multiple projects.
  *
