@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.49.0
+ * @framework-script 0.49.1
  * @description Praxis Diagram configuration utilities for charter integration
  * @checksum sha256:placeholder
  *

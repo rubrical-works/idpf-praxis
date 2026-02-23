@@ -9,7 +9,7 @@ const { analyzeProject } = require('./ci-analyze.js');
 const RECOMMENDATION_TYPES = ['Add', 'Remove', 'Alter', 'Improve'];
 
 /**
- * @framework-script 0.49.0
+ * @framework-script 0.49.1
  * Deprecated action versions — map old to recommended.
  */
 const DEPRECATED_ACTIONS = {

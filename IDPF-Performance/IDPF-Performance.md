@@ -1,5 +1,5 @@
 # IDPF-Performance Framework
-**Version:** v0.49.0
+**Version:** v0.49.1
 **Source:** IDPF-Performance/IDPF-Performance.md
 **Extends:** IDPF-Testing
 ## Overview

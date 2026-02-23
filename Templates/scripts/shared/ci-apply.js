@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.49.0
+ * @framework-script 0.49.1
  * CI Apply Recommendations
  *
  * Orchestrates the application of selected CI recommendations.

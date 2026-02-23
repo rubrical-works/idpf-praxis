@@ -1,5 +1,5 @@
 # System Instructions: Performance Engineer
-**Version:** v0.49.0
+**Version:** v0.49.1
 Extends: Core-Developer-Instructions.md
 **Purpose:** Application performance, optimization, profiling, load testing, ensuring systems meet performance requirements.
 **Load with:** Core-Developer-Instructions.md (required foundation)
