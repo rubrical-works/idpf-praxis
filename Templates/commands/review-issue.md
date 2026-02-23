@@ -1,5 +1,5 @@
 ---
-version: "v0.48.3"
+version: "v0.49.0"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...]"
 ---
@@ -22,7 +22,11 @@ Reviews one or more GitHub issues with type-specific criteria based on labels (b
 Accepts multiple issue numbers: `/review-issue #42 #43 #44` -- reviews each sequentially.
 ---
 ## Execution Instructions
-**See:** `.claude/metadata/execution-instructions.md` for standard execution tracking (todo generation, extensions, progress, post-compaction).
+**REQUIRED:** Before executing:
+1. **Generate Todo List:** Parse workflow steps, use `TodoWrite` to create todos
+2. **Include Extensions:** Add todo for each non-empty `USER-EXTENSION` block
+3. **Track Progress:** Mark todos `in_progress` -> `completed` as you work
+4. **Post-Compaction:** Re-read spec and regenerate todos after context compaction
 ---
 ## Workflow
 **For multiple issues:** Process each issue sequentially through Steps 1-6.
@@ -81,7 +85,7 @@ const mode = getReviewMode(process.cwd(), modeOverride); // 'solo', 'team', or '
 **Step 3b: Auto-Evaluate Objective Criteria**
 For each **objective** criterion applicable to the current reviewMode, evaluate autonomously. Do NOT ask the user.
 **Common Objective Criteria:** Evaluate each criterion from `.claude/metadata/review-mode-criteria.json` where `type: "objective"` and `shouldEvaluate()` returns true for the current reviewMode. Use the `autoCheck` field for evaluation guidance.
-**Type-Specific Objective Checks:** Load criteria from `.claude/metadata/review-criteria.json` for the detected issue type. Each entry has `name` and `autoCheck` fields describing what to check. For epic type, the `sub-issue-review` criterion requires recursive review of each sub-issue through Steps 3b-3c.
+**Type-Specific Objective Checks:** Load criteria from `.claude/metadata/review-criteria.json` for the detected issue type. Each entry has `name` and `autoCheck` fields describing what to check. For epic type, the `sub-issue-review` criterion requires recursive review of each sub-issue through Steps 3b-3c, including 3b-ii (auto-generate proposed solution/fix) with per-sub-issue body updates.
 Emit ✅ for pass, ⚠️ for partial/uncertain, ❌ for missing/fail. Include brief evidence.
 **Step 3b-ii: Auto-Generate Proposed Solution/Fix (Enhancement, Bug, and Story)**
 **Trigger:** (Enhancement or Story type AND `proposed-solution` check is ❌/⚠️) OR (Bug type AND `proposed-fix-described` check is ❌/⚠️). Does NOT apply to epic types.

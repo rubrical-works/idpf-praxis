@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.48.3
+ * @framework-script 0.49.0
  * Review Mode Helper Functions
  *
  * Provides utilities for filtering review criteria based on project's reviewMode configuration.

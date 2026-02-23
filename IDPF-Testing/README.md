@@ -1,5 +1,5 @@
 # IDPF-Testing
-**Version:** v0.48.3
+**Version:** v0.49.0
 **Source:** IDPF-Testing/README.md
 IDPF-Testing is a **centralized criteria library** for testing domain knowledge. Not a process framework — serves as a reference collection that review commands load on demand via `--with`.
 **Core Principle:** "Test automation is software development. It uses the same tools, requires the same skills and same practices."

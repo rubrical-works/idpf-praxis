@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.48.3
+ * @framework-script 0.49.0
  * assign-branch.js
  *
  * Interactive script to assign issues to branches.
@@ -30,6 +30,7 @@
 
 const { exec, execSync } = require('child_process');
 const { promisify } = require('util');
+const { getTrackerForBranch } = require('./lib/active-label.js');
 
 const execAsync = promisify(exec);
 
@@ -272,7 +273,7 @@ async function getIssuesByStatus(status = 'backlog') {
     return [];
 }
 
-async function assignToBranch(issueNumber, branch, useCurrent = false) {
+async function assignToBranch(issueNumber, branch, useCurrent = false, tracker = null) {
     try {
         const branchArg = useCurrent ? 'current' : `"${branch}"`;
         const displayBranch = useCurrent ? `${branch} (current)` : branch;
@@ -281,6 +282,13 @@ async function assignToBranch(issueNumber, branch, useCurrent = false) {
         if (result && result.includes('unknown flag')) {
             console.log(`    (Note: gh pmu --branch not supported, manual assignment needed)`);
             return false;
+        }
+        // Link as sub-issue of branch tracker (if tracker exists)
+        if (tracker) {
+            const linkResult = await execAsyncSafe(`gh pmu sub add ${tracker} ${issueNumber}`);
+            if (linkResult !== null) {
+                console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
+            }
         }
         return true;
     } catch (err) {
@@ -293,7 +301,7 @@ async function assignToBranch(issueNumber, branch, useCurrent = false) {
  * Assign all sub-issues of an epic to a branch
  * @returns {number} Count of successfully assigned sub-issues
  */
-async function assignSubIssuesToBranch(issueNumber, branch, useCurrent) {
+async function assignSubIssuesToBranch(issueNumber, branch, useCurrent, tracker = null) {
     // Note: gh pmu sub list uses --json as boolean flag, not field selector
     const subResult = await execAsyncSafe(`gh pmu sub list ${issueNumber} --json`);
     const subData = safeJsonParse(subResult);
@@ -301,7 +309,7 @@ async function assignSubIssuesToBranch(issueNumber, branch, useCurrent) {
 
     const children = subData.children || [];
     const results = await Promise.all(
-        children.map(sub => assignToBranch(sub.number || sub, branch, useCurrent))
+        children.map(sub => assignToBranch(sub.number || sub, branch, useCurrent, tracker))
     );
     return results.filter(Boolean).length;
 }
@@ -513,6 +521,9 @@ async function main() {
     const shouldCheckEpic = checkEpic || issueNumbers.length > 1 || assignAll || addReady;
     const useCurrent = (currentBranch && branch === currentBranch);
 
+    // Resolve branch tracker once for sub-issue linking
+    const tracker = getTrackerForBranch();
+
     console.log(`Assigning to ${branch}${useCurrent ? ' (current)' : ''}:\n`);
 
     // For parallel assignment (when multiple issues)
@@ -528,9 +539,9 @@ async function main() {
                         isEpic = labels.includes('epic');
                     }
 
-                    const subAssigned = isEpic ? await assignSubIssuesToBranch(num, branch, useCurrent) : 0;
+                    const subAssigned = isEpic ? await assignSubIssuesToBranch(num, branch, useCurrent, tracker) : 0;
 
-                    const assigned = await assignToBranch(num, branch, useCurrent);
+                    const assigned = await assignToBranch(num, branch, useCurrent, tracker);
                     return { num, isEpic, assigned, subAssigned };
                 })
             );
@@ -557,18 +568,21 @@ async function main() {
 
             if (isEpic) {
                 epicCount++;
-                const assigned = await assignSubIssuesToBranch(num, branch, useCurrent);
+                const assigned = await assignSubIssuesToBranch(num, branch, useCurrent, tracker);
                 subIssueCount += assigned;
                 totalAssigned += assigned;
             }
 
-            if (await assignToBranch(num, branch, useCurrent)) {
+            if (await assignToBranch(num, branch, useCurrent, tracker)) {
                 totalAssigned++;
             }
         }
     }
 
     console.log(`\n✓ ${totalAssigned} issues assigned to ${branch}${useCurrent ? ' (current)' : ''}`);
+    if (tracker) {
+        console.log(`  Linked to branch tracker #${tracker}`);
+    }
     if (epicCount > 0) {
         console.log(`  (${epicCount} epics with ${subIssueCount} sub-issues)`);
     }

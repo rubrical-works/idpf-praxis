@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.48.3",
+  "version": "0.49.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -74,7 +74,8 @@
         "review-issue.md",
         "review-prd.md",
         "review-proposal.md",
-        "review-test-plan.md"
+        "review-test-plan.md",
+        "check-upgrade.md"
       ]
     },
     "scripts": {
@@ -84,7 +85,20 @@
         "files": [
           "analyze-commits.js",
           "assign-branch.js",
+          "check-upgrade.js",
+          "ci-add.js",
+          "ci-analyze.js",
+          "ci-apply.js",
+          "ci-detect-lang.js",
+          "ci-detect-workflow.js",
           "ci-hints.js",
+          "ci-list.js",
+          "ci-modify.js",
+          "ci-recommend.js",
+          "ci-recommend-ui.js",
+          "ci-remove.js",
+          "ci-status.js",
+          "ci-validate.js",
           "cleanup-release-assets.js",
           "done-verify.js",
           "extensions-cli.js",
@@ -206,6 +220,7 @@
   "managedCommands": [
     "assign-branch",
     "bad-test-review",
+    "check-upgrade",
     "code-review",
     "switch-branch",
     "transfer-issue",

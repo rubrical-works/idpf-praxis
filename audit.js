@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.48.3
+ * @framework-script 0.49.0
  * audit.js - IDPF Framework Installation Auditor
  *
  * Audits all IDPF Framework installations to detect:
@@ -51,7 +51,7 @@ function computeFileHash(filePath) {
 }
 
 /**
- * Compute hash of content string with 0.48.3 replaced
+ * Compute hash of content string with 0.49.0 replaced
  */
 function computeContentHashWithVersion(content, version) {
   const replaced = content.replace(/\{\{VERSION\}\}/g, version);
@@ -207,7 +207,7 @@ function auditProject(projectPath, frameworkPath, installedVersion) {
 
   // Configuration validation
   if (frameworkConfig && manifest) {
-    // Skip version check when manifest uses 0.48.3 placeholder (dev environment)
+    // Skip version check when manifest uses 0.49.0 placeholder (dev environment)
     if (frameworkConfig.frameworkVersion !== manifest.version && !manifest.version.includes('{{')) {
       results.push({
         status: STATUS.CONFIG_MISMATCH,
@@ -583,7 +583,7 @@ async function main() {
   }
 
   console.log(`IDPF Framework Audit`);
-  console.log(`Version: 0.48.3`);
+  console.log(`Version: 0.49.0`);
   console.log(`Mode: ${fixMode ? 'Fix' : 'Audit'}`);
   console.log(`Projects: ${projectsData.projects.length}`);
 

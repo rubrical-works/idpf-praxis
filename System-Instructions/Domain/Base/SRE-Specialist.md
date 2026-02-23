@@ -1,5 +1,5 @@
 # System Instructions: Site Reliability Engineer (SRE)
-**Version:** v0.48.3
+**Version:** v0.49.0
 Extends: Core-Developer-Instructions.md
 **Purpose:** Site reliability, observability, incident response, SLO/SLI management, operational excellence.
 **Load with:** Core-Developer-Instructions.md (required foundation)

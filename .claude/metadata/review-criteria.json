@@ -101,7 +101,7 @@
         {
           "id": "sub-issue-review",
           "name": "Iterate and review each sub-issue",
-          "autoCheck": "For each sub-issue from `gh pmu sub list`, run review criteria (Steps 3b-3c) recursively, summarizing per-sub-issue findings in final report"
+          "autoCheck": "For each sub-issue from `gh pmu sub list`, run review criteria (Steps 3b-3c, including 3b-ii auto-generate proposed solution/fix) recursively, applying per-sub-issue body updates and summarizing findings in final report"
         }
       ]
     },
