@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.49.1
+ * @framework-script 0.50.0
  * check-upgrade.js — Post-upgrade verification for IDPF user projects
  *
  * Exports 4 check functions for verifying hub upgrade integrity:

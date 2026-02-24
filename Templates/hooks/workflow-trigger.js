@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.49.1
+ * @framework-script 0.50.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:

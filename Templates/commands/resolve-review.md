@@ -1,5 +1,5 @@
 ---
-version: "v0.49.1"
+version: "v0.50.0"
 description: Resolve review findings for an issue (project)
 argument-hint: "#issue"
 ---
@@ -185,6 +185,11 @@ After all findings resolved, re-run the appropriate review:
 | PRD | `/review-prd #$ISSUE` |
 | Test Plan | `/review-test-plan #$ISSUE` |
 **Invoke the command** using the Skill tool. The re-review verifies all findings are resolved and posts an updated review comment.
+**Pending label cleanup:** The re-invoked review command handles label swap via its Step 5.5/6.5. If re-review passes ("Ready for"), it applies `reviewed` and removes `pending`. If still not passing, `pending` remains:
+```bash
+gh issue edit $ISSUE --add-label=reviewed --remove-label=pending   # if Ready for
+gh issue edit $ISSUE --add-label=pending --remove-label=reviewed   # if not Ready for
+```
 Report final status:
 ```
 /resolve-review #$ISSUE complete.

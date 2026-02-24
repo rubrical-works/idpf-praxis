@@ -1,5 +1,5 @@
 ---
-version: "v0.49.1"
+version: "v0.50.0"
 description: Start working on issues with validation and auto-TODO (project)
 argument-hint: "#issue [#issue...] | all in <status>"
 ---

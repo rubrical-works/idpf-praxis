@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.49.1
+ * @framework-script 0.50.0
  * Extension loading error messages and utilities for /review-issue
  * Referenced by .claude/commands/review-issue.md Step 2b
  *

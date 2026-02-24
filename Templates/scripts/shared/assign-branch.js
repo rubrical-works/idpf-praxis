@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.49.1
+ * @framework-script 0.50.0
  * assign-branch.js
  *
  * Interactive script to assign issues to branches.
@@ -23,6 +23,7 @@
  * Note: --all and --add-ready are mutually exclusive.
  *
  * Performance notes:
+ *   - Branch discovery uses label-based query (~0.8s) via getAllOpenTrackers()
  *   - gh pmu commands use local caching in .gh-pmu.yml (~50ms when cached)
  *   - Parallel sub-issue count fetching
  *   - Single issue assignment skips epic check (~500ms faster)
@@ -30,7 +31,7 @@
 
 const { exec, execSync } = require('child_process');
 const { promisify } = require('util');
-const { getTrackerForBranch } = require('./lib/active-label.js');
+const { getAllOpenTrackers } = require('./lib/active-label.js');
 
 const execAsync = promisify(exec);
 
@@ -189,34 +190,18 @@ async function getSubIssueCountAsync(issueNumber) {
 }
 
 /**
- * Get open branches (gh pmu handles caching internally)
+ * Get open branches via label-based query (~0.8s).
+ * Uses getAllOpenTrackers() to fetch all open branch tracker issues and parse
+ * branch names from their titles. Returns tracker numbers alongside branch data
+ * for correct tracker linking (fixes multi-branch bug where the old approach
+ * always returned the active branch's tracker).
  */
-async function getOpenBranches() {
+function getOpenBranches() {
     startTimer('getOpenBranches');
-    try {
-        const result = await execAsyncSafe('gh pmu branch list');
-        if (result) {
-            const lines = result.split('\n').slice(2);
-            const branches = [];
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                const parts = line.trim().split(/\s+/);
-                if (parts.length >= 4) {
-                    const version = parts[0];
-                    const status = parts[parts.length - 1];
-                    if (status === 'Active') {
-                        branches.push({ version, name: version });
-                    }
-                }
-            }
-            endTimer('getOpenBranches');
-            return branches;
-        }
-    } catch (err) {
-        if (showTiming) console.log(`  ⚠ getOpenBranches failed: ${err.message}`);
-    }
+    const trackers = getAllOpenTrackers();
+    const branches = trackers.map(t => ({ version: t.branch, name: t.branch, tracker: t.number }));
     endTimer('getOpenBranches');
-    return [];
+    return branches;
 }
 
 /**
@@ -278,17 +263,17 @@ async function assignToBranch(issueNumber, branch, useCurrent = false, tracker =
         const branchArg = useCurrent ? 'current' : `"${branch}"`;
         const displayBranch = useCurrent ? `${branch} (current)` : branch;
         console.log(`  → Assigning #${issueNumber} to ${displayBranch}`);
-        const result = await execAsyncSafe(`gh pmu move ${issueNumber} --branch ${branchArg} 2>&1`);
-        if (result && result.includes('unknown flag')) {
+        // Run move and sub-add in parallel — they are independent API calls
+        const [moveResult, linkResult] = await Promise.all([
+            execAsyncSafe(`gh pmu move ${issueNumber} --branch ${branchArg} 2>&1`),
+            tracker ? execAsyncSafe(`gh pmu sub add ${tracker} ${issueNumber}`) : Promise.resolve(null)
+        ]);
+        if (moveResult && moveResult.includes('unknown flag')) {
             console.log(`    (Note: gh pmu --branch not supported, manual assignment needed)`);
             return false;
         }
-        // Link as sub-issue of branch tracker (if tracker exists)
-        if (tracker) {
-            const linkResult = await execAsyncSafe(`gh pmu sub add ${tracker} ${issueNumber}`);
-            if (linkResult !== null) {
-                console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
-            }
+        if (tracker && linkResult !== null) {
+            console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
         }
         return true;
     } catch (err) {
@@ -343,8 +328,8 @@ async function main() {
     console.log('=== Assign-Branch ===\n');
     startTimer('total');
 
-    // Step 1: Get open branches (gh pmu handles caching internally)
-    const branches = await getOpenBranches();
+    // Step 1: Get open branches via label-based query (~0.8s)
+    const branches = getOpenBranches();
     const currentBranch = branches.length === 1 ? branches[0].version : null;
 
     // Step 2: Handle no branches case
@@ -521,8 +506,10 @@ async function main() {
     const shouldCheckEpic = checkEpic || issueNumbers.length > 1 || assignAll || addReady;
     const useCurrent = (currentBranch && branch === currentBranch);
 
-    // Resolve branch tracker once for sub-issue linking
-    const tracker = getTrackerForBranch();
+    // Resolve branch tracker from discovered branches (correct for target branch,
+    // not just active branch — fixes multi-branch bug #1515)
+    const branchEntry = branches.find(b => b.name === branch);
+    const tracker = branchEntry ? branchEntry.tracker : null;
 
     console.log(`Assigning to ${branch}${useCurrent ? ' (current)' : ''}:\n`);
 

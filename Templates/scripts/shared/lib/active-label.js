@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.49.1
+ * @framework-script 0.50.0
  * lib/active-label.js
  *
  * Manages the 'active' label on branch tracker issues.
@@ -43,6 +43,33 @@ function findActiveTracker() {
         return issues.length > 0 ? issues[0].number : null;
     } catch (_e) {
         return null;
+    }
+}
+
+/**
+ * Get all open branch tracker issues with parsed branch names.
+ * Uses `gh issue list --label=branch --state=open` for fast discovery (~0.8s)
+ * instead of `gh pmu branch list` (~6s).
+ *
+ * Parses branch names from tracker titles (format: "Branch: prefix/name").
+ * Trackers with malformed titles (no "Branch: " prefix) are skipped.
+ *
+ * @returns {Array<{number: number, branch: string}>} Open trackers with branch names
+ */
+function getAllOpenTrackers() {
+    const output = execSafe('gh issue list --label=branch --state=open --json=number,title');
+    if (!output) return [];
+    try {
+        const issues = JSON.parse(output);
+        return issues
+            .map(issue => {
+                const match = issue.title.trim().match(/^Branch:\s*(.+)$/);
+                if (!match) return null;
+                return { number: issue.number, branch: match[1].trim() };
+            })
+            .filter(Boolean);
+    } catch (_e) {
+        return [];
     }
 }
 
@@ -136,6 +163,7 @@ if (require.main === module) {
 
 module.exports = {
     findActiveTracker,
+    getAllOpenTrackers,
     getTrackerForBranch,
     ensureActiveLabel,
     removeActiveLabelOnly,

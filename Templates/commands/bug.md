@@ -1,5 +1,5 @@
 ---
-version: "v0.49.1"
+version: "v0.50.0"
 description: Create a bug issue with standard template (project)
 argument-hint: "<title>"
 ---
@@ -63,7 +63,7 @@ Build issue body with standard bug template:
 ```
 Create the issue:
 ```bash
-gh pmu create --title "[Bug]: {title}" --label bug --status backlog --priority p2 --assignee @me -F .tmp-body.md
+gh pmu create --title "[Bug]: {title}" --label bug --status backlog --priority p1 --assignee @me -F .tmp-body.md
 rm .tmp-body.md
 ```
 **Note:** Always use `-F .tmp-body.md` for the body (never inline `--body`).

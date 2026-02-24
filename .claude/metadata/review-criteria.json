@@ -102,6 +102,11 @@
           "id": "sub-issue-review",
           "name": "Iterate and review each sub-issue",
           "autoCheck": "For each sub-issue from `gh pmu sub list`, run review criteria (Steps 3b-3c, including 3b-ii auto-generate proposed solution/fix) recursively, applying per-sub-issue body updates and summarizing findings in final report"
+        },
+        {
+          "id": "construction-context",
+          "name": "Construction context discovered",
+          "autoCheck": "Grep `Construction/Design-Decisions/` and `Construction/Tech-Debt/` for `Issue #N` patterns matching sub-issue numbers from `gh pmu sub list`. Report discovered files with title, date, and linked issue number. If no matches, report 'No Construction context found'."
         }
       ]
     },

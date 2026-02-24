@@ -1,5 +1,5 @@
 ---
-version: "v0.49.1"
+version: "v0.50.0"
 description: Complete issues with criteria verification and status transitions (project)
 argument-hint: "[#issue...] (optional)"
 ---
@@ -90,7 +90,7 @@ node -e "const t = require('./.claude/scripts/shared/lib/active-label.js').getTr
 ```
 **If tracker found (not `none`):**
 ```bash
-gh pmu sub add $TRACKER $ISSUE
+gh pmu sub add $TRACKER $ISSUE || true
 ```
 Report: `Linked #$ISSUE to branch tracker #$TRACKER`
 **If no tracker (main branch or untracked):** Skip silently — no error.
@@ -122,8 +122,12 @@ Report: `Pushed.`
 ### Step 5b: Background CI Monitoring
 After push:
 1. Get SHA: `sha=$(git rev-parse HEAD)`
-2. **Pre-check push workflows:** Use `ci-watch.js`'s `hasPushWorkflows()`. If no push-triggered workflows exist → skip, report: `"CI skipped (no push-triggered workflows)"`
-3. **Pre-check paths-ignore:** Use `ci-watch.js`'s `shouldSkipMonitoring()`. If all files match → skip, report: `"CI skipped (paths-ignore)"`
+2. **Pre-check push workflows:** `hasPushWorkflows()` is synchronous and returns `boolean`. Call it directly (no `await`):
+   ```js
+   const { hasPushWorkflows, shouldSkipMonitoring } = require('.claude/scripts/shared/ci-watch.js');
+   if (!hasPushWorkflows()) → skip, report: "CI skipped (no push-triggered workflows)"
+   ```
+3. **Pre-check paths-ignore:** `shouldSkipMonitoring(changedFiles, pathsIgnore)` is synchronous and returns `boolean`. Obtain `changedFiles` via `git diff --name-only HEAD~1` and `pathsIgnore` from workflow YAML. If all files match → skip, report: `"CI skipped (paths-ignore)"`
 4. **Spawn background:** Bash with `run_in_background: true`:
    ```bash
    node .claude/scripts/shared/ci-watch.js --sha $SHA --timeout 300
