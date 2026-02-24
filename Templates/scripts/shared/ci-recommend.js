@@ -9,7 +9,7 @@ const { analyzeProject } = require('./ci-analyze.js');
 const RECOMMENDATION_TYPES = ['Add', 'Remove', 'Alter', 'Improve'];
 
 /**
- * @framework-script 0.51.0
+ * @framework-script 0.51.1
  * Deprecated action versions — map old to recommended.
  */
 const DEPRECATED_ACTIONS = {
@@ -197,6 +197,26 @@ function analyzeGaps(projectDir) {
           feature: 'paths-ignore',
           file: wf.fileName
         });
+      }
+    }
+  }
+
+  // --- Improve: Missing artifact retention ---
+  for (const wf of workflows) {
+    for (const job of wf.jobs) {
+      for (const step of job.steps) {
+        if (step && step.uses && /actions\/upload-artifact/.test(step.uses)) {
+          const hasRetention = step.with && step.with['retention-days'];
+          if (!hasRetention) {
+            recommendations.push({
+              type: 'Improve',
+              description: `Add retention-days to upload-artifact in ${wf.fileName} to avoid exhausting free-tier quota`,
+              impact: 'Cost: default 90-day retention can exhaust 500 MB free quota in a few builds',
+              feature: 'artifact-retention',
+              file: wf.fileName
+            });
+          }
+        }
       }
     }
   }

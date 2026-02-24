@@ -8,7 +8,7 @@ const { modifyWorkflow } = require('./ci-modify.js');
 const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
 
 /**
- * @framework-script 0.51.0
+ * @framework-script 0.51.1
  * Feature types determine how the template is applied to the workflow.
  * 'top-level' features add a root-level YAML key (e.g., concurrency:).
  * 'step' features add a step to an existing job.
@@ -25,7 +25,10 @@ const FEATURE_TYPE_MAP = {
   'codeql-analysis': 'step',
   'coverage-upload': 'step',
   'conventional-commits': 'step',
-  'stale-cleanup': 'step'
+  'stale-cleanup': 'step',
+  'artifact-retention': 'step-modify',
+  'artifact-conditional-upload': 'step-modify',
+  'artifact-cleanup': 'step'
 };
 
 /**
@@ -155,6 +158,21 @@ function addCIFeature(projectDir, featureId, options = {}) {
         // Fallback: set the whole template as strategy
         operation = { setJobProperty: { job: firstJob, path: ['strategy'], value: strategyData } };
       }
+    } else if (featureType === 'step-modify') {
+      // Modify existing upload-artifact steps in-place
+      const modified = modifyUploadArtifactSteps(target.file, featureId, templateYaml);
+      if (!modified) {
+        return {
+          success: false,
+          message: `No upload-artifact steps found in ${path.basename(target.file)} to modify.`
+        };
+      }
+      return {
+        success: true,
+        message: `Added "${feature.name}" to ${path.basename(target.file)}`,
+        file: target.file,
+        feature: featureId
+      };
     } else {
       // Step-type features — add to first test job
       const firstJob = getFirstJobName(target.file);
@@ -200,6 +218,52 @@ function getFirstJobName(filePath) {
     // Ignore
   }
   return null;
+}
+
+/**
+ * Modify existing upload-artifact steps in a workflow file.
+ * For artifact-retention: adds retention-days to with: block.
+ * For artifact-conditional-upload: adds if: condition to step.
+ * @param {string} filePath - Path to workflow file
+ * @param {string} featureId - Feature identifier
+ * @param {string} templateYaml - Template content to inject
+ * @returns {boolean} True if modifications were made
+ */
+function modifyUploadArtifactSteps(filePath, featureId, templateYaml) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const parsed = yaml.parse(content);
+
+  if (!parsed || !parsed.jobs) return false;
+
+  let modified = false;
+
+  for (const [jobName, jobDef] of Object.entries(parsed.jobs)) {
+    if (!jobDef || !Array.isArray(jobDef.steps)) continue;
+
+    for (const step of jobDef.steps) {
+      if (!step || !step.uses || !/actions\/upload-artifact/.test(step.uses)) continue;
+
+      if (featureId === 'artifact-retention') {
+        if (!step.with) step.with = {};
+        if (!step.with['retention-days']) {
+          step.with['retention-days'] = parseInt(templateYaml.match(/\d+/)?.[0] || '1', 10);
+          modified = true;
+        }
+      } else if (featureId === 'artifact-conditional-upload') {
+        if (!step.if) {
+          step.if = templateYaml;
+          modified = true;
+        }
+      }
+    }
+  }
+
+  if (modified) {
+    const doc = new yaml.Document(parsed);
+    fs.writeFileSync(filePath, doc.toString());
+  }
+
+  return modified;
 }
 
 // CLI entry point

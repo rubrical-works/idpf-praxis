@@ -152,5 +152,47 @@
     "template": {
       "yaml": "- uses: actions/stale@v9\n  with:\n    stale-issue-message: 'This issue has been automatically marked as stale.'\n    days-before-stale: 60\n    days-before-close: 7"
     }
+  },
+  "artifact-retention": {
+    "id": "artifact-retention",
+    "name": "Artifact Retention",
+    "description": "Set short retention on upload-artifact to avoid exhausting free-tier 500 MB quota",
+    "tier": "v1",
+    "category": "artifact-management",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["retention-days"]
+    },
+    "template": {
+      "yaml": "retention-days: 1"
+    }
+  },
+  "artifact-conditional-upload": {
+    "id": "artifact-conditional-upload",
+    "name": "Artifact Conditional Upload",
+    "description": "Only upload artifacts on tag pushes — PR builds don't need them",
+    "tier": "v1",
+    "category": "artifact-management",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["upload-artifact.*if.*startsWith", "if:.*refs/tags/.*upload-artifact"]
+    },
+    "template": {
+      "yaml": "if: startsWith(github.ref, 'refs/tags/')"
+    }
+  },
+  "artifact-cleanup": {
+    "id": "artifact-cleanup",
+    "name": "Artifact Cleanup",
+    "description": "Delete temporary artifacts after release publish to free quota",
+    "tier": "v2",
+    "category": "artifact-management",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["delete-artifact", "actions/delete-artifact"]
+    },
+    "template": {
+      "yaml": "- name: Clean up build artifacts\n  uses: geekyeggo/delete-artifact@v5\n  with:\n    name: build-output"
+    }
   }
 }

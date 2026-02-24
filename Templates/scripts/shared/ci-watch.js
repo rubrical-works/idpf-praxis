@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * @framework-script 0.51.0
+ * @framework-script 0.51.1
  * CI Watch — Monitor GitHub Actions workflow runs by commit SHA
  *
  * Polls for CI run status and reports structured JSON results.

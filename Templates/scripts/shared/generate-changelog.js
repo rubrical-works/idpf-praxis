@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.51.0
+ * @framework-script 0.51.1
  * generate-changelog.js - Generate CHANGELOG entry from commits
  *
  * Analyzes commits and generates a Keep a Changelog formatted entry.

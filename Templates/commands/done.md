@@ -1,5 +1,5 @@
 ---
-version: "v0.51.0"
+version: "v0.51.1"
 description: Complete issues with criteria verification and status transitions (project)
 argument-hint: "[#issue...] (optional)"
 ---
@@ -123,14 +123,14 @@ Report: `Pushed.`
 After push:
 1. Get SHA: `sha=$(git rev-parse HEAD)`
 2. **Pre-check push workflows:** `hasPushWorkflows()` is synchronous and returns `boolean`. Call it directly (no `await`):
-   ```js
-   const { hasPushWorkflows, shouldSkipMonitoring } = require('.claude/scripts/shared/ci-watch.js');
-   if (!hasPushWorkflows()) → skip, report: "CI skipped (no push-triggered workflows)"
+   ```bash
+   node -e "const h = require('./.claude/scripts/shared/ci-watch.js').hasPushWorkflows(); console.log(h ? 'true' : 'false')"
    ```
-3. **Pre-check paths-ignore:** `shouldSkipMonitoring(changedFiles, pathsIgnore)` is synchronous and returns `boolean`. Obtain `changedFiles` via `git diff --name-only HEAD~1` and `pathsIgnore` from workflow YAML. If all files match → skip, report: `"CI skipped (paths-ignore)"`
+   If output is `false`, skip CI monitoring and report: `"CI skipped (no push-triggered workflows)"`
+3. **Pre-check paths-ignore:** `shouldSkipMonitoring(changedFiles, pathsIgnore)` is synchronous and returns `boolean`. Obtain `changedFiles` via `git diff --name-only HEAD~1` and `pathsIgnore` from workflow YAML. If all files match, skip CI monitoring and report: `"CI skipped (paths-ignore)"`
 4. **Spawn background:** Bash with `run_in_background: true`:
    ```bash
-   node .claude/scripts/shared/ci-watch.js --sha $SHA --timeout 300
+   node ./.claude/scripts/shared/ci-watch.js --sha $SHA --timeout 300
    ```
 5. Report: `"CI monitoring started in background."`
 **Exit codes:**

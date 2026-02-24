@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * @framework-script 0.51.0
+ * @framework-script 0.51.1
  * CI Contextual Hints
  *
  * Generates state-aware hints that guide users toward logical next actions
@@ -27,6 +27,9 @@ const RELATED_FEATURES = {
   'coverage-upload':      { feature: 'multi-node-versions', reason: 'track coverage across versions' },
   'conventional-commits': { feature: 'stale-cleanup', reason: 'automate issue maintenance' },
   'stale-cleanup':        { feature: 'conventional-commits', reason: 'enforce commit format' },
+  'artifact-retention':   { feature: 'artifact-conditional-upload', reason: 'also skip uploads on PR builds' },
+  'artifact-conditional-upload': { feature: 'artifact-retention', reason: 'set short retention on remaining uploads' },
+  'artifact-cleanup':     { feature: 'artifact-retention', reason: 'set short retention before cleanup runs' },
 };
 
 /**
