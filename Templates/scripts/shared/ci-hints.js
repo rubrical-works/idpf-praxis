@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * @framework-script 0.50.0
+ * @framework-script 0.51.0
  * CI Contextual Hints
  *
  * Generates state-aware hints that guide users toward logical next actions

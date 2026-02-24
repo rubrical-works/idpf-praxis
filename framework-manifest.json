@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.50.0",
+  "version": "0.51.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -113,7 +113,8 @@
           "update-release-notes.js",
           "wait-for-ci.js",
           "ci-watch.js",
-          "upgrade-check.js"
+          "upgrade-check.js",
+          "work-preamble.js"
         ]
       },
       "shared/lib": {

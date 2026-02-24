@@ -1,5 +1,5 @@
 # IDPF-Security Framework
-**Version:** v0.50.0
+**Version:** v0.51.0
 **Extends:** IDPF-Testing-Core
 ## Overview
 Framework for security testing: SAST, DAST, penetration testing, vulnerability management, compliance.
