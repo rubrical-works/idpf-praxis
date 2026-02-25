@@ -5,7 +5,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.51.1
+ * @framework-script 0.52.0
  * List available CI features with enabled/disabled status
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted output

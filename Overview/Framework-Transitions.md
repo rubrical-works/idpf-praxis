@@ -1,5 +1,5 @@
 # Framework Transitions Reference
-**Version:** v0.51.1
+**Version:** v0.52.0
 **Source:** Overview/Framework-Transitions.md
 ## Framework Transition Matrix
 ### Workflow Diagram

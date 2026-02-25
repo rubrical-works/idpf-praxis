@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.51.1
+ * @framework-script 0.52.0
  * assign-branch.js
  *
  * Interactive script to assign issues to branches.
@@ -503,7 +503,7 @@ async function main() {
     let epicCount = 0;
     let subIssueCount = 0;
 
-    const shouldCheckEpic = checkEpic || issueNumbers.length > 1 || assignAll || addReady;
+    const shouldCheckEpic = true;
     const useCurrent = (currentBranch && branch === currentBranch);
 
     // Resolve branch tracker from discovered branches (correct for target branch,
@@ -572,9 +572,6 @@ async function main() {
     }
     if (epicCount > 0) {
         console.log(`  (${epicCount} epics with ${subIssueCount} sub-issues)`);
-    }
-    if (!shouldCheckEpic && issueNumbers.length === 1) {
-        console.log(`  (epic check skipped for single issue - use --check-epic if needed)`);
     }
     endTimer('total');
 }

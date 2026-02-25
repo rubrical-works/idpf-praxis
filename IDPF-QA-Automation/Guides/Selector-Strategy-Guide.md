@@ -1,5 +1,5 @@
 # Selector Strategy Guide
-**Version:** v0.51.1
+**Version:** v0.52.0
 
 **Purpose:** Define reliable element selection strategies for stable, maintainable test automation.
 

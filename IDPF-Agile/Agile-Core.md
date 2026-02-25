@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Core
-**Version:** v0.51.1
+**Version:** v0.52.0
 **Module:** Core (loaded at session startup)
 ---
 ## Terminology

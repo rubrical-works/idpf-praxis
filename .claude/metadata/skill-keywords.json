@@ -75,7 +75,12 @@
       "main process",
       "renderer process",
       "cross-platform desktop",
-      "native desktop"
+      "native desktop",
+      "deb",
+      "packaging",
+      "linux build",
+      "electron-builder",
+      "docker build"
     ],
     "error-handling-patterns": [
       "error handling",
@@ -189,8 +194,19 @@
   },
   "groupKeywords": {
     "tdd": {
-      "keywords": ["tdd", "test-driven", "test driven development", "red-green-refactor"],
-      "skills": ["tdd-red-phase", "tdd-green-phase", "tdd-refactor-phase", "tdd-failure-recovery", "test-writing-patterns"]
+      "keywords": [
+        "tdd",
+        "test-driven",
+        "test driven development",
+        "red-green-refactor"
+      ],
+      "skills": [
+        "tdd-red-phase",
+        "tdd-green-phase",
+        "tdd-refactor-phase",
+        "tdd-failure-recovery",
+        "test-writing-patterns"
+      ]
     }
   },
   "_schema": {

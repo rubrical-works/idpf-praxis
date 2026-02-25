@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Desktop)
-**Version:** v0.51.1
+**Version:** v0.52.0
 **Type:** Desktop Application Agent Behaviors
 **Extends:** Vibe-Agent-Core-Instructions.md
 ---
