@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.53.0
+ * @framework-script 0.53.1
  * check-upgrade.js — Post-upgrade verification for IDPF user projects
  *
- * Exports 4 check functions for verifying hub upgrade integrity:
+ * Exports 5 check functions for verifying hub upgrade integrity:
  *   - checkExtensionIntegrity(projectDir)
  *   - checkCustomScripts(projectDir)
  *   - checkCommandVersionDrift(projectDir, hubDir)
+ *   - checkStaleConfigReferences(projectDir, hubDir)
  *   - checkSymlinkHealth(projectDir)
  *
  * Each function returns { pass: boolean, status: 'PASS'|'WARN'|'FAIL', findings: string[] }
@@ -337,6 +338,115 @@ function checkSymlinkHealth(projectDir) {
   return { pass: true, status: 'PASS', findings };
 }
 
+/**
+ * Check for stale .gh-pmu.yml references in project commands.
+ * After the .gh-pmu.yml → .gh-pmu.json migration (#1566), user project
+ * command files may still contain references to the old YAML filename.
+ *
+ * Reports both stale files (still referencing .yml) and migrated files
+ * (already using .json) to give a complete migration picture.
+ *
+ * @param {string} projectDir - Path to project root
+ * @param {string|null} hubDir - Path to hub root (null if no hub detected)
+ * @returns {{ pass: boolean, status: string, findings: string[] }}
+ */
+function checkStaleConfigReferences(projectDir, hubDir) {
+  const findings = [];
+  const projectCommandsDir = path.join(projectDir, '.claude', 'commands');
+
+  if (!fs.existsSync(projectCommandsDir)) {
+    return { pass: true, status: 'PASS', findings: ['No .claude/commands/ directory — nothing to check'] };
+  }
+
+  const projectFiles = fs.readdirSync(projectCommandsDir).filter(f => f.endsWith('.md'));
+  const staleFiles = [];
+  const migratedFiles = [];
+
+  for (const file of projectFiles) {
+    const projectPath = path.join(projectCommandsDir, file);
+    const projectContent = fs.readFileSync(projectPath, 'utf8');
+
+    const ymlRefs = (projectContent.match(/\.gh-pmu\.yml/g) || []).length;
+
+    if (ymlRefs > 0) {
+      // Project still has .gh-pmu.yml references
+      if (hubDir) {
+        const hubPath = path.join(hubDir, '.claude', 'commands', file);
+        if (fs.existsSync(hubPath)) {
+          const hubContent = fs.readFileSync(hubPath, 'utf8');
+          const hubHasJson = hubContent.includes('.gh-pmu.json');
+          if (hubHasJson) {
+            staleFiles.push({ file, count: ymlRefs });
+          }
+          // If hub also has .yml, both are pre-migration — not flagged
+        } else {
+          // No hub counterpart — flag as stale anyway
+          staleFiles.push({ file, count: ymlRefs });
+        }
+      } else {
+        // No hub dir — flag all .yml refs as stale
+        staleFiles.push({ file, count: ymlRefs });
+      }
+    } else if (hubDir) {
+      // No .yml refs — check if this file references .gh-pmu.json (migrated)
+      const hubPath = path.join(hubDir, '.claude', 'commands', file);
+      if (fs.existsSync(hubPath)) {
+        const hubContent = fs.readFileSync(hubPath, 'utf8');
+        const hubHasJson = hubContent.includes('.gh-pmu.json');
+        const projectHasJson = projectContent.includes('.gh-pmu.json');
+        if (projectHasJson && hubHasJson) {
+          migratedFiles.push(file);
+        }
+      }
+    }
+  }
+
+  if (staleFiles.length === 0 && migratedFiles.length === 0) {
+    return { pass: true, status: 'PASS', findings: ['No .gh-pmu.yml references found'] };
+  }
+
+  if (staleFiles.length === 0) {
+    findings.push(`All commands migrated to .gh-pmu.json (${migratedFiles.length} files)`);
+    return { pass: true, status: 'PASS', findings };
+  }
+
+  // Has stale files — WARN status
+  for (const { file, count } of staleFiles) {
+    findings.push(`${file}: stale .gh-pmu.yml reference (${count} occurrence${count > 1 ? 's' : ''})`);
+  }
+  for (const file of migratedFiles) {
+    findings.push(`${file}: migrated to .gh-pmu.json`);
+  }
+
+  return { pass: true, status: 'WARN', findings };
+}
+
+/**
+ * Get list of committable (non-symlinked) files/dirs that are modified
+ * after a hub upgrade. Symlinked directories point to the hub and
+ * should not be staged — only copied files are project-owned.
+ *
+ * @param {string} projectDir - Path to project root
+ * @returns {string[]} Relative paths suitable for git add
+ */
+function getCommitableFiles(projectDir) {
+  const candidates = ['.claude/commands', 'framework-config.json'];
+  const result = [];
+
+  for (const rel of candidates) {
+    const full = path.join(projectDir, rel);
+    if (!fs.existsSync(full)) continue;
+    try {
+      if (fs.lstatSync(full).isSymbolicLink()) continue;
+    } catch {
+      continue;
+    }
+    result.push(rel);
+  }
+
+  return result;
+}
+
 // ======================================
 //  Module exports
 // ======================================
@@ -345,7 +455,9 @@ module.exports = {
   checkExtensionIntegrity,
   checkCustomScripts,
   checkCommandVersionDrift,
+  checkStaleConfigReferences,
   checkSymlinkHealth,
+  getCommitableFiles,
   EXTENSION_BLOCK_REGEX,
   HEADER_REGEX,
   EXPECTED_SYMLINKS,
@@ -357,7 +469,22 @@ module.exports = {
 
 if (require.main === module) {
   const projectDir = process.cwd();
+  const args = process.argv.slice(2);
+  const commitFlag = args.includes('--commit');
+  const noCommitFlag = args.includes('--no-commit');
+
   console.log('/check-upgrade — Post-upgrade verification\n');
+
+  // Detect hub directory from symlink targets
+  let hubDir = null;
+  const rulesLink = path.join(projectDir, '.claude', 'rules');
+  try {
+    const target = fs.readlinkSync(rulesLink);
+    // Symlink target points to hub's .claude/rules — resolve to hub root
+    hubDir = path.resolve(path.dirname(rulesLink), target, '..', '..');
+  } catch {
+    // Not a symlink — self-hosted repo, hubDir stays null
+  }
 
   const checks = [
     { name: 'Extension Integrity', fn: () => checkExtensionIntegrity(projectDir) },
@@ -365,16 +492,52 @@ if (require.main === module) {
     { name: 'Symlink Health', fn: () => checkSymlinkHealth(projectDir) },
   ];
 
+  // Version Drift and Stale Config References require hubDir
+  if (hubDir) {
+    checks.push({ name: 'Version Drift', fn: () => checkCommandVersionDrift(projectDir, hubDir) });
+  }
+  checks.push({ name: 'Stale Config References', fn: () => checkStaleConfigReferences(projectDir, hubDir) });
+
   const statusIcon = { PASS: '\u2705', WARN: '\u26A0\uFE0F', FAIL: '\u274C' };
   let overallPass = true;
+  const checkResults = [];
 
   for (const check of checks) {
     const result = check.fn();
     const icon = statusIcon[result.status] || '?';
     console.log(`  ${icon} ${check.name} — ${result.findings[0] || result.status}`);
     if (!result.pass) overallPass = false;
+    checkResults.push({ name: check.name, ...result });
   }
 
   console.log(`\nOverall: ${overallPass ? 'PASS' : 'FAIL'}`);
+
+  // Structured JSON output for AI consumption
+  const changedFiles = overallPass ? getCommitableFiles(projectDir) : [];
+  const jsonOutput = {
+    checks: checkResults,
+    overallPass,
+    commitReady: overallPass && !noCommitFlag,
+    changedFiles,
+    commitFlag,
+    noCommitFlag,
+  };
+  console.log('\n---JSON---');
+  console.log(JSON.stringify(jsonOutput));
+
+  // Auto-commit when --commit flag provided and all checks pass
+  if (commitFlag && overallPass) {
+    const files = getCommitableFiles(projectDir);
+    if (files.length > 0) {
+      try {
+        execSync(`git add ${files.join(' ')}`, { cwd: projectDir, stdio: 'pipe' });
+        execSync('git commit -m "Upgrade IDPF hub — all checks passed"', { cwd: projectDir, stdio: 'pipe' });
+        console.log('\nCommitted upgraded files.');
+      } catch (err) {
+        console.error(`\nCommit failed: ${err.message}`);
+      }
+    }
+  }
+
   process.exit(overallPass ? 0 : 1);
 }

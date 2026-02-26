@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.53.0
+ * @framework-script 0.53.1
  * Issue Type Detection Utility
  *
  * Centralizes label-based issue type detection and review command routing.

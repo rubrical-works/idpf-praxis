@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.53.0
+ * @framework-script 0.53.1
  * workstream-utils.js — Shared Workstream Utility Library
  *
  * Provides consistent metadata operations for workstream-aware commands:

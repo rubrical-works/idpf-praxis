@@ -1,5 +1,5 @@
 ---
-version: "v0.53.0"
+version: "v0.53.1"
 description: Review a test plan against its PRD (project)
 argument-hint: "#issue"
 ---
