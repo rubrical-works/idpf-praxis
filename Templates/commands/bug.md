@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Create a bug issue with standard template (project)
 argument-hint: "<title>"
 ---
@@ -15,7 +15,7 @@ Creates a properly labeled bug issue with a standard template and adds it to the
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 ---
 ## Arguments
 | Argument | Required | Description |

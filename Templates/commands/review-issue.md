@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...]"
 ---
@@ -11,7 +11,7 @@ Reviews one or more GitHub issues with type-specific criteria based on labels (b
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 ---
 ## Arguments
 | Argument | Required | Description |

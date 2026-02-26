@@ -1,10 +1,10 @@
 # Agile-Driven Development Framework - Commands
-**Version:** v0.52.0
+**Version:** v0.53.0
 **Module:** Commands (loaded on-demand)
 ---
 ## Backlog Management Commands
 All backlog commands work against GitHub issues. No local backlog files.
-**Prerequisites:** `.gh-pmu.yml` configured, `gh pmu` extension installed
+**Prerequisites:** `.gh-pmu.json` configured, `gh pmu` extension installed
 | Command | Description | Slash Command |
 |---------|-------------|---------------|
 | `Create-Backlog` | Create GitHub epics/stories from PRD | `/create-backlog` |

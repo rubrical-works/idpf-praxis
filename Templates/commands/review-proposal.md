@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Review a proposal with tracked history (project)
 argument-hint: "#issue"
 ---
@@ -11,7 +11,7 @@ Reviews a proposal document linked from a GitHub issue, tracking review history 
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 - Issue body must contain `**File:** Proposal/[Name].md` linking to the proposal
 ---
 ## Arguments

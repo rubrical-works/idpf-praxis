@@ -1,10 +1,9 @@
 {
-  "name": "idpf-framework-installer",
+  "name": "idpf-praxis",
   "version": "1.0.0",
-  "description": "IDPF Framework Installer - Cross-platform interactive installer",
-  "main": "install-hub.js",
+  "description": "IDPF — Interactive Development Process Frameworks",
+  "main": "audit.js",
   "scripts": {
-    "install-framework": "node install-hub.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "jest",

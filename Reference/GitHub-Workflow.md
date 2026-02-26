@@ -1,10 +1,10 @@
 # GitHub Workflow Integration
-**Version:** v0.52.0
+**Version:** v0.53.0
 ---
 **MUST READ:** At session startup and after compaction.
 **Source:** Reference/GitHub-Workflow.md
 ## Project Configuration
-**Read from `.gh-pmu.yml`:**
+**Read from `.gh-pmu.json`:**
 ```yaml
 project:
     owner: {owner}
@@ -20,7 +20,7 @@ fields:
 Use alias (left side) in commands: `gh pmu move 90 --status in_progress`
 **If missing:** Run `gh pmu init`
 **After project creation:** Set default repository in project settings (Settings → Default repository). Without this, issues may go to wrong repo.
-**Terms Acceptance:** Run `gh pmu accept --yes` before first use. Persists in `.gh-pmu.yml` — re-run after `gh pmu init`.
+**Terms Acceptance:** Run `gh pmu accept --yes` before first use. Persists in `.gh-pmu.json` — re-run after `gh pmu init`.
 **Framework config (optional):** `framework: IDPF-Agile` enables workflow restrictions.
 ## gh pmu Command Reference
 Issue management and branch commands are in their respective command specs. This section covers cross-command flags and operations.

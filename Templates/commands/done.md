@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Complete issues with criteria verification and status transitions (project)
 argument-hint: "[#issue...] (optional)"
 ---
@@ -11,7 +11,7 @@ Complete one or more issues. Moves from `in_review` → `done` with a STOP bound
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 - Issue in `in_review` status (use `/work` first)
 ---
 ## Arguments

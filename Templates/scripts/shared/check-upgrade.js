@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.52.0
+ * @framework-script 0.53.0
  * check-upgrade.js — Post-upgrade verification for IDPF user projects
  *
  * Exports 4 check functions for verifying hub upgrade integrity:
@@ -176,7 +176,18 @@ function checkCustomScripts(projectDir) {
 }
 
 /**
+ * Normalize command content for diff comparison by stripping extension block
+ * content while preserving markers. This allows comparing template structure
+ * without being affected by user customizations in extension blocks.
+ */
+function normalizeForDiff(content) {
+  return content.replace(EXTENSION_BLOCK_REGEX, '<!-- USER-EXTENSION-START: $1 -->\n<!-- USER-EXTENSION-END: $1 -->');
+}
+
+/**
  * Check for command version drift between project and hub source.
+ * Uses version-header comparison as a fast path when both files have version
+ * numbers, and falls back to diff-based comparison for bare markers.
  *
  * @param {string} projectDir - Path to project root
  * @param {string} hubDir - Path to hub root
@@ -197,7 +208,6 @@ function checkCommandVersionDrift(projectDir, hubDir) {
 
   const projectFiles = fs.readdirSync(projectCommandsDir).filter(f => f.endsWith('.md'));
   let staleCount = 0;
-  let noVersionCount = 0;
 
   for (const file of projectFiles) {
     const projectPath = path.join(projectCommandsDir, file);
@@ -211,27 +221,30 @@ function checkCommandVersionDrift(projectDir, hubDir) {
     const projectHeader = projectContent.match(HEADER_REGEX);
     const hubHeader = hubContent.match(HEADER_REGEX);
 
-    if (!projectHeader || !hubHeader) {
-      noVersionCount++;
+    // Fast path: if both have version numbers, compare versions directly
+    const projectVersion = projectHeader ? projectHeader[2] || null : null;
+    const hubVersion = hubHeader ? hubHeader[2] || null : null;
+
+    if (projectVersion && hubVersion) {
+      if (projectVersion !== hubVersion) {
+        findings.push(`${file}: project v${projectVersion} < hub v${hubVersion}`);
+        staleCount++;
+      }
       continue;
     }
 
-    const projectVersion = projectHeader[2] || null;
-    const hubVersion = hubHeader[2] || null;
+    // Default path: diff-based comparison (handles bare markers and no-marker files)
+    const normalizedProject = normalizeForDiff(projectContent);
+    const normalizedHub = normalizeForDiff(hubContent);
 
-    if (projectVersion && hubVersion && projectVersion !== hubVersion) {
-      findings.push(`${file}: project v${projectVersion} < hub v${hubVersion}`);
+    if (normalizedProject !== normalizedHub) {
+      findings.push(`${file}: content differs from hub (diff comparison)`);
       staleCount++;
     }
   }
 
   if (staleCount > 0) {
     return { pass: false, status: 'FAIL', findings };
-  }
-
-  if (noVersionCount > 0) {
-    findings.push(`${noVersionCount} commands have no version header (cannot compare)`);
-    return { pass: true, status: 'WARN', findings };
   }
 
   findings.push(`${projectFiles.length} commands at current hub version`);

@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Start working on issues with validation and auto-TODO (project)
 argument-hint: "#issue [#issue...] | all in <status>"
 ---
@@ -11,7 +11,7 @@ Start working on one or more issues. Validates issue existence, branch assignmen
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 - Issue assigned to a branch (use `/assign-branch` first)
 ---
 ## Arguments
@@ -32,6 +32,10 @@ Start working on one or more issues. Validates issue existence, branch assignmen
 ## Workflow
 ### Step 0: Conditional - Clear Todo List
 If not working on an epic, clear todo list.
+
+<!-- USER-EXTENSION-START: pre-work -->
+<!-- USER-EXTENSION-END: pre-work -->
+
 ### Step 1: Context Gathering (Preamble Script)
 Run the preamble script to consolidate all deterministic setup work into a single invocation:
 **Single issue:**
@@ -63,9 +67,6 @@ Parse the JSON output and check `ok`:
 **Extract autoTodo for Step 4:**
 - Standard: `{ source: "acceptance_criteria", items: [{ text, checked }] }`
 - Epic: `{ source: "sub_issues", items: [{ number, title }] }` — sub-issues sorted in ascending numeric order by default, or custom `**Processing Order:**` from epic body. Sub-issues already in `in_review` or `done` are skipped (listed in `context.skipped`).
-
-<!-- USER-EXTENSION-START: pre-work -->
-<!-- USER-EXTENSION-END: pre-work -->
 
 <!-- USER-EXTENSION-START: post-work-start -->
 <!-- USER-EXTENSION-END: post-work-start -->
@@ -127,6 +128,13 @@ After implementation, evaluate whether documentation is warranted before verifyi
 5. Commit: `Refs #$ISSUE — add {design decision|tech debt} documentation`
 6. Check documentation AC checkbox with inline note: `[x] Design decisions documented — {topic}`
 **If not warranted:** Check AC checkbox with note: `[x] No design decisions warranted — implementation was straightforward`
+
+<!-- USER-EXTENSION-START: post-documentation -->
+<!-- USER-EXTENSION-END: post-documentation -->
+
+<!-- USER-EXTENSION-START: post-implementation -->
+<!-- USER-EXTENSION-END: post-implementation -->
+
 ### Step 5: Verify Acceptance Criteria
 **IMPORTANT — Ground in file state:** Before evaluating each AC, re-read the actual file content using the Read tool. Do NOT evaluate from memory — re-read to confirm the criterion is met in current code. This prevents batch fatigue hallucination.
 For each AC checkbox in the issue body:
@@ -138,6 +146,10 @@ gh pmu view $ISSUE --body-stdout > .tmp-$ISSUE.md
 # Update checkboxes to [x]
 gh pmu edit $ISSUE -F .tmp-$ISSUE.md && rm .tmp-$ISSUE.md
 ```
+
+<!-- USER-EXTENSION-START: post-ac-verification -->
+<!-- USER-EXTENSION-END: post-ac-verification -->
+
 ### Step 6: Move to in_review
 ```bash
 gh pmu move $ISSUE --status in_review
@@ -156,6 +168,10 @@ For each sub-issue in processing order:
 3. Move sub-issue to `in_review`
 4. **STOP** — report and wait for user to say "done"
 5. After user says "done" (invokes `/done` to move sub-issue to done), proceed to next sub-issue
+
+<!-- USER-EXTENSION-START: post-sub-issue-done -->
+<!-- USER-EXTENSION-END: post-sub-issue-done -->
+
 **After all sub-issues reach `in_review` or `done`:**
 1. Evaluate the epic's own acceptance criteria (Step 5)
 2. Move epic to `in_review`

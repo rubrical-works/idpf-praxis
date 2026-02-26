@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Review a PRD with tracked history (project)
 argument-hint: "#issue"
 ---
@@ -11,7 +11,7 @@ Reviews a PRD document linked from a GitHub issue, tracking review history with 
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 - Issue body must reference the PRD file path
 ---
 ## Arguments

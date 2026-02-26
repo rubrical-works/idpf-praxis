@@ -1,5 +1,5 @@
 # Capacity Planning Guide
-**Version:** v0.52.0
+**Version:** v0.53.0
 
 **Framework:** IDPF-Performance
 

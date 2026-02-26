@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Core
-**Version:** v0.52.0
+**Version:** v0.53.0
 **Module:** Core (loaded at session startup)
 ---
 ## Terminology
@@ -27,7 +27,7 @@ Product Backlog Creation → Story Selection (from Ready) → Story Development 
 ### GitHub Integration
 * All backlog commands work against GitHub issues
 * No local backlog files created
-* Requires `.gh-pmu.yml` configuration and `gh pmu` extension
+* Requires `.gh-pmu.json` configuration and `gh pmu` extension
 * Stories linked to epics via `gh pmu sub add`
 ---
 ## TDD Cycle (RED-GREEN-REFACTOR)

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.52.0
+ * @framework-script 0.53.0
  * done-preamble.js
  *
  * Consolidates deterministic validation and status transitions for the /done

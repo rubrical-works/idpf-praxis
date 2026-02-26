@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Verify hub upgrade integrity for project commands and scripts
 argument-hint: ""
 ---
@@ -47,13 +47,15 @@ Call `checkCustomScripts(projectDir)`:
 | FAIL | Custom script(s) missing |
 ### Step 4: Command Version Drift Check
 Call `checkCommandVersionDrift(projectDir, hubDir)`:
-1. Parse version from EXTENSIBLE/MANAGED marker headers
-2. Compare project vs hub source versions
+1. List all `.claude/commands/*.md` in project
+2. Read EXTENSIBLE or MANAGED marker header
+3. **Fast path:** If both files have version numbers, compare directly
+4. **Default path (diff-based):** Normalize extension block content (strip user customizations), compare project vs hub content
+5. For EXTENSIBLE commands, only template content compared — user extension block content stripped before diff
 | Result | Meaning |
 |--------|---------|
-| PASS | All commands current |
-| WARN | Version headers not present |
-| FAIL | Command(s) stale |
+| PASS | All commands match hub version (by version or content diff) |
+| FAIL | Command(s) have drifted — content differs from hub |
 ### Step 5: Symlink Health Check
 Call `checkSymlinkHealth(projectDir)`:
 Check: `.claude/rules/`, `.claude/hooks/`, `.claude/scripts/shared/`, `.claude/metadata/`, `.claude/skills/`

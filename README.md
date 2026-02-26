@@ -11,25 +11,16 @@ A structured framework for building software with an AI assistant. You define wh
 
 ## Installation
 
-### Central Hub (recommended)
-```bash
-# Create central hub installation
-node path/to/framework/install-hub.js
-```
+Install and manage IDPF through **px-manager**, the cross-platform desktop application:
 
-### Add to Project
-```bash
-# New project with IDPF integration
-node path/to/framework/install-project-new.js
+1. **Create a hub** — px-manager downloads the framework and sets up the central hub
+2. **Add projects** — Use the project wizard to create new projects or link existing ones
 
-# Add to existing project
-node path/to/framework/install-project-existing.js
-```
-
-The hub installer will:
-- Create a central hub that serves multiple projects
-- Deploy framework files, commands, rules, and scripts
-- Configure Claude Code integration via symlinks
+px-manager handles:
+- Creating a central hub that serves multiple projects
+- Deploying framework files, commands, rules, and scripts
+- Configuring Claude Code integration via symlinks/junctions
+- Preserving your command customizations during hub updates
 
 ---
 
@@ -81,10 +72,7 @@ Accessibility-Specialist, API-Integration-Specialist, Backend-Specialist, Cloud-
 
 ## Updating
 
-```bash
-# From your project directory (where framework-config.json is)
-node [frameworkPath]/fetch-updates.js
-```
+Open **px-manager** and use the hub update feature to download and apply the latest framework version.
 
 ---
 
@@ -97,9 +85,7 @@ Rules in `.claude/rules/` load automatically at session start:
 
 ### Adding IDPF to Existing Projects
 
-```bash
-node [frameworkPath]/install-project-existing.js
-```
+Open **px-manager** and use the project wizard to add IDPF to an existing project.
 
 ---
 

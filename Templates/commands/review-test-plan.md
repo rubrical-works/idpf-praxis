@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Review a test plan against its PRD (project)
 argument-hint: "#issue"
 ---
@@ -11,7 +11,7 @@ Unlike `/review-issue`, reads two linked documents (test plan and PRD) and perfo
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 - Issue body must contain `**Test Plan:**` linking to the test plan file
 - Issue body must contain `**PRD:**` linking to the source PRD file
 ---

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.52.0
+ * @framework-script 0.53.0
  * extensions-cli.js
  *
  * Script-driven CLI for extension point operations.
@@ -43,7 +43,7 @@ function loadRegistry() {
   if (!fs.existsSync(REGISTRY_PATH)) {
     return {
       registry: null,
-      error: 'Fatal: .claude/metadata/extension-points.json not found. Run install-project-existing.js to repair.'
+      error: 'Fatal: .claude/metadata/extension-points.json not found. Re-link project via px-manager to repair.'
     };
   }
 

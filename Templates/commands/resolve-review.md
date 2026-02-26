@@ -1,5 +1,5 @@
 ---
-version: "v0.52.0"
+version: "v0.53.0"
 description: Resolve review findings for an issue (project)
 argument-hint: "#issue"
 ---
@@ -10,7 +10,7 @@ Parse the latest review findings on an issue and systematically resolve each one
 ---
 ## Prerequisites
 - `gh pmu` extension installed
-- `.gh-pmu.yml` configured in repository root
+- `.gh-pmu.json` configured in repository root
 - Issue has at least one review comment
 ---
 ## Arguments

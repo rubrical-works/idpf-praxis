@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.52.0
+ * @framework-script 0.53.0
  * work-preamble.js
  *
  * Consolidates deterministic setup work for the /work command into a single
