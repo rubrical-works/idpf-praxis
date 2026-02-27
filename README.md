@@ -54,7 +54,7 @@ px-manager handles:
 
 **Advanced Testing:** property-based-testing, mutation-testing
 
-**Analysis:** anti-pattern-analysis, bdd-writing, codebase-analysis, extract-prd
+**Analysis:** anti-pattern-analysis, bdd-writing, codebase-analysis
 
 **DevOps:** ci-cd-pipeline-design
 

@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Mobile)
-**Version:** v0.53.1
+**Version:** v0.54.0
 **Type:** Mobile Application Agent Behaviors
 **Extends:** Vibe-Agent-Core-Instructions.md
 ---

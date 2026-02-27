@@ -1,5 +1,5 @@
 # Framework Testing Reference
-**Version:** v0.53.1
+**Version:** v0.54.0
 **Source:** Overview/Framework-Testing.md
 ## IDPF-Testing Framework
 **Location:** `IDPF-Testing/IDPF-Testing.md` | **Type:** Foundational Testing Framework

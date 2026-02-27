@@ -5,7 +5,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.53.1
+ * @framework-script 0.54.0
  * Modify a workflow YAML file safely, preserving comments and structure.
  * @param {string} filePath - Path to the workflow YAML file
  * @param {Object} operation - The modification operation

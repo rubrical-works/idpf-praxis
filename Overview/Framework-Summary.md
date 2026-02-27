@@ -1,6 +1,6 @@
 # Framework Summary
-**Version:** v0.53.1
-**Source:** Overview/Framework-Summary.md
+**Version:** v0.54.0
+**Purpose:** Compact startup reference for framework developers
 ## Quick Reference
 | Component | Count | Location |
 |-----------|-------|----------|
@@ -8,7 +8,7 @@
 | Testing Frameworks | 7 | IDPF-Testing (review criteria library) + 6 specialized |
 | Domain Specialists | 22 | 12 Base + 10 Pack |
 | Core Instructions | 2 | Core-Developer-Instructions + Domain-Selection-Guide |
-| Skills | 25 | Skills/ |
+| Skills | 24 | Skills/ |
 | Assistant Guidelines | 4 | Assistant/ |
 ## Current Versions
 ### Development Frameworks
@@ -36,7 +36,6 @@
 | tdd-failure-recovery | TDD |
 | test-writing-patterns | TDD |
 | bdd-writing | BDD |
-| extract-prd | PRD |
 | create-prd | PRD |
 | anti-pattern-analysis | Code Quality |
 | flask-setup | Beginner Setup |
@@ -53,6 +52,7 @@
 | ci-cd-pipeline-design | DevOps |
 | playwright-setup | Testing Setup |
 | codebase-analysis | Code Quality |
+| drawio-generation | Diagrams |
 | electron-development | Desktop |
 ## Framework Selection Matrix
 | Project Type | Starting Point | Evolution Path |

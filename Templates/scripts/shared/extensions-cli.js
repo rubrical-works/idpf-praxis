@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.53.1
+ * @framework-script 0.54.0
  * extensions-cli.js
  *
  * Script-driven CLI for extension point operations.
@@ -8,10 +8,11 @@
  * reducing execution from 3-16+ tool calls to 1 Bash call (<1s).
  *
  * Usage:
- *   node extensions-cli.js list [--command X]
+ *   node extensions-cli.js list [--command X] [--status]
  *   node extensions-cli.js view <command>:<point>
  *   node extensions-cli.js validate
- *   node extensions-cli.js matrix
+ *   node extensions-cli.js summary
+ *   node extensions-cli.js matrix              (alias for summary)
  *   node extensions-cli.js recipes [category]
  *   node extensions-cli.js help
  *
@@ -140,7 +141,7 @@ function scanAllCommandFiles() {
 
 /**
  * Run the list subcommand.
- * @param {{ command: string|null }} opts - Options
+ * @param {{ command: string|null, status?: boolean }} opts - Options
  * @returns {{ exitCode: number, output: string }}
  */
 function runList(opts) {
@@ -170,7 +171,31 @@ function runList(opts) {
   // Scan command files for hasContent
   const fileData = scanAllCommandFiles();
 
-  // Build tree output
+  // --status mode: compact X/. markers per extension point
+  if (opts.status) {
+    const lines = [];
+
+    for (const cmdName of commandNames) {
+      const cmd = commands[cmdName];
+      const points = cmd.extensionPoints || [];
+      const cmdBlocks = fileData.get(cmdName) || new Map();
+
+      const filledCount = points.filter(ep => cmdBlocks.get(ep.name) || false).length;
+
+      lines.push(`${cmdName} (${points.length} points, ${filledCount} filled)`);
+
+      for (const ep of points) {
+        const hasContent = cmdBlocks.get(ep.name) || false;
+        const marker = hasContent ? 'X' : '.';
+        lines.push(`  ${marker}  ${ep.name}`);
+      }
+      lines.push('');
+    }
+
+    return { exitCode: 0, output: lines.join('\n').trim() };
+  }
+
+  // Default tree output
   const lines = [];
   lines.push(`Extension Points (${registry.commandCount} commands, ${registry.extensionPointCount} points)`);
   lines.push('');
@@ -531,15 +556,15 @@ function runValidate() {
 }
 
 // ============================================================================
-// MATRIX SUBCOMMAND
+// SUMMARY SUBCOMMAND (replaces matrix — Issue #1576)
 // ============================================================================
 
 /**
- * Run the matrix subcommand.
- * Builds a cross-command comparison table showing extension point status.
+ * Run the summary subcommand.
+ * Shows per-command filled/empty/total counts for extension points.
  * @returns {{ exitCode: number, output: string }}
  */
-function runMatrix() {
+function runSummary() {
   const { registry, error } = loadRegistry();
   if (error) {
     return { exitCode: 2, output: error };
@@ -555,59 +580,56 @@ function runMatrix() {
   // Scan command files for hasContent
   const fileData = scanAllCommandFiles();
 
-  // Collect all unique extension point names across all commands
-  const allPointNames = new Set();
-  for (const cmd of Object.values(commands)) {
-    for (const ep of cmd.extensionPoints || []) {
-      allPointNames.add(ep.name);
-    }
-  }
-
-  const pointNames = Array.from(allPointNames).sort();
-
-  // Compute column widths
-  const cmdColWidth = Math.max(7, ...commandNames.map(n => n.length));
-  const pointColWidths = pointNames.map(p => Math.max(p.length, 3));
-
-  // Build header
-  const header = [
-    'Command'.padEnd(cmdColWidth),
-    ...pointNames.map((p, i) => p.padEnd(pointColWidths[i]))
-  ].join(' | ');
-
-  const separator = [
-    '-'.repeat(cmdColWidth),
-    ...pointColWidths.map(w => '-'.repeat(w))
-  ].join('-+-');
-
-  // Build data rows
+  // Compute per-command counts
   const rows = [];
+  let totalPoints = 0;
+  let totalFilled = 0;
+
   for (const cmdName of commandNames) {
     const cmd = commands[cmdName];
+    const points = cmd.extensionPoints || [];
     const cmdBlocks = fileData.get(cmdName) || new Map();
-    const registryPoints = new Set((cmd.extensionPoints || []).map(ep => ep.name));
 
-    const cells = pointNames.map((pName, i) => {
-      if (!registryPoints.has(pName)) {
-        return '-'.padEnd(pointColWidths[i]);
-      }
-      const hasContent = cmdBlocks.get(pName) || false;
-      return (hasContent ? 'X' : '.').padEnd(pointColWidths[i]);
-    });
+    const filled = points.filter(ep => cmdBlocks.get(ep.name) || false).length;
+    const empty = points.length - filled;
 
-    rows.push([cmdName.padEnd(cmdColWidth), ...cells].join(' | '));
+    rows.push({ name: cmdName, total: points.length, filled, empty });
+    totalPoints += points.length;
+    totalFilled += filled;
   }
 
+  // Sort by filled count descending, then by total descending, then by name ascending
+  rows.sort((a, b) => b.filled - a.filled || b.total - a.total || a.name.localeCompare(b.name));
+
+  // Compute column width for command names
+  const nameColWidth = Math.max(7, ...rows.map(r => r.name.length));
+
+  // Build output
   const lines = [
-    'Extension Point Matrix',
-    `Legend: X = has content, . = empty, - = not applicable`,
+    'Extension Point Summary',
     '',
-    header,
-    separator,
-    ...rows
+    `${'Command'.padEnd(nameColWidth)}  Total  Filled  Empty`,
   ];
 
+  for (const row of rows) {
+    lines.push(
+      `${row.name.padEnd(nameColWidth)}  ${String(row.total).padStart(5)}  ${String(row.filled).padStart(6)}  ${String(row.empty).padStart(5)}`
+    );
+  }
+
+  lines.push('');
+  lines.push(`Total: ${totalPoints} extension points across ${commandNames.length} commands (${totalFilled} filled)`);
+
   return { exitCode: 0, output: lines.join('\n') };
+}
+
+/**
+ * Run the matrix subcommand (alias for summary).
+ * Retained for backward compatibility.
+ * @returns {{ exitCode: number, output: string }}
+ */
+function runMatrix() {
+  return runSummary();
 }
 
 // ============================================================================
@@ -685,9 +707,11 @@ function runHelp() {
     '',
     'Subcommands:',
     '  list [--command X]       List all extension points (optionally filter by command)',
+    '  list --status            List extension points with X/. filled/empty markers',
     '  view <command>:<point>   View content of a specific extension point',
     '  validate                 Validate extension point integrity (7 checks)',
-    '  matrix                   Cross-command comparison table',
+    '  summary                  Per-command filled/empty/total counts',
+    '  matrix                   Alias for summary',
     '  recipes [category]       Browse extension recipes by category',
     '  help                     Show this help message',
     '',
@@ -718,14 +742,14 @@ function detectEditor() {
 
 /**
  * Determine whether a subcommand should open output in an external editor.
- * Only list and matrix produce output too wide/long for Claude Code display.
+ * List, summary, and matrix (alias) produce output too long for Claude Code display.
  * @param {string} subcommand - The subcommand name
  * @param {{ stdout?: boolean }} options - Parsed options
  * @returns {boolean}
  */
 function shouldOpenInEditor(subcommand, options) {
   if (options && options.stdout) return false;
-  return subcommand === 'list' || subcommand === 'matrix';
+  return subcommand === 'list' || subcommand === 'matrix' || subcommand === 'summary';
 }
 
 /**
@@ -772,6 +796,8 @@ function parseArgs(args) {
       i++;
     } else if (rest[i] === '--stdout') {
       options.stdout = true;
+    } else if (rest[i] === '--status') {
+      options.status = true;
     } else if (rest[i] === '--help') {
       options.help = true;
     } else if (!rest[i].startsWith('--')) {
@@ -792,13 +818,16 @@ function main() {
 
   switch (subcommand) {
     case 'list':
-      result = runList({ command: options.command || null });
+      result = runList({ command: options.command || null, status: options.status || false });
       break;
     case 'view':
       result = runView({ target: posArgs[0] || '' });
       break;
     case 'validate':
       result = runValidate();
+      break;
+    case 'summary':
+      result = runSummary();
       break;
     case 'matrix':
       result = runMatrix();
@@ -842,6 +871,7 @@ module.exports = {
   runList,
   runView,
   runValidate,
+  runSummary,
   runMatrix,
   runRecipes,
   runHelp,

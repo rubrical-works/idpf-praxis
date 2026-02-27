@@ -1,15 +1,6 @@
 # Session Startup Instructions
-**Version:** v0.53.1
+**Version:** v0.54.0
 **Purpose:** Standard initialization procedure for AI assistant sessions
----
-## Rules Auto-Loading (v2.9+)
-Essential rules auto-load from `.claude/rules/`:
-| Rule File | Content | Source |
-|-----------|---------|--------|
-| `01-anti-hallucination.md` | Framework development quality rules | `Assistant/Anti-Hallucination-Rules-for-Framework-Development.md` |
-| `02-github-workflow.md` | GitHub issue management integration | `Reference/GitHub-Workflow.md` |
-| `03-session-startup.md` | Startup procedure and on-demand loading | Generated |
-**Benefits:** No explicit file reads at startup, rules persist after compaction, simplified initialization.
 ---
 ## Startup Sequence
 **Run all startup steps sequentially — never in parallel.** Parallel tool calls cascade: if one fails, all siblings abort.
@@ -26,15 +17,7 @@ Essential rules auto-load from `.claude/rules/`:
 | Charter Status | `Active` or `Pending` | Glob tool |
 | GitHub Workflow | `gh pmu --version` | Bash |
 **Do not use shell builtins** (`date`, `basename`, `echo`, `test -f`, `pwd`) — blocked in sandbox.
-### 2. Read Framework Summary (On-Demand)
-```
-Overview/Framework-Summary.md
-```
-### 2a. Load Process Framework (Self-Hosted)
-**Applies when:** `framework-config.json` contains `selfHosted: true`
-1. Read `framework-config.json` for `processFramework` value
-2. Load core file: `IDPF-Agile` → `.min-mirror/IDPF-Agile/Agile-Core.md`, `IDPF-Vibe` → `.min-mirror/IDPF-Vibe/Vibe-Core.md`
-### 3. Check Project Charter (User Projects)
+### 3. Check Project Charter
 **Charter is mandatory.**
 1. Check CHARTER.md exists
 2. Check for template placeholders: `/{[a-z][a-z0-9-]*}/`
@@ -42,6 +25,14 @@ Overview/Framework-Summary.md
    - **Active** (exists, no placeholders): Proceed
    - **Pending** (missing or template): Auto-run `/charter` command
 **BLOCKING:** Session startup does not complete until charter is configured.
+### 3a. Upgrade Check (Non-Blocking)
+**Applies when:** Not self-hosted (`selfHosted` is false or absent in `framework-config.json`)
+Run `node .claude/scripts/shared/upgrade-check.js` and parse JSON:
+- `data.skipped: true` → cooldown active, skip
+- `data.outdated` non-empty → prompt user for details
+- Empty or error → continue silently (non-blocking)
+### 3b. Report Project Skills
+Check `framework-config.json` for `projectSkills` array. If non-empty, report: "Project Skills: {skill-list}"
 ### 4. Display Session Initialized Block
 **Date appears ONLY here.** Format:
 ```
@@ -56,21 +47,23 @@ Session Initialized
 - Charter Status: {Active|Pending}
 - GitHub Workflow: Active via gh pmu {version}
 ```
+**Review Mode:** Omit if `reviewMode` is not set in config.
 Ask user what they would like to work on.
 ---
 ## Post-Compact Behavior
 **No re-reading required.** Rules in `.claude/rules/` auto-reload after compaction.
 ---
 ## On-Demand Documentation Loading
+Paths use `frameworkPath` from `framework-config.json` (resolve relative to project root).
 | When Working On | Load File |
 |-----------------|-----------|
-| IDPF frameworks | `Overview/Framework-Development.md` |
-| Testing frameworks | `Overview/Framework-Testing.md` |
-| System Instructions or Domain Specialists | `Overview/Framework-System-Instructions.md` |
-| Skills (creating, updating, reviewing) | `Overview/Framework-Skills.md` |
-| Framework transitions or hybrid usage | `Overview/Framework-Transitions.md` |
-| Complete reference | `Overview/Framework-Overview.md` |
-| Skill creation rules | `Assistant/Anti-Hallucination-Rules-for-Skill-Creation.md` |
-| PRD work | `Assistant/Anti-Hallucination-Rules-for-PRD-Work.md` |
+| IDPF frameworks | `{frameworkPath}/Overview/Framework-Development.md` |
+| Testing frameworks | `{frameworkPath}/Overview/Framework-Testing.md` |
+| System Instructions or Domain Specialists | `{frameworkPath}/Overview/Framework-System-Instructions.md` |
+| Skills (creating, updating, reviewing) | `{frameworkPath}/Overview/Framework-Skills.md` |
+| Framework transitions or hybrid usage | `{frameworkPath}/Overview/Framework-Transitions.md` |
+| Complete reference | `{frameworkPath}/Overview/Framework-Overview.md` |
+| Skill creation rules | `{frameworkPath}/Assistant/Anti-Hallucination-Rules-for-Skill-Creation.md` |
+| PRD work | `{frameworkPath}/Assistant/Anti-Hallucination-Rules-for-PRD-Work.md` |
 ---
 **End of Session Startup Instructions**

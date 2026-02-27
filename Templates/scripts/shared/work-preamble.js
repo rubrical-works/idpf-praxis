@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.53.1
+ * @framework-script 0.54.0
  * work-preamble.js
  *
  * Consolidates deterministic setup work for the /work command into a single
@@ -99,6 +99,9 @@ function parseArgs(args) {
     return { error: { code: 'MISSING_ARGUMENT', message: 'No arguments provided. Use --issue N, --issues "N,N", or --status <status>.' } };
   }
 
+  // Detect --assign modifier (boolean flag, combinable with any mode)
+  const hasAssign = args.includes('--assign');
+
   const flagIndex = args.indexOf('--issue');
   if (flagIndex !== -1) {
     const raw = args[flagIndex + 1];
@@ -110,7 +113,9 @@ function parseArgs(args) {
     if (isNaN(num) || num <= 0 || String(num) !== cleaned) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: "${raw}". Must be a positive integer.` } };
     }
-    return { mode: 'single', issues: [num] };
+    const result = { mode: 'single', issues: [num] };
+    if (hasAssign) result.assign = true;
+    return result;
   }
 
   const issuesIndex = args.indexOf('--issues');
@@ -123,7 +128,9 @@ function parseArgs(args) {
     if (nums.some(n => isNaN(n) || n <= 0)) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue numbers in: "${raw}".` } };
     }
-    return { mode: 'batch', issues: nums };
+    const result = { mode: 'batch', issues: nums };
+    if (hasAssign) result.assign = true;
+    return result;
   }
 
   const statusIndex = args.indexOf('--status');
@@ -132,7 +139,9 @@ function parseArgs(args) {
     if (!status) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--status requires a value.' } };
     }
-    return { mode: 'status', status };
+    const result = { mode: 'status', status };
+    if (hasAssign) result.assign = true;
+    return result;
   }
 
   return { error: { code: 'MISSING_ARGUMENT', message: 'No recognized arguments. Use --issue N, --issues "N,N", or --status <status>.' } };
@@ -181,10 +190,11 @@ function gatherBranchData(issueNum) {
 /**
  * Detect issue type from labels
  * @param {{ labels: Array<{ name: string }> }} issueData
- * @returns {string} "epic" or "standard"
+ * @returns {string} "branch" | "epic" | "standard"
  */
 function detectIssueType(issueData) {
   const labels = (issueData.labels || []).map(l => l.name);
+  if (labels.includes('branch')) return 'branch';
   if (labels.includes('epic')) return 'epic';
   return 'standard';
 }
@@ -419,6 +429,84 @@ function readFrameworkConfig() {
   }
 }
 
+// ─── Assignment Support (--assign flag) ───
+
+/**
+ * Get the current git branch name
+ * @returns {string|null} Branch name or null on failure
+ */
+function getCurrentBranch() {
+  const output = execSafe('git branch --show-current');
+  return output ? output.trim() : null;
+}
+
+/**
+ * Check whether an issue can be assigned to the target branch.
+ * Returns assignable: true if the issue is unassigned or already on the target branch.
+ * Returns assignable: false with error if assigned to a different branch or blocked by workstream.
+ * @param {number} issueNum
+ * @param {string} targetBranch - Branch to assign to
+ * @param {object|null} [workstreams] - Parsed .workstreams.json (optional)
+ * @returns {{ assignable: boolean, alreadyAssigned?: boolean, error?: { code: string, message: string } }}
+ */
+function checkAssignability(issueNum, targetBranch, workstreams) {
+  // Check current branch assignment
+  const branchResult = gatherBranchData(issueNum);
+  if (branchResult.error && branchResult.error.code === 'NO_BRANCH') {
+    // Unassigned — check workstream conflicts before allowing
+    if (workstreams && workstreams.streams) {
+      for (const stream of workstreams.streams) {
+        if (stream.status !== 'active') continue;
+        if ((stream.epics || []).includes(issueNum) && stream.branch !== targetBranch) {
+          return {
+            assignable: false,
+            error: {
+              code: 'WORKSTREAM_CONFLICT',
+              message: `Issue #${issueNum} is allocated to branch "${stream.branch}" by /plan-workstreams. Use /assign-branch directly to override.`
+            }
+          };
+        }
+      }
+    }
+    return { assignable: true };
+  }
+  if (branchResult.error) {
+    return { assignable: false, error: branchResult.error };
+  }
+
+  // Issue has a branch — check if it matches
+  if (branchResult.branch.branch === targetBranch) {
+    return { assignable: true, alreadyAssigned: true };
+  }
+
+  return {
+    assignable: false,
+    error: {
+      code: 'ALREADY_ASSIGNED',
+      message: `Issue #${issueNum} is already assigned to branch "${branchResult.branch.branch}". Cannot reassign with --assign.`
+    }
+  };
+}
+
+/**
+ * Perform assignment of an issue to the current branch via assign-branch.js
+ * @param {number} issueNum
+ * @returns {{ assigned: boolean, error?: { code: string, message: string } }}
+ */
+function performAssignment(issueNum) {
+  const scriptPath = path.join(__dirname, 'assign-branch.js');
+  try {
+    execSync(`node "${scriptPath}" "#${issueNum}"`, EXEC_OPTS);
+    return { assigned: true };
+  } catch (e) {
+    const msg = e.stderr ? e.stderr.toString().trim() : e.message;
+    return {
+      assigned: false,
+      error: { code: 'ASSIGN_FAILED', message: `Failed to assign #${issueNum} to current branch: ${msg}` }
+    };
+  }
+}
+
 // ─── Envelope Builders ───
 
 /**
@@ -465,17 +553,55 @@ function buildErrorEnvelope(errors) {
 /**
  * Run the preamble for a single issue
  * @param {number} issueNum
+ * @param {object} [options] - Optional flags
+ * @param {boolean} [options.assign] - If true, assign issue to current branch before proceeding
  * @returns {object} JSON envelope
  */
-function runSingleIssue(issueNum) {
+function runSingleIssue(issueNum, options) {
   const warnings = [];
   let roundTrips = 0;
+  const assignRequested = options && options.assign;
+  let assignGate = false;
 
   // 1. Gather issue data
   roundTrips++;
   const issueResult = gatherIssueData(issueNum);
   if (issueResult.error) {
     return buildErrorEnvelope([issueResult.error]);
+  }
+
+  // 1a. --assign: check assignability and perform assignment
+  if (assignRequested) {
+    roundTrips++;
+    const currentBranch = getCurrentBranch();
+    if (!currentBranch) {
+      return buildErrorEnvelope([{ code: 'NO_CURRENT_BRANCH', message: 'Could not determine current git branch.' }]);
+    }
+
+    // Load workstreams metadata for conflict check
+    let workstreams = null;
+    try {
+      const wsPath = path.join(process.cwd(), '.workstreams.json');
+      if (fs.existsSync(wsPath)) {
+        workstreams = JSON.parse(fs.readFileSync(wsPath, 'utf-8'));
+      }
+    } catch (_e) {
+      // No workstreams file or parse error — proceed without conflict check
+    }
+
+    const assignCheck = checkAssignability(issueNum, currentBranch, workstreams);
+    if (!assignCheck.assignable) {
+      return buildErrorEnvelope([assignCheck.error]);
+    }
+
+    if (!assignCheck.alreadyAssigned) {
+      roundTrips++;
+      const assignResult = performAssignment(issueNum);
+      if (!assignResult.assigned) {
+        return buildErrorEnvelope([assignResult.error]);
+      }
+      assignGate = true;
+    }
   }
 
   // 2. Gather branch data
@@ -502,6 +628,7 @@ function runSingleIssue(issueNum) {
   roundTrips++;
   const moveResult = moveToInProgress(issueNum);
   const gates = {
+    assigned: assignGate,
     movedToInProgress: moveResult.moved,
     prdTrackerMoved: false
   };
@@ -531,8 +658,8 @@ function runSingleIssue(issueNum) {
     frameworkPath: frameworkConfig.frameworkPath
   };
 
-  if (type === 'epic') {
-    // Epic flow: load sub-issues, check statuses, parse order
+  if (type === 'epic' || type === 'branch') {
+    // Epic/Branch flow: load sub-issues, check statuses, determine order
     roundTrips++;
     const subResult = loadSubIssues(issueNum);
     if (subResult.warning) {
@@ -541,14 +668,34 @@ function runSingleIssue(issueNum) {
     context.subIssues = subResult.subIssues;
 
     const subNums = subResult.subIssues.map(s => s.number);
+
+    // Branch tracker with no sub-issues: provide guidance
+    if (type === 'branch' && subNums.length === 0) {
+      warnings.push({
+        code: 'NO_SUB_ISSUES',
+        message: 'Branch tracker has no sub-issues. Use /assign-branch #N to assign issues to this branch.'
+      });
+    }
+
     roundTrips += subResult.subIssues.length; // one gh call per sub-issue status
     const statusResult = checkSubIssueStatuses(subResult.subIssues);
     context.skipped = statusResult.skipped;
 
-    const processingOrder = parseProcessingOrder(issueResult.issue.body, subNums);
+    // Branch trackers always use ascending numeric order (no custom Processing Order)
+    const processingOrder = type === 'branch'
+      ? [...subNums].sort((a, b) => a - b)
+      : parseProcessingOrder(issueResult.issue.body, subNums);
     context.processingOrder = processingOrder;
 
     autoTodo = buildEpicAutoTodo(statusResult.active, processingOrder);
+
+    // Branch tracker with all sub-issues complete: suggest next step
+    if (type === 'branch' && subNums.length > 0 && statusResult.active.length === 0) {
+      warnings.push({
+        code: 'ALL_SUB_ISSUES_COMPLETE',
+        message: 'All sub-issues are complete. Consider running /merge-branch or /prepare-release.'
+      });
+    }
   } else {
     // Standard flow: parse acceptance criteria
     autoTodo = parseAcceptanceCriteria(issueResult.issue.body);
@@ -583,16 +730,42 @@ function resolveStatusIssues(status) {
  * Run preamble for a single issue using pre-resolved shared config
  * @param {number} issueNum
  * @param {{ tracker: number|null, framework: string|null, frameworkPath: string|null }} shared
+ * @param {object} [options] - Optional flags (e.g., { assign: true })
  * @returns {object} Per-issue result envelope
  */
-function runSingleIssueWithShared(issueNum, shared) {
+function runSingleIssueWithShared(issueNum, shared, options) {
   const warnings = [];
   let roundTrips = 0;
+  const assignRequested = options && options.assign;
+  let assignGate = false;
 
   roundTrips++;
   const issueResult = gatherIssueData(issueNum);
   if (issueResult.error) {
     return { ok: false, issueNum, errors: [issueResult.error], warnings: [], roundTrips };
+  }
+
+  // --assign: check assignability and perform assignment
+  if (assignRequested) {
+    roundTrips++;
+    const currentBranch = getCurrentBranch();
+    if (!currentBranch) {
+      return { ok: false, issueNum, errors: [{ code: 'NO_CURRENT_BRANCH', message: 'Could not determine current git branch.' }], warnings: [], roundTrips };
+    }
+
+    const assignCheck = checkAssignability(issueNum, currentBranch);
+    if (!assignCheck.assignable) {
+      return { ok: false, issueNum, errors: [assignCheck.error], warnings: [], roundTrips };
+    }
+
+    if (!assignCheck.alreadyAssigned) {
+      roundTrips++;
+      const assignResult = performAssignment(issueNum);
+      if (!assignResult.assigned) {
+        return { ok: false, issueNum, errors: [assignResult.error], warnings: [], roundTrips };
+      }
+      assignGate = true;
+    }
   }
 
   roundTrips++;
@@ -613,7 +786,7 @@ function runSingleIssueWithShared(issueNum, shared) {
     frameworkPath: shared.frameworkPath
   };
 
-  const gates = { movedToInProgress: false, prdTrackerMoved: false };
+  const gates = { assigned: assignGate, movedToInProgress: false, prdTrackerMoved: false };
 
   return {
     ok: true,
@@ -630,9 +803,10 @@ function runSingleIssueWithShared(issueNum, shared) {
 /**
  * Run preamble for multiple issues with shared config resolution
  * @param {number[]} issueNums
+ * @param {object} [options] - Optional flags (e.g., { assign: true })
  * @returns {object} Batch envelope with results array
  */
-function runBatch(issueNums) {
+function runBatch(issueNums, options) {
   // Resolve shared config once
   const tracker = issueNums.length > 0 ? resolveTracker() : null;
   const frameworkConfig = readFrameworkConfig();
@@ -642,7 +816,7 @@ function runBatch(issueNums) {
     frameworkPath: frameworkConfig.frameworkPath
   };
 
-  const results = issueNums.map(num => runSingleIssueWithShared(num, shared));
+  const results = issueNums.map(num => runSingleIssueWithShared(num, shared, options));
 
   return {
     ok: true,
@@ -666,15 +840,17 @@ async function main() {
     return;
   }
 
+  const options = parsed.assign ? { assign: true } : undefined;
+
   if (parsed.mode === 'single') {
-    const result = runSingleIssue(parsed.issues[0]);
+    const result = runSingleIssue(parsed.issues[0], options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;
   }
 
   if (parsed.mode === 'batch') {
-    const result = runBatch(parsed.issues);
+    const result = runBatch(parsed.issues, options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(0);
     return;
@@ -688,7 +864,7 @@ async function main() {
       process.exit(1);
       return;
     }
-    const result = runBatch(statusResult.issues);
+    const result = runBatch(statusResult.issues, options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(0);
     return;
@@ -720,6 +896,9 @@ module.exports = {
   movePrdTracker,
   resolveTracker,
   readFrameworkConfig,
+  getCurrentBranch,
+  checkAssignability,
+  performAssignment,
   buildSuccessEnvelope,
   buildErrorEnvelope,
   runSingleIssue,

@@ -1,9 +1,11 @@
 # Framework Skills Reference
-**Version:** v0.53.1
+**Version:** v0.54.0
 **Purpose:** Reference for all Skills
 ## Skills Overview
-**Location:** `Skills/` | **Total:** 25 skills
+**Location:** `Skills/` | **Total:** 23 skills
 **Characteristics:** Packaged units (SKILL.md + resources/ + LICENSE.txt), copy/paste Claude Code blocks, verification checklists
+**Installing:** Automatic via `/charter` or manual via `/install-skill <skill-name>`
+**Installed to:** `.claude/skills/{skill-name}/`
 ## TDD Skills (Experienced)
 ### tdd-red-phase
 **Function:** Guide RED phase - writing failing tests, verifying expected failures
@@ -26,27 +28,22 @@
 **Coverage:** AAA pattern, Given-When-Then, test doubles (mock/stub/fake/spy)
 ### bdd-writing (Standalone)
 **Function:** BDD specification writing with Gherkin syntax
-**Coverage:** Feature files, scenarios, Given-When-Then, step definitions
+**Coverage:** Feature files, scenarios, Given-When-Then, step definitions, scenario outlines, data tables
 **Tools:** Cucumber, pytest-bdd, SpecFlow, Behave, RSpec
 ## PRD Skills
-### extract-prd
-**Function:** Extract PRD worksheets from existing codebases
-**Coverage:** Test parsing, NFR detection, architecture inference
-**Integration:** Used by `/create-prd extract` mode
 ### create-prd
 **Function:** Transform proposals into detailed PRD documents
-**Coverage:** Proposal analysis, charter alignment, user story generation
+**Coverage:** Proposal analysis, charter alignment, user story generation, acceptance criteria
 **Integration:** Supersedes IDPF-PRD, feeds into Create-Backlog
 ## Code Quality Skills
 ### anti-pattern-analysis
 **Function:** Systematic anti-pattern detection during code review
 **Coverage:** Design/OOP patterns, code smells, architecture, database, testing, security
-### uml-generation
-**Function:** Generate UML diagrams from source code using PlantUML
-**Coverage:** Class, sequence, component, activity diagrams
+**Resources:** General, architecture, testing, database anti-patterns; code review checklist; language-specific guides (JS, Python)
 ### codebase-analysis
 **Function:** Comprehensive codebase analysis and documentation extraction
 **Coverage:** Architecture discovery, dependency mapping, structure analysis
+**Integration:** Used by `/create-prd extract` and `/charter` extraction modes
 ## Beginner Setup Skills
 ### flask-setup
 **Function:** Python Flask environment setup with step-by-step guidance
@@ -70,13 +67,15 @@
 **Coverage:** Connection setup, pooling strategies, transactions, error handling
 ### migration-patterns
 **Function:** Database schema versioning, migration strategies, rollback
-**Coverage:** Schema versioning, zero-downtime migrations, tool guidance
+**Coverage:** Schema versioning, zero-downtime migrations, tool guidance (Flyway, Alembic, Prisma)
 ## Advanced Testing Skills
 ### property-based-testing
 **Function:** Property-based testing patterns
+**Coverage:** Property definition, shrinking strategies, generator composition
 **Tools:** Hypothesis (Python), fast-check (JS/TS), QuickCheck
 ### mutation-testing
 **Function:** Mutation testing operators and test suite quality assessment
+**Coverage:** Mutation operators, score interpretation, test suite improvement
 **Tools:** mutmut (Python), Stryker (JS/TS/.NET), PIT (Java)
 ## Architecture Skills
 ### api-versioning
@@ -88,6 +87,7 @@
 ## DevOps Skills
 ### ci-cd-pipeline-design
 **Function:** CI/CD pipeline architecture and platform-specific configuration
+**Coverage:** Pipeline architecture, stage design, environment promotion, security
 **Platforms:** GitHub Actions, GitLab CI, Jenkins, Azure DevOps
 ## Testing Setup Skills
 ### playwright-setup
@@ -97,11 +97,14 @@
 ### electron-development
 **Function:** Electron desktop application development patterns
 **Coverage:** Setup, main/renderer architecture, IPC patterns, packaging
+### drawio-generation
+**Function:** Generate Draw.io XML diagram files from architecture and design discussions
+**Coverage:** Draw.io XML format, generation patterns, shape style catalog, color palette, validation checklist
 ## Framework-Skill Dependencies
 | Framework | Required Skills |
 |-----------|----------------|
 | IDPF-Agile | tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns |
 | IDPF-Vibe (vibe-newbie) | flask-setup, sinatra-setup, common-errors, sqlite-integration, beginner-testing |
-**Standalone Skills:** anti-pattern-analysis, bdd-writing, extract-prd, create-prd, uml-generation, codebase-analysis, playwright-setup, electron-development
+**Standalone Skills:** anti-pattern-analysis, bdd-writing, codebase-analysis, playwright-setup, drawio-generation, electron-development
 ---
 **End of Framework Skills Reference**

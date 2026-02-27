@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.53.1
+ * @framework-script 0.54.0
  * check-upgrade.js — Post-upgrade verification for IDPF user projects
  *
  * Exports 5 check functions for verifying hub upgrade integrity:
@@ -363,6 +363,10 @@ function checkStaleConfigReferences(projectDir, hubDir) {
   const migratedFiles = [];
 
   for (const file of projectFiles) {
+    // Skip check-upgrade.md — its .gh-pmu.yml references are spec text
+    // documenting the stale config detection feature, not actual config usage (#1582)
+    if (file === 'check-upgrade.md') continue;
+
     const projectPath = path.join(projectCommandsDir, file);
     const projectContent = fs.readFileSync(projectPath, 'utf8');
 
@@ -447,6 +451,23 @@ function getCommitableFiles(projectDir) {
   return result;
 }
 
+/**
+ * Read the hub version from framework-config.json.
+ * Used for commit messages: "chore: upgrade hub to vX.Y.Z"
+ *
+ * @param {string} projectDir - Path to project root
+ * @returns {string|null} Version string (e.g., "0.53.1") or null if unavailable
+ */
+function getHubVersion(projectDir) {
+  try {
+    const configPath = path.join(projectDir, 'framework-config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    return config.frameworkVersion || null;
+  } catch {
+    return null;
+  }
+}
+
 // ======================================
 //  Module exports
 // ======================================
@@ -458,6 +479,7 @@ module.exports = {
   checkStaleConfigReferences,
   checkSymlinkHealth,
   getCommitableFiles,
+  getHubVersion,
   EXTENSION_BLOCK_REGEX,
   HEADER_REGEX,
   EXPECTED_SYMLINKS,
@@ -514,24 +536,35 @@ if (require.main === module) {
 
   // Structured JSON output for AI consumption
   const changedFiles = overallPass ? getCommitableFiles(projectDir) : [];
+  const hubVersion = getHubVersion(projectDir);
   const jsonOutput = {
     checks: checkResults,
     overallPass,
     commitReady: overallPass && !noCommitFlag,
     changedFiles,
+    hubVersion,
     commitFlag,
     noCommitFlag,
   };
   console.log('\n---JSON---');
   console.log(JSON.stringify(jsonOutput));
 
+  // --no-commit: skip commit with message
+  if (noCommitFlag) {
+    console.log('\nSkipping commit (--no-commit).');
+    process.exit(overallPass ? 0 : 1);
+  }
+
   // Auto-commit when --commit flag provided and all checks pass
   if (commitFlag && overallPass) {
     const files = getCommitableFiles(projectDir);
     if (files.length > 0) {
+      const msg = hubVersion
+        ? `chore: upgrade hub to v${hubVersion}`
+        : 'chore: upgrade hub';
       try {
         execSync(`git add ${files.join(' ')}`, { cwd: projectDir, stdio: 'pipe' });
-        execSync('git commit -m "Upgrade IDPF hub — all checks passed"', { cwd: projectDir, stdio: 'pipe' });
+        execSync(`git commit -m "${msg}"`, { cwd: projectDir, stdio: 'pipe' });
         console.log('\nCommitted upgraded files.');
       } catch (err) {
         console.error(`\nCommit failed: ${err.message}`);

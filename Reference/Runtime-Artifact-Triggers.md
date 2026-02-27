@@ -1,5 +1,5 @@
 # Runtime Artifact Triggers
-**Version:** v0.53.1
+**Version:** v0.54.0
 **Purpose:** Define when to offer artifact creation/update during development and transition phases.
 **Key Principle:** Offer, don't force. Users can decline any artifact creation.
 ## Construction/ Artifacts

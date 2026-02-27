@@ -8,7 +8,13 @@
       "code smell",
       "technical debt",
       "code review",
-      "design pattern violation"
+      "design pattern violation",
+      "refactoring",
+      "spaghetti code",
+      "god class",
+      "coupling",
+      "javascript anti-pattern",
+      "python anti-pattern"
     ],
     "api-versioning": [
       "api version",
@@ -31,7 +37,13 @@
       "learn testing",
       "testing basics",
       "first test",
-      "intro to testing"
+      "intro to testing",
+      "how to test",
+      "unit test beginner",
+      "pytest tutorial",
+      "jest tutorial",
+      "flask testing",
+      "sinatra testing"
     ],
     "ci-cd-pipeline-design": [
       "ci/cd",
@@ -49,14 +61,25 @@
       "code analysis",
       "architecture review",
       "understand codebase",
-      "code audit"
+      "code audit",
+      "legacy code",
+      "onboarding",
+      "code exploration",
+      "tech stack detection",
+      "nfr detection"
     ],
     "common-errors": [
       "troubleshoot",
       "common error",
       "fix error",
       "error message",
-      "debugging guide"
+      "debugging guide",
+      "why isn't this working",
+      "crash",
+      "exception",
+      "stack trace",
+      "flask error",
+      "sinatra error"
     ],
     "drawio-generation": [
       "drawio",
@@ -80,7 +103,15 @@
       "packaging",
       "linux build",
       "electron-builder",
-      "docker build"
+      "docker build",
+      "autoUpdater",
+      "code signing",
+      "notarize",
+      "dmg",
+      "appimage",
+      "snap",
+      "electron-fuses",
+      "multi-screen"
     ],
     "error-handling-patterns": [
       "error handling",
@@ -91,18 +122,16 @@
       "error recovery",
       "graceful degradation"
     ],
-    "extract-prd": [
-      "extract requirements",
-      "reverse engineer requirements",
-      "document existing code",
-      "legacy documentation"
-    ],
     "flask-setup": [
       "flask",
       "python web",
       "werkzeug",
       "jinja2",
-      "flask app"
+      "flask app",
+      "python api",
+      "flask tutorial",
+      "flask beginner",
+      "python web server"
     ],
     "migration-patterns": [
       "database migration",
@@ -135,7 +164,12 @@
       "postgresql",
       "pg_",
       "psql",
-      "postgres database"
+      "postgres database",
+      "connection pool",
+      "pgbouncer",
+      "sequelize postgres",
+      "prisma postgres",
+      "database setup"
     ],
     "property-based-testing": [
       "property-based",
@@ -149,19 +183,32 @@
       "sinatra",
       "ruby web",
       "rack app",
-      "sinatra app"
+      "sinatra app",
+      "ruby api",
+      "sinatra tutorial",
+      "sinatra beginner",
+      "ruby web server"
     ],
     "sqlite-integration": [
       "sqlite",
       "sqlite3",
       "embedded database",
-      "local database"
+      "local database",
+      "save data",
+      "persist data",
+      "file database",
+      "database beginner",
+      "better-sqlite3"
     ],
     "tdd-failure-recovery": [
       "test failure",
       "failing test recovery",
       "test rollback",
-      "broken test"
+      "broken test",
+      "flaky test",
+      "test passes unexpectedly",
+      "test still fails",
+      "intermittent test"
     ],
     "tdd-green-phase": [
       "green phase",
