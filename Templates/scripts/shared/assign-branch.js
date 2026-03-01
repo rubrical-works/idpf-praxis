@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.54.0
+ * @framework-script 0.55.0
  * assign-branch.js
  *
  * Interactive script to assign issues to branches.
@@ -10,14 +10,13 @@
  *
  * Usage:
  *   node assign-branch.js                     # Interactive mode
- *   node assign-branch.js release/v1.0 123    # Direct assignment (fast - skips epic check)
+ *   node assign-branch.js release/v1.0 123    # Direct assignment
  *   node assign-branch.js release/v1.0 --all  # Assign all backlog issues
  *   node assign-branch.js --add-ready         # Assign all ready issues (immediate)
  *
  * Flags:
  *   --all         Assign all unassigned backlog issues (lists first without flag)
  *   --add-ready   Assign all unassigned ready issues (immediate, no listing)
- *   --check-epic  Force epic detection for single issues (slower)
  *   --timing      Show timing information for performance debugging
  *
  * Note: --all and --add-ready are mutually exclusive.
@@ -25,8 +24,7 @@
  * Performance notes:
  *   - Branch discovery uses label-based query (~0.8s) via getAllOpenTrackers()
  *   - gh pmu commands use local caching in .gh-pmu.json (~50ms when cached)
- *   - Parallel sub-issue count fetching
- *   - Single issue assignment skips epic check (~500ms faster)
+ *   - Parallel sub-issue count fetching for backlog listing
  */
 
 const { exec, execSync } = require('child_process');
@@ -317,25 +315,6 @@ async function linkAllToTracker(issueNumbers, tracker) {
     console.log(`  ${linked}/${issueNumbers.length} linked to tracker #${tracker}`);
 }
 
-/**
- * Assign all sub-issues of an epic to a branch
- * @returns {number} Count of successfully assigned sub-issues
- */
-async function assignSubIssuesToBranch(issueNumber, branch, useCurrent) {
-    // Note: gh pmu sub list uses --json as boolean flag, not field selector
-    const subResult = await execAsyncSafe(`gh pmu sub list ${issueNumber} --json`);
-    const subData = safeJsonParse(subResult);
-    if (!subData) return { assigned: 0, issueNumbers: [] };
-
-    const children = subData.children || [];
-    const childNumbers = children.map(sub => sub.number || sub);
-    // Moves target different issues — safe to parallelize
-    const results = await Promise.all(
-        childNumbers.map(num => assignToBranch(num, branch, useCurrent))
-    );
-    return { assigned: results.filter(Boolean).length, issueNumbers: childNumbers };
-}
-
 async function main() {
     let args = process.argv.slice(2);
 
@@ -348,7 +327,6 @@ async function main() {
     // Parse args - order-independent parsing
     const assignAll = args.includes('--all');
     const addReady = args.includes('--add-ready');
-    const checkEpic = args.includes('--check-epic');
     showTiming = args.includes('--timing');
 
     // Mutual exclusion check
@@ -537,10 +515,6 @@ async function main() {
 
     // Step 7: Assign issues (use --branch current when single branch)
     let totalAssigned = 0;
-    let epicCount = 0;
-    let subIssueCount = 0;
-
-    const shouldCheckEpic = true;
     const useCurrent = (currentBranch && branch === currentBranch);
 
     // Resolve branch tracker from discovered branches (correct for target branch,
@@ -559,20 +533,7 @@ async function main() {
         for (let i = 0; i < issueNumbers.length; i += PARALLEL_BATCH_SIZE) {
             const batch = issueNumbers.slice(i, i + PARALLEL_BATCH_SIZE);
             const results = await Promise.all(
-                batch.map(async (num) => {
-                    let isEpic = false;
-                    if (shouldCheckEpic) {
-                        const labels = await getIssueLabels(num);
-                        isEpic = labels.includes('epic');
-                    }
-
-                    const subResult = isEpic
-                        ? await assignSubIssuesToBranch(num, branch, useCurrent)
-                        : { assigned: 0, issueNumbers: [] };
-
-                    const assigned = await assignToBranch(num, branch, useCurrent);
-                    return { num, isEpic, assigned, subAssigned: subResult.assigned, subIssueNumbers: subResult.issueNumbers };
-                })
+                batch.map(num => assignToBranch(num, branch, useCurrent).then(assigned => ({ num, assigned })))
             );
 
             for (const r of results) {
@@ -580,33 +541,12 @@ async function main() {
                     totalAssigned++;
                     issuesToLink.push(r.num);
                 }
-                if (r.isEpic) {
-                    epicCount++;
-                    subIssueCount += r.subAssigned;
-                    totalAssigned += r.subAssigned;
-                    issuesToLink.push(...r.subIssueNumbers);
-                }
             }
         }
         endTimer('parallelAssign');
     } else {
         // Sequential for small batches (simpler output)
         for (const num of issueNumbers) {
-            let isEpic = false;
-
-            if (shouldCheckEpic) {
-                const labels = await getIssueLabels(num);
-                isEpic = labels.includes('epic');
-            }
-
-            if (isEpic) {
-                epicCount++;
-                const subResult = await assignSubIssuesToBranch(num, branch, useCurrent);
-                subIssueCount += subResult.assigned;
-                totalAssigned += subResult.assigned;
-                issuesToLink.push(...subResult.issueNumbers);
-            }
-
             if (await assignToBranch(num, branch, useCurrent)) {
                 totalAssigned++;
                 issuesToLink.push(num);
@@ -615,9 +555,6 @@ async function main() {
     }
 
     console.log(`\n✓ ${totalAssigned} issues assigned to ${branch}${useCurrent ? ' (current)' : ''}`);
-    if (epicCount > 0) {
-        console.log(`  (${epicCount} epics with ${subIssueCount} sub-issues)`);
-    }
 
     // Phase 2: Sequential tracker linking (avoids race condition on same parent)
     if (tracker && issuesToLink.length > 0) {
@@ -640,7 +577,6 @@ module.exports = {
     getOpenBranches,
     getIssuesByStatus,
     assignToBranch,
-    assignSubIssuesToBranch,
     linkToTracker,
     linkAllToTracker,
     hasBranchAssigned,

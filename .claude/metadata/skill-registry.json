@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-02-27T17:12:23.908Z",
+  "generatedAt": "2026-03-01T18:28:16.431Z",
   "version": "1.0.0",
-  "skillCount": 23,
+  "skillCount": 29,
   "skills": [
     {
       "name": "anti-pattern-analysis",
@@ -36,6 +36,11 @@
     {
       "name": "common-errors",
       "description": "Diagnose and solve common beginner programming mistakes in Flask or Sinatra development with detailed explanations",
+      "triggers": []
+    },
+    {
+      "name": "digitalocean-app-setup",
+      "description": "Configure automated preview, staging, and production deployments with DigitalOcean App Platform",
       "triggers": []
     },
     {
@@ -79,8 +84,28 @@
       "triggers": []
     },
     {
+      "name": "privacy-compliance",
+      "description": "Provide structured privacy compliance guidance for web and mobile projects covering consent management, cookie compliance, dark pattern avoidance, and regulatory landscape",
+      "triggers": []
+    },
+    {
       "name": "property-based-testing",
       "description": "Guide developers through property-based testing including property definition, shrinking, and framework-specific implementation",
+      "triggers": []
+    },
+    {
+      "name": "railway-project-setup",
+      "description": "Configure automated preview, staging, and production deployments with Railway",
+      "triggers": []
+    },
+    {
+      "name": "render-project-setup",
+      "description": "Configure automated preview, staging, and production deployments with Render",
+      "triggers": []
+    },
+    {
+      "name": "seo-optimization",
+      "description": "Provide structured SEO guidance for web projects covering technical foundations and content optimization",
       "triggers": []
     },
     {
@@ -116,6 +141,11 @@
     {
       "name": "test-writing-patterns",
       "description": "Guide experienced developers on test structure, patterns, assertions, and test doubles for effective test-driven development",
+      "triggers": []
+    },
+    {
+      "name": "vercel-project-setup",
+      "description": "Configure automated preview, staging, and production deployments with Vercel",
       "triggers": []
     }
   ]

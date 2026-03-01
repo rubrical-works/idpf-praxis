@@ -31,6 +31,14 @@
       "source": "IDPF-Testing/review-criteria/qa-automation.md",
       "framework": "IDPF-QA-Automation",
       "description": "Coverage and automation review criteria for proposals, PRDs, and issues"
+    },
+    "seo": {
+      "source": "IDPF-Testing/review-criteria/seo.md",
+      "description": "SEO review criteria for technical optimization, meta tags, structured data, and crawlability"
+    },
+    "privacy": {
+      "source": "IDPF-Testing/review-criteria/privacy.md",
+      "description": "Privacy compliance review criteria for consent management, cookie compliance, and regulatory considerations"
     }
   }
 }

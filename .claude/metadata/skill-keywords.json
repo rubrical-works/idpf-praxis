@@ -81,6 +81,15 @@
       "flask error",
       "sinatra error"
     ],
+    "digitalocean-app-setup": [
+      "digitalocean",
+      "digital ocean",
+      "app platform",
+      "doctl",
+      "app spec",
+      "digitalocean deploy",
+      "do app platform"
+    ],
     "drawio-generation": [
       "drawio",
       "diagram",
@@ -159,6 +168,23 @@
       "browser automation",
       "ui test"
     ],
+    "privacy-compliance": [
+      "privacy",
+      "gdpr",
+      "ccpa",
+      "consent management",
+      "cookie compliance",
+      "cookie banner",
+      "dark pattern",
+      "data protection",
+      "privacy policy",
+      "opt-in",
+      "opt-out",
+      "consent",
+      "eprivacy",
+      "lgpd",
+      "do not sell"
+    ],
     "postgresql-integration": [
       "postgres",
       "postgresql",
@@ -178,6 +204,38 @@
       "quickcheck",
       "fast-check",
       "generative testing"
+    ],
+    "railway-project-setup": [
+      "railway",
+      "railway app",
+      "railway deploy",
+      "railway.toml",
+      "nixpacks",
+      "railway hosting"
+    ],
+    "render-project-setup": [
+      "render",
+      "render deploy",
+      "render.yaml",
+      "render blueprint",
+      "render hosting",
+      "render web service"
+    ],
+    "seo-optimization": [
+      "seo",
+      "search engine optimization",
+      "meta tags",
+      "structured data",
+      "json-ld",
+      "sitemap",
+      "robots.txt",
+      "canonical url",
+      "open graph",
+      "twitter cards",
+      "heading hierarchy",
+      "semantic html",
+      "internal linking",
+      "search ranking"
     ],
     "sinatra-setup": [
       "sinatra",
@@ -237,9 +295,33 @@
       "stub",
       "spy",
       "test fixture"
+    ],
+    "vercel-project-setup": [
+      "vercel",
+      "vercel deploy",
+      "vercel.json",
+      "vercel hosting",
+      "next.js deploy",
+      "vercel preview"
     ]
   },
   "groupKeywords": {
+    "deployment-platforms": {
+      "keywords": [
+        "deploy",
+        "deployment platform",
+        "hosting",
+        "cloud deploy",
+        "preview deployment",
+        "production deploy"
+      ],
+      "skills": [
+        "digitalocean-app-setup",
+        "railway-project-setup",
+        "render-project-setup",
+        "vercel-project-setup"
+      ]
+    },
     "tdd": {
       "keywords": [
         "tdd",

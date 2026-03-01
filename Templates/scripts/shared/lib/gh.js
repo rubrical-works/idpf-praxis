@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.54.0
+ * @framework-script 0.55.0
  * lib/gh.js - GitHub CLI wrapper
  *
  * Provides functions for interacting with GitHub via the gh CLI.

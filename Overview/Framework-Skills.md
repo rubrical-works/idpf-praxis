@@ -1,8 +1,8 @@
 # Framework Skills Reference
-**Version:** v0.54.0
+**Version:** v0.55.0
 **Purpose:** Reference for all Skills
 ## Skills Overview
-**Location:** `Skills/` | **Total:** 23 skills
+**Location:** `Skills/` | **Total:** 29 skills (6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance)
 **Characteristics:** Packaged units (SKILL.md + resources/ + LICENSE.txt), copy/paste Claude Code blocks, verification checklists
 **Installing:** Automatic via `/charter` or manual via `/install-skill <skill-name>`
 **Installed to:** `.claude/skills/{skill-name}/`
@@ -89,6 +89,19 @@
 **Function:** CI/CD pipeline architecture and platform-specific configuration
 **Coverage:** Pipeline architecture, stage design, environment promotion, security
 **Platforms:** GitHub Actions, GitLab CI, Jenkins, Azure DevOps
+## Deployment Platform Skills
+### vercel-project-setup
+**Function:** Vercel deployment setup with preview deployments and edge functions
+**Coverage:** vercel.json config, GitHub integration, environment variables, Actions workflow
+### railway-project-setup
+**Function:** Railway deployment setup with Nixpacks and preview environments
+**Coverage:** railway.toml config, GitHub integration, environment variables, Actions workflow
+### render-project-setup
+**Function:** Render deployment setup with Blueprints and preview environments
+**Coverage:** render.yaml config, GitHub integration, environment variables, Actions workflow
+### digitalocean-app-setup
+**Function:** DigitalOcean App Platform deployment with review apps
+**Coverage:** app-spec.yaml config, GitHub integration, doctl CLI, deployment strategies
 ## Testing Setup Skills
 ### playwright-setup
 **Function:** Playwright test automation framework setup
@@ -105,6 +118,6 @@
 |-----------|----------------|
 | IDPF-Agile | tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns |
 | IDPF-Vibe (vibe-newbie) | flask-setup, sinatra-setup, common-errors, sqlite-integration, beginner-testing |
-**Standalone Skills:** anti-pattern-analysis, bdd-writing, codebase-analysis, playwright-setup, drawio-generation, electron-development
+**Standalone Skills:** anti-pattern-analysis, bdd-writing, codebase-analysis, playwright-setup, drawio-generation, electron-development, vercel-project-setup, railway-project-setup, render-project-setup, digitalocean-app-setup
 ---
 **End of Framework Skills Reference**

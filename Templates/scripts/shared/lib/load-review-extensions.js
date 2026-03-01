@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.54.0
+ * @framework-script 0.55.0
  * Extension loading error messages and utilities for /review-issue
  * Referenced by .claude/commands/review-issue.md Step 2b
  *
@@ -11,9 +11,9 @@ const ERRORS = {
   REGISTRY_MALFORMED: 'Review extensions registry is malformed. Run hub update or check installation.',
   CRITERIA_NOT_FOUND: (domain) => `Warning: Review criteria file not found for '${domain}'. Skipping domain. Update hub to resolve.`,
   ALL_MISSING: 'No review criteria files found. Running standard review only.',
-  UNKNOWN_EXTENSION: (id) => `Unknown extension: ${id}. Available: security, accessibility, performance, chaos, contract, qa`
+  UNKNOWN_EXTENSION: (id) => `Unknown extension: ${id}. Available: security, accessibility, performance, chaos, contract, qa, seo, privacy`
 };
 
-const AVAILABLE_EXTENSIONS = ['security', 'accessibility', 'performance', 'chaos', 'contract', 'qa'];
+const AVAILABLE_EXTENSIONS = ['security', 'accessibility', 'performance', 'chaos', 'contract', 'qa', 'seo', 'privacy'];
 
 module.exports = { ERRORS, AVAILABLE_EXTENSIONS };

@@ -1,5 +1,5 @@
 # Framework Overview
-**Version:** v0.54.0
+**Version:** v0.55.0
 **Purpose:** Comprehensive reference for AI assistants and framework development
 ---
 ## Framework Purpose and Scope
@@ -68,7 +68,7 @@ Status: [Backlog/Selected/In Progress/In Review/Done]
 ## IDPF-Vibe Framework
 **Location:** `IDPF-Vibe/`
 **Core Framework Revision:** 4.0
-**Type:** Exploratory Development → Structured Evolution
+**Type:** Exploratory Development -> Structured Evolution
 ### Architecture
 **Core:** Vibe-to-Structured-Core-Framework.md (Rev 4.0)
 **Platform-Specific:**
@@ -79,9 +79,9 @@ Status: [Backlog/Selected/In Progress/In Review/Done]
 - Embedded (Rev 1): Arduino, ESP32, STM32, simulator-based
 - Newbie (Rev 1): Beginner-friendly with Skills integration
 ### Three-Phase Workflow
-**Phase 1: VIBE PHASE** — Exploratory, rapid iteration. Commands: Vibe-Start, Try-This, Show-Me, That-Works, Undo-That, Run-It, Vibe-Status, Vibe-End, Ready-to-Structure, Vibe-Abandon
-**Phase 2: EVOLUTION POINT** — Triggered by "Ready-to-Structure". Generates As-built Product Backlog with completed stories (DONE) + Pending stories.
-**Phase 3: AGILE PHASE** — Switch to IDPF-Agile, all new development follows TDD, add tests for existing vibe-phase code.
+**Phase 1: VIBE PHASE** -- Exploratory, rapid iteration. Commands: Vibe-Start, Try-This, Show-Me, That-Works, Undo-That, Run-It, Vibe-Status, Vibe-End, Ready-to-Structure, Vibe-Abandon
+**Phase 2: EVOLUTION POINT** -- Triggered by "Ready-to-Structure". Generates As-built Product Backlog with completed stories (DONE) + Pending stories.
+**Phase 3: AGILE PHASE** -- Switch to IDPF-Agile, all new development follows TDD, add tests for existing vibe-phase code.
 ### Two-Tool Workflow
 - **ASSISTANT** (Claude chat): Instructions in numbered STEP format
 - **Claude Code** (execution): Single code block execution
@@ -101,19 +101,19 @@ Status: [Backlog/Selected/In Progress/In Review/Done]
 ### Architecture
 ```
 IDPF-Testing (foundation)
-    ├── IDPF-QA-Automation      (Selenium, Playwright, Cypress, Appium)
-    ├── IDPF-Performance        (k6, JMeter, Gatling, Locust)
-    ├── IDPF-Security           (OWASP ZAP, Burp Suite, SAST/DAST)
-    ├── IDPF-Accessibility      (axe, Lighthouse, Pa11y)
-    ├── IDPF-Chaos              (Chaos Monkey, Gremlin, LitmusChaos)
-    └── IDPF-Contract-Testing   (Pact, Spring Cloud Contract)
+    +-- IDPF-QA-Automation      (Selenium, Playwright, Cypress, Appium)
+    +-- IDPF-Performance        (k6, JMeter, Gatling, Locust)
+    +-- IDPF-Security           (OWASP ZAP, Burp Suite, SAST/DAST)
+    +-- IDPF-Accessibility      (axe, Lighthouse, Pa11y)
+    +-- IDPF-Chaos              (Chaos Monkey, Gremlin, LitmusChaos)
+    +-- IDPF-Contract-Testing   (Pact, Spring Cloud Contract)
 ```
 ### Embedded vs Separate Repository
-**Embedded (No IDPF-Testing):** TDD, ATDD, BDD — Application repo with IDPF-Agile
+**Embedded (No IDPF-Testing):** TDD, ATDD, BDD -- Application repo with IDPF-Agile
 **Separate (Uses IDPF-Testing):** QA Automation, Performance, Security, Chaos, Contract Testing, Accessibility (flexible)
 ### Workflow Phases
 ```
-PLAN → DESIGN → DEVELOP → EXECUTE → REPORT
+PLAN -> DESIGN -> DEVELOP -> EXECUTE -> REPORT
 ```
 **Test Plans** replace PRDs for test repositories. Location: `<test-repo>/PRD/TestPlans/`
 ---
@@ -149,11 +149,11 @@ PLAN → DESIGN → DEVELOP → EXECUTE → REPORT
 **Principles:** Build hypothesis, vary real-world events, run in production, automate, minimize blast radius
 **Fault Types:** Infrastructure (instance termination, AZ failure), Network (latency, packet loss), Application (memory, CPU), Dependency (service unavailable), State (DB failure, cache eviction)
 **Tools:** Chaos Monkey, Gremlin, LitmusChaos, Chaos Mesh, AWS FIS, Toxiproxy
-**Workflow:** Hypothesis → Observability → Design → Approval → Execute → Analyze → Fix
+**Workflow:** Hypothesis -> Observability -> Design -> Approval -> Execute -> Analyze -> Fix
 ---
 ## IDPF-Contract-Testing Framework
 **Extends:** IDPF-Testing | **Type:** API Contract Testing
-**Flow:** Consumer → Generate Contract → Publish to Broker → Provider Fetches → Verify → Can-I-Deploy → Deploy
+**Flow:** Consumer -> Generate Contract -> Publish to Broker -> Provider Fetches -> Verify -> Can-I-Deploy -> Deploy
 **Tools:** Pact (multi-language, mature), Spring Cloud Contract (Spring), Specmatic (OpenAPI), Dredd, Hoverfly
 **Key Concepts:** Consumer, Provider, Contract, Broker, Can-I-Deploy, Provider State
 ---
@@ -164,31 +164,31 @@ PLAN → DESIGN → DEVELOP → EXECUTE → REPORT
 - **Core-Developer-Instructions.md (Rev 1.0)**: Foundation competencies
 - **22 Domain Specialists**: Specialized expertise profiles
 - **Domain-Selection-Guide.md (Rev 1.0)**: Choosing appropriate specialist(s)
-**Loading:** 1. Core → 2. Domain specialist(s)
+**Loading:** 1. Core -> 2. Domain specialist(s)
 **Core Competencies:** Version Control, Testing Fundamentals, Agile Development, Code Quality (SOLID, DRY, YAGNI, KISS), Design Patterns, Cross-Platform Awareness, Security Fundamentals, Performance Basics
 ### 22 Domain Specialists
-1. **Backend-Specialist** — Server-side, REST/GraphQL, auth (Django, Flask, FastAPI, Express, NestJS, Rails, Spring, Go)
-2. **Frontend-Specialist** — React, Vue, Angular, Svelte, CSS architecture, state management, performance, a11y
-3. **DevOps-Engineer** — CI/CD, Docker, Kubernetes, IaC (Terraform, Pulumi), monitoring
-4. **Database-Engineer** — Schema design, query optimization, replication, migrations (PostgreSQL, MySQL, MongoDB, Redis)
-5. **API-Integration-Specialist** — REST, GraphQL, gRPC, WebSocket, microservices, message brokers
-6. **Security-Engineer** — OWASP, OAuth 2.0, cryptography, pen testing, compliance
-7. **Platform-Engineer** — IDPs, service catalogs, golden paths, DevEx
-8. **Mobile-Specialist** — iOS (Swift/SwiftUI), Android (Kotlin/Compose), React Native, Flutter
-9. **Data-Engineer** — ETL/ELT (Airflow, Prefect), Spark, data modeling, warehousing
-10. **QA-Test-Engineer** — Test strategy, automation (Cypress, Playwright, Selenium), TDD/BDD
-11. **Cloud-Solutions-Architect** — System design, AWS/Azure/GCP, scalability, distributed systems
-12. **SRE-Specialist** — SLO/SLI/SLA, error budgets, observability, incident response
-13. **Embedded-Systems-Engineer** — C/C++, ARM Cortex-M, RTOS, hardware protocols
-14. **ML-Engineer** — TensorFlow, PyTorch, deep learning, MLOps, model optimization
-15. **Performance-Engineer** — Profiling, load testing, frontend/backend optimization, APM
-16. **Accessibility-Specialist** — WCAG 2.1/2.2, assistive technology testing, legal compliance
-17. **Full-Stack-Developer** — End-to-end development, holistic system thinking, API contract design
-18. **Desktop-Application-Developer** — Cross-platform (Qt, GTK, Electron, Tauri), system integration
-19. **Game-Developer** — Unity, Unreal, Godot, game patterns, physics, multiplayer
-20. **Graphics-Engineer** — Rasterization, ray tracing, GPU programming, graphics APIs (Vulkan, DirectX, OpenGL, Metal, WebGPU)
-21. **Systems-Programmer** — Memory, concurrency, OS internals, compilers, performance-critical code
-22. **Technical-Writer** — Documentation engineering, docs-as-code, API docs, style guides
+1. **Backend-Specialist** -- Server-side, REST/GraphQL, auth (Django, Flask, FastAPI, Express, NestJS, Rails, Spring, Go)
+2. **Frontend-Specialist** -- React, Vue, Angular, Svelte, CSS architecture, state management, performance, a11y
+3. **DevOps-Engineer** -- CI/CD, Docker, Kubernetes, IaC (Terraform, Pulumi), monitoring
+4. **Database-Engineer** -- Schema design, query optimization, replication, migrations (PostgreSQL, MySQL, MongoDB, Redis)
+5. **API-Integration-Specialist** -- REST, GraphQL, gRPC, WebSocket, microservices, message brokers
+6. **Security-Engineer** -- OWASP, OAuth 2.0, cryptography, pen testing, compliance
+7. **Platform-Engineer** -- IDPs, service catalogs, golden paths, DevEx
+8. **Mobile-Specialist** -- iOS (Swift/SwiftUI), Android (Kotlin/Compose), React Native, Flutter
+9. **Data-Engineer** -- ETL/ELT (Airflow, Prefect), Spark, data modeling, warehousing
+10. **QA-Test-Engineer** -- Test strategy, automation (Cypress, Playwright, Selenium), TDD/BDD
+11. **Cloud-Solutions-Architect** -- System design, AWS/Azure/GCP, scalability, distributed systems
+12. **SRE-Specialist** -- SLO/SLI/SLA, error budgets, observability, incident response
+13. **Embedded-Systems-Engineer** -- C/C++, ARM Cortex-M, RTOS, hardware protocols
+14. **ML-Engineer** -- TensorFlow, PyTorch, deep learning, MLOps, model optimization
+15. **Performance-Engineer** -- Profiling, load testing, frontend/backend optimization, APM
+16. **Accessibility-Specialist** -- WCAG 2.1/2.2, assistive technology testing, legal compliance
+17. **Full-Stack-Developer** -- End-to-end development, holistic system thinking, API contract design
+18. **Desktop-Application-Developer** -- Cross-platform (Qt, GTK, Electron, Tauri), system integration
+19. **Game-Developer** -- Unity, Unreal, Godot, game patterns, physics, multiplayer
+20. **Graphics-Engineer** -- Rasterization, ray tracing, GPU programming, graphics APIs (Vulkan, DirectX, OpenGL, Metal, WebGPU)
+21. **Systems-Programmer** -- Memory, concurrency, OS internals, compilers, performance-critical code
+22. **Technical-Writer** -- Documentation engineering, docs-as-code, API docs, style guides
 ### Domain Selection Quick Reference
 - **Full-Stack Web**: Core + Backend + Frontend + Database
 - **Cloud-Native Microservices**: Core + API-Integration + DevOps + Cloud-Architect
@@ -202,38 +202,43 @@ Both core + platform must be loaded together.
 ---
 ## Skills
 **Location:** `Skills/`
-**Total:** 23 skills (6 TDD/BDD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams)
+**Total:** 29 skills (6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance)
 ### TDD Skills (Experienced)
-- **tdd-red-phase** — RED phase: writing failing tests, verifying failures
-- **tdd-green-phase** — GREEN phase: minimal implementation to pass tests
-- **tdd-refactor-phase** — REFACTOR phase: code improvement, maintaining green tests
-- **tdd-failure-recovery** — Handle unexpected test behaviors, recovery procedures
-- **test-writing-patterns** (Standalone) — AAA pattern, Given-When-Then, test doubles
-- **bdd-writing** (Standalone) — BDD/Gherkin syntax, feature files, step definitions
+- **tdd-red-phase** -- RED phase: writing failing tests, verifying failures
+- **tdd-green-phase** -- GREEN phase: minimal implementation to pass tests
+- **tdd-refactor-phase** -- REFACTOR phase: code improvement, maintaining green tests
+- **tdd-failure-recovery** -- Handle unexpected test behaviors, recovery procedures
+- **test-writing-patterns** (Standalone) -- AAA pattern, Given-When-Then, test doubles
+- **bdd-writing** (Standalone) -- BDD/Gherkin syntax, feature files, step definitions
 ### PRD Skills
-- **create-prd** — Transform proposals into PRD documents, charter alignment, user story generation
+- **create-prd** -- Transform proposals into PRD documents, charter alignment, user story generation
 ### Code Quality Skills
-- **anti-pattern-analysis** — Systematic anti-pattern detection during code review
-- **codebase-analysis** — Comprehensive codebase analysis and documentation extraction
+- **anti-pattern-analysis** -- Systematic anti-pattern detection during code review
+- **codebase-analysis** -- Comprehensive codebase analysis and documentation extraction
 ### Beginner Skills
-- **flask-setup** / **sinatra-setup** — Environment setup with step-by-step guidance
-- **common-errors** — Troubleshooting reference
-- **sqlite-integration** — Database integration guidance
-- **beginner-testing** — Testing introduction and TDD education
+- **flask-setup** / **sinatra-setup** -- Environment setup with step-by-step guidance
+- **common-errors** -- Troubleshooting reference
+- **sqlite-integration** -- Database integration guidance
+- **beginner-testing** -- Testing introduction and TDD education
 ### Database Skills
-- **postgresql-integration** — Setup, connection pooling, query patterns
-- **migration-patterns** — Schema versioning, migration strategies, rollback
+- **postgresql-integration** -- Setup, connection pooling, query patterns
+- **migration-patterns** -- Schema versioning, migration strategies, rollback
 ### Advanced Testing Skills
-- **property-based-testing** — Hypothesis (Python), fast-check (JS/TS), QuickCheck
-- **mutation-testing** — mutmut (Python), Stryker (JS/TS/.NET), PIT (Java)
+- **property-based-testing** -- Hypothesis (Python), fast-check (JS/TS), QuickCheck
+- **mutation-testing** -- mutmut (Python), Stryker (JS/TS/.NET), PIT (Java)
 ### Architecture Skills
-- **api-versioning** — Versioning strategies and deprecation workflows
-- **error-handling-patterns** — Error hierarchy design and API error responses
+- **api-versioning** -- Versioning strategies and deprecation workflows
+- **error-handling-patterns** -- Error hierarchy design and API error responses
 ### Other Skills
-- **ci-cd-pipeline-design** — Pipeline architecture (GitHub Actions, GitLab CI, Jenkins, Azure DevOps)
-- **playwright-setup** — Playwright test automation setup
-- **electron-development** — Electron desktop app patterns
-- **drawio-generation** — Draw.io XML diagram generation from design discussions
+- **ci-cd-pipeline-design** -- Pipeline architecture (GitHub Actions, GitLab CI, Jenkins, Azure DevOps)
+- **playwright-setup** -- Playwright test automation setup
+- **electron-development** -- Electron desktop app patterns
+- **drawio-generation** -- Draw.io XML diagram generation from design discussions
+### Deployment Platform Skills
+- **vercel-project-setup** -- Vercel deployment with preview deployments and edge functions
+- **railway-project-setup** -- Railway deployment with Nixpacks and preview environments
+- **render-project-setup** -- Render deployment with Blueprints and preview environments
+- **digitalocean-app-setup** -- DigitalOcean App Platform with review apps
 ---
 ## Assistant Guidelines
 **Location:** `Assistant/`
@@ -242,7 +247,7 @@ Both core + platform must be loaded together.
 **Core Principle:** Accuracy over helpfulness. Uncertainty over invention. Verification over assumption.
 - NEVER invent: API methods, class names, config syntax, command flags, file paths, library dependencies
 - NEVER assume: OS/platform, available tools, project structure, versions, environment config
-**Source Hierarchy:** User files → Official docs → Training data → Logical inference
+**Source Hierarchy:** User files -> Official docs -> Training data -> Logical inference
 **Confidence Levels:** High, Medium, Low, No confidence
 **File Operations:** Always READ before editing, verify paths exist, enumerate before bulk operations
 ### Anti-Hallucination Rules for Skill Creation
@@ -265,35 +270,35 @@ Rules auto-load at session start, persist after compaction. Files numbered for l
 |------|----|----|
 | **Vibe** | **Agile** | Exploration complete, feature set identified, ready for sprints |
 ```
-VIBE ──► AGILE (Terminal)
+VIBE --> AGILE (Terminal)
 ```
-**Invalid:** Agile → Vibe (quality standards never decrease)
+**Invalid:** Agile -> Vibe (quality standards never decrease)
 **Preserved Across Transitions:** All code/tests, git history, TDD methodology, architecture decisions, dependencies
 **What Changes:** Documentation format, workflow structure, planning granularity, progress tracking
 ---
 ## Framework Integration Architecture
 ```
 System Instructions (REQUIRED - WHO + EXPERTISE)
-    → Framework Selection (WHAT process)
-    → Skills (TOOLS for capabilities)
-    → Assistant Guidelines (HOW WELL - quality)
+    -> Framework Selection (WHAT process)
+    -> Skills (TOOLS for capabilities)
+    -> Assistant Guidelines (HOW WELL - quality)
 ```
 ### Selection Criteria
 - **IDPF-Agile:** Defined/evolving requirements, iterative delivery, velocity tracking
-- **IDPF-Vibe:** Unclear requirements, exploration, prototyping → evolves to Agile
+- **IDPF-Vibe:** Unclear requirements, exploration, prototyping -> evolves to Agile
 ---
 ## Framework Ecosystem Summary
 - **2 Development Frameworks**: IDPF-Agile, IDPF-Vibe (7 variants)
 - **7 Testing Frameworks**: IDPF-Testing (foundation) + 6 specialized
 - **System Instructions**: 1 Core + 22 Domain Specialists + 1 Guide + Vibe Agent (Core + 6 platforms)
-- **23 Skills**: 6 TDD/BDD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams
+- **29 Skills**: 6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance
 - **2 Assistant Guidelines**: Software dev, Skill creation
 **Framework Selection Matrix:**
 | Project Type | Starting Point | Evolution Path |
 |--------------|---------------|----------------|
 | Defined requirements | IDPF-Agile | Terminal |
-| Unclear requirements | IDPF-Vibe | → Agile |
-| Need requirements | `/create-prd` | PRD → Agile |
+| Unclear requirements | IDPF-Vibe | -> Agile |
+| Need requirements | `/create-prd` | PRD -> Agile |
 | Separate test repo | IDPF-Testing | Agile for test dev |
 **Critical Success Factors:**
 1. System Instructions MUST be loaded before framework use

@@ -1,5 +1,5 @@
 ---
-version: "v0.54.0"
+version: "v0.55.0"
 description: Start working on issues with validation and auto-TODO (project)
 argument-hint: "#issue [#issue...] [--assign] | all in <status>"
 ---
@@ -85,22 +85,8 @@ Parse the JSON output and check `ok`:
 <!-- USER-EXTENSION-START: post-work-start -->
 <!-- USER-EXTENSION-END: post-work-start -->
 
-### Step 2: QA Extraction — Manual Test AC Detection
-Scan AC for manual test indicators. If found, offer to extract into tracked QA sub-issues.
-**Detection keywords** (case-insensitive): `manually verify`, `visually confirm`, `visual verification`, `QA:`, `qa-required`, `exploratory test`, `manual test`, `manual check`, `UX walkthrough`
-**If manual test AC detected:**
-1. **Present candidates** — Use `AskUserQuestion` with multiSelect. Include "Skip all" option.
-2. **Create QA sub-issues** — For each confirmed AC:
-   ```bash
-   gh pmu sub create --parent $ISSUE --title "QA: [AC description]" --label qa-required -F .tmp-qa-body.md
-   ```
-   QA sub-issue body contains: test description, parent issue context (`Parent: #$ISSUE — $TITLE`), steps to perform, expected result.
-3. **Annotate parent AC** — Update parent issue body with QA sub-issue reference. AC remains **unchecked**:
-   `- [ ] Manually verify the login flow → QA: #NNN`
-4. **Report** extraction count and sub-issue numbers.
-**Closure path:** Parent stays `in_review` until all QA sub-issues are closed and AC checked off. Only then can `/done` complete the parent.
-**If no manual test AC detected:** Continue silently.
-**If user selects "Skip all":** Continue without extraction.
+### Step 2: Reserved
+Step 2 is reserved for future use. See Step 5a for the per-sub-issue approach.
 
 <!-- USER-EXTENSION-START: pre-framework-dispatch -->
 <!-- USER-EXTENSION-END: pre-framework-dispatch -->
@@ -149,17 +135,33 @@ After implementation, evaluate whether documentation is warranted before verifyi
 <!-- USER-EXTENSION-START: post-implementation -->
 <!-- USER-EXTENSION-END: post-implementation -->
 
-### Step 5: Verify Acceptance Criteria
+### Step 5: Verify Acceptance Criteria (with QA Extraction)
 **IMPORTANT — Ground in file state:** Before evaluating each AC, re-read the actual file content using the Read tool. Do NOT evaluate from memory — re-read to confirm the criterion is met in current code. This prevents batch fatigue hallucination.
 For each AC checkbox in the issue body:
 - **Can verify** → Mark `[x]`, continue
-- **Cannot verify** (manual, external) → **STOP**, present options, wait for user disposition
+- **Cannot verify** (manual, external) → Check for QA extraction (Step 5a), then **STOP** and present options, wait for user disposition
 After all ACs resolved, export and update issue body:
 ```bash
 gh pmu view $ISSUE --body-stdout > .tmp-$ISSUE.md
 # Update checkboxes to [x]
 gh pmu edit $ISSUE -F .tmp-$ISSUE.md && rm .tmp-$ISSUE.md
 ```
+#### Step 5a: QA Extraction — Manual Test AC Detection
+When an AC cannot be verified automatically, check if it matches manual test indicators before presenting the STOP boundary.
+**Detection keywords** (case-insensitive): `manually verify`, `visually confirm`, `visual verification`, `QA:`, `qa-required`, `exploratory test`, `manual test`, `manual check`, `UX walkthrough`
+**If manual test AC detected:**
+1. **Present candidates** — Use `AskUserQuestion` with multiSelect. Include "Skip all" option.
+2. **Create QA sub-issues** — For each confirmed AC:
+   ```bash
+   gh pmu sub create --parent $ISSUE --title "QA: [AC description]" --label qa-required -F .tmp-qa-body.md
+   ```
+   QA sub-issue body contains: test description, parent issue context (`Parent: #$ISSUE — $TITLE`), steps to perform, expected result.
+3. **Annotate parent AC** — Update parent issue body with QA sub-issue reference. AC remains **unchecked**:
+   `- [ ] Manually verify the login flow → QA: #NNN`
+4. **Report** extraction count and sub-issue numbers.
+**Closure path:** Parent stays `in_review` until all QA sub-issues are closed and AC checked off. Only then can `/done` complete the parent.
+**If no manual test AC detected:** Continue with standard STOP behavior for unverifiable ACs.
+**If user selects "Skip all":** Continue without extraction.
 
 <!-- USER-EXTENSION-START: post-ac-verification -->
 <!-- USER-EXTENSION-END: post-ac-verification -->

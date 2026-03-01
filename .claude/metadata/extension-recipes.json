@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-27T17:12:24.184Z",
+  "generatedAt": "2026-03-01T18:28:22.155Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -98,6 +98,144 @@
           "appliesTo": [
             "prepare-release:post-validation",
             "prepare-beta:post-validation"
+          ]
+        }
+      ]
+    },
+    "deployment": {
+      "name": "Deployment",
+      "description": "Hosting platform deployment automation for preview, staging, and production environments",
+      "recipes": [
+        {
+          "name": "deploy-health-check",
+          "description": "Verify deployment health after staging or production deploys",
+          "extensionPoints": [
+            "post-merge",
+            "post-tag"
+          ],
+          "template": "### Post-Deploy Health Check\n\nAfter a deployment completes, verify the application is healthy and responding correctly.\n\n```yaml\n# Add to existing deploy workflow as a post-deploy step\n- name: Health Check\n  run: |\n    DEPLOY_URL=\"${{ steps.deploy.outputs.url }}\"\n    MAX_RETRIES=5\n    RETRY_DELAY=10\n\n    for i in $(seq 1 $MAX_RETRIES); do\n      STATUS=$(curl -s -o /dev/null -w \"%{http_code}\" \"$DEPLOY_URL/api/health\")\n      if [ \"$STATUS\" = \"200\" ]; then\n        echo \"Health check passed (attempt $i)\"\n        exit 0\n      fi\n      echo \"Health check failed (attempt $i, status: $STATUS), retrying in ${RETRY_DELAY}s...\"\n      sleep $RETRY_DELAY\n    done\n    echo \"Health check failed after $MAX_RETRIES attempts\"\n    exit 1\n```\n\n**Health check targets:**\n- HTTP status code (200 OK)\n- Response time under threshold (e.g., < 2s)\n- Database connectivity verified\n- External service dependencies reachable",
+          "prerequisites": [
+            "Health check endpoint configured (e.g., /api/health or /healthz)",
+            "Deployment URL available as environment variable or output"
+          ],
+          "appliesTo": [
+            "merge-branch:post-merge",
+            "prepare-release:post-tag",
+            "prepare-beta:post-tag"
+          ]
+        },
+        {
+          "name": "digitalocean-preview-deploy",
+          "description": "Deploy preview environments on DigitalOcean App Platform for each pull request",
+          "extensionPoints": [
+            "post-pr-create"
+          ],
+          "template": "### DigitalOcean Preview Deploy\n\nAfter PR creation, trigger a DigitalOcean App Platform deployment using the dev database or staging spec.\n\n```yaml\n# .github/workflows/do-preview.yml\nname: DigitalOcean Preview Deploy\non:\n  pull_request:\n    types: [opened, synchronize]\n\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Install doctl\n        uses: digitalocean/action-doctl@v2\n        with:\n          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}\n      - name: Deploy to App Platform\n        run: doctl apps create-deployment ${{ secrets.DO_APP_ID }}\n```\n\n**After deployment:**\n- App Platform provides a deployment URL in the doctl output\n- Comment the deployment URL on the PR",
+          "prerequisites": [
+            "DigitalOcean account with App Platform app configured",
+            "DIGITALOCEAN_ACCESS_TOKEN in repository secrets",
+            ".do/app.yaml or app spec configured"
+          ],
+          "appliesTo": [
+            "merge-branch:post-pr-create",
+            "prepare-release:post-pr-create"
+          ]
+        },
+        {
+          "name": "production-deploy-on-tag",
+          "description": "Deploy to production when a release tag is pushed",
+          "extensionPoints": [
+            "post-tag"
+          ],
+          "template": "### Production Deploy on Tag\n\nAfter a release tag is pushed, deploy the tagged version to the production environment.\n\n```yaml\n# .github/workflows/production-deploy.yml\nname: Deploy to Production\non:\n  push:\n    tags: ['v*']\n\njobs:\n  deploy-production:\n    runs-on: ubuntu-latest\n    environment: production\n    steps:\n      - uses: actions/checkout@v4\n      - name: Extract Version\n        id: version\n        run: echo \"version=${GITHUB_REF#refs/tags/}\" >> $GITHUB_OUTPUT\n      - name: Deploy to Production\n        run: |\n          # Platform-specific production deploy\n          echo \"Deploying ${{ steps.version.outputs.version }} to production\"\n```\n\n**Production safeguards:**\n- Use GitHub environment protection rules (approvals, wait timers)\n- Deploy with the exact commit referenced by the tag\n- Monitor error rates and rollback if thresholds exceeded",
+          "prerequisites": [
+            "Production environment configured on hosting platform",
+            "Deployment credentials in repository secrets",
+            "Tag naming convention (v* pattern)"
+          ],
+          "appliesTo": [
+            "prepare-release:post-tag",
+            "prepare-beta:post-tag"
+          ]
+        },
+        {
+          "name": "railway-preview-deploy",
+          "description": "Deploy preview environments on Railway for each pull request",
+          "extensionPoints": [
+            "post-pr-create"
+          ],
+          "template": "### Railway Preview Deploy\n\nAfter PR creation, trigger a Railway preview deployment using ephemeral environments.\n\n```yaml\n# .github/workflows/railway-preview.yml\nname: Railway Preview Deploy\non:\n  pull_request:\n    types: [opened, synchronize]\n\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Install Railway CLI\n        run: npm install -g @railway/cli\n      - name: Deploy Preview\n        run: railway up --environment pr-${{ github.event.pull_request.number }}\n        env:\n          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}\n```\n\n**After deployment:**\n- Comment the preview URL on the PR\n- Railway auto-cleans ephemeral environments when PR closes",
+          "prerequisites": [
+            "Railway account with project linked",
+            "RAILWAY_TOKEN in repository secrets"
+          ],
+          "appliesTo": [
+            "merge-branch:post-pr-create",
+            "prepare-release:post-pr-create"
+          ]
+        },
+        {
+          "name": "render-preview-deploy",
+          "description": "Deploy preview environments on Render for each pull request",
+          "extensionPoints": [
+            "post-pr-create"
+          ],
+          "template": "### Render Preview Deploy\n\nAfter PR creation, trigger a Render preview deployment using pull request previews.\n\n```yaml\n# .github/workflows/render-preview.yml\nname: Render Preview Deploy\non:\n  pull_request:\n    types: [opened, synchronize]\n\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Trigger Render Deploy\n        run: |\n          curl -X POST \"https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys\" \\\n            -H \"Authorization: Bearer ${{ secrets.RENDER_API_KEY }}\" \\\n            -H \"Content-Type: application/json\" \\\n            -d '{\"clearCache\":\"do_not_clear\"}'\n```\n\n**After deployment:**\n- Render provides automatic preview URLs for PRs when configured\n- Check deploy status via the Render dashboard or API",
+          "prerequisites": [
+            "Render account with service configured",
+            "RENDER_API_KEY in repository secrets",
+            "render.yaml in repository root"
+          ],
+          "appliesTo": [
+            "merge-branch:post-pr-create",
+            "prepare-release:post-pr-create"
+          ]
+        },
+        {
+          "name": "rollback-on-failure",
+          "description": "Automatically rollback deployment when health checks or smoke tests fail",
+          "extensionPoints": [
+            "post-tag"
+          ],
+          "template": "### Rollback on Failure\n\nIf post-deploy health checks or smoke tests fail, automatically rollback to the previous stable deployment.\n\n```yaml\n# Add to production deploy workflow after health check\n- name: Rollback on Failure\n  if: failure()\n  run: |\n    echo \"Deployment failed — initiating rollback\"\n    # Platform-specific rollback:\n    # Vercel: vercel rollback\n    # Railway: railway rollback\n    # Render: curl -X POST render API with previous deploy ID\n    # DO: doctl apps create-deployment $APP_ID --revision $PREVIOUS_REVISION\n    echo \"Rollback complete\"\n\n- name: Notify on Rollback\n  if: failure()\n  run: |\n    echo \"::warning::Production deployment rolled back due to health check failure\"\n    # Optionally notify via Slack, email, or GitHub issue\n```\n\n**Rollback strategy:**\n- Revert to the last known-good deployment, not the previous commit\n- Preserve logs and artifacts from the failed deployment for debugging\n- Create a GitHub issue automatically for investigation",
+          "prerequisites": [
+            "Previous stable deployment recorded (tag or deployment ID)",
+            "Rollback mechanism supported by hosting platform"
+          ],
+          "appliesTo": [
+            "prepare-release:post-tag",
+            "prepare-beta:post-tag"
+          ]
+        },
+        {
+          "name": "staging-deploy-on-merge",
+          "description": "Deploy to staging environment when branches are merged",
+          "extensionPoints": [
+            "post-merge"
+          ],
+          "template": "### Staging Deploy on Merge\n\nAfter a branch merge completes, deploy the updated code to the staging environment for pre-production validation.\n\n```yaml\n# .github/workflows/staging-deploy.yml\nname: Deploy to Staging\non:\n  push:\n    branches: [main, develop]\n\njobs:\n  deploy-staging:\n    runs-on: ubuntu-latest\n    environment: staging\n    steps:\n      - uses: actions/checkout@v4\n      - name: Deploy to Staging\n        run: |\n          # Platform-specific deploy command\n          # Vercel: vercel --prod --scope staging\n          # Railway: railway up --environment staging\n          # Render: curl deploy hook\n          # DO: doctl apps create-deployment $APP_ID\n          echo \"Deploy to staging environment\"\n```\n\n**Post-deploy verification:**\n- Run smoke tests against staging URL\n- Verify critical paths (auth, data, integrations)\n- Check monitoring dashboards for error spikes",
+          "prerequisites": [
+            "Staging environment configured on hosting platform",
+            "Deployment credentials in repository secrets"
+          ],
+          "appliesTo": [
+            "merge-branch:post-merge"
+          ]
+        },
+        {
+          "name": "vercel-preview-deploy",
+          "description": "Deploy preview environments on Vercel for each pull request",
+          "extensionPoints": [
+            "post-pr-create"
+          ],
+          "template": "### Vercel Preview Deploy\n\nAfter PR creation, trigger a Vercel preview deployment so reviewers can test changes in an isolated environment.\n\n```yaml\n# .github/workflows/vercel-preview.yml\nname: Vercel Preview Deploy\non:\n  pull_request:\n    types: [opened, synchronize]\n\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: amondnet/vercel-action@v25\n        with:\n          vercel-token: ${{ secrets.VERCEL_TOKEN }}\n          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}\n          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}\n```\n\n**After deployment:**\n- Comment the preview URL on the PR\n- Run smoke tests against the preview URL if configured",
+          "prerequisites": [
+            "Vercel account with project linked",
+            "VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID in repository secrets"
+          ],
+          "appliesTo": [
+            "merge-branch:post-pr-create",
+            "prepare-release:post-pr-create"
           ]
         }
       ]

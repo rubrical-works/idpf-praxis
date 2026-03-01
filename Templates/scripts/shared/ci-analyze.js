@@ -7,7 +7,7 @@ const yaml = require('yaml');
 const { detectLanguages, detectPrimaryLanguage } = require('./ci-detect-lang.js');
 
 /**
- * @framework-script 0.54.0
+ * @framework-script 0.55.0
  * Test tooling indicators per language ecosystem.
  */
 const TEST_TOOLING_JS = ['jest', 'mocha', 'vitest', 'ava', 'tape', 'jasmine'];

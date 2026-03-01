@@ -81,6 +81,34 @@
     "jest.config.ts": {
       "recipes": ["coverage-gate"],
       "description": "Jest with coverage (TS)"
+    },
+    "vercel.json": {
+      "recipes": ["vercel-preview-deploy", "deploy-health-check", "rollback-on-failure"],
+      "description": "Vercel deployment configuration"
+    },
+    "railway.json": {
+      "recipes": ["railway-preview-deploy", "deploy-health-check", "rollback-on-failure"],
+      "description": "Railway deployment configuration"
+    },
+    "railway.toml": {
+      "recipes": ["railway-preview-deploy", "deploy-health-check", "rollback-on-failure"],
+      "description": "Railway deployment configuration (TOML)"
+    },
+    "render.yaml": {
+      "recipes": ["render-preview-deploy", "deploy-health-check", "rollback-on-failure"],
+      "description": "Render deployment blueprint"
+    },
+    ".do/app.yaml": {
+      "recipes": ["digitalocean-preview-deploy", "deploy-health-check", "rollback-on-failure"],
+      "description": "DigitalOcean App Platform specification"
+    },
+    "deploy.template.yaml": {
+      "recipes": ["staging-deploy-on-merge", "production-deploy-on-tag", "deploy-health-check", "rollback-on-failure"],
+      "description": "Generic deployment template"
+    },
+    ".vercel/": {
+      "recipes": ["vercel-preview-deploy", "deploy-health-check"],
+      "description": "Vercel project directory"
     }
   },
   "universalRecipes": {
@@ -98,6 +126,11 @@
       "description": "Test coverage recipes",
       "indicators": ["codecov.yml", ".nycrc", ".nycrc.json", ".coveragerc", "coverage/"],
       "recipes": ["coverage-gate", "coverage-report"]
+    },
+    "deployment": {
+      "description": "Hosting platform deployment recipes",
+      "indicators": ["vercel.json", ".vercel/", "railway.json", "railway.toml", "render.yaml", ".do/app.yaml", "deploy.template.yaml"],
+      "recipes": ["vercel-preview-deploy", "railway-preview-deploy", "render-preview-deploy", "digitalocean-preview-deploy", "staging-deploy-on-merge", "production-deploy-on-tag", "deploy-health-check", "rollback-on-failure"]
     }
   },
   "_schema": {

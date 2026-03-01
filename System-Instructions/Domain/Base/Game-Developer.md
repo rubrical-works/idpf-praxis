@@ -1,5 +1,5 @@
 # System Instructions: Game Developer
-**Version:** v0.54.0
+**Version:** v0.55.0
 Extends: Core-Developer-Instructions.md
 **Purpose:** Game development using Unity, Unreal Engine, Godot, and general game programming patterns.
 **Load with:** Core-Developer-Instructions.md (required foundation)

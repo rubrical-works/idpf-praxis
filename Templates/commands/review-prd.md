@@ -1,5 +1,5 @@
 ---
-version: "v0.54.0"
+version: "v0.55.0"
 description: Review a PRD with tracked history (project)
 argument-hint: "#issue"
 ---
@@ -236,7 +236,7 @@ Review #N complete for PRD: [Title]
 **If `--with` is not specified**, append:
 ```
 Tip: Use --with security,performance to add domain-specific review criteria.
-Available: security, accessibility, performance, chaos, contract, qa (or --with all)
+Available: security, accessibility, performance, chaos, contract, qa, seo, privacy (or --with all)
 ```
 ---
 ## Error Handling

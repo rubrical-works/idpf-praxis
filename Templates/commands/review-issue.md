@@ -1,5 +1,5 @@
 ---
-version: "v0.54.0"
+version: "v0.55.0"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...]"
 ---
@@ -201,7 +201,7 @@ Review #N complete for Issue #$ISSUE: $TITLE
 **If `--with` is not specified**, append a discoverability tip:
 ```
 Tip: Use --with security,performance to add domain-specific review criteria.
-Available: security, accessibility, performance, chaos, contract, qa (or --with all)
+Available: security, accessibility, performance, chaos, contract, qa, seo, privacy (or --with all)
 ```
 ---
 ## Error Handling

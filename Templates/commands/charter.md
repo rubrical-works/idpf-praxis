@@ -1,5 +1,5 @@
 ---
-version: "v0.54.0"
+version: "v0.55.0"
 description: View, create, or manage project charter
 argument-hint: "[update|refresh|validate]"
 ---
@@ -71,6 +71,34 @@ grep -E '\{[a-z][a-z0-9-]*\}' CHARTER.md
 | C#/.NET | Yes | xUnit, NUnit, MSTest |
 | Documentation-only | Skip | N/A |
 **Skip Detection:** If Q3 contains "documentation", "docs", "config", "terraform", "ansible" → skip Q5, set framework to "N/A - non-code project"
+#### Deployment Platform Question (Q3a — Conditional)
+**Trigger:** Deployable project detected from Q3 — web framework (React, Next.js, Express, Flask, Rails, Django, etc.), frontend build tool, Docker, or description containing "web app", "API", "service", "site".
+**Skip:** CLI tools, libraries, documentation-only, infrastructure repos (terraform, ansible, pulumi).
+**ASK USER (single-select via AskUserQuestion):**
+```
+Where will this project be deployed?
+- Vercel — Best for frontend, Next.js, static sites
+- Railway — Best for full-stack apps, background workers
+- DigitalOcean (App Platform) — Best for multi-component apps with databases
+- Render — Best for web services with managed infrastructure
+- Other/Not decided — No deployment skill installed
+- Self-hosted/Not applicable — No deployment skill installed
+```
+**After answer:**
+1. Write `deploymentTarget` to `framework-config.json`:
+   - Vercel → `"vercel"`, Railway → `"railway"`, DigitalOcean → `"digitalocean"`, Render → `"render"`
+   - Other/Not decided → `"other"`, Self-hosted/Not applicable → `null`
+2. If platform selected (not "other" or null), auto-install deployment skill:
+   ```bash
+   node .claude/scripts/shared/install-skill.js <skill-name>
+   ```
+   | Platform | Skill |
+   |----------|-------|
+   | Vercel | `vercel-project-setup` |
+   | Railway | `railway-project-setup` |
+   | DigitalOcean | `digitalocean-app-setup` |
+   | Render | `render-project-setup` |
+3. After skill install, query `recipe-tech-mapping.json` for deployment recipes matching the platform
 #### Complexity-Triggered Questions
 | Trigger | Follow-Up |
 |---------|-----------|
@@ -126,9 +154,10 @@ What review mode should be used for this project?
 **Note:** Directories created after questions to avoid orphaned directories if user abandons mid-flow.
 ### /charter update
 **Step 1:** Read current CHARTER.md and Inception/Charter-Details.md
-**Step 2:** Ask what to update (Vision, Current Focus, Tech Stack, Scope, Milestones)
+**Step 2:** Ask what to update (Vision, Current Focus, Tech Stack, Scope, Milestones, Deployment Target)
 **Step 3:** Apply updates, sync to CHARTER.md if vision changes, update Last Updated date
 **Step 4:** If Tech Stack modified, trigger skill and recipe suggestions (NEW items only)
+**Step 4b:** If Deployment Target selected: read existing `deploymentTarget` from `framework-config.json`. If changing platforms, uninstall old deployment skill and install new one. Update `deploymentTarget` in config. If no previous target existed, treat as fresh install.
 ### /charter refresh
 **Step 1:** Load `Skills/codebase-analysis/SKILL.md`
 **Step 2:** Analyze codebase

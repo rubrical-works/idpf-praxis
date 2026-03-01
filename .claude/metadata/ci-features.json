@@ -194,5 +194,61 @@
     "template": {
       "yaml": "- name: Clean up build artifacts\n  uses: geekyeggo/delete-artifact@v5\n  with:\n    name: build-output"
     }
+  },
+  "vercel-deploy": {
+    "id": "vercel-deploy",
+    "name": "Vercel Deploy",
+    "description": "Deploy preview and production environments to Vercel",
+    "tier": "v1",
+    "category": "deployment",
+    "languages": ["javascript", "typescript"],
+    "detectionPatterns": {
+      "yaml": ["vercel-action", "amondnet/vercel-action", "vercel deploy", "VERCEL_TOKEN", "vercel.*--prod"]
+    },
+    "template": {
+      "yaml": "- name: Deploy to Vercel\n  uses: amondnet/vercel-action@v25\n  with:\n    vercel-token: ${{ secrets.VERCEL_TOKEN }}\n    vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}\n    vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}"
+    }
+  },
+  "railway-deploy": {
+    "id": "railway-deploy",
+    "name": "Railway Deploy",
+    "description": "Deploy preview and production environments to Railway",
+    "tier": "v1",
+    "category": "deployment",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["railway up", "RAILWAY_TOKEN", "railway.*deploy", "railwayapp"]
+    },
+    "template": {
+      "yaml": "- name: Deploy to Railway\n  run: railway up --service ${{ vars.RAILWAY_SERVICE }}\n  env:\n    RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}"
+    }
+  },
+  "render-deploy": {
+    "id": "render-deploy",
+    "name": "Render Deploy",
+    "description": "Deploy preview and production environments to Render",
+    "tier": "v1",
+    "category": "deployment",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["render.com/deploy", "RENDER_API_KEY", "render.*deploy", "render-deploy"]
+    },
+    "template": {
+      "yaml": "- name: Deploy to Render\n  run: |\n    curl -X POST \"https://api.render.com/v1/services/${{ vars.RENDER_SERVICE_ID }}/deploys\"\n      -H \"Authorization: Bearer ${{ secrets.RENDER_API_KEY }}\""
+    }
+  },
+  "digitalocean-deploy": {
+    "id": "digitalocean-deploy",
+    "name": "DigitalOcean Deploy",
+    "description": "Deploy preview and production environments to DigitalOcean App Platform",
+    "tier": "v1",
+    "category": "deployment",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["doctl apps", "DIGITALOCEAN_ACCESS_TOKEN", "digitalocean.*deploy", "digitalocean/action-doctl"]
+    },
+    "template": {
+      "yaml": "- name: Deploy to DigitalOcean\n  uses: digitalocean/action-doctl@v2\n  with:\n    token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}"
+    }
   }
 }
