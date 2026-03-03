@@ -1,5 +1,5 @@
 # Framework Skills Reference
-**Version:** v0.55.0
+**Version:** v0.56.0
 **Purpose:** Reference for all Skills
 ## Skills Overview
 **Location:** `Skills/` | **Total:** 29 skills (6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance)

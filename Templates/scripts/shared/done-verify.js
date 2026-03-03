@@ -1,21 +1,27 @@
 /**
- * @framework-script 0.55.0
+ * @framework-script 0.56.0
  * done-verify.js - Diff verification for /done command
  *
  * Analyzes commits referencing an issue to detect hallucinated completions.
  * Detects: comment-only changes, EOF-only appends, suspect patterns.
+ * Parallelizes per-commit and per-file git operations for performance.
  *
  * Usage: node done-verify.js --issue <number>
  */
 
-const { execSync } = require('child_process');
+const { exec: execCb } = require('child_process');
+const { promisify } = require('util');
+
+const execAsync = promisify(execCb);
+const EXEC_OPTS = { encoding: 'utf-8' };
 
 /**
- * Safe shell execution — returns trimmed output or null on failure
+ * Safe async shell execution — returns trimmed output or null on failure
  */
-function execSyncSafe(cmd) {
+async function execSafe(cmd) {
     try {
-        return execSync(cmd, { encoding: 'utf-8' }).trim();
+        const { stdout } = await execAsync(cmd, EXEC_OPTS);
+        return stdout.trim();
     } catch {
         return null;
     }
@@ -171,8 +177,8 @@ function classifyDiffLines(rawDiff) {
  * Find all commits referencing an issue number.
  * Filters out merge commits.
  */
-function findCommitsForIssue(issueNumber) {
-    const output = execSyncSafe(
+async function findCommitsForIssue(issueNumber) {
+    const output = await execSafe(
         `git log --all --grep="#${issueNumber}" --format="%H|%s"`
     );
 
@@ -195,55 +201,60 @@ function findCommitsForIssue(issueNumber) {
 /**
  * Get the stat output for a commit (file changes summary)
  */
-function getCommitStat(hash) {
-    return execSyncSafe(`git show --stat --format="" ${hash}`);
+async function getCommitStat(hash) {
+    return execSafe(`git show --stat --format="" ${hash}`);
 }
 
 /**
  * Get the diff for a specific file in a commit
  */
-function getFileDiff(hash, file) {
-    return execSyncSafe(`git show ${hash} -- "${file}"`);
+async function getFileDiff(hash, file) {
+    return execSafe(`git show ${hash} -- "${file}"`);
 }
 
 /**
  * Analyze a single commit — stat + per-file diff classification.
+ * Parallelizes per-file diff retrieval.
  * Returns { hash, message, files: [{file, insertions, deletions, commentOnly, eofOnly, ...}] }
  */
-function analyzeCommit(hash) {
-    // Get commit message
-    const logOutput = execSyncSafe(`git log -1 --format="%H|%s" ${hash}`);
+async function analyzeCommit(hash) {
+    // Get commit message and stat in parallel
+    const [logOutput, statOutput] = await Promise.all([
+        execSafe(`git log -1 --format="%H|%s" ${hash}`),
+        getCommitStat(hash)
+    ]);
+
     let message = '';
     if (logOutput) {
         const pipeIdx = logOutput.indexOf('|');
         if (pipeIdx !== -1) message = logOutput.substring(pipeIdx + 1);
     }
 
-    // Get stat
-    const statOutput = getCommitStat(hash);
     const files = [];
 
     if (statOutput) {
         const statLines = statOutput.split('\n');
-        for (const line of statLines) {
-            const parsed = parseStatLine(line);
-            if (!parsed) continue;
+        const parsedFiles = statLines.map(parseStatLine).filter(Boolean);
 
-            // Get detailed diff for this file
-            const diffOutput = getFileDiff(hash, parsed.file);
-            const classification = classifyDiffLines(diffOutput || '');
+        // Parallelize per-file diff retrieval
+        const diffResults = await Promise.all(
+            parsedFiles.map(async (parsed) => {
+                const diffOutput = await getFileDiff(hash, parsed.file);
+                const classification = classifyDiffLines(diffOutput || '');
+                return {
+                    file: parsed.file,
+                    insertions: parsed.insertions,
+                    deletions: parsed.deletions,
+                    commentOnly: classification.commentOnly,
+                    eofOnly: classification.eofOnly,
+                    isNewFile: classification.isNewFile,
+                    substantiveAdditions: classification.substantiveAdditions,
+                    commentAdditions: classification.commentAdditions
+                };
+            })
+        );
 
-            files.push({
-                file: parsed.file,
-                insertions: parsed.insertions,
-                deletions: parsed.deletions,
-                commentOnly: classification.commentOnly,
-                eofOnly: classification.eofOnly,
-                isNewFile: classification.isNewFile,
-                substantiveAdditions: classification.substantiveAdditions,
-                commentAdditions: classification.commentAdditions
-            });
-        }
+        files.push(...diffResults);
     }
 
     return {
@@ -282,10 +293,11 @@ function generateWarnings(analyzedCommits) {
 
 /**
  * Main verification entry point.
+ * Parallelizes per-commit analysis.
  * Returns structured JSON with commit analysis and warnings.
  */
-function verify(issueNumber) {
-    const commits = findCommitsForIssue(issueNumber);
+async function verify(issueNumber) {
+    const commits = await findCommitsForIssue(issueNumber);
 
     if (commits.length === 0) {
         return {
@@ -298,7 +310,10 @@ function verify(issueNumber) {
         };
     }
 
-    const analyzedCommits = commits.map(c => analyzeCommit(c.hash));
+    // Parallelize per-commit analysis
+    const analyzedCommits = await Promise.all(
+        commits.map(c => analyzeCommit(c.hash))
+    );
     const warnings = generateWarnings(analyzedCommits);
 
     // Count files across all commits
@@ -346,7 +361,7 @@ async function main() {
         console.error('Error: Issue number must be a valid integer');
         process.exit(1);
     }
-    const result = verify(issueNumber);
+    const result = await verify(issueNumber);
     console.log(JSON.stringify(result, null, 2));
 }
 
@@ -355,7 +370,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-    execSyncSafe,
+    execSafe,
     isCommentLine,
     isWhitespaceLine,
     parseStatLine,

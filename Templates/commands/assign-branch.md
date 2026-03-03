@@ -1,8 +1,8 @@
 ---
-version: "v0.55.0"
+version: "v0.56.0"
 allowed-tools: Bash, AskUserQuestion
-description: "Assign issues to a branch: [#issue...] [branch/...] [--all] (project)"
-argument-hint: "[#issue...] [branch/name] [--all]"
+description: "Assign issues to a branch: [#issue...] [branch/...] [--add-ready] (project)"
+argument-hint: "[#issue...] [branch/name] [--add-ready]"
 ---
 
 <!-- MANAGED -->

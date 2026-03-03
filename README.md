@@ -40,7 +40,7 @@ px-manager handles:
 
 ---
 
-## Skills (29)
+## Skills (31)
 
 **TDD:** tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns
 
@@ -61,6 +61,8 @@ px-manager handles:
 **Diagrams:** drawio-generation
 
 **Desktop:** electron-development, playwright-setup
+
+**Platform:** astro-development, playwright-explorer
 
 **Deployment Platforms:** vercel-project-setup, railway-project-setup, render-project-setup, digitalocean-app-setup
 

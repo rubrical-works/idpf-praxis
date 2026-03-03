@@ -1,152 +1,422 @@
 {
-  "generatedAt": "2026-03-01T18:28:16.431Z",
+  "generatedAt": "2026-03-03T15:33:55.229Z",
   "version": "1.0.0",
-  "skillCount": 29,
+  "skillCount": 30,
   "skills": [
     {
       "name": "anti-pattern-analysis",
       "description": "Systematic detection of anti-patterns during code review with actionable refactoring guidance",
-      "triggers": []
+      "triggers": [],
+      "category": "code-quality",
+      "relevantTechStack": [
+        "javascript",
+        "typescript",
+        "python",
+        "java"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "api-versioning",
       "description": "Guide developers through API versioning strategies, deprecation workflows, and backward compatibility patterns",
-      "triggers": []
+      "triggers": [],
+      "category": "architecture",
+      "relevantTechStack": [
+        "rest",
+        "graphql",
+        "api",
+        "node",
+        "express"
+      ],
+      "invocationMode": "auto"
+    },
+    {
+      "name": "astro-development",
+      "description": "Architectural decision patterns for Astro web framework — Islands hydration, Content Collections, multi-framework integration, and deployment",
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "astro",
+        "javascript",
+        "typescript",
+        "react",
+        "vue",
+        "svelte"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "bdd-writing",
       "description": "Guide developers on writing BDD specifications using Gherkin syntax, feature files, and step definitions",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "cucumber",
+        "gherkin",
+        "bdd",
+        "javascript",
+        "typescript"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "beginner-testing",
       "description": "Introduce test-driven development to beginners with simple Flask/Sinatra test examples and TDD concepts",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "flask",
+        "sinatra",
+        "python",
+        "ruby",
+        "tdd"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "ci-cd-pipeline-design",
       "description": "Guide developers through CI/CD pipeline design including architecture patterns, stage design, and security considerations",
-      "triggers": []
+      "triggers": [],
+      "category": "devops",
+      "relevantTechStack": [
+        "github-actions",
+        "ci",
+        "cd",
+        "docker",
+        "kubernetes"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "codebase-analysis",
       "description": "Analyze existing codebases to extract structure, tech stack, and patterns",
-      "triggers": []
+      "triggers": [],
+      "category": "code-quality",
+      "relevantTechStack": [
+        "javascript",
+        "typescript",
+        "python",
+        "java",
+        "go"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "common-errors",
       "description": "Diagnose and solve common beginner programming mistakes in Flask or Sinatra development with detailed explanations",
-      "triggers": []
+      "triggers": [],
+      "category": "debugging",
+      "relevantTechStack": [
+        "flask",
+        "sinatra",
+        "python",
+        "ruby"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "digitalocean-app-setup",
       "description": "Configure automated preview, staging, and production deployments with DigitalOcean App Platform",
-      "triggers": []
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "digitalocean",
+        "docker",
+        "node",
+        "python"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "drawio-generation",
       "description": "Generate valid .drawio.svg diagrams with editable mxGraphModel structure",
-      "triggers": []
+      "triggers": [],
+      "category": "documentation",
+      "relevantTechStack": [
+        "drawio",
+        "diagrams",
+        "svg",
+        "documentation"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "electron-development",
       "description": "Patterns and solutions for Electron app development with Vite, Playwright E2E testing, and Windows platform considerations",
-      "triggers": []
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "electron",
+        "vite",
+        "playwright",
+        "typescript",
+        "windows"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "error-handling-patterns",
       "description": "Guide developers through consistent error handling including error hierarchies, API responses, and logging integration",
-      "triggers": []
+      "triggers": [],
+      "category": "architecture",
+      "relevantTechStack": [
+        "javascript",
+        "typescript",
+        "node",
+        "error-handling"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "flask-setup",
       "description": "Set up Python Flask development environment for beginners with step-by-step guidance, virtual environment creation, and troubleshooting",
-      "triggers": []
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "flask",
+        "python",
+        "virtualenv",
+        "pip"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "migration-patterns",
       "description": "Guide developers through database migration best practices including versioning, rollbacks, and zero-downtime strategies",
-      "triggers": []
+      "triggers": [],
+      "category": "database",
+      "relevantTechStack": [
+        "sql",
+        "postgresql",
+        "mysql",
+        "migrations",
+        "knex",
+        "prisma"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "mutation-testing",
       "description": "Guide developers through mutation testing to assess and improve test suite quality",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "stryker",
+        "mutation-testing",
+        "javascript",
+        "typescript"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "playwright-setup",
       "description": "Installation verification and troubleshooting for Playwright browser automation framework",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "playwright",
+        "e2e",
+        "browser-testing",
+        "typescript"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "postgresql-integration",
       "description": "Guide developers through PostgreSQL setup, connection configuration, query patterns, and best practices",
-      "triggers": []
+      "triggers": [],
+      "category": "database",
+      "relevantTechStack": [
+        "postgresql",
+        "sql",
+        "node",
+        "python",
+        "pg"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "privacy-compliance",
       "description": "Provide structured privacy compliance guidance for web and mobile projects covering consent management, cookie compliance, dark pattern avoidance, and regulatory landscape",
-      "triggers": []
+      "triggers": [],
+      "category": "compliance",
+      "relevantTechStack": [
+        "gdpr",
+        "ccpa",
+        "privacy",
+        "cookies",
+        "consent"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "property-based-testing",
       "description": "Guide developers through property-based testing including property definition, shrinking, and framework-specific implementation",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "fast-check",
+        "hypothesis",
+        "property-testing",
+        "javascript",
+        "python"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "railway-project-setup",
       "description": "Configure automated preview, staging, and production deployments with Railway",
-      "triggers": []
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "railway",
+        "docker",
+        "node",
+        "python",
+        "deployment"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "render-project-setup",
       "description": "Configure automated preview, staging, and production deployments with Render",
-      "triggers": []
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "render",
+        "docker",
+        "node",
+        "python",
+        "deployment"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "seo-optimization",
       "description": "Provide structured SEO guidance for web projects covering technical foundations and content optimization",
-      "triggers": []
+      "triggers": [],
+      "category": "web",
+      "relevantTechStack": [
+        "seo",
+        "html",
+        "meta-tags",
+        "structured-data",
+        "sitemap"
+      ],
+      "invocationMode": "direct-only"
     },
     {
       "name": "sinatra-setup",
       "description": "Set up Ruby Sinatra development environment for beginners with step-by-step guidance, Bundler setup, and troubleshooting",
-      "triggers": []
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "sinatra",
+        "ruby",
+        "bundler",
+        "gem"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "sqlite-integration",
       "description": "Add SQLite database to Flask or Sinatra app with beginner-friendly code examples and teaching comments",
-      "triggers": []
+      "triggers": [],
+      "category": "database",
+      "relevantTechStack": [
+        "sqlite",
+        "sql",
+        "flask",
+        "sinatra",
+        "python",
+        "ruby"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "tdd-failure-recovery",
       "description": "Guide experienced developers through TDD failure scenarios and recovery procedures when tests behave unexpectedly",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "tdd",
+        "jest",
+        "vitest",
+        "pytest",
+        "testing"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "tdd-green-phase",
       "description": "Guide experienced developers through GREEN phase of TDD cycle - writing minimal implementation to pass failing tests",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "tdd",
+        "jest",
+        "vitest",
+        "pytest",
+        "testing"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "tdd-red-phase",
       "description": "Guide experienced developers through RED phase of TDD cycle - writing failing tests and verifying expected failures",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "tdd",
+        "jest",
+        "vitest",
+        "pytest",
+        "testing"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "tdd-refactor-phase",
       "description": "Guide experienced developers through REFACTOR phase of TDD cycle - improving code quality while maintaining green tests",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "tdd",
+        "jest",
+        "vitest",
+        "pytest",
+        "testing"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "test-writing-patterns",
       "description": "Guide experienced developers on test structure, patterns, assertions, and test doubles for effective test-driven development",
-      "triggers": []
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "jest",
+        "vitest",
+        "pytest",
+        "testing",
+        "tdd",
+        "mocking"
+      ],
+      "invocationMode": "auto"
     },
     {
       "name": "vercel-project-setup",
       "description": "Configure automated preview, staging, and production deployments with Vercel",
-      "triggers": []
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "vercel",
+        "next",
+        "react",
+        "node",
+        "deployment"
+      ],
+      "invocationMode": "direct-only"
     }
   ]
 }

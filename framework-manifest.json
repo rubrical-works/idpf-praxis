@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.55.0",
+  "version": "0.56.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -42,7 +42,7 @@
       "source": ".claude/commands/",
       "core": [
         "change-domain-expert.md",
-        "install-skill.md",
+        "manage-skills.md",
         "playwright-check.md"
       ],
       "workflow": [
@@ -104,6 +104,7 @@
           "extensions-cli.js",
           "generate-changelog.js",
           "install-skill.js",
+          "manage-skills.js",
           "generate-test-plan.js",
           "plan-workstreams.js",
           "recommend-version.js",
@@ -229,7 +230,7 @@
     "transfer-issue",
     "charter",
     "extensions",
-    "install-skill",
+    "manage-skills",
     "plan-workstreams",
     "resolve-review",
     "review-test-plan"

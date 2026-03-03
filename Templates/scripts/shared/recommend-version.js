@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.55.0
+ * @framework-script 0.56.0
  * @description Recommend semver bump based on commit types
  * @checksum sha256:placeholder
  *

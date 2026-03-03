@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.55.0
+ * @framework-script 0.56.0
  * work-preamble.js
  *
  * Consolidates deterministic setup work for the /work command into a single
@@ -13,12 +13,14 @@
  *   node work-preamble.js --status backlog
  */
 
-const { execSync } = require('child_process');
+const { exec: execCb } = require('child_process');
+const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
 
+const execAsync = promisify(execCb);
 const SCHEMA_VERSION = 1;
-const EXEC_OPTS = { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] };
+const EXEC_OPTS = { encoding: 'utf-8' };
 
 // ─── Error Classification ───
 
@@ -51,30 +53,32 @@ function classifyError(errorMessage, defaultCode) {
 // ─── Execution Safety ───
 
 /**
- * Safe exec wrapper — never throws
+ * Safe async exec wrapper — never throws
  * @param {string} cmd
- * @returns {string|null} Trimmed output or null on failure
+ * @returns {Promise<string|null>} Trimmed output or null on failure
  */
-function execSafe(cmd) {
+async function execSafe(cmd) {
   try {
-    return execSync(cmd, EXEC_OPTS).trim();
+    const { stdout } = await execAsync(cmd, EXEC_OPTS);
+    return stdout.trim();
   } catch (_e) {
     return null;
   }
 }
 
 /**
- * Exec wrapper that returns parsed JSON or an error object.
+ * Async exec wrapper that returns parsed JSON or an error object.
  * Classifies errors using stderr patterns (TIMEOUT, RATE_LIMIT, AUTH_FAILED, PMU_MISSING).
  * @param {string} cmd
  * @param {string} errorCode - Default error code to use on failure
  * @param {string} errorMsg - Error message prefix
- * @returns {{ data: object } | { error: { code: string, message: string } }}
+ * @returns {Promise<{ data: object } | { error: { code: string, message: string } }>}
  */
-function execJSON(cmd, errorCode, errorMsg) {
+async function execJSON(cmd, errorCode, errorMsg) {
   let output;
   try {
-    output = execSync(cmd, EXEC_OPTS).trim();
+    const { stdout } = await execAsync(cmd, EXEC_OPTS);
+    output = stdout.trim();
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
     const code = classifyError(msg, errorCode);
@@ -150,13 +154,14 @@ function parseArgs(args) {
 // ─── Data Gathering ───
 
 /**
- * Fetch issue data from GitHub
+ * Fetch all issue data (issue fields + project status + branch) in a single API call.
+ * Replaces separate gatherIssueData + gatherBranchData calls.
  * @param {number} issueNum
- * @returns {{ issue: object } | { error: { code: string, message: string } }}
+ * @returns {Promise<{ issue: object, branch: object } | { error: { code: string, message: string, suggestion?: string } }>}
  */
-function gatherIssueData(issueNum) {
-  const result = execJSON(
-    `gh issue view ${issueNum} --json=number,title,labels,body,state`,
+async function gatherAllData(issueNum) {
+  const result = await execJSON(
+    `gh pmu view ${issueNum} --json=number,title,labels,body,state,status,branch`,
     'NOT_FOUND',
     `Issue #${issueNum} not found`
   );
@@ -164,16 +169,57 @@ function gatherIssueData(issueNum) {
   if (result.data.state === 'CLOSED') {
     return { error: { code: 'CLOSED', message: `Issue #${issueNum} is already closed.` } };
   }
-  return { issue: result.data };
+  if (!result.data.branch) {
+    return { error: { code: 'NO_BRANCH', message: `Issue #${issueNum} is not assigned to a branch.`, suggestion: `Run /assign-branch #${issueNum} first.` } };
+  }
+  // Normalize labels: gh pmu view returns flat strings, gh issue view returned objects.
+  // Downstream code accesses label.name — wrap strings in objects for compatibility.
+  const rawLabels = result.data.labels || [];
+  const labels = rawLabels.map(l => typeof l === 'string' ? { name: l } : l);
+
+  return {
+    issue: {
+      number: result.data.number,
+      title: result.data.title,
+      labels,
+      body: result.data.body,
+      state: result.data.state
+    },
+    branch: {
+      branch: result.data.branch,
+      status: result.data.status
+    }
+  };
 }
 
 /**
- * Fetch branch/status data from gh pmu
+ * Fetch issue data only (without branch requirement) for assignability check.
  * @param {number} issueNum
- * @returns {{ branch: object } | { error: { code: string, message: string } }}
+ * @returns {Promise<{ issue: object } | { error: { code: string, message: string } }>}
  */
-function gatherBranchData(issueNum) {
-  const result = execJSON(
+async function gatherIssueOnly(issueNum) {
+  const result = await execJSON(
+    `gh pmu view ${issueNum} --json=number,title,labels,body,state`,
+    'NOT_FOUND',
+    `Issue #${issueNum} not found`
+  );
+  if (result.error) return result;
+  if (result.data.state === 'CLOSED') {
+    return { error: { code: 'CLOSED', message: `Issue #${issueNum} is already closed.` } };
+  }
+  // Normalize labels: gh pmu view returns flat strings, wrap in objects for compatibility
+  const rawLabels = result.data.labels || [];
+  const normalizedLabels = rawLabels.map(l => typeof l === 'string' ? { name: l } : l);
+  return { issue: { ...result.data, labels: normalizedLabels } };
+}
+
+/**
+ * Check branch assignment for an issue (used by checkAssignability).
+ * @param {number} issueNum
+ * @returns {Promise<{ branch: object } | { error: { code: string, message: string, suggestion?: string } }>}
+ */
+async function gatherBranchData(issueNum) {
+  const result = await execJSON(
     `gh pmu view ${issueNum} --json=status,branch`,
     'NO_BRANCH',
     `Failed to get branch data for #${issueNum}`
@@ -226,10 +272,10 @@ function parseAcceptanceCriteria(body) {
 /**
  * Load sub-issues for an epic
  * @param {number} issueNum
- * @returns {{ subIssues: Array<{ number: number, title: string }>, warning?: object }}
+ * @returns {Promise<{ subIssues: Array<{ number: number, title: string }>, warning?: object }>}
  */
-function loadSubIssues(issueNum) {
-  const result = execJSON(
+async function loadSubIssues(issueNum) {
+  const result = await execJSON(
     `gh pmu sub list ${issueNum} --json`,
     'SUB_ISSUE_LOAD_FAILED',
     `Failed to load sub-issues for #${issueNum}`
@@ -248,27 +294,30 @@ function loadSubIssues(issueNum) {
 }
 
 /**
- * Check statuses of sub-issues and classify as skipped or active
+ * Check statuses of sub-issues and classify as skipped or active.
+ * Parallelizes status checks for all sub-issues.
  * @param {Array<{ number: number, title: string }>} subIssues
- * @returns {{ skipped: Array<{ number: number, status: string }>, active: Array<{ number: number, title: string }> }}
+ * @returns {Promise<{ skipped: Array<{ number: number, status: string }>, active: Array<{ number: number, title: string }> }>}
  */
-function checkSubIssueStatuses(subIssues) {
+async function checkSubIssueStatuses(subIssues) {
   const skipped = [];
   const active = [];
   const skipStatuses = ['in review', 'done'];
 
-  for (const sub of subIssues) {
-    let status = null;
-    try {
-      const output = execSync(`gh pmu view ${sub.number} --json=status`, EXEC_OPTS).trim();
-      const data = JSON.parse(output);
-      status = data.status;
-    } catch (_e) {
-      // On failure, treat as active (don't skip)
-      active.push(sub);
-      continue;
-    }
+  // Parallelize all sub-issue status checks
+  const statusResults = await Promise.all(
+    subIssues.map(async (sub) => {
+      try {
+        const { stdout } = await execAsync(`gh pmu view ${sub.number} --json=status`, EXEC_OPTS);
+        const data = JSON.parse(stdout.trim());
+        return { sub, status: data.status };
+      } catch (_e) {
+        return { sub, status: null };
+      }
+    })
+  );
 
+  for (const { sub, status } of statusResults) {
     if (status && skipStatuses.includes(status.toLowerCase())) {
       skipped.push({ number: sub.number, status });
     } else {
@@ -332,11 +381,11 @@ function buildEpicAutoTodo(activeSubIssues, processingOrder) {
 /**
  * Move an issue to in_progress status
  * @param {number} issueNum
- * @returns {{ moved: boolean, error?: { code: string, message: string } }}
+ * @returns {Promise<{ moved: boolean, error?: { code: string, message: string } }>}
  */
-function moveToInProgress(issueNum) {
+async function moveToInProgress(issueNum) {
   try {
-    execSync(`gh pmu move ${issueNum} --status in_progress`, EXEC_OPTS);
+    await execAsync(`gh pmu move ${issueNum} --status in_progress`, EXEC_OPTS);
     return { moved: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -361,11 +410,11 @@ function parsePrdTracker(body) {
 /**
  * Move PRD tracker to in_progress if in backlog or ready
  * @param {number} trackerNum
- * @returns {{ moved: boolean, warning?: { code: string, message: string } }}
+ * @returns {Promise<{ moved: boolean, warning?: { code: string, message: string } }>}
  */
-function movePrdTracker(trackerNum) {
+async function movePrdTracker(trackerNum) {
   // Check current status
-  const statusResult = execJSON(
+  const statusResult = await execJSON(
     `gh pmu view ${trackerNum} --json=status`,
     'PRD_TRACKER_ERROR',
     `Failed to check PRD tracker #${trackerNum}`
@@ -383,7 +432,7 @@ function movePrdTracker(trackerNum) {
   }
 
   try {
-    execSync(`gh pmu move ${trackerNum} --status in_progress`, EXEC_OPTS);
+    await execAsync(`gh pmu move ${trackerNum} --status in_progress`, EXEC_OPTS);
     return { moved: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -398,10 +447,10 @@ function movePrdTracker(trackerNum) {
 
 /**
  * Resolve the branch tracker for the current branch
- * @returns {number|null} Tracker issue number or null
+ * @returns {Promise<number|null>} Tracker issue number or null
  */
-function resolveTracker() {
-  const output = execSafe('gh pmu branch current');
+async function resolveTracker() {
+  const output = await execSafe('gh pmu branch current');
   if (!output) return null;
   const match = output.match(/Tracker:\s*#(\d+)/);
   return match ? parseInt(match[1], 10) : null;
@@ -433,10 +482,10 @@ function readFrameworkConfig() {
 
 /**
  * Get the current git branch name
- * @returns {string|null} Branch name or null on failure
+ * @returns {Promise<string|null>} Branch name or null on failure
  */
-function getCurrentBranch() {
-  const output = execSafe('git branch --show-current');
+async function getCurrentBranch() {
+  const output = await execSafe('git branch --show-current');
   return output ? output.trim() : null;
 }
 
@@ -447,11 +496,11 @@ function getCurrentBranch() {
  * @param {number} issueNum
  * @param {string} targetBranch - Branch to assign to
  * @param {object|null} [workstreams] - Parsed .workstreams.json (optional)
- * @returns {{ assignable: boolean, alreadyAssigned?: boolean, error?: { code: string, message: string } }}
+ * @returns {Promise<{ assignable: boolean, alreadyAssigned?: boolean, error?: { code: string, message: string } }>}
  */
-function checkAssignability(issueNum, targetBranch, workstreams) {
+async function checkAssignability(issueNum, targetBranch, workstreams) {
   // Check current branch assignment
-  const branchResult = gatherBranchData(issueNum);
+  const branchResult = await gatherBranchData(issueNum);
   if (branchResult.error && branchResult.error.code === 'NO_BRANCH') {
     // Unassigned — check workstream conflicts before allowing
     if (workstreams && workstreams.streams) {
@@ -491,12 +540,12 @@ function checkAssignability(issueNum, targetBranch, workstreams) {
 /**
  * Perform assignment of an issue to the current branch via assign-branch.js
  * @param {number} issueNum
- * @returns {{ assigned: boolean, error?: { code: string, message: string } }}
+ * @returns {Promise<{ assigned: boolean, error?: { code: string, message: string } }>}
  */
-function performAssignment(issueNum) {
+async function performAssignment(issueNum) {
   const scriptPath = path.join(__dirname, 'assign-branch.js');
   try {
-    execSync(`node "${scriptPath}" "#${issueNum}"`, EXEC_OPTS);
+    await execAsync(`node "${scriptPath}" "#${issueNum}"`, EXEC_OPTS);
     return { assigned: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -551,29 +600,30 @@ function buildErrorEnvelope(errors) {
 // ─── Single Issue Flow ───
 
 /**
- * Run the preamble for a single issue
+ * Run the preamble for a single issue.
+ * Uses consolidated API calls and parallelized I/O for performance.
  * @param {number} issueNum
  * @param {object} [options] - Optional flags
  * @param {boolean} [options.assign] - If true, assign issue to current branch before proceeding
- * @returns {object} JSON envelope
+ * @returns {Promise<object>} JSON envelope
  */
-function runSingleIssue(issueNum, options) {
+async function runSingleIssue(issueNum, options) {
   const warnings = [];
   let roundTrips = 0;
   const assignRequested = options && options.assign;
   let assignGate = false;
 
-  // 1. Gather issue data
-  roundTrips++;
-  const issueResult = gatherIssueData(issueNum);
-  if (issueResult.error) {
-    return buildErrorEnvelope([issueResult.error]);
-  }
-
-  // 1a. --assign: check assignability and perform assignment
+  // 1. Assignment flow (if --assign requested)
   if (assignRequested) {
+    // Need issue data first to check if it exists, then check assignability
     roundTrips++;
-    const currentBranch = getCurrentBranch();
+    const issueCheck = await gatherIssueOnly(issueNum);
+    if (issueCheck.error) {
+      return buildErrorEnvelope([issueCheck.error]);
+    }
+
+    roundTrips++;
+    const currentBranch = await getCurrentBranch();
     if (!currentBranch) {
       return buildErrorEnvelope([{ code: 'NO_CURRENT_BRANCH', message: 'Could not determine current git branch.' }]);
     }
@@ -589,14 +639,14 @@ function runSingleIssue(issueNum, options) {
       // No workstreams file or parse error — proceed without conflict check
     }
 
-    const assignCheck = checkAssignability(issueNum, currentBranch, workstreams);
+    const assignCheck = await checkAssignability(issueNum, currentBranch, workstreams);
     if (!assignCheck.assignable) {
       return buildErrorEnvelope([assignCheck.error]);
     }
 
     if (!assignCheck.alreadyAssigned) {
       roundTrips++;
-      const assignResult = performAssignment(issueNum);
+      const assignResult = await performAssignment(issueNum);
       if (!assignResult.assigned) {
         return buildErrorEnvelope([assignResult.error]);
       }
@@ -604,29 +654,30 @@ function runSingleIssue(issueNum, options) {
     }
   }
 
-  // 2. Gather branch data
-  roundTrips++;
-  const branchResult = gatherBranchData(issueNum);
-  if (branchResult.error) {
-    return buildErrorEnvelope([branchResult.error]);
+  // 2. Parallel: gather all data (single consolidated call) + resolve tracker
+  //    These are independent — tracker resolution only needs the current branch.
+  const [dataResult, tracker] = await Promise.all([
+    gatherAllData(issueNum),
+    resolveTracker()
+  ]);
+  roundTrips++; // gatherAllData = 1 consolidated call
+  roundTrips++; // resolveTracker
+
+  if (dataResult.error) {
+    return buildErrorEnvelope([dataResult.error]);
   }
 
-  // 3. Detect type
-  const type = detectIssueType(issueResult.issue);
-
-  // 4. Resolve tracker
-  roundTrips++;
-  const tracker = resolveTracker();
   if (tracker === null) {
     warnings.push({ code: 'NO_TRACKER', message: 'Could not resolve branch tracker.' });
   }
 
-  // 5. Read framework config
+  // 3. Detect type + read framework config (both sync, no I/O)
+  const type = detectIssueType(dataResult.issue);
   const frameworkConfig = readFrameworkConfig();
 
-  // 6. Move to in_progress
+  // 4. Move to in_progress
   roundTrips++;
-  const moveResult = moveToInProgress(issueNum);
+  const moveResult = await moveToInProgress(issueNum);
   const gates = {
     assigned: assignGate,
     movedToInProgress: moveResult.moved,
@@ -636,22 +687,22 @@ function runSingleIssue(issueNum, options) {
     return buildErrorEnvelope([moveResult.error]);
   }
 
-  // 7. PRD tracker auto-move
-  const prdTrackerNum = parsePrdTracker(issueResult.issue.body);
+  // 5. PRD tracker auto-move
+  const prdTrackerNum = parsePrdTracker(dataResult.issue.body);
   if (prdTrackerNum) {
     roundTrips++;
-    const prdResult = movePrdTracker(prdTrackerNum);
+    const prdResult = await movePrdTracker(prdTrackerNum);
     gates.prdTrackerMoved = prdResult.moved;
     if (prdResult.warning) {
       warnings.push(prdResult.warning);
     }
   }
 
-  // 8. Type-specific data gathering
+  // 6. Type-specific data gathering
   let autoTodo;
   const context = {
-    issue: issueResult.issue,
-    branch: branchResult.branch,
+    issue: dataResult.issue,
+    branch: dataResult.branch,
     type,
     tracker,
     framework: frameworkConfig.framework,
@@ -659,9 +710,9 @@ function runSingleIssue(issueNum, options) {
   };
 
   if (type === 'epic' || type === 'branch') {
-    // Epic/Branch flow: load sub-issues, check statuses, determine order
+    // Epic/Branch flow: load sub-issues, check statuses (parallelized), determine order
     roundTrips++;
-    const subResult = loadSubIssues(issueNum);
+    const subResult = await loadSubIssues(issueNum);
     if (subResult.warning) {
       warnings.push(subResult.warning);
     }
@@ -677,14 +728,14 @@ function runSingleIssue(issueNum, options) {
       });
     }
 
-    roundTrips += subResult.subIssues.length; // one gh call per sub-issue status
-    const statusResult = checkSubIssueStatuses(subResult.subIssues);
+    roundTrips += subResult.subIssues.length; // parallelized but still counted
+    const statusResult = await checkSubIssueStatuses(subResult.subIssues);
     context.skipped = statusResult.skipped;
 
     // Branch trackers always use ascending numeric order (no custom Processing Order)
     const processingOrder = type === 'branch'
       ? [...subNums].sort((a, b) => a - b)
-      : parseProcessingOrder(issueResult.issue.body, subNums);
+      : parseProcessingOrder(dataResult.issue.body, subNums);
     context.processingOrder = processingOrder;
 
     autoTodo = buildEpicAutoTodo(statusResult.active, processingOrder);
@@ -698,7 +749,7 @@ function runSingleIssue(issueNum, options) {
     }
   } else {
     // Standard flow: parse acceptance criteria
-    autoTodo = parseAcceptanceCriteria(issueResult.issue.body);
+    autoTodo = parseAcceptanceCriteria(dataResult.issue.body);
   }
 
   const envelope = buildSuccessEnvelope(context, gates, autoTodo, warnings);
@@ -711,10 +762,10 @@ function runSingleIssue(issueNum, options) {
 /**
  * Resolve issue numbers from a status query
  * @param {string} status
- * @returns {{ issues: number[] } | { error: { code: string, message: string } }}
+ * @returns {Promise<{ issues: number[] } | { error: { code: string, message: string } }>}
  */
-function resolveStatusIssues(status) {
-  const result = execJSON(
+async function resolveStatusIssues(status) {
+  const result = await execJSON(
     `gh pmu list --status ${status} --json=number,title`,
     'STATUS_QUERY_FAILED',
     `Failed to query issues in "${status}" status`
@@ -731,16 +782,16 @@ function resolveStatusIssues(status) {
  * @param {number} issueNum
  * @param {{ tracker: number|null, framework: string|null, frameworkPath: string|null }} shared
  * @param {object} [options] - Optional flags (e.g., { assign: true })
- * @returns {object} Per-issue result envelope
+ * @returns {Promise<object>} Per-issue result envelope
  */
-function runSingleIssueWithShared(issueNum, shared, options) {
+async function runSingleIssueWithShared(issueNum, shared, options) {
   const warnings = [];
   let roundTrips = 0;
   const assignRequested = options && options.assign;
   let assignGate = false;
 
   roundTrips++;
-  const issueResult = gatherIssueData(issueNum);
+  const issueResult = await gatherIssueOnly(issueNum);
   if (issueResult.error) {
     return { ok: false, issueNum, errors: [issueResult.error], warnings: [], roundTrips };
   }
@@ -748,19 +799,19 @@ function runSingleIssueWithShared(issueNum, shared, options) {
   // --assign: check assignability and perform assignment
   if (assignRequested) {
     roundTrips++;
-    const currentBranch = getCurrentBranch();
+    const currentBranch = await getCurrentBranch();
     if (!currentBranch) {
       return { ok: false, issueNum, errors: [{ code: 'NO_CURRENT_BRANCH', message: 'Could not determine current git branch.' }], warnings: [], roundTrips };
     }
 
-    const assignCheck = checkAssignability(issueNum, currentBranch);
+    const assignCheck = await checkAssignability(issueNum, currentBranch);
     if (!assignCheck.assignable) {
       return { ok: false, issueNum, errors: [assignCheck.error], warnings: [], roundTrips };
     }
 
     if (!assignCheck.alreadyAssigned) {
       roundTrips++;
-      const assignResult = performAssignment(issueNum);
+      const assignResult = await performAssignment(issueNum);
       if (!assignResult.assigned) {
         return { ok: false, issueNum, errors: [assignResult.error], warnings: [], roundTrips };
       }
@@ -769,7 +820,7 @@ function runSingleIssueWithShared(issueNum, shared, options) {
   }
 
   roundTrips++;
-  const branchResult = gatherBranchData(issueNum);
+  const branchResult = await gatherBranchData(issueNum);
   if (branchResult.error) {
     return { ok: false, issueNum, errors: [branchResult.error], warnings: [], roundTrips };
   }
@@ -804,11 +855,11 @@ function runSingleIssueWithShared(issueNum, shared, options) {
  * Run preamble for multiple issues with shared config resolution
  * @param {number[]} issueNums
  * @param {object} [options] - Optional flags (e.g., { assign: true })
- * @returns {object} Batch envelope with results array
+ * @returns {Promise<object>} Batch envelope with results array
  */
-function runBatch(issueNums, options) {
+async function runBatch(issueNums, options) {
   // Resolve shared config once
-  const tracker = issueNums.length > 0 ? resolveTracker() : null;
+  const tracker = issueNums.length > 0 ? await resolveTracker() : null;
   const frameworkConfig = readFrameworkConfig();
   const shared = {
     tracker,
@@ -816,7 +867,11 @@ function runBatch(issueNums, options) {
     frameworkPath: frameworkConfig.frameworkPath
   };
 
-  const results = issueNums.map(num => runSingleIssueWithShared(num, shared, options));
+  // Process issues sequentially (order matters for side effects)
+  const results = [];
+  for (const num of issueNums) {
+    results.push(await runSingleIssueWithShared(num, shared, options));
+  }
 
   return {
     ok: true,
@@ -843,28 +898,28 @@ async function main() {
   const options = parsed.assign ? { assign: true } : undefined;
 
   if (parsed.mode === 'single') {
-    const result = runSingleIssue(parsed.issues[0], options);
+    const result = await runSingleIssue(parsed.issues[0], options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;
   }
 
   if (parsed.mode === 'batch') {
-    const result = runBatch(parsed.issues, options);
+    const result = await runBatch(parsed.issues, options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(0);
     return;
   }
 
   if (parsed.mode === 'status') {
-    const statusResult = resolveStatusIssues(parsed.status);
+    const statusResult = await resolveStatusIssues(parsed.status);
     if (statusResult.error) {
       const envelope = buildErrorEnvelope([statusResult.error]);
       process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
       process.exit(1);
       return;
     }
-    const result = runBatch(statusResult.issues, options);
+    const result = await runBatch(statusResult.issues, options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(0);
     return;
@@ -887,7 +942,8 @@ if (require.main === module) {
 module.exports = {
   classifyError,
   parseArgs,
-  gatherIssueData,
+  gatherAllData,
+  gatherIssueOnly,
   gatherBranchData,
   detectIssueType,
   parseAcceptanceCriteria,

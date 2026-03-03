@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * @framework-script 0.55.0
+ * @framework-script 0.56.0
  * CI Recommendation Report UI
  *
  * Formats recommendation output for display and parses user selections.

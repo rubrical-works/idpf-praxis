@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.55.0
+ * @framework-script 0.56.0
  * switch-branch.js
  *
  * Switch between branch contexts.

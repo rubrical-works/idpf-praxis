@@ -1,5 +1,5 @@
 # Framework Summary
-**Version:** v0.55.0
+**Version:** v0.56.0
 **Purpose:** Compact startup reference for framework developers
 ## Quick Reference
 | Component | Count | Location |

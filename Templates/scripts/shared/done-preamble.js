@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.55.0
+ * @framework-script 0.56.0
  * done-preamble.js
  *
  * Consolidates deterministic validation and status transitions for the /done
@@ -14,12 +14,14 @@
  *   node done-preamble.js              (discovery mode — query in_review)
  */
 
-const { execSync } = require('child_process');
+const { exec: execCb } = require('child_process');
+const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
 
+const execAsync = promisify(execCb);
 const SCHEMA_VERSION = 1;
-const EXEC_OPTS = { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] };
+const EXEC_OPTS = { encoding: 'utf-8' };
 
 // ─── Error Classification ───
 
@@ -52,29 +54,31 @@ function classifyError(errorMessage, defaultCode) {
 // ─── Execution Safety ───
 
 /**
- * Safe exec wrapper — never throws
+ * Safe async exec wrapper — never throws
  * @param {string} cmd
- * @returns {string|null} Trimmed output or null on failure
+ * @returns {Promise<string|null>} Trimmed output or null on failure
  */
-function execSafe(cmd) {
+async function execSafe(cmd) {
   try {
-    return execSync(cmd, EXEC_OPTS).trim();
+    const { stdout } = await execAsync(cmd, EXEC_OPTS);
+    return stdout.trim();
   } catch (_e) {
     return null;
   }
 }
 
 /**
- * Exec wrapper that returns parsed JSON or an error object.
+ * Async exec wrapper that returns parsed JSON or an error object.
  * @param {string} cmd
  * @param {string} errorCode - Default error code to use on failure
  * @param {string} errorMsg - Error message prefix
- * @returns {{ data: object } | { error: { code: string, message: string } }}
+ * @returns {Promise<{ data: object } | { error: { code: string, message: string } }>}
  */
-function execJSON(cmd, errorCode, errorMsg) {
+async function execJSON(cmd, errorCode, errorMsg) {
   let output;
   try {
-    output = execSync(cmd, EXEC_OPTS).trim();
+    const { stdout } = await execAsync(cmd, EXEC_OPTS);
+    output = stdout.trim();
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
     const code = classifyError(msg, errorCode);
@@ -140,13 +144,14 @@ function parseArgs(args) {
 // ─── Data Gathering ───
 
 /**
- * Fetch issue data from GitHub
+ * Fetch all issue data (issue fields + project status) in a single API call.
+ * Replaces separate gatherIssueData + gatherStatusData calls.
  * @param {number} issueNum
- * @returns {{ issue: object } | { error: { code: string, message: string } }}
+ * @returns {Promise<{ issue: object, status: string } | { error: { code: string, message: string } }>}
  */
-function gatherIssueData(issueNum) {
-  const result = execJSON(
-    `gh issue view ${issueNum} --json=number,title,labels,body,state`,
+async function gatherAllData(issueNum) {
+  const result = await execJSON(
+    `gh pmu view ${issueNum} --json=number,title,labels,body,state,status`,
     'NOT_FOUND',
     `Issue #${issueNum} not found`
   );
@@ -154,22 +159,21 @@ function gatherIssueData(issueNum) {
   if (result.data.state === 'CLOSED') {
     return { error: { code: 'CLOSED', message: `Issue #${issueNum} is already closed.` } };
   }
-  return { issue: result.data };
-}
+  // Normalize labels: gh pmu view returns flat strings, gh issue view returned objects.
+  // Downstream code accesses label.name — wrap strings in objects for compatibility.
+  const rawLabels = result.data.labels || [];
+  const labels = rawLabels.map(l => typeof l === 'string' ? { name: l } : l);
 
-/**
- * Fetch issue status from gh pmu
- * @param {number} issueNum
- * @returns {{ status: string } | { error: { code: string, message: string } }}
- */
-function gatherStatusData(issueNum) {
-  const result = execJSON(
-    `gh pmu view ${issueNum} --json=status`,
-    'STATUS_FETCH_FAILED',
-    `Failed to get status for #${issueNum}`
-  );
-  if (result.error) return result;
-  return { status: (result.data.status || '').toLowerCase() };
+  return {
+    issue: {
+      number: result.data.number,
+      title: result.data.title,
+      labels,
+      body: result.data.body,
+      state: result.data.state
+    },
+    status: (result.data.status || '').toLowerCase()
+  };
 }
 
 // ─── Label Detection ───
@@ -329,14 +333,14 @@ function resolveTracker() {
  * Link a completed issue to the branch tracker (best-effort)
  * @param {number} issueNum
  * @param {number|null} trackerNum
- * @returns {{ linked: boolean, warning?: { code: string, message: string } }}
+ * @returns {Promise<{ linked: boolean, warning?: { code: string, message: string } }>}
  */
-function linkToTracker(issueNum, trackerNum) {
+async function linkToTracker(issueNum, trackerNum) {
   if (!trackerNum) {
     return { linked: false };
   }
   try {
-    execSync(`gh pmu sub add ${trackerNum} ${issueNum}`, EXEC_OPTS);
+    await execAsync(`gh pmu sub add ${trackerNum} ${issueNum}`, EXEC_OPTS);
     return { linked: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -356,16 +360,17 @@ function linkToTracker(issueNum, trackerNum) {
 /**
  * Run diff verification by calling done-verify.js
  * @param {number} issueNum
- * @returns {{ diffVerification: object } | { error: { code: string, message: string } }}
+ * @returns {Promise<{ diffVerification: object } | { error: { code: string, message: string } }>}
  */
-function runDiffVerification(issueNum) {
+async function runDiffVerification(issueNum) {
   const verifyScript = path.join(__dirname, 'done-verify.js');
   let output;
   try {
-    output = execSync(
+    const { stdout } = await execAsync(
       `node "${verifyScript}" --issue ${issueNum}`,
       EXEC_OPTS
-    ).trim();
+    );
+    output = stdout.trim();
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
     return {
@@ -406,11 +411,11 @@ function runDiffVerification(issueNum) {
 /**
  * Move an issue to done status
  * @param {number} issueNum
- * @returns {{ moved: boolean, error?: { code: string, message: string } }}
+ * @returns {Promise<{ moved: boolean, error?: { code: string, message: string } }>}
  */
-function moveToDone(issueNum) {
+async function moveToDone(issueNum) {
   try {
-    execSync(`gh pmu move ${issueNum} --status done`, EXEC_OPTS);
+    await execAsync(`gh pmu move ${issueNum} --status done`, EXEC_OPTS);
     return { moved: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -424,24 +429,33 @@ function moveToDone(issueNum) {
 // ─── Single Issue Flow ───
 
 /**
- * Run the done preamble for a single issue
+ * Run the done preamble for a single issue.
+ * Parallelizes data gathering and diff verification for performance.
  * @param {number} issueNum
  * @param {{ forceMove?: boolean }} options
- * @returns {object} JSON envelope
+ * @returns {Promise<object>} JSON envelope
  */
-function runSingleIssue(issueNum, options = {}) {
+async function runSingleIssue(issueNum, options = {}) {
   const warnings = [];
   let roundTrips = 0;
 
-  // 1. Gather issue data
-  roundTrips++;
-  const issueResult = gatherIssueData(issueNum);
-  if (issueResult.error) {
-    return buildErrorEnvelope([issueResult.error]);
+  // 1. Parallel: gather all data (single API call) + diff verification
+  //    These are independent — diff verification only needs issueNum.
+  const needsVerify = !options.forceMove;
+  const [dataResult, verifyResult] = await Promise.all([
+    gatherAllData(issueNum),
+    needsVerify ? runDiffVerification(issueNum) : Promise.resolve(null)
+  ]);
+  roundTrips++; // gatherAllData = 1 consolidated call
+  if (needsVerify) roundTrips++; // diff verification subprocess
+
+  // 2. Validate data result
+  if (dataResult.error) {
+    return buildErrorEnvelope([dataResult.error]);
   }
 
-  // 2. Check for PRD label (redirect)
-  if (hasPrdLabel(issueResult.issue.labels)) {
+  // 3. Check for PRD label (redirect)
+  if (hasPrdLabel(dataResult.issue.labels)) {
     return buildErrorEnvelope([{
       code: 'PRD_REDIRECT',
       message: `Issue #${issueNum} has the "prd" label.`,
@@ -449,23 +463,17 @@ function runSingleIssue(issueNum, options = {}) {
     }]);
   }
 
-  // 3. Check status (must be in_review)
-  roundTrips++;
-  const statusResult = gatherStatusData(issueNum);
-  if (statusResult.error) {
-    return buildErrorEnvelope([statusResult.error]);
-  }
-
-  const statusValidation = validateStatus(statusResult.status, issueNum);
+  // 4. Check status (must be in_review) — status from consolidated call
+  const statusValidation = validateStatus(dataResult.status, issueNum);
   if (statusValidation.error) {
     return buildErrorEnvelope([statusValidation.error]);
   }
 
-  // 4. Check for approval-gate labels
-  const approvalGate = isApprovalGate(issueResult.issue.labels);
+  // 5. Check for approval-gate labels
+  const approvalGate = isApprovalGate(dataResult.issue.labels);
   let nextSteps = null;
   if (approvalGate) {
-    const prdRef = parsePrdReference(issueResult.issue.body);
+    const prdRef = parsePrdReference(dataResult.issue.body);
     if (prdRef) {
       nextSteps = {
         prdTracker: prdRef,
@@ -482,11 +490,9 @@ function runSingleIssue(issueNum, options = {}) {
     }
   }
 
-  // 5. Diff verification (skip if --force-move)
+  // 6. Process diff verification result
   let diffVerification = null;
-  if (!options.forceMove) {
-    roundTrips++;
-    const verifyResult = runDiffVerification(issueNum);
+  if (verifyResult !== null) {
     if (verifyResult.error) {
       // Diff verification crash is non-fatal — report as warning, require confirmation
       warnings.push(verifyResult.error);
@@ -496,25 +502,25 @@ function runSingleIssue(issueNum, options = {}) {
     }
   }
 
-  // 6. Conditional move to done
+  // 7. Conditional move to done
   let movedToDone = false;
   if (options.forceMove || (diffVerification && !diffVerification.requiresConfirmation)) {
     roundTrips++;
-    const moveResult = moveToDone(issueNum);
+    const moveResult = await moveToDone(issueNum);
     if (moveResult.error) {
       return buildErrorEnvelope([moveResult.error]);
     }
     movedToDone = moveResult.moved;
   }
 
-  // 7. CI pre-check data
+  // 8. CI pre-check data + tracker resolution (both local, no network)
   const ciData = gatherCiData();
-
-  // 8. Branch tracker linking (only after successful move to done)
   const trackerNum = resolveTracker();
+
+  // 9. Branch tracker linking (only after successful move to done)
   let trackerLinked = false;
   if (movedToDone && trackerNum) {
-    const linkResult = linkToTracker(issueNum, trackerNum);
+    const linkResult = await linkToTracker(issueNum, trackerNum);
     trackerLinked = linkResult.linked;
     if (linkResult.warning) {
       warnings.push(linkResult.warning);
@@ -523,8 +529,8 @@ function runSingleIssue(issueNum, options = {}) {
 
   // Build context
   const context = {
-    issue: issueResult.issue,
-    status: movedToDone ? 'done' : statusResult.status
+    issue: dataResult.issue,
+    status: movedToDone ? 'done' : dataResult.status
   };
 
   context.ci = ciData;
@@ -552,19 +558,20 @@ function runSingleIssue(issueNum, options = {}) {
 /**
  * Query in_review issues for /done selection (no-args mode).
  * Read-only — no mutations, no moves, no tracker linking.
- * @returns {object} JSON envelope with discovery data or error
+ * @returns {Promise<object>} JSON envelope with discovery data or error
  */
-function runDiscovery() {
+async function runDiscovery() {
   let roundTrips = 0;
 
   // Query in_review issues
   roundTrips++;
   let output;
   try {
-    output = execSync(
+    const { stdout } = await execAsync(
       'gh pmu list --status in_review',
       EXEC_OPTS
-    ).trim();
+    );
+    output = stdout.trim();
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
     const code = classifyError(msg, 'DISCOVERY_FAILED');
@@ -628,24 +635,25 @@ async function main() {
   }
 
   if (parsed.mode === 'discovery') {
-    const result = runDiscovery();
+    const result = await runDiscovery();
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;
   }
 
   if (parsed.mode === 'single') {
-    const result = runSingleIssue(parsed.issues[0], { forceMove: parsed.forceMove });
+    const result = await runSingleIssue(parsed.issues[0], { forceMove: parsed.forceMove });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;
   }
 
   if (parsed.mode === 'batch') {
-    // Batch mode: process each issue
-    const results = parsed.issues.map(num =>
-      runSingleIssue(num, { forceMove: parsed.forceMove })
-    );
+    // Batch mode: process each issue sequentially (order matters for side effects)
+    const results = [];
+    for (const num of parsed.issues) {
+      results.push(await runSingleIssue(num, { forceMove: parsed.forceMove }));
+    }
     const envelope = {
       ok: true,
       version: SCHEMA_VERSION,
@@ -677,8 +685,7 @@ module.exports = {
   execSafe,
   execJSON,
   parseArgs,
-  gatherIssueData,
-  gatherStatusData,
+  gatherAllData,
   hasPrdLabel,
   isApprovalGate,
   parsePrdReference,

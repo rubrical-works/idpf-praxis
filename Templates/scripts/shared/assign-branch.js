@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @framework-script 0.55.0
+ * @framework-script 0.56.0
  * assign-branch.js
  *
  * Interactive script to assign issues to branches.
@@ -11,15 +11,11 @@
  * Usage:
  *   node assign-branch.js                     # Interactive mode
  *   node assign-branch.js release/v1.0 123    # Direct assignment
- *   node assign-branch.js release/v1.0 --all  # Assign all backlog issues
  *   node assign-branch.js --add-ready         # Assign all ready issues (immediate)
  *
  * Flags:
- *   --all         Assign all unassigned backlog issues (lists first without flag)
  *   --add-ready   Assign all unassigned ready issues (immediate, no listing)
  *   --timing      Show timing information for performance debugging
- *
- * Note: --all and --add-ready are mutually exclusive.
  *
  * Performance notes:
  *   - Branch discovery uses label-based query (~0.8s) via getAllOpenTrackers()
@@ -122,6 +118,41 @@ async function getIssueLabels(issueNumber) {
         if (showTiming) console.log(`  ⚠ getIssueLabels(${issueNumber}) failed: ${err.message}`);
     }
     return [];
+}
+
+/**
+ * Expand epic issues into their sub-issues for bulk assignment.
+ * When an issue with the 'epic' label is passed, fetches its sub-issues
+ * and adds them to the issue list. Returns both the expanded list and
+ * a Set of sub-issue numbers (for tracker linking exclusion).
+ *
+ * @param {number[]} issueNumbers - Issue numbers from args
+ * @returns {Promise<{expanded: number[], epicSubIssues: Set<number>}>}
+ */
+async function expandEpicSubIssues(issueNumbers) {
+    const expanded = [];
+    const epicSubIssues = new Set();
+
+    for (const num of issueNumbers) {
+        expanded.push(num);
+        const labels = await getIssueLabels(num);
+        if (!labels.some(l => l.toLowerCase() === 'epic')) continue;
+
+        // Fetch sub-issues for this epic
+        const result = await execAsyncSafe(`gh pmu sub list ${num} --json`);
+        const data = safeJsonParse(result);
+        const children = data && data.children ? data.children : [];
+
+        if (children.length > 0) {
+            console.log(`  ↳ Epic #${num}: expanding ${children.length} sub-issues`);
+            for (const child of children) {
+                expanded.push(child.number);
+                epicSubIssues.add(child.number);
+            }
+        }
+    }
+
+    return { expanded, epicSubIssues };
 }
 
 /**
@@ -325,15 +356,8 @@ async function main() {
     }
 
     // Parse args - order-independent parsing
-    const assignAll = args.includes('--all');
     const addReady = args.includes('--add-ready');
     showTiming = args.includes('--timing');
-
-    // Mutual exclusion check
-    if (assignAll && addReady) {
-        console.log('Error: --all and --add-ready are mutually exclusive.');
-        process.exit(1);
-    }
 
     // Auto-detect: arguments starting with # are issues, prefix/name patterns are branches
     let branch = args.find(a => !a.startsWith('-') && !a.match(/^#?\d+$/) && a.includes('/'));
@@ -388,7 +412,7 @@ async function main() {
     }
 
     // Step 3: Single-branch shortcut - if only one branch and issues/flags provided, use current
-    if (!branch && currentBranch && (issueNumbers.length > 0 || addReady || assignAll)) {
+    if (!branch && currentBranch && (issueNumbers.length > 0 || addReady)) {
         branch = currentBranch;
         console.log(`Using current branch: ${branch}\n`);
     }
@@ -412,7 +436,6 @@ async function main() {
             console.log('  /assign-branch --add-ready         # Assign all ready issues to current');
         }
         console.log('  /assign-branch prefix/name #issue  # Assign to specific branch');
-        console.log('  /assign-branch prefix/name --all   # Assign all backlog issues');
         console.log('');
         console.log('Examples:');
         if (currentBranch) {
@@ -420,8 +443,7 @@ async function main() {
             console.log(`  /assign-branch #123`);
             console.log(`  /assign-branch #123 #124 #125`);
         }
-        console.log(`  /assign-branch ${branches[0].version} #123`);
-        console.log(`  /assign-branch ${branches[0].version} --all\n`);
+        console.log(`  /assign-branch ${branches[0].version} #123\n`);
         endTimer('total');
         return;
     }
@@ -441,7 +463,7 @@ async function main() {
             issueNumbers = ready.map(i => i.number);
             console.log(`Assigning all ${issueNumbers.length} ready issues to ${branch}...\n`);
         } else {
-            // Handle backlog issues (--all or listing)
+            // Handle backlog listing (no issues specified, no --add-ready)
             const backlog = await getIssuesByStatus('backlog');
 
             if (backlog.length === 0) {
@@ -450,62 +472,60 @@ async function main() {
                 return;
             }
 
-            if (assignAll) {
-                issueNumbers = backlog.map(i => i.number);
-                console.log(`Assigning all ${issueNumbers.length} unassigned backlog issues to ${branch}...\n`);
-            } else {
-                // Group by type for display
-                const epics = backlog.filter(i => i.labels?.includes('epic'));
-                const bugs = backlog.filter(i => i.labels?.includes('bug'));
-                const enhancements = backlog.filter(i => i.labels?.includes('enhancement'));
-                const stories = backlog.filter(i => i.labels?.includes('story'));
-                const other = backlog.filter(i =>
-                    !['epic', 'bug', 'enhancement', 'story'].some(l => i.labels?.includes(l))
+            // Group by type for display
+            const epics = backlog.filter(i => i.labels?.includes('epic'));
+            const bugs = backlog.filter(i => i.labels?.includes('bug'));
+            const enhancements = backlog.filter(i => i.labels?.includes('enhancement'));
+            const stories = backlog.filter(i => i.labels?.includes('story'));
+            const other = backlog.filter(i =>
+                !['epic', 'bug', 'enhancement', 'story'].some(l => i.labels?.includes(l))
+            );
+
+            console.log(`Unassigned backlog issues (${backlog.length} total):\n`);
+
+            // Fetch sub-issue counts in parallel for epics
+            if (epics.length > 0) {
+                console.log('── Epics ──');
+                startTimer('epicSubCounts');
+                const subCounts = await Promise.all(
+                    epics.map(i => getSubIssueCountAsync(i.number))
                 );
-
-                console.log(`Unassigned backlog issues (${backlog.length} total):\n`);
-
-                // Fetch sub-issue counts in parallel for epics
-                if (epics.length > 0) {
-                    console.log('── Epics ──');
-                    startTimer('epicSubCounts');
-                    const subCounts = await Promise.all(
-                        epics.map(i => getSubIssueCountAsync(i.number))
-                    );
-                    endTimer('epicSubCounts');
-                    epics.forEach((i, idx) => {
-                        console.log(`  #${i.number} - ${i.title} (${subCounts[idx]} sub-issues)`);
-                    });
-                }
-
-                if (bugs.length > 0) {
-                    console.log('\n── Bugs ──');
-                    bugs.forEach(i => console.log(`  #${i.number} - ${i.title}`));
-                }
-
-                if (enhancements.length > 0) {
-                    console.log('\n── Enhancements ──');
-                    enhancements.forEach(i => console.log(`  #${i.number} - ${i.title}`));
-                }
-
-                if (stories.length > 0) {
-                    console.log('\n── Stories ──');
-                    stories.forEach(i => console.log(`  #${i.number} - ${i.title}`));
-                }
-
-                if (other.length > 0) {
-                    console.log('\n── Other ──');
-                    other.forEach(i => console.log(`  #${i.number} - ${i.title}`));
-                }
-
-                console.log('\n---');
-                console.log(`To assign specific issues: /assign-branch ${branch} #N #M ...`);
-                console.log(`To assign all: /assign-branch ${branch} --all`);
-                endTimer('total');
-                return;
+                endTimer('epicSubCounts');
+                epics.forEach((i, idx) => {
+                    console.log(`  #${i.number} - ${i.title} (${subCounts[idx]} sub-issues)`);
+                });
             }
+
+            if (bugs.length > 0) {
+                console.log('\n── Bugs ──');
+                bugs.forEach(i => console.log(`  #${i.number} - ${i.title}`));
+            }
+
+            if (enhancements.length > 0) {
+                console.log('\n── Enhancements ──');
+                enhancements.forEach(i => console.log(`  #${i.number} - ${i.title}`));
+            }
+
+            if (stories.length > 0) {
+                console.log('\n── Stories ──');
+                stories.forEach(i => console.log(`  #${i.number} - ${i.title}`));
+            }
+
+            if (other.length > 0) {
+                console.log('\n── Other ──');
+                other.forEach(i => console.log(`  #${i.number} - ${i.title}`));
+            }
+
+            console.log('\n---');
+            console.log(`To assign specific issues: /assign-branch ${branch} #N #M ...`);
+            endTimer('total');
+            return;
         }
     }
+
+    // Step 5b: Expand epic issues into sub-issues
+    const { expanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers);
+    issueNumbers = expanded;
 
     // Step 6: Confirm if large selection
     if (issueNumbers.length >= LARGE_SELECTION_THRESHOLD) {
@@ -557,8 +577,10 @@ async function main() {
     console.log(`\n✓ ${totalAssigned} issues assigned to ${branch}${useCurrent ? ' (current)' : ''}`);
 
     // Phase 2: Sequential tracker linking (avoids race condition on same parent)
-    if (tracker && issuesToLink.length > 0) {
-        await linkAllToTracker(issuesToLink, tracker);
+    // Epic sub-issues are excluded — they already have the epic as parent
+    const linkableIssues = issuesToLink.filter(num => !epicSubIssues.has(num));
+    if (tracker && linkableIssues.length > 0) {
+        await linkAllToTracker(linkableIssues, tracker);
     }
     endTimer('total');
 }
@@ -579,6 +601,7 @@ module.exports = {
     assignToBranch,
     linkToTracker,
     linkAllToTracker,
+    expandEpicSubIssues,
     hasBranchAssigned,
     main,
     // Export helpers for testing

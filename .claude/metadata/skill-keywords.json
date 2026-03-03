@@ -24,6 +24,21 @@
       "api migration",
       "api compatibility"
     ],
+    "astro-development": [
+      "astro",
+      "astro.build",
+      "islands architecture",
+      "content collections",
+      "partial hydration",
+      "client:load",
+      "client:idle",
+      "client:visible",
+      "astro component",
+      "static site generator",
+      "ssg framework",
+      "astro adapter",
+      "view transitions"
+    ],
     "bdd-writing": [
       "bdd",
       "behavior-driven",
