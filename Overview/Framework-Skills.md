@@ -1,10 +1,19 @@
 # Framework Skills Reference
-**Version:** v0.56.0
+**Version:** v0.57.0
 **Purpose:** Reference for all Skills
 ## Skills Overview
-**Location:** `Skills/` | **Total:** 29 skills (6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance)
+**Location:** `Skills/` | **Total:** 32 skills (6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform)
 **Characteristics:** Packaged units (SKILL.md + resources/ + LICENSE.txt), copy/paste Claude Code blocks, verification checklists
-**Installing:** Automatic via `/charter` or manual via `/install-skill <skill-name>`
+### Installing Skills
+**1. Automatic (via `/charter`):** Skills auto-suggested based on tech stack during charter creation.
+**2. Manual (via `/manage-skills`):**
+```
+/manage-skills list                   # Show available and installed skills
+/manage-skills install <skill-name>   # Install a specific skill
+/manage-skills remove <skill-name>    # Remove an installed skill
+/manage-skills info <skill-name>      # View skill details
+/manage-skills                        # Interactive mode
+```
 **Installed to:** `.claude/skills/{skill-name}/`
 ## TDD Skills (Experienced)
 ### tdd-red-phase
@@ -118,6 +127,6 @@
 |-----------|----------------|
 | IDPF-Agile | tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns |
 | IDPF-Vibe (vibe-newbie) | flask-setup, sinatra-setup, common-errors, sqlite-integration, beginner-testing |
-**Standalone Skills:** anti-pattern-analysis, bdd-writing, codebase-analysis, playwright-setup, drawio-generation, electron-development, vercel-project-setup, railway-project-setup, render-project-setup, digitalocean-app-setup
+**Standalone Skills:** anti-pattern-analysis, bdd-writing, codebase-analysis, playwright-setup, drawio-generation, electron-development
 ---
 **End of Framework Skills Reference**

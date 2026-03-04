@@ -1,5 +1,5 @@
 ---
-version: "v0.56.0"
+version: "v0.57.0"
 allowed-tools: Bash, AskUserQuestion
 description: "Manage project skills: list, install, remove, info (project)"
 argument-hint: "[list|install|remove|info] [name] [--verbose]"
@@ -36,6 +36,19 @@ When no subcommand:
 After `install`, check result for `postInstall` field. If present, report:
 ```
 Post-install: {postInstall.description}
+```
+### Default Skills Indicator
+When formatting `list` output, check each skill's `isDefault` field. If `true`, append `[default]` tag:
+```
+  ✓ tdd-red-phase [default] — Write failing tests for specific behavior
+  ✓ electron-development — Patterns for Electron app development
+    api-versioning — API versioning strategies
+```
+### Default Skill Removal Warning
+When `remove` returns `isDefault: true`, display the warning from `result.warnings`:
+```
+⚠ 'tdd-red-phase' is a default skill and will be re-added on next charter refresh.
+Removed: tdd-red-phase
 ```
 ### Tech Stack Recommendations
 After `list`, if skills have `suggests` field:

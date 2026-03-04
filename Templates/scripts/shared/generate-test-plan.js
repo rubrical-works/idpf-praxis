@@ -1,5 +1,6 @@
+// Rubrical Systems (c) 2026
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * generate-test-plan.js - Generate test plan skeleton from branch issues
  * @module scripts/shared/generate-test-plan
  *

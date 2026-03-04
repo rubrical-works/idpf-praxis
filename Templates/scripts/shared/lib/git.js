@@ -1,5 +1,6 @@
+// Rubrical Systems (c) 2026
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * lib/git.js - Git command utilities
  *
  * Provides functions for interacting with git repositories.

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+// Rubrical Systems (c) 2026
 
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * CI Recommendation Report UI
  *
  * Formats recommendation output for display and parses user selections.

@@ -1,5 +1,5 @@
 # Framework Overview
-**Version:** v0.56.0
+**Version:** v0.57.0
 **Purpose:** Comprehensive reference for AI assistants and framework development
 ---
 ## Framework Purpose and Scope
@@ -31,16 +31,16 @@ This framework ecosystem supports AI-assisted software development across multip
 - **Related:** `codebase-analysis` skill for extraction mode
 ---
 ## IDPF-Agile Framework
-**Location:** `IDPF-Agile/Agile-Driven Development Framework.md`
-**Type:** Sprint-Based Development with User Stories
+**Location:** `IDPF-Agile/` (Agile-Core.md, Agile-Commands.md, Agile-Best-Practices.md, Agile-Templates.md, Agile-Transitions.md)
+**Type:** Story-Driven Development with TDD Cycles
 ### Key Components
-**Terminology:** Product Backlog, Sprint Backlog, User Story, Story Points (Fibonacci: 1-21), Sprint (1-2 weeks), Epic, Definition of Done, Velocity
+**Terminology:** Product Backlog, User Story, Story Points (Fibonacci: 1-21), Epic, Definition of Done (DoD)
 **Workflow Stages:**
-1. **Product Backlog Creation**: Generate stories, organize into epics
-2. **Sprint Planning**: Select stories, set goal, estimate capacity
+1. **Product Backlog Creation**: Generate stories from PRD, organize into epics
+2. **Story Selection**: Select stories from Ready backlog
 3. **Story Development**: Implement using TDD (RED-GREEN-REFACTOR)
-4. **Sprint Review**: Validate stories, gather feedback
-5. **Sprint Retrospective**: Process improvement, velocity analysis
+4. **Story Review**: Validate acceptance criteria
+5. **Done**: Mark story complete, proceed to next story or release
 **User Story Format:**
 ```
 As a [user type]
@@ -57,13 +57,15 @@ Status: [Backlog/Selected/In Progress/In Review/Done]
 ```
 **Commands:**
 - **Backlog:** Create-Backlog, Add-Story, Prioritize-Backlog, Split-Story
-- **Sprint:** Plan-Sprint, Sprint-Status, Sprint-Retro, End-Sprint
 - **Story Workflow:** `work #N` and `done` triggers (per GitHub-Workflow.md)
 - **Development:** Run-Tests, Show-Coverage
-- **Release:** Open-Release, Prepare-Release, Close-Release
+- **Release Lifecycle:** Create-Branch, Prepare-Release, Merge-Branch, Destroy-Branch
+- **Special:** Pivot
+- **Utility:** List-Commands, Help
+**Metrics:** Story points completed, acceptance criteria pass rate, TDD cycle completion
 ### When to Use
 - Evolving requirements, iterative delivery, feature prioritization
-- Medium to large projects needing velocity tracking
+- Medium to large projects, well-defined or emerging requirements
 ---
 ## IDPF-Vibe Framework
 **Location:** `IDPF-Vibe/`
@@ -202,7 +204,7 @@ Both core + platform must be loaded together.
 ---
 ## Skills
 **Location:** `Skills/`
-**Total:** 29 skills (6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance)
+**Total:** 31 skills (6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform)
 ### TDD Skills (Experienced)
 - **tdd-red-phase** -- RED phase: writing failing tests, verifying failures
 - **tdd-green-phase** -- GREEN phase: minimal implementation to pass tests
@@ -268,7 +270,7 @@ Rules auto-load at session start, persist after compaction. Files numbered for l
 **Valid Transitions:**
 | From | To | When |
 |------|----|----|
-| **Vibe** | **Agile** | Exploration complete, feature set identified, ready for sprints |
+| **Vibe** | **Agile** | Exploration complete, feature set identified, ready for story-driven development |
 ```
 VIBE --> AGILE (Terminal)
 ```
@@ -284,15 +286,16 @@ System Instructions (REQUIRED - WHO + EXPERTISE)
     -> Assistant Guidelines (HOW WELL - quality)
 ```
 ### Selection Criteria
-- **IDPF-Agile:** Defined/evolving requirements, iterative delivery, velocity tracking
+- **IDPF-Agile:** Defined/evolving requirements, iterative delivery, feature prioritization
 - **IDPF-Vibe:** Unclear requirements, exploration, prototyping -> evolves to Agile
 ---
 ## Framework Ecosystem Summary
 - **2 Development Frameworks**: IDPF-Agile, IDPF-Vibe (7 variants)
 - **7 Testing Frameworks**: IDPF-Testing (foundation) + 6 specialized
 - **System Instructions**: 1 Core + 22 Domain Specialists + 1 Guide + Vibe Agent (Core + 6 platforms)
-- **29 Skills**: 6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 2 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance
+- **32 Skills**: 6 TDD/BDD, 1 PRD, 2 code quality, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 1 DevOps, 1 testing setup, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform
 - **2 Assistant Guidelines**: Software dev, Skill creation
+> **Note:** IDPF-PRD deprecated in v0.24; requirements engineering now uses `create-prd` skill.
 **Framework Selection Matrix:**
 | Project Type | Starting Point | Evolution Path |
 |--------------|---------------|----------------|

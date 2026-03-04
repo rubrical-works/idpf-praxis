@@ -1,5 +1,5 @@
 ---
-version: "v0.56.0"
+version: "v0.57.0"
 description: Safely delete branch with confirmation (project)
 argument-hint: "[branch-name] [--force]"
 ---
@@ -35,11 +35,21 @@ git rev-parse --verify "$BRANCH" 2>/dev/null
 ---
 
 <!-- USER-EXTENSION-START: pre-destroy -->
-<!-- Pre-destruction validation: check for unmerged commits, workstream detection, etc. -->
+### Workstream Detection (Pre-Destroy)
+Before confirming destruction, check if the branch is part of a workstream plan:
+1. **Load metadata:** Call `loadWorkstreamsMetadata('.workstreams.json')` from `plan-workstreams.js`
+   - If not found: skip (no workstream context)
+2. **Check workstream:** Call `preDestroyWorkstreamCheck(metadata, branchName)`
+   - If `isWorkstream: false`: skip (branch is not a workstream)
+3. **Show expanded confirmation:** Display workstream context before standard confirmation:
+   - `orphanWarning`: epic(s) that will lose their workstream assignment
+   - `assignedEpics`: list of epics on this branch with titles
+   - `activeSiblings`: other active workstreams that will continue
+4. **Proceed to standard confirmation** (Phase 1) -- workstream context is informational, does not block
 <!-- USER-EXTENSION-END: pre-destroy -->
 
 ## Phase 1: Confirmation
-**DESTRUCTIVE OPERATION** — will permanently delete:
+**DESTRUCTIVE OPERATION** -- will permanently delete:
 - Local branch: `$BRANCH`
 - Remote branch: `origin/$BRANCH`
 - Release artifacts: `Releases/[prefix]/[identifier]/`
@@ -117,7 +127,18 @@ git branch -D "$BRANCH"
 Using `-D` (force delete) since user confirmed abandoning unmerged work.
 
 <!-- USER-EXTENSION-START: post-destroy -->
-<!-- Post-destruction: notifications, audit logging, workstream metadata update -->
+### Workstream Metadata Update (Post-Destroy)
+After branch deletion, update workstream metadata if applicable:
+1. **Load metadata:** Call `loadWorkstreamsMetadata('.workstreams.json')` from `plan-workstreams.js`
+   - If not found: skip (no workstream context)
+2. **Update metadata:** Call `postDestroyWorkstreamUpdate(metadata, branchName)`
+   - Writes `updatedMetadata` back to `.workstreams.json` (status changed to `"destroyed"`)
+3. **Commit metadata:** `git add .workstreams.json && git commit -m "Update workstream metadata: $BRANCH destroyed"`
+4. **Epic reassignment:** If `orphanedEpics` is non-empty, present `reassignmentOptions` to user:
+   - Each option shows a sibling branch and its current epics
+   - User selects target branch or chooses "leave unassigned"
+   - If target selected: `gh pmu move [epic#] --branch [target]` for each orphaned epic
+5. **All destroyed:** If no active streams remain after update, display cleanup note: "No active workstreams remain. Consider removing `.workstreams.json`."
 <!-- USER-EXTENSION-END: post-destroy -->
 
 ---

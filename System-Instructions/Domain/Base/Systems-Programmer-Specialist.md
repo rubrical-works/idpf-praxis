@@ -1,5 +1,5 @@
 # System Instructions: Systems Programmer Specialist
-**Version:** v0.56.0
+**Version:** v0.57.0
 Extends: Core-Developer-Instructions.md
 **Purpose:** Rust systems programming, kernel development, OS internals, low-level systems work on general-purpose platforms.
 **Load with:** Core-Developer-Instructions.md (required foundation)

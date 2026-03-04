@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+// Rubrical Systems (c) 2026
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * done-preamble.js
  *
  * Consolidates deterministic validation and status transitions for the /done
@@ -105,6 +106,15 @@ function parseArgs(args) {
   }
 
   const forceMove = args.includes('--force-move');
+  const hasAll = args.includes('--all');
+
+  // --all conflicts with --issue/--issues
+  if (hasAll) {
+    if (args.includes('--issue') || args.includes('--issues')) {
+      return { error: { code: 'CONFLICTING_ARGS', message: '--all cannot be combined with --issue or --issues.' } };
+    }
+    return { mode: 'discovery', all: true };
+  }
 
   const flagIndex = args.indexOf('--issue');
   if (flagIndex !== -1) {
@@ -560,7 +570,7 @@ async function runSingleIssue(issueNum, options = {}) {
  * Read-only — no mutations, no moves, no tracker linking.
  * @returns {Promise<object>} JSON envelope with discovery data or error
  */
-async function runDiscovery() {
+async function runDiscovery(options = {}) {
   let roundTrips = 0;
 
   // Query in_review issues
@@ -614,7 +624,7 @@ async function runDiscovery() {
 
   const envelope = buildSuccessEnvelope({}, {}, []);
   envelope.discovery = {
-    mode: 'query',
+    mode: options.all ? 'all' : 'query',
     issues
   };
   envelope.roundTrips = roundTrips;
@@ -635,7 +645,7 @@ async function main() {
   }
 
   if (parsed.mode === 'discovery') {
-    const result = await runDiscovery();
+    const result = await runDiscovery({ all: parsed.all || false });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;

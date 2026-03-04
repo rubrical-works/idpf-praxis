@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-03-03T15:33:55.229Z",
+  "generatedAt": "2026-03-04T01:45:12.340Z",
   "version": "1.0.0",
-  "skillCount": 30,
+  "skillCount": 32,
   "skills": [
     {
       "name": "anti-pattern-analysis",
@@ -12,7 +12,11 @@
         "javascript",
         "typescript",
         "python",
-        "java"
+        "java",
+        "go",
+        "rust",
+        "ruby",
+        "csharp"
       ],
       "invocationMode": "auto"
     },
@@ -97,8 +101,22 @@
         "typescript",
         "python",
         "java",
-        "go"
+        "go",
+        "rust",
+        "ruby",
+        "php",
+        "swift",
+        "elixir",
+        "kotlin",
+        "csharp"
       ],
+      "invocationMode": "direct-only"
+    },
+    {
+      "name": "command-spec-audit",
+      "description": "Evaluate command specifications for quality, completeness, and extension point coverage",
+      "triggers": [],
+      "category": "code-quality",
       "invocationMode": "direct-only"
     },
     {
@@ -136,6 +154,7 @@
         "drawio",
         "diagrams",
         "svg",
+        "uml",
         "documentation"
       ],
       "invocationMode": "auto"
@@ -162,6 +181,10 @@
       "relevantTechStack": [
         "javascript",
         "typescript",
+        "python",
+        "go",
+        "rust",
+        "java",
         "node",
         "error-handling"
       ],
@@ -292,6 +315,23 @@
       "invocationMode": "direct-only"
     },
     {
+      "name": "resilience-patterns",
+      "description": "Fault tolerance patterns for distributed systems — retry, circuit breaker, fallback, bulkhead, and timeout",
+      "triggers": [],
+      "category": "architecture",
+      "relevantTechStack": [
+        "distributed-systems",
+        "microservices",
+        "api",
+        "node",
+        "python",
+        "go",
+        "java",
+        "rust"
+      ],
+      "invocationMode": "auto"
+    },
+    {
       "name": "seo-optimization",
       "description": "Provide structured SEO guidance for web projects covering technical foundations and content optimization",
       "triggers": [],
@@ -343,6 +383,9 @@
         "jest",
         "vitest",
         "pytest",
+        "go",
+        "rust",
+        "rspec",
         "testing"
       ],
       "invocationMode": "auto"
@@ -357,6 +400,9 @@
         "jest",
         "vitest",
         "pytest",
+        "go",
+        "rust",
+        "rspec",
         "testing"
       ],
       "invocationMode": "auto"
@@ -371,6 +417,9 @@
         "jest",
         "vitest",
         "pytest",
+        "go",
+        "rust",
+        "rspec",
         "testing"
       ],
       "invocationMode": "auto"
@@ -385,6 +434,9 @@
         "jest",
         "vitest",
         "pytest",
+        "go",
+        "rust",
+        "rspec",
         "testing"
       ],
       "invocationMode": "auto"
@@ -398,6 +450,9 @@
         "jest",
         "vitest",
         "pytest",
+        "go",
+        "rust",
+        "rspec",
         "testing",
         "tdd",
         "mocking"

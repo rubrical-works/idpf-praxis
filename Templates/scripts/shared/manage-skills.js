@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+// Rubrical Systems (c) 2026
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * manage-skills.js — Unified skill management
  *
  * Shared script for skill lifecycle management: list, install, remove, info.
@@ -13,6 +14,34 @@
 
 const fs = require('fs');
 const path = require('path');
+
+/**
+ * Load defaultSkills from skill-keywords.json metadata.
+ * @param {string} projectDir - Path to the project directory
+ * @returns {string[]} Array of default skill names, or empty array if unavailable
+ */
+function getDefaultSkills(projectDir) {
+  const keywordsPath = path.join(projectDir, '.claude', 'metadata', 'skill-keywords.json');
+  if (!fs.existsSync(keywordsPath)) {
+    return [];
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+    return Array.isArray(data.defaultSkills) ? data.defaultSkills : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+/**
+ * Check if a skill is a framework default.
+ * @param {string} projectDir - Path to the project directory
+ * @param {string} skillName - Name of the skill to check
+ * @returns {boolean} True if the skill is in defaultSkills
+ */
+function isDefaultSkill(projectDir, skillName) {
+  return getDefaultSkills(projectDir).includes(skillName);
+}
 
 /**
  * List available and installed skills.
@@ -48,11 +77,14 @@ function listSkills(projectDir, options = {}) {
     }
   }
 
+  const defaults = getDefaultSkills(projectDir);
+
   const skills = registry.skills.map(entry => {
     const skill = {
       name: entry.name,
       description: entry.description,
       installed: projectSkills.includes(entry.name),
+      isDefault: defaults.includes(entry.name),
     };
 
     if (options.verbose) {
@@ -199,6 +231,12 @@ function removeSkill(projectDir, skillName) {
 
   const symlinkPath = path.join(projectDir, '.claude', 'skills', skillName);
   const warnings = [];
+  const skillIsDefault = isDefaultSkill(projectDir, skillName);
+
+  // Warn if removing a default skill
+  if (skillIsDefault) {
+    warnings.push(`'${skillName}' is a default skill and will be re-added on next charter refresh.`);
+  }
 
   // Step 1: Remove symlink (broken symlink is non-fatal)
   try {
@@ -214,6 +252,7 @@ function removeSkill(projectDir, skillName) {
 
   return {
     status: 'removed',
+    isDefault: skillIsDefault,
     installedCount: newSkills.length,
     totalCount: ctx.registry.skills.length,
     warnings,
@@ -605,6 +644,8 @@ module.exports = {
   validateRegistryEntry,
   matchSkillsToTechStack,
   mergeSkillRecommendations,
+  getDefaultSkills,
+  isDefaultSkill,
   getInvocationMode,
   syncSkillSymlinks,
   migrateSkillSymlinks,

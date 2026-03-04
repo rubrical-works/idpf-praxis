@@ -1,5 +1,5 @@
 # Framework Summary
-**Version:** v0.56.0
+**Version:** v0.57.0
 **Purpose:** Compact startup reference for framework developers
 ## Quick Reference
 | Component | Count | Location |
@@ -8,14 +8,14 @@
 | Testing Frameworks | 7 | IDPF-Testing (review criteria library) + 6 specialized |
 | Domain Specialists | 22 | 12 Base + 10 Pack |
 | Core Instructions | 2 | Core-Developer-Instructions + Domain-Selection-Guide |
-| Skills | 24 | Skills/ |
+| Skills | 32 | Skills/ |
 | Assistant Guidelines | 4 | Assistant/ |
 ## Current Versions
 ### Development Frameworks
 | Framework | Revision | Type |
 |-----------|----------|------|
-| IDPF-Agile | 3 | Sprint-Based Development |
-| IDPF-Vibe (Core) | 4.0 | Exploratory → Agile |
+| IDPF-Agile | 3 | Story-Driven Development with TDD |
+| IDPF-Vibe (Core) | 4.0 | Exploratory -> Agile |
 > **Note:** IDPF-PRD deprecated in v0.24, replaced by `create-prd` skill.
 ### Testing Frameworks
 | Framework | Revision | Extends |
@@ -57,8 +57,8 @@
 ## Framework Selection Matrix
 | Project Type | Starting Point | Evolution Path |
 |--------------|---------------|----------------|
-| Evolving requirements, sprints | IDPF-Agile | Terminal |
-| Unclear requirements, exploration | IDPF-Vibe | → Agile |
+| Evolving requirements, iterative delivery | IDPF-Agile | Terminal |
+| Unclear requirements, exploration | IDPF-Vibe | -> Agile |
 | Separate test repository | IDPF-Testing | Use Agile |
 ## Core Principle
 - **System Instructions** define WHO the assistant is
@@ -67,16 +67,16 @@
 - **Assistant Guidelines** ensure accuracy and quality
 ## Valid Framework Transitions
 ```
-VIBE ──► AGILE (Terminal)
+VIBE --> AGILE (Terminal)
 ```
-**Invalid:** Agile → Vibe (quality standards should never decrease)
+**Invalid:** Agile -> Vibe (quality standards should never decrease)
 ## Detailed Documentation
 | File | Content |
 |------|---------|
 | Framework-Development.md | IDPF-Agile, Vibe details, create-prd skill |
 | Framework-Testing.md | IDPF-Testing (criteria library) + 6 specialized frameworks |
 | Framework-System-Instructions.md | Core + 22 Domain Specialists (12 Base, 10 Pack) |
-| Framework-Skills.md | All 29 skills with descriptions |
+| Framework-Skills.md | All 32 skills with descriptions |
 | Framework-Transitions.md | Transition matrix, diagrams, hybrid usage |
 | Framework-Overview.md | Complete reference (all sections) |
 ---

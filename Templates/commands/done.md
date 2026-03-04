@@ -1,12 +1,12 @@
 ---
-version: "v0.56.0"
+version: "v0.57.0"
 description: Complete issues with criteria verification and status transitions (project)
-argument-hint: "[#issue...] (optional)"
+argument-hint: "[#issue... | --all] (optional)"
 ---
 
 <!-- EXTENSIBLE -->
 # /done
-Complete one or more issues. Moves from `in_review` → `done` with a STOP boundary. Only handles the final transition — `/work` owns `in_progress` → `in_review`.
+Complete one or more issues. Moves from `in_review` -> `done` with a STOP boundary. Only handles the final transition -- `/work` owns `in_progress` -> `in_review`.
 **Extension Points:** See `.claude/metadata/extension-points.json` or run `/extensions list --command done`
 ---
 ## Prerequisites
@@ -19,13 +19,14 @@ Complete one or more issues. Moves from `in_review` → `done` with a STOP bound
 |----------|----------|-------------|
 | `#issue` | No | Single issue number (e.g., `#42` or `42`) |
 | `#issue #issue...` | | Multiple issue numbers (e.g., `#42 #43 #44`) |
+| `--all` | | Complete all `in_review` issues on current branch (with confirmation) |
 | *(none)* | | Queries `in_review` issues for selection |
 ---
 ## Execution Instructions
 **REQUIRED:** Before executing:
 1. **Generate Todo List:** Parse workflow steps, use `TodoWrite` to create todos
 2. **Include Extensions:** Add todo for each non-empty `USER-EXTENSION` block
-3. **Track Progress:** Mark todos `in_progress` → `completed` as you work
+3. **Track Progress:** Mark todos `in_progress` -> `completed` as you work
 4. **Post-Compaction:** Re-read spec and regenerate todos after context compaction
 ---
 ## Workflow
@@ -44,17 +45,20 @@ node .claude/scripts/shared/done-preamble.js --issues "$ISSUE1,$ISSUE2"
 node .claude/scripts/shared/done-preamble.js
 ```
 Parse JSON output and check `ok`:
-- **If `ok: false`:** Report errors from `errors[]` (each has `code`, `message`). If error has `suggestion`, include it. → **STOP**
-- **If discovery mode** (`discovery` field present): Present `discovery.issues` for user selection. After selection, re-run with `--issue N`.
+- **If `ok: false`:** Report errors from `errors[]` (each has `code`, `message`). If error has `suggestion`, include it. -> **STOP**
+- **If discovery mode** (`discovery` field present):
+  - `discovery.mode: 'query'` (no-args): Present `discovery.issues` for user selection. After selection, re-run with `--issue N`.
+  - `discovery.mode: 'all'` (`--all` flag): Present `discovery.issues` for confirmation -- "Complete all N in_review issues?" If user confirms, re-run preamble with `--issues` for all issue numbers. Deferred push applies (single push after last issue). If no issues found, report "No in_review issues on current branch" and STOP.
 **If `ok: true` with `diffVerification`:**
-- `requiresConfirmation: true` → Report `diffVerification.warnings`, ask "Continue? (yes/no)". If yes, re-run with `--force-move`. If no → **STOP**.
-- `requiresConfirmation: false` → Issue already moved to done. Proceed.
+- `requiresConfirmation: true` -> Report `diffVerification.warnings`, ask "Continue? (yes/no)". If yes, re-run with `--force-move`. If no -> **STOP**.
+- `requiresConfirmation: false` -> Issue already moved to done. Proceed.
 **If `ok: true` with `gates.movedToDone: true`:**
-- Report: `Issue #$ISSUE: $TITLE → Done`
+- Report: `Issue #$ISSUE: $TITLE -> Done`
 - If `context.trackerLinked: true`: Report `Linked #$ISSUE to branch tracker #$TRACKER`
 - If `context.nextSteps` present: Report `context.nextSteps.guidance` (approval-gate next steps)
 **Report any warnings** from `warnings[]` (non-blocking).
-**Multiple issues:** Process each sequentially using Steps 1-4.
+**Multiple issues:** Process each sequentially through Step 1, then execute Steps 2-3 once after the last issue (batch push optimization).
+**Batch push detection:** When 2+ issues are in scope (explicit list, discovery selection, or branch tracker batch), determine the total count at the start. Track position as each issue completes Step 1.
 
 <!-- USER-EXTENSION-START: pre-done -->
 <!-- USER-EXTENSION-END: pre-done -->
@@ -62,12 +66,20 @@ Parse JSON output and check `ok`:
 <!-- USER-EXTENSION-START: post-done -->
 <!-- USER-EXTENSION-END: post-done -->
 
-### Step 2: Push
+### Step 2: Push (Batch-Aware)
+**Single issue or last issue in batch:**
 ```bash
 git push
 ```
 Report: `Pushed.`
-### Step 3: Background CI Monitoring
+**Not last issue in batch:** Skip push. Report: `"Push deferred (N remaining)"`
+**No-commit detection:** Before pushing, check if there are unpushed commits:
+```bash
+git log @{u}..HEAD --oneline
+```
+If empty (nothing to push): Report `"Nothing to push"` and skip to Step 3.
+### Step 3: Background CI Monitoring (Batch-Aware)
+**Only execute after push (Step 2 actually pushed).** If push was deferred or skipped, skip CI monitoring for this issue.
 After push:
 1. Get SHA: `sha=$(git rev-parse HEAD)`
 2. **Check `context.ci.hasPushWorkflows`** from preamble output:
@@ -94,11 +106,11 @@ After push:
 ## Error Handling
 | Situation | Response |
 |-----------|----------|
-| Issue not found | "Issue #N not found." → STOP |
-| Issue already closed | "Issue #N is already closed." → skip |
-| Issue still in_progress | "Complete work first via /work." → STOP |
-| Issue in other status | "Move to in_progress first via /work." → STOP |
-| No issues in review | "No issues in review." → STOP |
-| `gh pmu` fails | "Failed to update issue: {error}" → STOP |
+| Issue not found | "Issue #N not found." -> STOP |
+| Issue already closed | "Issue #N is already closed." -> skip |
+| Issue still in_progress | "Complete work first via /work." -> STOP |
+| Issue in other status | "Move to in_progress first via /work." -> STOP |
+| No issues in review | "No issues in review." -> STOP |
+| `gh pmu` fails | "Failed to update issue: {error}" -> STOP |
 ---
 **End of /done Command**

@@ -1,5 +1,5 @@
 ---
-version: "v0.56.0"
+version: "v0.57.0"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...]"
 ---

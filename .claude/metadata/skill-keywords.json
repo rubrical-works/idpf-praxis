@@ -2,6 +2,18 @@
   "generatedAt": "2026-01-25T12:00:00.000Z",
   "version": "1.0.0",
   "description": "Keyword-to-skill mappings for automatic skill suggestions in /create-backlog and /add-story",
+  "defaultSkills": [
+    "anti-pattern-analysis",
+    "codebase-analysis",
+    "command-spec-audit",
+    "drawio-generation",
+    "error-handling-patterns",
+    "tdd-failure-recovery",
+    "tdd-green-phase",
+    "tdd-red-phase",
+    "tdd-refactor-phase",
+    "test-writing-patterns"
+  ],
   "skillKeywords": {
     "anti-pattern-analysis": [
       "anti-pattern",
@@ -82,6 +94,13 @@
       "code exploration",
       "tech stack detection",
       "nfr detection"
+    ],
+    "command-spec-audit": [
+      "command spec",
+      "command quality",
+      "extension point",
+      "command audit",
+      "spec review"
     ],
     "common-errors": [
       "troubleshoot",
@@ -236,6 +255,17 @@
       "render hosting",
       "render web service"
     ],
+    "resilience-patterns": [
+      "retry",
+      "circuit breaker",
+      "fallback",
+      "bulkhead",
+      "timeout pattern",
+      "fault tolerance",
+      "graceful degradation",
+      "exponential backoff",
+      "cascading failure"
+    ],
     "seo-optimization": [
       "seo",
       "search engine optimization",
@@ -354,6 +384,7 @@
     }
   },
   "_schema": {
+    "defaultSkills": "Array of skill names to auto-install for all projects regardless of tech stack. These are universally applicable skills (development infrastructure, code review, TDD methodology). Merged before keyword matching in /charter; re-added on /charter refresh.",
     "skillKeywords": "Map of skill-name to array of keywords that indicate the skill is relevant",
     "groupKeywords": "Keywords that suggest multiple related skills as a group"
   }

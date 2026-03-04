@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -99,6 +99,7 @@
           "ci-remove.js",
           "ci-status.js",
           "ci-validate.js",
+          "cleanup-artifacts.js",
           "cleanup-release-assets.js",
           "done-verify.js",
           "extensions-cli.js",
@@ -116,7 +117,8 @@
           "ci-watch.js",
           "upgrade-check.js",
           "work-preamble.js",
-          "done-preamble.js"
+          "done-preamble.js",
+          "reset-issue-preamble.js"
         ]
       },
       "shared/lib": {

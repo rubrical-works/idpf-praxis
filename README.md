@@ -40,7 +40,7 @@ px-manager handles:
 
 ---
 
-## Skills (31)
+## Skills (32)
 
 **TDD:** tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns
 
@@ -50,11 +50,13 @@ px-manager handles:
 
 **Database:** postgresql-integration, migration-patterns
 
-**Architecture:** api-versioning, error-handling-patterns
+**Architecture:** api-versioning, error-handling-patterns, resilience-patterns
 
 **Advanced Testing:** property-based-testing, mutation-testing
 
 **Analysis:** anti-pattern-analysis, bdd-writing, codebase-analysis
+
+**Code Quality:** command-spec-audit
 
 **DevOps:** ci-cd-pipeline-design
 
@@ -110,6 +112,6 @@ https://github.com/rubrical-studios/idpf-praxis
 
 ## License
 
-Copyright 2025-2026 Rubrical Studios
+Copyright 2025-2026 Rubrical Systems
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.

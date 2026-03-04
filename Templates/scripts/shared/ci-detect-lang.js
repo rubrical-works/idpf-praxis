@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+// Rubrical Systems (c) 2026
 
 const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * Language detection manifest mapping.
  * Each entry maps a manifest file to the language(s) it indicates.
  */

@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-03-03T15:33:33.582Z",
+  "generatedAt": "2026-03-04T01:44:19.955Z",
   "version": "1.0.0",
   "commandCount": 15,
-  "extensionPointCount": 72,
+  "extensionPointCount": 74,
   "commands": {
     "bug": {
       "type": "EXTENSIBLE",
@@ -10,13 +10,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "Before issue creation",
-          "purpose": "Duplicate detection, template customization"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-create",
-          "location": "After issue created",
-          "purpose": "Notifications, auto-assignment to branch"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -57,13 +57,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "Before branch creation",
-          "purpose": "Custom validation, environment checks"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-create",
-          "location": "After branch created",
-          "purpose": "Notifications, setup scripts, CI triggers"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -73,53 +73,53 @@
       "extensionPoints": [
         {
           "name": "pre-analysis",
-          "location": "Before proposal analysis",
-          "purpose": "Custom validation, preprocessing"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-analysis",
-          "location": "After gap analysis",
-          "purpose": "Custom analysis steps"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-transform",
-          "location": "Before story transformation",
-          "purpose": "Pre-transformation hooks"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-transform",
-          "location": "After story transformation",
-          "purpose": "Story validation, enrichment"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-diagram",
-          "location": "Before diagram generation",
-          "purpose": "Diagram setup"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "diagram-generator",
-          "location": "Custom diagram generation",
-          "purpose": "Replace default draw.io generator"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-diagram",
-          "location": "After diagram generation",
-          "purpose": "Diagram post-processing"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-generation",
-          "location": "Before PRD generation",
-          "purpose": "Template customization"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-generation",
-          "location": "After PRD generation",
-          "purpose": "Custom finalization"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "quality-checklist",
-          "location": "Custom quality checks",
-          "purpose": "Additional validation rules"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -129,18 +129,18 @@
       "extensionPoints": [
         {
           "name": "pre-destroy",
-          "location": "Before confirmation",
-          "purpose": "Pre-destruction validation"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-confirm",
-          "location": "After confirmation",
-          "purpose": "Actions before deletion"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-destroy",
-          "location": "After deletion",
-          "purpose": "Cleanup, notifications"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -150,13 +150,13 @@
       "extensionPoints": [
         {
           "name": "pre-done",
-          "location": "Before moving to done",
-          "purpose": "Tests, lint, build verification"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-done",
-          "location": "After moving to done",
-          "purpose": "Deploy trigger, time tracking stop"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -166,13 +166,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "Before issue creation",
-          "purpose": "Duplicate detection, template customization"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-create",
-          "location": "After issue created",
-          "purpose": "Notifications, auto-assignment to branch"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -182,33 +182,33 @@
       "extensionPoints": [
         {
           "name": "pre-gate",
-          "location": "Before gates",
-          "purpose": "Setup, environment preparation"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "gates",
-          "location": "Gate checks",
-          "purpose": "**Custom validation gates**"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-gate",
-          "location": "After gates pass",
-          "purpose": "Pre-merge actions"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-pr-create",
-          "location": "After PR creation",
-          "purpose": "CI wait, PR validation"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-merge",
-          "location": "After PR merged",
-          "purpose": "Post-merge actions"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-close",
-          "location": "After cleanup",
-          "purpose": "Notifications, announcements"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -217,49 +217,54 @@
       "description": "Tag beta from feature branch (no merge to main)",
       "extensionPoints": [
         {
+          "name": "pre-phase-1",
+          "location": "",
+          "purpose": ""
+        },
+        {
           "name": "post-analysis",
-          "location": "After Phase 1",
-          "purpose": "Commit analysis"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-validation",
-          "location": "Before Phase 2",
-          "purpose": "Setup test environment"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-validation",
-          "location": "After Phase 2",
-          "purpose": "Beta validation"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-prepare",
-          "location": "After Phase 3",
-          "purpose": "Additional updates"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-commit",
-          "location": "Before Phase 4 commit",
-          "purpose": "Generate beta artifacts"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-tag",
-          "location": "Before Phase 4 tagging",
-          "purpose": "Final gate"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-tag",
-          "location": "After Phase 4",
-          "purpose": "Beta monitoring"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "checklist-before-tag",
-          "location": "Summary Checklist",
-          "purpose": "Pre-tag verification items"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "checklist-after-tag",
-          "location": "Summary Checklist",
-          "purpose": "Post-tag verification items"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -268,69 +273,74 @@
       "description": "Prepare release with PR, merge to main, and tag",
       "extensionPoints": [
         {
+          "name": "pre-phase-1",
+          "location": "",
+          "purpose": ""
+        },
+        {
           "name": "post-analysis",
-          "location": "After Phase 1",
-          "purpose": "Commit analysis, version recommendation"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-validation",
-          "location": "Before Phase 2",
-          "purpose": "Setup, fixtures, containers"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-validation",
-          "location": "After Phase 2",
-          "purpose": "Coverage gates, build verification"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-commit",
-          "location": "Before Phase 3 commit",
-          "purpose": "Generate release artifacts"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-prepare",
-          "location": "After Phase 3",
-          "purpose": "Documentation updates"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-pr-create",
-          "location": "After PR creation",
-          "purpose": "CI wait, PR validation"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-tag",
-          "location": "Before Phase 4 tagging",
-          "purpose": "Final gate, sign-off"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-tag",
-          "location": "After Phase 4",
-          "purpose": "Release monitoring, asset verification"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "checklist-before-tag",
-          "location": "Summary Checklist",
-          "purpose": "Pre-tag verification items"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "checklist-after-tag",
-          "location": "Summary Checklist",
-          "purpose": "Post-tag verification items"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-close",
-          "location": "Before Phase 5",
-          "purpose": "Pre-close validation, notifications"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-close",
-          "location": "After Phase 5",
-          "purpose": "Post-release actions, announcements"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "checklist-close",
-          "location": "Summary Checklist",
-          "purpose": "Close verification items"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -340,13 +350,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "Before proposal creation",
-          "purpose": "Duplicate detection, template customization"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-create",
-          "location": "After proposal and issue created",
-          "purpose": "Notifications, auto-assignment to branch"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -356,18 +366,18 @@
       "extensionPoints": [
         {
           "name": "pre-review",
-          "location": "Before review begins",
-          "purpose": "Custom criteria setup, compliance checks"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "criteria-customize",
-          "location": "During criteria evaluation",
-          "purpose": "Project-specific review criteria injection"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-review",
-          "location": "After review findings prepared",
-          "purpose": "Notifications, logging, escalation"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -377,18 +387,18 @@
       "extensionPoints": [
         {
           "name": "pre-review",
-          "location": "Before review begins",
-          "purpose": "Custom criteria setup, compliance checks"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "criteria-customize",
-          "location": "During criteria evaluation",
-          "purpose": "Project-specific review criteria injection"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-review",
-          "location": "After review findings prepared",
-          "purpose": "Notifications, logging, escalation"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -398,18 +408,18 @@
       "extensionPoints": [
         {
           "name": "pre-review",
-          "location": "Before review begins",
-          "purpose": "Custom criteria setup, compliance checks"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "criteria-customize",
-          "location": "During criteria evaluation",
-          "purpose": "Project-specific review criteria injection"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-review",
-          "location": "After review findings prepared",
-          "purpose": "Notifications, logging, escalation"
+          "location": "",
+          "purpose": ""
         }
       ]
     },
@@ -419,38 +429,38 @@
       "extensionPoints": [
         {
           "name": "pre-work",
-          "location": "Before any work begins",
-          "purpose": "Environment setup, dependency check"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-work-start",
-          "location": "After issue moved to in_progress",
-          "purpose": "Notifications, time tracking"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "pre-framework-dispatch",
-          "location": "Before loading framework methodology",
-          "purpose": "Custom methodology injection"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-documentation",
-          "location": "After Step 4b documentation judgment",
-          "purpose": "Validate/index design decisions and tech debt"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-implementation",
-          "location": "After Step 4b, before Step 5",
-          "purpose": "Code quality gate (lint, format, coverage)"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-ac-verification",
-          "location": "After Step 5, before Step 6",
-          "purpose": "Validation before in_review transition"
+          "location": "",
+          "purpose": ""
         },
         {
           "name": "post-sub-issue-done",
-          "location": "After each epic sub-issue done, before next",
-          "purpose": "Integration gate between epic sub-issues"
+          "location": "",
+          "purpose": ""
         }
       ]
     }

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+// Rubrical Systems (c) 2026
 
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * Feature-to-workflow-category mapping.
  * Determines which type of workflow file each feature belongs in.
  */

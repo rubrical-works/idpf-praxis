@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+// Rubrical Systems (c) 2026
 /**
- * @framework-script 0.56.0
+ * @framework-script 0.57.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes
  * @checksum sha256:placeholder
  *

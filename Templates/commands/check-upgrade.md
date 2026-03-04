@@ -1,5 +1,5 @@
 ---
-version: "v0.56.0"
+version: "v0.57.0"
 description: Verify hub upgrade integrity for project commands and scripts
 argument-hint: ""
 ---
