@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * generate-changelog.js - Generate CHANGELOG entry from commits
  *
  * Analyzes commits and generates a Keep a Changelog formatted entry.

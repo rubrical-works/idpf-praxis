@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.57.0
+**Version:** v0.58.0
 **Purpose:** Standard initialization procedure for AI assistant sessions
 ---
 ## Startup Sequence
@@ -8,7 +8,7 @@
 | Field | Source | Tool |
 |-------|--------|------|
 | Date | Current date | `node -e "console.log(new Date().toISOString().slice(0,10))"` or environment date |
-| Repository | Git repo name | `git rev-parse --show-toplevel` (parse last path segment) |
+| Repository | Git repo name | `git rev-parse --show-toplevel` (returns forward-slash path; parse last segment — no `tr` pipe) |
 | Branch | `git branch --show-current` + clean/dirty status | Bash |
 | Process Framework | `framework-config.json` → `processFramework` | Read tool |
 | Framework Version | `framework-config.json` → `frameworkVersion` | Read tool |

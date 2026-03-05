@@ -6,7 +6,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Feature-to-workflow-category mapping.
  * Determines which type of workflow file each feature belongs in.
  */
@@ -74,7 +74,7 @@ function classifyWorkflow(fileName, content) {
       else if (Array.isArray(parsed.on)) triggers = parsed.on;
       else triggers = Object.keys(parsed.on);
     }
-  } catch (e) {
+  } catch (_e) {
     // Ignore parse errors for classification
   }
 

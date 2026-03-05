@@ -2,7 +2,7 @@
 // Rubrical Systems (c) 2026
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * CI Recommendation Report UI
  *
  * Formats recommendation output for display and parses user selections.

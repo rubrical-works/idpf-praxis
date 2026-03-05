@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-03-04T01:44:19.955Z",
+  "generatedAt": "2026-03-05T01:31:51.874Z",
   "version": "1.0.0",
-  "commandCount": 15,
+  "commandCount": 16,
   "extensionPointCount": 74,
   "commands": {
     "bug": {
@@ -207,6 +207,27 @@
         },
         {
           "name": "post-close",
+          "location": "",
+          "purpose": ""
+        }
+      ]
+    },
+    "paths": {
+      "type": "EXTENSIBLE",
+      "description": "Collaborative path analysis for proposals and enhancements (project)",
+      "extensionPoints": [
+        {
+          "name": "pre-paths",
+          "location": "",
+          "purpose": ""
+        },
+        {
+          "name": "post-category",
+          "location": "",
+          "purpose": ""
+        },
+        {
+          "name": "post-paths",
           "location": "",
           "purpose": ""
         }
@@ -438,27 +459,12 @@
           "purpose": ""
         },
         {
-          "name": "pre-framework-dispatch",
-          "location": "",
-          "purpose": ""
-        },
-        {
-          "name": "post-documentation",
-          "location": "",
-          "purpose": ""
-        },
-        {
           "name": "post-implementation",
           "location": "",
           "purpose": ""
         },
         {
           "name": "post-ac-verification",
-          "location": "",
-          "purpose": ""
-        },
-        {
-          "name": "post-sub-issue-done",
           "location": "",
           "purpose": ""
         }

@@ -3,12 +3,11 @@
 
 const fs = require('fs');
 const path = require('path');
-const yaml = require('yaml');
 
 const { detectLanguages, detectPrimaryLanguage } = require('./ci-detect-lang.js');
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Test tooling indicators per language ecosystem.
  */
 const TEST_TOOLING_JS = ['jest', 'mocha', 'vitest', 'ava', 'tape', 'jasmine'];
@@ -52,7 +51,7 @@ function detectTestTooling(projectDir) {
       if (/node\s+--test|node:test/.test(testScript)) {
         detected.add('node:test');
       }
-    } catch (e) {
+    } catch (_e) {
       // Malformed package.json — skip JS tooling detection
     }
   }
@@ -64,7 +63,7 @@ function detectTestTooling(projectDir) {
       const content = fs.readFileSync(requirementsPath, 'utf8');
       if (/^pytest/m.test(content)) detected.add('pytest');
       if (/^unittest/m.test(content)) detected.add('unittest');
-    } catch (e) { /* skip */ }
+    } catch (_e) { /* skip */ }
   }
 
   const pyprojectPath = path.join(projectDir, 'pyproject.toml');
@@ -72,7 +71,7 @@ function detectTestTooling(projectDir) {
     try {
       const content = fs.readFileSync(pyprojectPath, 'utf8');
       if (/\[tool\.pytest\]|\bpytest\b/.test(content)) detected.add('pytest');
-    } catch (e) { /* skip */ }
+    } catch (_e) { /* skip */ }
   }
 
   // Go has built-in testing
@@ -104,7 +103,7 @@ function detectBuildSystem(projectDir) {
       if (pkg.scripts && Object.keys(pkg.scripts).length > 0) {
         detected.add('npm');
       }
-    } catch (e) {
+    } catch (_e) {
       // Malformed — still count as npm project
     }
   }

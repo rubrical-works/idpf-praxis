@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Framework Development
-**Version:** v0.57.0
+**Version:** v0.58.0
 
 ## Core Principle
 
@@ -234,6 +234,17 @@ git commit -m "Move Feature-Name proposal to Implemented (#XX)"
 
 # NEVER leave proposals in wrong location after implementation
 ```
+
+------
+
+## Externalized File References
+### After Compaction, Re-Read From Disk
+Command specs reference externalized JSON files. After compaction, do not assume you remember the file contents — re-read from disk.
+- ❌ Acting on stale memory of a JSON file's contents after compaction
+- ❌ Skipping a file read because you "already loaded it"
+- ✅ Always use the Read tool to load externalized files before using their contents
+- ✅ Treat every file reference after compaction as a fresh read
+- ✅ Use full paths (e.g., `.claude/scripts/shared/lib/doc-templates.json`) — never shorthand
 
 ------
 

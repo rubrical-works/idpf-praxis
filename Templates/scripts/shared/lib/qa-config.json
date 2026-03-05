@@ -1,0 +1,17 @@
+{
+  "keywords": [
+    "manually verify",
+    "visually confirm",
+    "visual verification",
+    "QA:",
+    "qa-required",
+    "exploratory test",
+    "manual test",
+    "manual check",
+    "UX walkthrough"
+  ],
+  "bodyTemplate": "## QA: {acDescription}\n\nParent: #{parentIssue} — {parentTitle}\n\n### Steps to Perform\n\n1. {steps}\n\n### Expected Result\n\n{expectedResult}",
+  "subIssueCommand": "gh pmu sub create --parent $ISSUE --title \"QA: [AC description]\" --label qa-required -F .tmp-qa-body.md",
+  "annotationFormat": "- [ ] {acText} → QA: #{subIssueNumber}",
+  "closurePath": "Parent stays in_review until all QA sub-issues are closed and AC checked off."
+}

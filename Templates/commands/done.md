@@ -1,5 +1,5 @@
 ---
-version: "v0.57.0"
+version: "v0.58.0"
 description: Complete issues with criteria verification and status transitions (project)
 argument-hint: "[#issue... | --all] (optional)"
 ---
@@ -59,6 +59,37 @@ Parse JSON output and check `ok`:
 **Report any warnings** from `warnings[]` (non-blocking).
 **Multiple issues:** Process each sequentially through Step 1, then execute Steps 2-3 once after the last issue (batch push optimization).
 **Batch push detection:** When 2+ issues are in scope (explicit list, discovery selection, or branch tracker batch), determine the total count at the start. Track position as each issue completes Step 1.
+### Step 1a: Epic Detection
+After the preamble succeeds for a single issue, check whether the issue has the `epic` label (from `context.issue.labels` in the preamble output).
+**If not an epic:** Skip to Step 2 (standard single-issue flow -- no change).
+**If epic label detected:** Enter the epic completion flow:
+1. **Fetch sub-issues:**
+   ```bash
+   gh pmu sub list $ISSUE
+   ```
+2. **Classify sub-issues by status:**
+   | Sub-Issue Status | Action |
+   |------------------|--------|
+   | `done` | Skip -- already completed |
+   | `in_review` | Queue for done processing |
+   | `in_progress` | **Warn:** "Sub-issue #N is still in_progress -- complete work via /work first" |
+   | `backlog` / `ready` / other | **Warn:** "Sub-issue #N is in {status} -- was never started" |
+3. **If all sub-issues are already `done`:** Skip sub-issue processing, proceed directly to completing the epic itself.
+4. **If `in_review` sub-issues exist:** Process each through the standard `/done` workflow (Steps 1-3 of the preamble), with per-sub-issue reporting:
+   ```
+   Sub-issue #N: $TITLE -> Done (M/T processed)
+   ```
+   Push is deferred until after the epic (single push -- batch-aware).
+5. **Complete the epic:** After all sub-issues are processed, run the preamble for the epic issue itself to move it to done.
+6. **Report summary:**
+   ```
+   Epic #$ISSUE: $TITLE -- Done
+     Sub-issues completed: N
+     Sub-issues already done: M
+     Sub-issues warned (not ready): K
+     Epic: Done
+   ```
+**Push behavior for epics:** All sub-issue and epic done transitions are treated as a single batch -- push is deferred until after the epic itself is completed (Step 2).
 
 <!-- USER-EXTENSION-START: pre-done -->
 <!-- USER-EXTENSION-END: pre-done -->

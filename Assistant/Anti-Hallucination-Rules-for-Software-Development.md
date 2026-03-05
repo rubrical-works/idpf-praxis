@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Software Development
-**Version:** v0.57.0
+**Version:** v0.58.0
 ## Core Principle
 **Accuracy over helpfulness. Uncertainty over invention. Verification over assumption.**
 ## Information Source Hierarchy
@@ -78,6 +78,14 @@ Ask clarifying questions about version, OS, installed tools, workflow.
 | None | "I don't have reliable information..." |
 ## When to Use Web Search
 Always search for: current/latest anything, recent releases, specific API syntax, installation on specific OS, breaking changes, CVEs.
+## Externalized File References
+### After Compaction, Re-Read From Disk
+Command specs and workflows may reference externalized files. After compaction, do not assume you remember the file contents — re-read from disk.
+- ❌ Acting on stale memory of a file's contents after compaction
+- ❌ Skipping a file read because you "already loaded it"
+- ✅ Always use the Read tool to load externalized files before using their contents
+- ✅ Treat every file reference after compaction as a fresh read
+- ✅ Use full paths — never shorthand that could be ambiguous
 ## File and Directory Operations
 ### NEVER Assume File/Directory State
 - Always READ before editing

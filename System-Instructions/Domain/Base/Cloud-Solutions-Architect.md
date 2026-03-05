@@ -1,5 +1,5 @@
 # System Instructions: Cloud Solutions Architect
-**Version:** v0.57.0
+**Version:** v0.58.0
 Extends: Core-Developer-Instructions.md
 **Purpose:** Cloud-native architectures, system design, architectural patterns, infrastructure decisions.
 **Load with:** Core-Developer-Instructions.md (required foundation)

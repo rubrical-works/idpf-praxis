@@ -6,7 +6,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Validate GitHub Actions workflow files
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted validation results
@@ -169,7 +169,7 @@ function checkAntiPatterns(filename, parsed, content) {
 
   // Check for upload-artifact without retention-days
   if (parsed.jobs) {
-    for (const [jobName, jobDef] of Object.entries(parsed.jobs)) {
+    for (const [_jobName, jobDef] of Object.entries(parsed.jobs)) {
       if (!jobDef || !Array.isArray(jobDef.steps)) continue;
       for (const step of jobDef.steps) {
         if (step && step.uses && /actions\/upload-artifact/.test(step.uses)) {

@@ -1,0 +1,19 @@
+{
+  "categories": [
+    {
+      "name": "Design Decision",
+      "warranted": "Chose between alternatives, non-obvious approach, or architectural trade-off",
+      "targetPath": "Construction/Design-Decisions/YYYY-MM-DD-{topic}.md",
+      "namingRules": "Derive {topic} from issue title, kebab-case, max 50 chars. If exists, append -2, -3, etc."
+    },
+    {
+      "name": "Tech Debt",
+      "warranted": "Took a shortcut, deferred work, or introduced known limitations",
+      "targetPath": "Construction/Tech-Debt/YYYY-MM-DD-{topic}.md",
+      "namingRules": "Derive {topic} from issue title, kebab-case, max 50 chars. If exists, append -2, -3, etc."
+    }
+  ],
+  "commitFormat": "Refs #$ISSUE — add {design decision|tech debt} documentation",
+  "warrantedCheckbox": "[x] Design decisions documented — {topic}",
+  "notWarrantedCheckbox": "[x] No design decisions warranted — implementation was straightforward"
+}

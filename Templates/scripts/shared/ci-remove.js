@@ -8,7 +8,7 @@ const { loadFeatureRegistry } = require('./ci-list.js');
 const { createBackup, validateYaml } = require('./ci-modify.js');
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Top-level keys associated with features that can be cleanly removed.
  */
 const FEATURE_TOP_LEVEL_KEYS = {
@@ -48,7 +48,7 @@ function findFeatureInWorkflows(projectDir, featureId) {
       if (matchedPatterns.length > 0) {
         return { file: filePath, patterns: matchedPatterns };
       }
-    } catch (e) {
+    } catch (_e) {
       continue;
     }
   }
@@ -64,7 +64,7 @@ function findFeatureInWorkflows(projectDir, featureId) {
  * @param {boolean} [options.skipConfirm] - Skip user confirmation (for testing)
  * @returns {{ success: boolean, message: string, file?: string, feature?: string }}
  */
-function removeCIFeature(projectDir, featureId, options = {}) {
+function removeCIFeature(projectDir, featureId, _options = {}) {
   // Validate feature name
   const registry = loadFeatureRegistry();
   if (!registry[featureId]) {
@@ -142,7 +142,7 @@ function removeFeatureSteps(doc, feature) {
         try {
           const regex = new RegExp(pattern, 'i');
           if (regex.test(stepStr)) return false; // Remove this step
-        } catch (e) {
+        } catch (_e) {
           // If pattern is not a valid regex for step matching, skip
         }
       }

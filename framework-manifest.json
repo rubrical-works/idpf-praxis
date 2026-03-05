@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.57.0",
+  "version": "0.58.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -132,7 +132,10 @@
           "review-mode.js",
           "active-label.js",
           "issue-type.js",
-          "workstream-utils.js"
+          "workstream-utils.js",
+          "skill-keyword-matcher.js",
+          "doc-templates.json",
+          "qa-config.json"
         ]
       },
       "hooks": {
@@ -215,6 +218,7 @@
     "done",
     "enhancement",
     "merge-branch",
+    "paths",
     "prepare-beta",
     "prepare-release",
     "proposal",

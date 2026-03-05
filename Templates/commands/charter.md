@@ -1,5 +1,5 @@
 ---
-version: "v0.57.0"
+version: "v0.58.0"
 description: View, create, or manage project charter
 argument-hint: "[update|refresh|validate]"
 ---
@@ -177,7 +177,7 @@ What review mode should be used for this project?
 | Clearly out of scope | Suggest updating charter or revising work |
 ## Project Skills Selection
 After charter creation, suggest relevant skills based on defaults and tech stack using `.claude/metadata/skill-keywords.json`.
-**Step 1:** Load `.claude/metadata/skill-keywords.json` (contains `defaultSkills`, `skillKeywords`, and `groupKeywords`) and `.claude/metadata/skill-registry.json` (for descriptions). Use `getDefaultSkills()` from `manage-skills.js` to load defaults.
+**Step 1:** Re-read `.claude/metadata/skill-keywords.json` from disk (not memory) — contains `defaultSkills`, `skillKeywords`, and `groupKeywords`. Also re-read `.claude/metadata/skill-registry.json` from disk (not memory) for descriptions. Use `getDefaultSkills()` from `manage-skills.js` to load defaults.
 **If `skill-keywords.json` missing:** Warn and skip (non-blocking).
 **Step 1b: Load Default Skills:** Read `defaultSkills` array from `skill-keywords.json`. These are universally applicable skills that apply regardless of tech stack. Add all defaults to the candidate list before keyword matching. If `defaultSkills` is missing or empty, continue without defaults (non-blocking).
 **Step 2:** Match tech stack keywords against skillKeywords entries (case-insensitive, whole-word). Collect all skills with at least 1 keyword match as candidates — no false positive from partial string matching. Also match groupKeywords — if group keyword matches, add ALL group.skills. Merge keyword-matched candidates with defaults. Deduplicate against existing `projectSkills`.
@@ -191,7 +191,7 @@ After charter creation, suggest relevant skills based on defaults and tech stack
 After skill selection, suggest relevant extension recipes.
 **Triggers:** `/charter` (creation), `/charter update` (if Tech Stack modified), `/charter refresh`
 **Skip if:** `"extensionSuggestions": false` or no release commands installed
-**Step 1:** Load `.claude/metadata/recipe-tech-mapping.json`
+**Step 1:** Re-read `.claude/metadata/recipe-tech-mapping.json` from disk (not memory)
 **Step 2:** Match tech stack against indicators and groupMappings
 **Step 3:** Filter already-installed recipes (check extension points for content)
 **Step 4: ASK USER:**

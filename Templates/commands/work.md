@@ -1,5 +1,5 @@
 ---
-version: "v0.57.0"
+version: "v0.58.0"
 description: Start working on issues with validation and auto-TODO (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] | all in <status>"
 ---
@@ -24,12 +24,7 @@ Start working on one or more issues. Validates issue existence, branch assignmen
 | `--nonstop` | No | Epic/branch tracker: skip per-sub-issue STOP, process all to `in_review` continuously |
 ---
 ## Execution Instructions
-**REQUIRED:** Before executing:
-1. **Generate Todo List:** Parse workflow steps, use `TodoWrite` to create todos
-2. **Include Extensions:** Add todo item for each non-empty `USER-EXTENSION` block
-3. **Track Progress:** Mark todos `in_progress` -> `completed` as you work
-4. **Post-Compaction:** Re-read spec and regenerate todos after context compaction
-**Todo Rules:** One todo per numbered step; one todo per active extension; skip commented-out extensions.
+Generate todo list from workflow steps (one per step + active extensions). Track `in_progress` → `completed`. Post-compaction: re-read spec and regenerate todos.
 ---
 ## Workflow
 ### Step 0: Conditional - Clear Todo List
@@ -39,130 +34,39 @@ If not working on an epic or branch tracker, clear todo list.
 <!-- USER-EXTENSION-END: pre-work -->
 
 ### Step 1: Context Gathering (Preamble Script)
-Run the preamble script to consolidate all deterministic setup work:
-**Single issue:**
-```bash
-node .claude/scripts/shared/work-preamble.js --issue $ISSUE
-```
-**Multiple issues:**
-```bash
-node .claude/scripts/shared/work-preamble.js --issues "$ISSUE1,$ISSUE2,$ISSUE3"
-```
-**All in status:**
-```bash
-node .claude/scripts/shared/work-preamble.js --status $STATUS
-```
-**With --assign flag** (append to any mode above):
-```bash
-node .claude/scripts/shared/work-preamble.js --issue $ISSUE --assign
-```
-When `--assign` is present, the preamble will:
-1. Detect the current branch via `git branch --show-current`
-2. Assign the issue to the current branch (delegates to `assign-branch.js`)
-3. Proceed with normal validation and setup
-**--assign error cases:**
-- `ALREADY_ASSIGNED` -- Issue already assigned to a different branch. Cannot reassign.
-- `WORKSTREAM_CONFLICT` -- Issue allocated to a different branch by `/plan-workstreams`. Use `/assign-branch` directly to override.
-Parse the JSON output and check `ok`:
-- **If `ok: false`:** Report errors from `errors[]` array (each has `code` and `message`). If error has `suggestion`, include it. -> **STOP**
-- **If `ok: true`:** Extract `context`, `gates`, `autoTodo`, and `warnings` from the envelope.
-**Report gate results from `gates`:**
-- `assigned: true` -> Issue was assigned to current branch (only with `--assign`)
-- `movedToInProgress: true` -> Issue moved to in_progress
-- `prdTrackerMoved: true` -> PRD tracker moved to in_progress
-**Report any warnings** from `warnings[]` array (non-blocking).
-**Extract context for subsequent steps:**
-- `context.issue` -- issue data (number, title, labels, body, state)
-- `context.branch` -- branch/status data
-- `context.type` -- `"branch"`, `"epic"`, or `"standard"`
-- `context.tracker` -- branch tracker number
-- `context.framework` / `context.frameworkPath` -- framework config
-- `context.subIssues`, `context.skipped`, `context.processingOrder` -- epic and branch tracker fields
-**Extract autoTodo for Step 4:**
-- Standard: `{ source: "acceptance_criteria", items: [{ text, checked }] }`
-- Epic: `{ source: "sub_issues", items: [{ number, title }] }` -- ascending numeric order by default, or custom `**Processing Order:**` from epic body. Already `in_review`/`done` skipped (`context.skipped`).
-- Branch: `{ source: "sub_issues", items: [{ number, title }] }` -- same as epic but always ascending order (no custom Processing Order). Includes `NO_SUB_ISSUES` or `ALL_SUB_ISSUES_COMPLETE` warnings if applicable.
+Run `node .claude/scripts/shared/work-preamble.js` with `--issue N`, `--issues "N,N,N"`, or `--status <status>`. Append `--assign` to auto-assign to current branch.
+Parse JSON output: if `ok: false`, report `errors[]` and STOP. If `ok: true`, extract `context`, `gates`, `autoTodo`, `warnings`. Report gate results and warnings.
+**--assign errors:** `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch` to override).
+Run `--schema` for envelope field reference.
 
 <!-- USER-EXTENSION-START: post-work-start -->
 <!-- USER-EXTENSION-END: post-work-start -->
 
-### Step 2: Reserved
-Step 2 is reserved for future use. See Step 5a for the per-sub-issue approach.
-
-<!-- USER-EXTENSION-START: pre-framework-dispatch -->
-<!-- USER-EXTENSION-END: pre-framework-dispatch -->
-
 ### Step 3: Framework Methodology Dispatch
-Read `framework-config.json` for `processFramework` and `frameworkPath` fields:
-| Framework | Action |
-|-----------|--------|
-| `IDPF-Agile` | Load `{frameworkPath}/IDPF-Agile/Agile-Core.md` -- follow TDD RED-GREEN-REFACTOR cycle |
-| `IDPF-Vibe` | Load `{frameworkPath}/IDPF-Vibe/Vibe-Core.md` -- follow rapid iteration methodology |
-| Not set / missing | Skip methodology dispatch -- no framework enforced |
-**If framework file not found:** "Warning: Framework {name} not found. Proceeding without methodology." Continue (non-blocking).
+Load `{frameworkPath}/{framework}/` core file from `framework-config.json`. If missing, warn and continue.
 ### Step 4: Work the Issue
-Iterate through the auto-TODO from Step 1. For each acceptance criterion:
-1. **Mark TODO `in_progress`**
-2. **Execute TDD cycle** (RED -> GREEN -> REFACTOR) per framework methodology
-   - **RED:** Write a failing test for the target behavior, verify it fails
-   - **GREEN:** Write minimal implementation to pass the test, verify it passes
-   - **REFACTOR:** Analyze for duplication, naming, complexity, structure. Report decision (refactor or skip with reason). If refactoring, keep tests passing.
-   - If no framework loaded, implement directly with appropriate testing
-3. **Run full test suite** -- confirm no regressions
-4. **Mark TODO `completed`**
-5. **Commit** with `Refs #$ISSUE -- <brief description>`
-**Commit granularity:** One commit per AC default. Closely related ACs may share a commit if separating creates broken intermediate states. Never combine unrelated ACs.
-**If no auto-TODO was generated:** Work as a single unit and commit with `Refs #$ISSUE`.
-**Post-compaction recovery:** Re-read this spec and check TODO list to determine completed vs pending ACs. Resume from first incomplete AC.
+For each AC: mark TODO `in_progress`, execute TDD cycle (RED → GREEN → REFACTOR per framework), run full test suite, mark `completed`, commit with `Refs #$ISSUE — <description>`.
+**RED:** Write failing test. **GREEN:** Minimal implementation to pass. **REFACTOR:** Analyze for duplication, naming, complexity. Report decision (refactor or skip with reason). Keep tests passing.
+One commit per AC. If no auto-TODO, work as single unit. Post-compaction: re-read spec and resume from first incomplete AC.
 ### Step 4b: Documentation Judgment
-After implementation, evaluate whether documentation is warranted before verifying acceptance criteria.
-**Assess each category:**
-| Category | Warranted When | Target Path |
-|----------|---------------|-------------|
-| Design Decision | Chose between alternatives, non-obvious approach, or architectural trade-off | `Construction/Design-Decisions/YYYY-MM-DD-{topic}.md` |
-| Tech Debt | Took a shortcut, deferred work, or introduced known limitations | `Construction/Tech-Debt/YYYY-MM-DD-{topic}.md` |
-**If warranted:**
-1. Determine category (may be both)
-2. Check/create target directory
-3. Derive `{topic}` from issue title (kebab-case, max 50 chars). If exists, append `-2`, `-3`, etc.
-4. Create document using Design Decision or Tech Debt template
-5. Commit: `Refs #$ISSUE -- add {design decision|tech debt} documentation`
-6. Check documentation AC checkbox with inline note: `[x] Design decisions documented -- {topic}`
-**If not warranted:** Check AC checkbox with note: `[x] No design decisions warranted -- implementation was straightforward`
-
-<!-- USER-EXTENSION-START: post-documentation -->
-<!-- USER-EXTENSION-END: post-documentation -->
+Evaluate whether documentation (design decision or tech debt) is warranted. Re-read `.claude/scripts/shared/lib/doc-templates.json` from disk (not memory) for category criteria, target paths, and naming rules. If warranted, create the document and commit with `Refs #$ISSUE`.
 
 <!-- USER-EXTENSION-START: post-implementation -->
 <!-- USER-EXTENSION-END: post-implementation -->
 
 ### Step 5: Verify Acceptance Criteria (with QA Extraction)
-**IMPORTANT -- Ground in file state:** Before evaluating each AC, re-read the actual file content using the Read tool. Do NOT evaluate from memory -- re-read to confirm the criterion is met in current code. This prevents batch fatigue hallucination.
+**IMPORTANT — Ground in file state:** Before evaluating each AC, re-read the actual file content using the Read tool. Do NOT evaluate from memory — re-read to confirm the criterion is met in current code. This prevents batch fatigue hallucination.
 For each AC checkbox in the issue body:
-- **Can verify** -> Mark `[x]`, continue
-- **Cannot verify** (manual, external) -> Check for QA extraction (Step 5a), then **STOP** and present options, wait for user disposition
+- **Can verify** → Mark `[x]`, continue
+- **Cannot verify** (manual, external) → Check for QA extraction (Step 5a), then **STOP** and present options, wait for user disposition
 After all ACs resolved, export and update issue body:
 ```bash
 gh pmu view $ISSUE --body-stdout > .tmp-$ISSUE.md
 # Update checkboxes to [x]
 gh pmu edit $ISSUE -F .tmp-$ISSUE.md && rm .tmp-$ISSUE.md
 ```
-#### Step 5a: QA Extraction -- Manual Test AC Detection
-When an AC cannot be verified automatically, check if it matches manual test indicators before presenting the STOP boundary.
-**Detection keywords** (case-insensitive): `manually verify`, `visually confirm`, `visual verification`, `QA:`, `qa-required`, `exploratory test`, `manual test`, `manual check`, `UX walkthrough`
-**If manual test AC detected:**
-1. **Present candidates** -- Use `AskUserQuestion` with multiSelect. Include "Skip all" option.
-2. **Create QA sub-issues** -- For each confirmed AC:
-   ```bash
-   gh pmu sub create --parent $ISSUE --title "QA: [AC description]" --label qa-required -F .tmp-qa-body.md
-   ```
-   QA sub-issue body contains: test description, parent issue context (`Parent: #$ISSUE -- $TITLE`), steps to perform, expected result.
-3. **Annotate parent AC** -- Update parent issue body with QA sub-issue reference. AC remains **unchecked**:
-   `- [ ] Manually verify the login flow -> QA: #NNN`
-4. **Report** extraction count and sub-issue numbers.
-**Closure path:** Parent stays `in_review` until all QA sub-issues are closed and AC checked off. Only then can `/done` complete the parent.
-**If no manual test AC detected:** Continue with standard STOP behavior for unverifiable ACs.
-**If user selects "Skip all":** Continue without extraction.
+#### Step 5a: QA Extraction — Manual Test AC Detection
+Re-read `.claude/scripts/shared/lib/qa-config.json` from disk (not memory) for detection keywords and body template. Match unverifiable ACs against keywords (case-insensitive). If matched, present candidates via `AskUserQuestion` (multiSelect, include "Skip all"). For confirmed ACs, create sub-issues with `gh pmu sub create --parent $ISSUE --title "QA: [AC description]" --label qa-required -F .tmp-qa-body.md`. Annotate parent AC as unchecked with `→ QA: #NNN`. Parent stays `in_review` until all QA sub-issues closed.
 
 <!-- USER-EXTENSION-START: post-ac-verification -->
 <!-- USER-EXTENSION-END: post-ac-verification -->
@@ -171,80 +75,27 @@ When an AC cannot be verified automatically, check if it matches manual test ind
 ```bash
 gh pmu move $ISSUE --status in_review
 ```
-### Step 7: STOP Boundary -- Report and Wait
+### Step 7: STOP Boundary — Report and Wait
 ```
-Issue #$ISSUE: $TITLE -- In Review
+Issue #$ISSUE: $TITLE — In Review
 Say "done" or run /done #$ISSUE to close this issue.
 ```
 **STOP.** Wait for user to say "done". Do NOT close the issue.
-**CRITICAL -- Autonomous Epic/Branch Sub-Issue Processing:**
-When working an epic or branch tracker (`context.type` is `"epic"` or `"branch"`), process sub-issues autonomously in the order determined by Step 1 (`context.processingOrder` from preamble output). Sub-issues already in `in_review` or `done` are skipped (`context.skipped`).
-
-**Default mode (no `--nonstop`):**
-For each sub-issue in processing order:
-1. Move sub-issue to `in_progress`
-2. Work through TDD cycles (Steps 4-5)
-3. Move sub-issue to `in_review`
-4. **STOP** -- report and wait for user to say "done"
-5. After user says "done" (invokes `/done` to move sub-issue to done), proceed to next sub-issue
-
-**Continuous mode (`--nonstop`):**
-For each sub-issue in processing order:
-1. Move sub-issue to `in_progress`
-2. Work through TDD cycles (Steps 4-5) -- AC verification still performed per sub-issue
-3. Move sub-issue to `in_review`
-4. Report: `"Sub-issue #N: $TITLE -> In Review (M/T processed)"`
-5. **Continue immediately** to next sub-issue -- no STOP, no "done" required
-
-**`--nonstop` commit strategy:** One commit per AC (unchanged). Commits use `Refs #N` for each sub-issue. Do NOT batch commits across sub-issues -- each sub-issue's commits are self-contained.
-
-**`--nonstop` push strategy:** Do NOT push after processing. Commits remain local. Push happens when `/done` is invoked for the completed sub-issues.
-
-**`--nonstop` error handling:** Any of these halt execution immediately, even in `--nonstop` mode:
-- Test suite failure (regression detected)
-- AC verification failure (criterion cannot be met)
-- QA extraction triggered (manual test AC found -- requires user input)
-- `gh pmu` command failure
-- Unresolvable implementation issue
-On halt: report which sub-issue failed, how many completed, and resume instructions.
-
-**`--nonstop` post-compaction recovery:** After context compaction in `--nonstop` mode:
-1. Re-read this spec
-2. Check sub-issue statuses via `gh pmu sub list $ISSUE`
-3. Identify first sub-issue NOT in `in_review` or `done`
-4. Resume from that sub-issue, continuing in `--nonstop` mode
-
-**`--nonstop` summary report** (after all sub-issues processed):
-```
-Nonstop Processing Complete
-  Sub-issues processed: N/T
-  Sub-issues skipped: K (already in_review/done)
-  Commits: C
-  Failures: F (if any, with sub-issue numbers)
-```
-
-**`--nonstop` is ignored** when the issue is not an epic or branch tracker (standard issues always STOP after Step 7).
-
-<!-- USER-EXTENSION-START: post-sub-issue-done -->
-<!-- USER-EXTENSION-END: post-sub-issue-done -->
+**CRITICAL — Autonomous Epic/Branch Sub-Issue Processing:**
+When working an epic or branch tracker (`context.type` is `"epic"` or `"branch"`), process sub-issues autonomously in ascending numeric order (default), or custom **Processing Order:** from epic body. Sub-issues already in `in_review` or `done` are skipped (`context.skipped`).
+**Default mode:** Per `02-github-workflow.md` Section 4 — each sub-issue: `in_progress` → Steps 4–5 → `in_review` → **STOP** per sub-issue → user says "done" → next.
+**`--nonstop` mode:** Same cycle but **no STOP** between sub-issues. Report `"Sub-issue #N: $TITLE → In Review (M/T processed)"` and continue immediately. Ignored for standard issues.
+**`--nonstop` rules:** One commit per AC using `Refs #N`. Commits remain local (no push — deferred to `/done`). Test failure, AC failure, QA extraction, or `gh pmu` error halt execution immediately — report which sub-issue failed, how many completed, and resume instructions.
+**`--nonstop` post-compaction recovery:** Re-read this spec, check `gh pmu sub list $ISSUE`, resume from first sub-issue not in `in_review`/`done`.
+**`--nonstop` summary report:** After all processed, report `Nonstop Processing Complete` with sub-issues processed/skipped/failed counts.
 
 **After all sub-issues reach `in_review` or `done`:**
-- **Epic:** Evaluate the epic's own acceptance criteria (Step 5), move epic to `in_review`, **STOP** -- report and wait for user to say "done"
-- **Branch tracker:** Report completion and suggest next step: `/merge-branch` or `/prepare-release`. Do NOT close the branch tracker -- it remains open until the branch is merged.
-**Default mode:** Never batch-close sub-issues or skip the per-sub-issue STOP boundary. Sequential means work order, not bypassing STOP boundaries.
-**Continuous mode:** Sub-issues are NOT moved to `done` -- only to `in_review`. The user runs `/done` for each sub-issue (or batch `/done`) after reviewing the nonstop output.
+- **Epic:** Evaluate epic's own acceptance criteria (Step 5), move epic to `in_review`, **STOP** — wait for "done"
+- **Branch tracker:** Report completion, suggest `/merge-branch` or `/prepare-release`. Do not close tracker.
+**Default mode:** Never skip per-sub-issue STOP boundary. **Continuous mode:** Sub-issues only moved to `in_review` (not `done`) — user runs `/done` after review.
 ---
 ## Error Handling
-| Situation | Response |
-|-----------|----------|
-| Issue not found | "Issue #N not found. Check the issue number?" -> STOP |
-| No branch assignment | "Issue #N is not assigned to a branch. Run `/assign-branch #N` first." -> STOP |
-| `--assign`: already assigned to different branch | "Issue #N is already assigned to branch X. Cannot reassign with --assign." -> STOP |
-| `--assign`: workstream conflict | "Issue #N is allocated to branch X by /plan-workstreams. Use /assign-branch directly to override." -> STOP |
-| `gh pmu` command fails | "Failed to update issue status: {error}" -> STOP |
-| PRD tracker not found | Continue silently (non-blocking) |
-| Framework file missing | Warn and continue without methodology |
-| No acceptance criteria | Report empty auto-TODO, continue |
-| Issue already in_progress | Continue silently (idempotent) |
+**STOP errors:** Issue not found, no branch assignment, `gh pmu` failure, `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch`).
+**Non-blocking:** PRD tracker not found, framework file missing, no acceptance criteria, issue already in_progress.
 ---
 **End of /work Command**

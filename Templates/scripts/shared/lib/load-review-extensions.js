@@ -1,6 +1,6 @@
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Extension loading error messages and utilities for /review-issue
  * Referenced by .claude/commands/review-issue.md Step 2b
  *

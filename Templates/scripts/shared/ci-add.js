@@ -9,7 +9,7 @@ const { modifyWorkflow } = require('./ci-modify.js');
 const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Feature types determine how the template is applied to the workflow.
  * 'top-level' features add a root-level YAML key (e.g., concurrency:).
  * 'step' features add a step to an existing job.
@@ -82,7 +82,7 @@ function isFeatureAlreadyEnabled(projectDir, featureId) {
         const regex = new RegExp(pattern, 'i');
         if (regex.test(content)) return true;
       }
-    } catch (e) {
+    } catch (_e) {
       continue;
     }
   }
@@ -98,7 +98,7 @@ function isFeatureAlreadyEnabled(projectDir, featureId) {
  * @param {boolean} [options.skipConfirm] - Skip user confirmation (for testing)
  * @returns {{ success: boolean, message: string, file?: string, feature?: string }}
  */
-function addCIFeature(projectDir, featureId, options = {}) {
+function addCIFeature(projectDir, featureId, _options = {}) {
   // Validate feature name
   const validation = validateFeatureName(featureId);
   if (!validation.valid) {
@@ -186,7 +186,7 @@ function addCIFeature(projectDir, featureId, options = {}) {
       operation = { addStep: { job: firstJob, yaml: templateYaml, position: 'before-last' } };
     }
 
-    const result = modifyWorkflow(target.file, operation);
+    modifyWorkflow(target.file, operation);
 
     return {
       success: true,
@@ -215,7 +215,7 @@ function getFirstJobName(filePath) {
       const jobNames = Object.keys(parsed.jobs);
       return jobNames.length > 0 ? jobNames[0] : null;
     }
-  } catch (e) {
+  } catch (_e) {
     // Ignore
   }
   return null;
@@ -238,7 +238,7 @@ function modifyUploadArtifactSteps(filePath, featureId, templateYaml) {
 
   let modified = false;
 
-  for (const [jobName, jobDef] of Object.entries(parsed.jobs)) {
+  for (const [_jobName, jobDef] of Object.entries(parsed.jobs)) {
     if (!jobDef || !Array.isArray(jobDef.steps)) continue;
 
     for (const step of jobDef.steps) {

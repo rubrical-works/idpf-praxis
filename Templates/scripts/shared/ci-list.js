@@ -6,7 +6,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * List available CI features with enabled/disabled status
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted output
@@ -66,7 +66,7 @@ function detectEnabledFeatures(workflowsPath, registry) {
       const filePath = path.join(workflowsPath, file);
       const content = fs.readFileSync(filePath, 'utf8');
       workflowContents.push({ file, content, parsed: yaml.parse(content) });
-    } catch (error) {
+    } catch (_error) {
       // Skip malformed files
       continue;
     }
@@ -160,7 +160,7 @@ function formatFeatureList(registry, enabledFeatures) {
   }
 
   // Display each tier
-  for (const [tier, group] of Object.entries(tiers)) {
+  for (const [_tier, group] of Object.entries(tiers)) {
     if (group.features.length === 0) continue;
 
     lines.push(`## ${group.title}`);

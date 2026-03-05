@@ -3,14 +3,13 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Review Mode Helper Functions
  *
  * Provides utilities for filtering review criteria based on project's reviewMode configuration.
  */
 
 let _criteriaCache = null;
-let _configCache = null;
 
 /**
  * Load criteria mapping from metadata

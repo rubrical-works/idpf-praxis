@@ -1,5 +1,5 @@
 ---
-version: "v0.57.0"
+version: "v0.58.0"
 description: Safely delete branch with confirmation (project)
 argument-hint: "[branch-name] [--force]"
 ---
@@ -37,7 +37,7 @@ git rev-parse --verify "$BRANCH" 2>/dev/null
 <!-- USER-EXTENSION-START: pre-destroy -->
 ### Workstream Detection (Pre-Destroy)
 Before confirming destruction, check if the branch is part of a workstream plan:
-1. **Load metadata:** Call `loadWorkstreamsMetadata('.workstreams.json')` from `plan-workstreams.js`
+1. **Read metadata from disk (not memory):** Call `loadWorkstreamsMetadata('.workstreams.json')` from `plan-workstreams.js`
    - If not found: skip (no workstream context)
 2. **Check workstream:** Call `preDestroyWorkstreamCheck(metadata, branchName)`
    - If `isWorkstream: false`: skip (branch is not a workstream)
@@ -129,7 +129,7 @@ Using `-D` (force delete) since user confirmed abandoning unmerged work.
 <!-- USER-EXTENSION-START: post-destroy -->
 ### Workstream Metadata Update (Post-Destroy)
 After branch deletion, update workstream metadata if applicable:
-1. **Load metadata:** Call `loadWorkstreamsMetadata('.workstreams.json')` from `plan-workstreams.js`
+1. **Read metadata from disk (not memory):** Call `loadWorkstreamsMetadata('.workstreams.json')` from `plan-workstreams.js`
    - If not found: skip (no workstream context)
 2. **Update metadata:** Call `postDestroyWorkstreamUpdate(metadata, branchName)`
    - Writes `updatedMetadata` back to `.workstreams.json` (status changed to `"destroyed"`)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * @description Concurrent workstream planning — argument parsing, analysis, and execution
  * @checksum sha256:placeholder
  *
@@ -446,13 +446,10 @@ function groupWorkstreams(conflictMatrix, epicData, options) {
  * @returns {object} { valid: boolean, warning?: string }
  */
 function validateAdjustment(plan, adjustment, conflictMatrix) {
-  const { epic, fromStream, toStream } = adjustment;
+  const { epic, fromStream } = adjustment;
 
   // Get the epics that will remain in fromStream after the move
   const remainingInSource = plan.workstreams[fromStream].epics.filter(e => e !== epic);
-
-  // Get the epics in the destination stream
-  const destinationEpics = plan.workstreams[toStream].epics;
 
   // Check if moving this epic away splits a HIGH-risk pair
   for (const otherEpic of remainingInSource) {

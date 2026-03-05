@@ -10,7 +10,7 @@ const { analyzeProject } = require('./ci-analyze.js');
 const RECOMMENDATION_TYPES = ['Add', 'Remove', 'Alter', 'Improve'];
 
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * Deprecated action versions — map old to recommended.
  */
 const DEPRECATED_ACTIONS = {
@@ -53,7 +53,7 @@ function inventoryWorkflows(projectDir) {
     let parsed = null;
     try {
       parsed = yaml.parse(raw);
-    } catch (e) {
+    } catch (_e) {
       // Invalid YAML — return minimal entry
       return { file: filePath, fileName, name: fileName, triggers: [], jobs: [], raw };
     }

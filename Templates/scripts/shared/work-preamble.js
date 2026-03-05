@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * work-preamble.js
  *
  * Consolidates deterministic setup work for the /work command into a single
@@ -102,6 +102,16 @@ async function execJSON(cmd, errorCode, errorMsg) {
 function parseArgs(args) {
   if (args.length === 0) {
     return { error: { code: 'MISSING_ARGUMENT', message: 'No arguments provided. Use --issue N, --issues "N,N", or --status <status>.' } };
+  }
+
+  // Detect --schema flag (mutually exclusive with other flags)
+  const hasSchema = args.includes('--schema');
+  if (hasSchema) {
+    const hasOther = args.includes('--issue') || args.includes('--issues') || args.includes('--status');
+    if (hasOther) {
+      return { error: { code: 'MUTUAL_EXCLUSION', message: '--schema cannot be combined with --issue, --issues, or --status.' } };
+    }
+    return { mode: 'schema' };
   }
 
   // Detect --assign modifier (boolean flag, combinable with any mode)
@@ -893,6 +903,34 @@ async function main() {
     const envelope = buildErrorEnvelope([parsed.error]);
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
     process.exit(1);
+    return;
+  }
+
+  if (parsed.mode === 'schema') {
+    const schema = {
+      context: {
+        name: 'context',
+        type: 'object',
+        description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order.'
+      },
+      gates: {
+        name: 'gates',
+        type: 'object',
+        description: 'Boolean gate results: assigned, movedToInProgress, prdTrackerMoved.'
+      },
+      autoTodo: {
+        name: 'autoTodo',
+        type: 'object',
+        description: 'Auto-generated TODO list. Standard: { source: "acceptance_criteria", items: [{ text, checked }] }. Epic/Branch: { source: "sub_issues", items: [{ number, title }] }.'
+      },
+      warnings: {
+        name: 'warnings',
+        type: 'array',
+        description: 'Non-blocking warnings (e.g., NO_SUB_ISSUES, ALL_SUB_ISSUES_COMPLETE). Each has code and message.'
+      }
+    };
+    process.stdout.write(JSON.stringify(schema, null, 2) + '\n');
+    process.exit(0);
     return;
   }
 

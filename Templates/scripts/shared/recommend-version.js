@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.57.0
+ * @framework-script 0.58.0
  * @description Recommend semver bump based on commit types
  * @checksum sha256:placeholder
  *
@@ -171,13 +171,13 @@ async function main() {
         }).trim();
 
         const lines = rawLog ? rawLog.split('\n') : [];
-        let hasBreaking = false, hasFeatures = false, hasFixes = false;
+        let hasBreaking = false, hasFeatures = false;
 
         for (const line of lines) {
             const type = classifyCommit(line, lookupIssueLabels);
             if (type === 'breaking') hasBreaking = true;
             if (type === 'feature') hasFeatures = true;
-            if (type === 'fix') hasFixes = true;
+            // fix commits default to patch (no flag needed)
         }
 
         let bump, reason;
