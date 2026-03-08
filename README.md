@@ -40,7 +40,7 @@ px-manager handles:
 
 ---
 
-## Skills (32)
+## Skills (34)
 
 **TDD:** tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns
 
@@ -54,7 +54,7 @@ px-manager handles:
 
 **Advanced Testing:** property-based-testing, mutation-testing
 
-**Analysis:** anti-pattern-analysis, bdd-writing, codebase-analysis
+**Analysis:** anti-pattern-analysis, bdd-writing, codebase-analysis, code-path-discovery
 
 **Code Quality:** command-spec-audit
 

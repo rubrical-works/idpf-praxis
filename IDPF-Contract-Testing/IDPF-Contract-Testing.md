@@ -1,10 +1,13 @@
 # IDPF-Contract-Testing Framework
-**Version:** v0.58.0
-**Source:** IDPF-Contract-Testing/IDPF-Contract-Testing.md
+**Version:** v0.59.0
 **Extends:** IDPF-Testing
+
 ## Overview
-Framework for API contract testing. Extends IDPF-Testing with consumer-driven contract testing, provider verification, and contract management using Pact, Spring Cloud Contract, and Specmatic.
+IDPF-Contract-Testing is the framework for developing and executing API contract tests. It extends IDPF-Testing and provides specialized guidance for consumer-driven contract testing, provider verification, and contract management using tools like Pact, Spring Cloud Contract, and Specmatic.
+Contract testing validates that API consumers and providers agree on the interface contract, catching integration issues early without requiring full end-to-end testing.
+
 ## Terminology
+Extends IDPF-Testing terminology:
 | Term | Definition |
 |------|------------|
 | **Consumer** | Service that calls an API |
@@ -17,6 +20,7 @@ Framework for API contract testing. Extends IDPF-Testing with consumer-driven co
 | **Can-I-Deploy** | Check if safe to deploy based on contracts |
 | **Provider State** | Precondition setup for contract verification |
 | **Pending Pact** | WIP contract not yet verified |
+
 ## Contract Testing Flow
 ```
 ┌──────────────┐                          ┌──────────────┐
@@ -58,6 +62,7 @@ Framework for API contract testing. Extends IDPF-Testing with consumer-driven co
 │   Consumer   │                      │   Provider   │
 └──────────────┘                      └──────────────┘
 ```
+
 ## Tool Selection Guide
 | Tool | Language | Best For | Features |
 |------|----------|----------|----------|
@@ -66,6 +71,8 @@ Framework for API contract testing. Extends IDPF-Testing with consumer-driven co
 | **Specmatic** | Any (OpenAPI) | OpenAPI-based | Contract from spec |
 | **Dredd** | Any | API Blueprint/OpenAPI | Validation tool |
 | **Hoverfly** | Multi-language | Service virtualization | Simulation + contract |
+
+### Decision Tree
 ```
 Contract Testing Tool Selection:
 ├── Spring Boot ecosystem? → Spring Cloud Contract
@@ -74,7 +81,9 @@ Contract Testing Tool Selection:
 ├── Need service virtualization? → Hoverfly
 └── General purpose? → Pact
 ```
+
 ## Directory Structure
+
 ### Consumer Repository (Embedded)
 ```
 <consumer-service-repo>/
@@ -88,6 +97,7 @@ Contract Testing Tool Selection:
 │   └── pact-config.js
 └── package.json
 ```
+
 ### Provider Repository (Embedded)
 ```
 <provider-service-repo>/
@@ -102,6 +112,7 @@ Contract Testing Tool Selection:
 │       └── states.js
 └── package.json
 ```
+
 ### Contract Testing Repository (Separate)
 ```
 <contract-testing-repo>/
@@ -134,18 +145,23 @@ Contract Testing Tool Selection:
 │       └── provider-verification.yml
 └── README.md
 ```
+
 ## Consumer-Driven Workflow
+
 ### Consumer Side
 1. **Write Contract Test** - Define expected provider behavior
 2. **Run Tests** - Execute against mock provider
 3. **Generate Pact** - Contract file created automatically
 4. **Publish to Broker** - Upload contract for provider
+
 ### Provider Side
 1. **Fetch Contracts** - Download from broker
 2. **Setup Provider States** - Configure preconditions
 3. **Run Verification** - Execute real provider against contracts
 4. **Publish Results** - Report verification status
+
 ## Provider States
+Provider states set up preconditions for contract verification:
 ```typescript
 const stateHandlers = {
   'order exists': async () => {
@@ -159,14 +175,19 @@ const stateHandlers = {
   },
 };
 ```
+
 ## Pact Broker Integration
+
+### Broker Configuration
 | Setting | Description |
 |---------|-------------|
 | Base URL | Broker endpoint |
 | Authentication | API token or basic auth |
 | Webhooks | Trigger provider verification on publish |
 | Environments | production, staging, development |
+
 ### Can-I-Deploy
+Check deployment safety before releasing:
 ```bash
 # Consumer deployment check
 pact-broker can-i-deploy \
@@ -180,7 +201,9 @@ pact-broker can-i-deploy \
   --version $GIT_SHA \
   --to-environment production
 ```
+
 ## CI/CD Integration
+
 ### Consumer Pipeline (GitHub Actions)
 ```yaml
 # .github/workflows/consumer-contract.yml
@@ -229,6 +252,7 @@ jobs:
             --version=${{ github.sha }} \
             --to-environment=production
 ```
+
 ### Provider Pipeline (GitHub Actions)
 ```yaml
 # .github/workflows/provider-verification.yml
@@ -280,12 +304,14 @@ jobs:
             --version=${{ github.sha }} \
             --to-environment=production
 ```
+
 ## Versioning Strategy
 | Approach | Description | Use Case |
 |----------|-------------|----------|
 | **Git SHA** | Version = commit hash | Standard CI/CD |
 | **Semantic** | Version = semver | Formal releases |
 | **Branch-based** | Include branch in version | Feature branches |
+
 ### Breaking Change Process
 1. Consumer publishes new contract with breaking change
 2. Provider verification fails
@@ -293,12 +319,15 @@ jobs:
 4. Provider implements change
 5. Provider verification passes
 6. Both services deploy
+
 ### Pending Pacts (WIP)
 - New contracts marked as "pending"
 - Provider not blocked by pending pacts
 - Provider verification runs but doesn't fail build
 - Once verified, pact becomes "supported"
+
 ## GitHub Project Labels
+Extends IDPF-Testing labels:
 | Label | Color | Hex | Description |
 |-------|-------|-----|-------------|
 | `contract` | Cyan | `#00B8D9` | Contract work (from Core) |
@@ -307,7 +336,9 @@ jobs:
 | `breaking-change` | Orange | `#D93F0B` | Breaking contract change |
 | `pending-pact` | Yellow | `#FBCA04` | Work-in-progress contract |
 | `verification-failed` | Red | `#FF5630` | Failed verification |
+
 ## Workflow Phases
+Extends IDPF-Testing phases with contract-specific activities:
 | Phase | Contract-Specific Activities |
 |-------|------------------------------|
 | **PLAN** | Identify consumer/provider pairs, define contract scope |
@@ -315,32 +346,40 @@ jobs:
 | **DEVELOP** | Write consumer tests, implement provider state handlers |
 | **EXECUTE** | Publish contracts, run provider verification |
 | **REPORT** | Monitor broker dashboard, track verification status |
+
 ## Session Commands
+Contract-specific commands:
+
 ### Planning Commands
 - **"Contract-Plan-Start"** - Begin contract test planning
 - **"Consumer-Identify"** - Identify consumer services
 - **"Provider-Identify"** - Identify provider services
+
 ### Development Commands
 - **"Consumer-Test-Create"** - Create consumer contract test
 - **"Provider-State-Create"** - Create provider state handler
 - **"Pact-Generate"** - Generate pact from tests
+
 ### Verification Commands
 - **"Pact-Publish"** - Publish pacts to broker
 - **"Provider-Verify"** - Run provider verification
 - **"Can-I-Deploy"** - Check deployment safety
+
 ## Integration Points
 - **Extends:** IDPF-Testing
 - **Uses:** IDPF-Agile for test development
 - **Coordinates:** Multiple teams (consumer and provider)
 - **Outputs:** Contract files, verification reports, broker dashboards
+
 ## References
+
 ### Tool Documentation
 - [Pact Documentation](https://docs.pact.io/)
 - [Pactflow](https://pactflow.io/docs/)
 - [Spring Cloud Contract](https://spring.io/projects/spring-cloud-contract)
 - [Specmatic](https://specmatic.io/documentation/)
+
 ### Best Practices
 - [Contract Testing Best Practices - Pact](https://docs.pact.io/best_practices)
 - [Consumer-Driven Contracts - Martin Fowler](https://martinfowler.com/articles/consumerDrivenContracts.html)
----
 **End of Framework**

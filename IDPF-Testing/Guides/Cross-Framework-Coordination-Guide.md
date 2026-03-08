@@ -1,5 +1,5 @@
 # Cross-Framework Coordination Guide
-**Version:** v0.58.0
+**Version:** v0.59.0
 
 **Framework:** IDPF-Testing
 

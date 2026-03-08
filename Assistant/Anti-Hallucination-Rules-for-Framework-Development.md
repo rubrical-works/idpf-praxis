@@ -1,18 +1,12 @@
 # Anti-Hallucination Rules for Framework Development
-**Version:** v0.58.0
+**Version:** v0.59.0
 
 ## Core Principle
-
 **Accuracy over speed. Verification over assumption. Completeness over convenience.**
-
 Framework development requires rigorous accuracy because errors propagate to all users of the framework. A version number mistake, missing CHANGELOG entry, or inconsistent registry affects every project that uses the framework.
 
-------
-
 ## Information Source Hierarchy
-
 Always prioritize information in this order:
-
 1. **Git history and tags** (absolute authority for versions and changes)
    - Commit messages document what changed
    - Tags define release boundaries
@@ -28,12 +22,9 @@ Always prioritize information in this order:
    - Framework-Overview.md and related files
    - README.md and guides
 
-------
-
 ## Absolute "Never Do" Rules
 
 ### NEVER Invent:
-
 - ❌ Version numbers without analyzing commits
 - ❌ CHANGELOG entries without reviewing actual changes
 - ❌ Skill counts without listing actual directories
@@ -46,7 +37,6 @@ Always prioritize information in this order:
 - ❌ URLs or endpoints without verifying they are valid
 
 ### NEVER Assume:
-
 - ❌ A patch version is appropriate without commit analysis
 - ❌ CHANGELOG is complete without verifying against commits
 - ❌ Install scripts are synchronized without comparing both
@@ -56,9 +46,7 @@ Always prioritize information in this order:
 - ❌ All changes were committed
 
 ### NEVER Defer or Reduce Scope Without Confirmation:
-
 When working on any bug, enhancement, proposal, or PRD, you must implement ALL specified requirements. Unilateral scope decisions are prohibited.
-
 - ❌ Mark any requirement as "optional" or "nice-to-have" without user approval
 - ❌ Defer features to "future work" or "Phase 2" without explicit agreement
 - ❌ Remove or skip acceptance criteria without confirmation
@@ -66,14 +54,11 @@ When working on any bug, enhancement, proposal, or PRD, you must implement ALL s
 - ❌ Downgrade priority of any item without discussion
 - ❌ Declare something "out of scope" that was in the original specification
 - ❌ Replace a requirement with a "simpler alternative" without approval
-
 **When scope concerns arise:**
-
 1. **STOP** - Do not silently defer or skip
 2. **REPORT** - Explain the specific concern
 3. **ASK** - "Should I proceed as specified, or would you like to adjust the scope?"
 4. **WAIT** - Get explicit user decision before proceeding
-
 ```markdown
 ❌ BAD: "I've implemented the core functionality. The edge cases can be
         added in a future iteration."
@@ -83,16 +68,12 @@ When working on any bug, enhancement, proposal, or PRD, you must implement ALL s
          or would you like to create a separate issue for them?"
 ```
 
-------
-
 ## STOP Boundary Enforcement
 
 ### Command Spec STOP Boundaries Are Absolute
-
 When a command specification includes a STOP boundary section (e.g., `## STOP — Workflow Boundary`), this is a **hard stop**, not a suggestion.
 
 ### Rules:
-
 1. **STOP means STOP** - Execution must halt at the boundary
 2. **No "helpful continuation"** - Do not proceed past STOP boundaries even if:
    - The next steps seem logical
@@ -105,7 +86,6 @@ When a command specification includes a STOP boundary section (e.g., `## STOP �
    - Do not assume pre-compaction state
 
 ### Why This Matters
-
 STOP boundaries exist to:
 - Separate distinct workflow phases
 - Allow user review before critical operations
@@ -113,23 +93,17 @@ STOP boundaries exist to:
 - Give users control over destructive or irreversible operations
 
 ### Example
-
 ```markdown
 ## STOP — Workflow Boundary
 **This command ends here.** Wait for user confirmation before proceeding.
 ```
-
 **Correct Response:** Report completion and wait for user's next instruction
 **Incorrect Response:** Proceeding to push changes because it's the "logical next step"
-
-------
 
 ## Version Management Rules
 
 ### Before Determining Version Number
-
 **ALWAYS run Phase 0 from PREPARE_RELEASE.md:**
-
 ```bash
 # 1. Identify last release
 git describe --tags --abbrev=0
@@ -144,7 +118,6 @@ git log <last-tag>..HEAD --pretty=format:"%s" | grep -E "^Fix"              # Fi
 ```
 
 ### Version Decision Matrix
-
 | Commit Contains | Version Type |
 |-----------------|--------------|
 | ANY new framework (IDPF-*) | MINOR or MAJOR |
@@ -153,29 +126,22 @@ git log <last-tag>..HEAD --pretty=format:"%s" | grep -E "^Fix"              # Fi
 | ANY new feature or capability | MINOR |
 | ONLY bug fixes | PATCH |
 | ONLY documentation updates | PATCH |
-
 **If in doubt, choose the HIGHER version type.**
 
 ### CHANGELOG Discipline
-
 Every release MUST document ALL changes since last release:
-
 1. **Review every commit** - not just the triggering issue
 2. **Categorize properly** - Added, Changed, Fixed, Removed
 3. **Include issue numbers** - (#XX) for traceability
 4. **Group related changes** - by component or feature area
-
 ```markdown
 ❌ BAD: Only documenting the issue you were working on
 ✅ GOOD: Documenting all 69 commits that occurred since last release
 ```
 
-------
-
 ## Cross-Reference Validation Rules
 
 ### Before Releasing, Verify Consistency
-
 | File A | Must Match | File B |
 |--------|------------|--------|
 | `framework-manifest.json` version | = | `CHANGELOG.md` latest version |
@@ -186,7 +152,6 @@ Every release MUST document ALL changes since last release:
 | Frameworks in `IDPF-*/` directories | = | List in framework-manifest.json |
 
 ### Validation Commands
-
 ```bash
 # Count skill directories (excluding Packaged)
 ls -d Skills/*/ | grep -v Packaged | wc -l
@@ -201,32 +166,24 @@ ls System-Instructions/Domain/*.md | wc -l
 ls -d IDPF-*/ 2>/dev/null
 ```
 
-------
-
 ## Registry Synchronization Rules
 
 ### Skills Registry (Skills/MAINTENANCE.md)
-
 Before release, verify:
-
 - [ ] Every skill directory has an entry in the registry table
 - [ ] Every registry entry has a corresponding directory
 - [ ] Version numbers match SKILL.md files
 - [ ] Framework-Skill dependency matrix matches install scripts
 
-------
-
 ## Proposal Workflow Rules
 
 ### When Implementing a Proposal
-
 1. **Before starting:** Verify proposal exists in `Proposal/`
 2. **After implementing:** Move to `Proposal/Implemented/`
 3. **In commit message:** Reference the proposal file
 4. **In CHANGELOG:** Document the implementation
 
 ### Proposal File Movement
-
 ```bash
 # Correct workflow
 git mv Proposal/Feature-Name.md Proposal/Implemented/Feature-Name.md
@@ -235,41 +192,38 @@ git commit -m "Move Feature-Name proposal to Implemented (#XX)"
 # NEVER leave proposals in wrong location after implementation
 ```
 
-------
-
 ## Externalized File References
+
 ### After Compaction, Re-Read From Disk
-Command specs reference externalized JSON files. After compaction, do not assume you remember the file contents — re-read from disk.
+Command specs reference externalized JSON files (configuration, criteria, templates). After context compaction, the contents of these files may no longer be in context. **Do not assume you remember the file contents — re-read from disk.**
 - ❌ Acting on stale memory of a JSON file's contents after compaction
-- ❌ Skipping a file read because you "already loaded it"
+- ❌ Skipping a file read because you "already loaded it" earlier in the session
+- ❌ Paraphrasing or reconstructing file contents from memory
 - ✅ Always use the Read tool to load externalized files before using their contents
 - ✅ Treat every file reference after compaction as a fresh read
 - ✅ Use full paths (e.g., `.claude/scripts/shared/lib/doc-templates.json`) — never shorthand
-
-------
+```markdown
+❌ BAD: "Based on the doc-templates.json I read earlier, the categories are..."
+✅ GOOD: [Read `.claude/scripts/shared/lib/doc-templates.json`] → use actual contents
+```
 
 ## File Operation Rules
 
 ### Before Bulk Updates
-
 1. **List all files** that will be affected
 2. **Read each file** before modifying
 3. **Track progress** explicitly
 4. **Verify completion** by listing again
 
 ### Count Verification
-
 ```markdown
 ❌ BAD: "Updated all 14 skills"
 ✅ GOOD: "Listed skills: [14 names]. Updated each. Verified: 14 complete."
 ```
 
-------
-
 ## Self-Checking Before Release
 
 ### Pre-Release Checklist
-
 - [ ] Ran `git log <last-tag>..HEAD` and reviewed ALL commits
 - [ ] Version number reflects the HIGHEST change type in commits
 - [ ] CHANGELOG documents every significant commit
@@ -281,45 +235,37 @@ Command specs reference externalized JSON files. After compaction, do not assume
 - [ ] All implemented proposals moved to Implemented/
 
 ### Post-Release Verification
-
 - [ ] Git tag created and pushed
 - [ ] GitHub shows correct tag
 - [ ] No uncommitted changes remain
 
-------
-
 ## Common Mistakes to Avoid
 
 ### Mistake 1: Patch Version for Feature Release
-
 ```markdown
 ❌ BAD: 69 commits with 7 new frameworks → v2.3.1 (PATCH)
 ✅ GOOD: 69 commits with 7 new frameworks → v2.4.0 (MINOR)
 ```
 
 ### Mistake 2: Incomplete CHANGELOG
-
 ```markdown
 ❌ BAD: CHANGELOG only mentions the bug that triggered the release
 ✅ GOOD: CHANGELOG documents all features, fixes, and changes since last release
 ```
 
 ### Mistake 3: Assumed Counts
-
 ```markdown
 ❌ BAD: "There are 14 skills" (from memory)
 ✅ GOOD: "Listed Skills/: 14 directories found" (from verification)
 ```
 
 ### Mistake 4: Stale Documentation Counts
-
 ```markdown
 ❌ BAD: Documentation says "10 skills" but there are now 14
 ✅ GOOD: After adding skills, updated all documentation counts
 ```
 
 ### Mistake 5: Invented Commands or URLs
-
 ```markdown
 ❌ BAD: "Run `npx install-idpf` to install" (command doesn't exist)
 ✅ GOOD: "Run `node install-hub.js` to install" (verified in documentation)
@@ -328,14 +274,10 @@ Command specs reference externalized JSON files. After compaction, do not assume
 ✅ GOOD: "See the README.md for installation instructions" (points to known file)
 ```
 
-------
-
 ## When Communicating with Users
 
 ### Verify Before Stating
-
 Before mentioning any of the following to users, verify they exist:
-
 - **Installation commands** - Check README.md or install scripts
 - **CLI tool names** - Verify the actual executable or script name
 - **npm package names** - Check package.json or npm registry
@@ -343,9 +285,7 @@ Before mentioning any of the following to users, verify they exist:
 - **File paths** - Verify the file exists at that location
 
 ### When Uncertain, Be Generic
-
 If you cannot verify a command or URL, use generic descriptions:
-
 ```markdown
 ❌ BAD: "Run `npx idpf-install` to get started"
 ✅ GOOD: "Follow the installation instructions in README.md"
@@ -355,7 +295,6 @@ If you cannot verify a command or URL, use generic descriptions:
 ```
 
 ### Verification Commands
-
 ```bash
 # Check if a command/script exists
 ls install-hub.js
@@ -368,12 +307,9 @@ npm view <package-name> 2>/dev/null
 grep -r "install" README.md
 ```
 
-------
-
 ## Response Templates
 
 ### Template 1: Version Determination
-
 ```
 Before determining version, I analyzed commits since last release (vX.Y.Z):
 
@@ -388,7 +324,6 @@ Based on [highest change type], this should be version [X.Y.Z].
 ```
 
 ### Template 2: Release Preparation
-
 ```
 Pre-release verification:
 
@@ -407,7 +342,6 @@ Ready for release.
 ```
 
 ### Template 3: Count Verification
-
 ```
 Verifying [component] count:
 
@@ -423,12 +357,9 @@ Documentation states: [documented count]
 Status: [Match/Mismatch - action needed]
 ```
 
-------
-
 ## Integration with Framework Development
 
 ### When This Ruleset Applies
-
 - Working in the idpf-praxis repository (framework source)
 - Preparing releases
 - Updating registries or counts
@@ -436,29 +367,19 @@ Status: [Match/Mismatch - action needed]
 - Managing proposals
 
 ### When Software Development Rules Apply Instead
-
 - User projects installed via hub installer
 - Writing application code
 - General software development tasks
 
-------
-
 ## Final Reminder
-
 **Framework errors multiply.** Every mistake in the framework affects every user who installs it. Take the time to verify:
-
 1. **Commits** - Review all of them before versioning
 2. **Counts** - List files, don't assume numbers
 3. **Consistency** - Cross-check all version references
 4. **Completeness** - Document everything in CHANGELOG
-
 When tempted to skip verification:
-
 1. **Stop** - The release can wait
 2. **Verify** - Run the commands, check the files
 3. **Document** - Show your verification work
 4. **Release** - Only when confident
-
-------
-
 **End of Anti-Hallucination Rules for Framework Development**

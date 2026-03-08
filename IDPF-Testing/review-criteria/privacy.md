@@ -1,12 +1,14 @@
 # Privacy Compliance Review Criteria
 **Source:** Extracted from privacy-compliance skill
 **Domain:** Consent management, cookie compliance, dark pattern avoidance, GDPR/CCPA/LGPD
+
 ## Proposal Review Questions
 - Does the proposal identify personal data collection points and their lawful basis?
 - Are consent requirements defined for analytics, tracking, or marketing features?
 - Does the proposal address cookie usage and classification (necessary vs optional)?
 - Are regulatory applicability considerations included (GDPR, CCPA/CPRA, LGPD)?
 - Does the proposal account for third-party scripts and their data processing implications?
+
 ## PRD Review Questions
 - Do user stories include consent management acceptance criteria where data is collected?
 - Are cookie classification and banner requirements specified for new tracking features?
@@ -14,6 +16,7 @@
 - Are dark pattern avoidance requirements included for consent UI (reject-all parity, no pre-checked boxes)?
 - Does the test plan include validation of consent-before-load behavior for non-essential scripts?
 - Are privacy policy updates identified when new data processing activities are introduced?
+
 ## Issue Review Questions
 - Does this feature collect, process, or store personal data?
 - Are consent requirements identified before loading analytics, tracking, or marketing scripts?

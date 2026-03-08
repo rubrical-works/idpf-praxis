@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.58.0
+ * @framework-script 0.59.0
  * @description Recommend semver bump based on commit types
  * @checksum sha256:placeholder
  *

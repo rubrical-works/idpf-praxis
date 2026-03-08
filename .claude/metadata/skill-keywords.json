@@ -83,6 +83,17 @@
       "continuous deployment",
       "build automation"
     ],
+    "code-path-discovery": [
+      "code paths",
+      "path discovery",
+      "behavioral paths",
+      "route analysis",
+      "handler analysis",
+      "from code",
+      "code flow",
+      "exception paths",
+      "guard clauses"
+    ],
     "codebase-analysis": [
       "analyze codebase",
       "code analysis",
@@ -192,6 +203,15 @@
       "stryker",
       "mutmut",
       "pit mutation"
+    ],
+    "playwright-explorer": [
+      "playwright",
+      "browser exploration",
+      "dom inspection",
+      "interactive browser",
+      "browser session",
+      "live browser",
+      "dom reader"
     ],
     "playwright-setup": [
       "playwright",

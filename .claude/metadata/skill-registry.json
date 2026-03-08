@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-03-05T01:32:05.334Z",
+  "generatedAt": "2026-03-08T19:48:22.173Z",
   "version": "1.0.0",
-  "skillCount": 32,
+  "skillCount": 34,
   "skills": [
     {
       "name": "anti-pattern-analysis",
@@ -90,6 +90,17 @@
         "kubernetes"
       ],
       "invocationMode": "direct-only"
+    },
+    {
+      "name": "code-path-discovery",
+      "description": "Scan TypeScript/JavaScript source files for behavioral paths and return candidates in 6-category format for /paths turn-based discovery",
+      "triggers": [],
+      "category": "analysis",
+      "relevantTechStack": [
+        "javascript",
+        "typescript"
+      ],
+      "invocationMode": "manual"
     },
     {
       "name": "codebase-analysis",
@@ -228,6 +239,20 @@
         "mutation-testing",
         "javascript",
         "typescript"
+      ],
+      "invocationMode": "direct-only"
+    },
+    {
+      "name": "playwright-explorer",
+      "description": "Interactive browser exploration using Playwright with natural language interaction, DOM reading, and session management",
+      "triggers": [],
+      "category": "testing",
+      "relevantTechStack": [
+        "playwright",
+        "e2e",
+        "browser-testing",
+        "web-app",
+        "frontend"
       ],
       "invocationMode": "direct-only"
     },

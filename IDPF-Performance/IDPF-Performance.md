@@ -1,10 +1,13 @@
 # IDPF-Performance Framework
-**Version:** v0.58.0
-**Source:** IDPF-Performance/IDPF-Performance.md
+**Version:** v0.59.0
 **Extends:** IDPF-Testing
+
 ## Overview
-Framework for performance testing. Extends IDPF-Testing with load testing, stress testing, endurance testing, and capacity planning.
+IDPF-Performance is the framework for developing and executing performance tests. It extends IDPF-Testing and provides specialized guidance for load testing, stress testing, endurance testing, and capacity planning.
+Performance testing validates that applications meet non-functional requirements for response time, throughput, scalability, and resource utilization under various load conditions.
+
 ## Terminology
+Extends IDPF-Testing terminology:
 | Term | Definition |
 |------|------------|
 | **Load Test** | Validate behavior under expected user load |
@@ -18,6 +21,7 @@ Framework for performance testing. Extends IDPF-Testing with load testing, stres
 | **Ramp-Up** | Gradual increase of virtual users |
 | **Think Time** | Simulated user pause between requests |
 | **Threshold** | Pass/fail criteria for metrics |
+
 ## Performance Test Types
 | Test Type | Purpose | Duration | Load Pattern |
 |-----------|---------|----------|--------------|
@@ -27,6 +31,7 @@ Framework for performance testing. Extends IDPF-Testing with load testing, stres
 | **Spike Test** | Handle sudden traffic bursts | 15-30 min | Sudden spikes |
 | **Capacity Test** | Determine max throughput | Varies | Incremental |
 | **Scalability Test** | Validate horizontal/vertical scaling | Varies | Incremental with scaling |
+
 ## Tool Selection Guide
 | Tool | Language | Best For | Strengths |
 |------|----------|----------|-----------|
@@ -36,6 +41,8 @@ Framework for performance testing. Extends IDPF-Testing with load testing, stres
 | **Locust** | Python | Python teams | Simple, distributed, real-time UI |
 | **Artillery** | JavaScript | Serverless, APIs | YAML config, easy CI integration |
 | **wrk/wrk2** | Lua | HTTP benchmarking | Lightweight, precise latency measurement |
+
+### Decision Tree
 ```
 Performance Tool Selection:
 ├── Team uses JavaScript? → k6 or Artillery
@@ -46,6 +53,7 @@ Performance Tool Selection:
 ├── Need extensive protocol support? → JMeter
 └── Need lightweight HTTP benchmarking? → wrk2
 ```
+
 ## Directory Structure
 ```
 <performance-test-repo>/
@@ -84,7 +92,9 @@ Performance Tool Selection:
 ├── docker-compose.yml          # Local infrastructure
 └── README.md
 ```
+
 ## Load Profile Patterns
+
 ### Ramp-Up Pattern
 ```
      Users
@@ -98,6 +108,7 @@ Performance Tool Selection:
          Ramp   Steady State    Ramp
           Up                    Down
 ```
+
 ### Spike Pattern
 ```
      Users
@@ -108,6 +119,7 @@ Performance Tool Selection:
        └─────────────────────────→ Time
            Spike 1     Spike 2
 ```
+
 ### Step Pattern (Capacity Testing)
 ```
      Users
@@ -120,6 +132,7 @@ Performance Tool Selection:
        └─────────────────────────→ Time
         Step increases until failure
 ```
+
 ## Test Data Management
 | Approach | Use Case | Implementation |
 |----------|----------|----------------|
@@ -127,6 +140,7 @@ Performance Tool Selection:
 | **JSON Files** | Complex request payloads | Template substitution |
 | **Dynamic Generation** | Unique data per request | Faker libraries |
 | **Shared Array** | Large datasets (k6) | Memory-efficient loading |
+
 ## Key Metrics
 | Metric | Description | Good Values |
 |--------|-------------|-------------|
@@ -137,6 +151,7 @@ Performance Tool Selection:
 | **Error Rate** | Failed requests / total | < 0.1% |
 | **Concurrent Users** | Simultaneous active users | Depends on requirement |
 | **Apdex** | Application Performance Index | > 0.9 |
+
 ### Threshold Configuration (k6 Example)
 ```javascript
 thresholds: {
@@ -145,7 +160,9 @@ thresholds: {
   'http_reqs': ['rate>1000'],
 }
 ```
+
 ## CI/CD Integration
+
 ### GitHub Actions Example (k6)
 ```yaml
 # .github/workflows/load-test.yml
@@ -187,6 +204,7 @@ jobs:
           name: k6-results
           path: results/
 ```
+
 ### Scheduled Soak Test
 ```yaml
 # .github/workflows/scheduled-soak.yml
@@ -218,7 +236,9 @@ jobs:
           name: soak-test-results
           path: results/
 ```
+
 ## GitHub Project Labels
+Extends IDPF-Testing labels:
 | Label | Color | Hex | Description |
 |-------|-------|-----|-------------|
 | `performance` | Blue | `#0052CC` | Performance work (from Core) |
@@ -227,7 +247,9 @@ jobs:
 | `soak-test` | Purple | `#5319E7` | Endurance test development |
 | `capacity` | Blue | `#1D76DB` | Capacity planning |
 | `baseline` | Light Blue | `#C5DEF5` | Baseline measurement |
+
 ## Workflow Phases
+Extends IDPF-Testing phases with performance-specific activities:
 | Phase | Performance-Specific Activities |
 |-------|--------------------------------|
 | **PLAN** | Define SLAs/SLOs, identify critical paths, establish baselines |
@@ -235,43 +257,54 @@ jobs:
 | **DEVELOP** | Write test scripts, build data generators, set up monitoring integration |
 | **EXECUTE** | Run tests with proper environment, collect metrics, monitor resources |
 | **REPORT** | Analyze percentiles, compare against baselines, generate recommendations |
+
 ## Session Commands
+Performance-specific commands:
+
 ### Planning Commands
 - **"Perf-Plan-Start"** - Begin performance test planning
 - **"Baseline-Define"** - Establish performance baselines
 - **"SLA-Review"** - Review SLA/SLO requirements
+
 ### Development Commands
 - **"Load-Test-Create"** - Create load test script
 - **"Stress-Test-Create"** - Create stress test script
 - **"Threshold-Define"** - Define pass/fail thresholds
+
 ### Execution Commands
 - **"Run-Load-Test"** - Execute load test
 - **"Run-Stress-Test"** - Execute stress test
 - **"Run-Soak-Test"** - Execute endurance test
+
 ### Analysis Commands
 - **"Analyze-Results"** - Analyze test results
 - **"Compare-Baseline"** - Compare against baseline
 - **"Generate-Report"** - Create performance report
+
 ## Integration Points
 - **Extends:** IDPF-Testing
 - **Uses:** IDPF-Agile for test development methodology
 - **References:** Application PRD for NFR traceability
 - **Outputs:** Performance reports, metric dashboards, capacity recommendations
+
 ## Monitoring Integration
+Performance tests should integrate with:
 | Tool Type | Examples | Purpose |
 |-----------|----------|---------|
 | **APM** | New Relic, Datadog, Dynatrace | Application-level metrics |
 | **Infrastructure** | Prometheus, CloudWatch, Azure Monitor | Server/container metrics |
 | **Logging** | ELK, Splunk, CloudWatch Logs | Log correlation |
 | **Dashboards** | Grafana, Custom | Real-time visualization |
+
 ## References
+
 ### Tool Documentation
 - [k6 Documentation](https://k6.io/docs/)
 - [JMeter User Manual](https://jmeter.apache.org/usermanual/index.html)
 - [Gatling Documentation](https://gatling.io/docs/gatling/)
 - [Locust Documentation](https://docs.locust.io/)
+
 ### Best Practices
 - [Performance Testing Guidance - Microsoft](https://docs.microsoft.com/en-us/azure/architecture/framework/scalability/performance-test)
 - [k6 Best Practices](https://k6.io/docs/testing-guides/api-load-testing/)
----
 **End of Framework**

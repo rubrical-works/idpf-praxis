@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-03-05T01:31:51.874Z",
+  "generatedAt": "2026-03-08T19:53:51.020Z",
   "version": "1.0.0",
-  "commandCount": 16,
-  "extensionPointCount": 74,
+  "commandCount": 18,
+  "extensionPointCount": 79,
   "commands": {
     "bug": {
       "type": "EXTENSIBLE",
@@ -15,6 +15,27 @@
         },
         {
           "name": "post-create",
+          "location": "",
+          "purpose": ""
+        }
+      ]
+    },
+    "catalog-screens": {
+      "type": "EXTENSIBLE",
+      "description": "Discover and catalog screen elements from source code (project)",
+      "extensionPoints": [
+        {
+          "name": "pre-catalog",
+          "location": "",
+          "purpose": ""
+        },
+        {
+          "name": "post-discovery",
+          "location": "",
+          "purpose": ""
+        },
+        {
+          "name": "post-catalog",
           "location": "",
           "purpose": ""
         }
@@ -207,6 +228,22 @@
         },
         {
           "name": "post-close",
+          "location": "",
+          "purpose": ""
+        }
+      ]
+    },
+    "mockups": {
+      "type": "EXTENSIBLE",
+      "description": "Create text-based or diagrammatic screen mockups (project)",
+      "extensionPoints": [
+        {
+          "name": "pre-mockup",
+          "location": "",
+          "purpose": ""
+        },
+        {
+          "name": "post-mockup",
           "location": "",
           "purpose": ""
         }
