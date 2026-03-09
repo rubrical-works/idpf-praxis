@@ -1,5 +1,5 @@
 ---
-version: "v0.59.0"
+version: "v0.60.0"
 description: Discover and catalog screen elements from source code (project)
 argument-hint: "[screen-name...] [--scope <path>] [--update]"
 ---

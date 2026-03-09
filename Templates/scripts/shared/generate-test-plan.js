@@ -1,6 +1,6 @@
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * generate-test-plan.js - Generate test plan skeleton from branch issues
  * @module scripts/shared/generate-test-plan
  *
@@ -248,7 +248,7 @@ function generateTestPlan(version, issues) {
   // Test Environment
   md += `## Test Environment\n\n`;
   md += `- Fresh project directory (not idpf-praxis) for deployment tests\n`;
-  md += `- idpf-praxis-dist ${version} for distribution verification\n`;
+  md += `- idpf-praxis ${version} for distribution verification\n`;
   md += `- Node.js 18+\n`;
   md += `- TODO: Add platform specifics\n\n`;
   md += `---\n\n`;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * IDPF Framework Update Fetcher
  *
  * Updates the framework installation from the distribution repository.
@@ -22,7 +22,7 @@ const { execSync } = require('child_process');
 //  Configuration
 // ======================================
 
-const DIST_REPO = 'https://github.com/rubrical-studios/idpf-praxis-dist.git';
+const DIST_REPO = 'https://github.com/rubrical-works/idpf-praxis.git';
 const TEMP_DIR = path.join(require('os').tmpdir(), 'idpf-framework-update');
 
 // ======================================

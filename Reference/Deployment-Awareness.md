@@ -1,16 +1,16 @@
 # Deployment Awareness
-**Version:** v0.59.0
+**Version:** v0.60.0
 **Purpose:** Document the deployment chain from development to distribution
 
 ## Overview
-This repository (`idpf-praxis`) is the **development environment**. Changes made here must be evaluated for deployment impact to the **distribution repository** (`idpf-praxis-dist`) which users install from.
+This repository (`idpf-praxis-dev`) is the **development environment**. Changes made here must be evaluated for deployment impact to the **distribution repository** (`idpf-praxis`) which users install from.
 
 ## Deployment Architecture
 
 ### Source of Truth Chain
 ```
-idpf-praxis (Development)              idpf-praxis-dist (Distribution)
-──────────────────────────              ─────────────────────────────────────
+idpf-praxis-dev (Development)           idpf-praxis (Distribution)
+─────────────────────────────           ─────────────────────────────────────
 Source Files (IDPF-*, Reference/, etc.)
     │
     ↓ /minimize-files

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-08T19:48:22.615Z",
+  "generatedAt": "2026-03-09T20:09:25.431Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -64,22 +64,25 @@
       ]
     },
     "coverage": {
-      "name": "Test Coverage",
-      "description": "Test coverage threshold enforcement",
+      "name": "Coverage",
+      "description": "Code coverage gates and reporting",
       "recipes": [
         {
           "name": "coverage-gate",
-          "description": "Block release if coverage below threshold",
+          "description": "Block release if coverage drops below threshold",
           "extensionPoints": [
+            "pre-validation",
             "post-validation"
           ],
-          "template": "### Coverage Gate\n\n**If `--skip-coverage` was passed, skip this section.**\n\n```bash\n# Example: Node.js with nyc/istanbul\nnyc --check-coverage --lines 80 --functions 80 --branches 70\n\n# Example: Go\ngo test -coverprofile=coverage.out ./...\ngo tool cover -func=coverage.out | grep total | awk '{print $3}'\n```\n\n**If coverage is below threshold, STOP and report.**\n\nThresholds:\n- Lines: 80%\n- Functions: 80%\n- Branches: 70%",
+          "template": "### Coverage Gate\n\nEnforce minimum coverage threshold before release:\n\n```bash\n# Example: Jest coverage with threshold\nnpx jest --coverage --coverageThreshold='{\"global\":{\"branches\":80,\"functions\":80,\"lines\":80,\"statements\":80}}'\n\n# Example: nyc check-coverage\nnyc check-coverage --lines 80 --functions 80 --branches 80\n```\n\n**If coverage drops below threshold, STOP the release.**",
           "prerequisites": [
-            "Coverage tool for your language (nyc, go test -cover, pytest-cov, etc.)"
+            "Coverage tool configured (nyc, c8, jest --coverage, etc.)",
+            "Coverage threshold defined in package.json or config"
           ],
           "appliesTo": [
+            "prepare-release:pre-validation",
             "prepare-release:post-validation",
-            "prepare-beta:post-validation"
+            "prepare-beta:pre-validation"
           ]
         },
         {

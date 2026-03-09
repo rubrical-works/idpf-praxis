@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * Language detection manifest mapping.
  * Each entry maps a manifest file to the language(s) it indicates.
  */

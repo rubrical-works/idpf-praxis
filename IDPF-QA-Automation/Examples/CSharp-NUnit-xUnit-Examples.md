@@ -1,5 +1,5 @@
 # C# Test Examples (NUnit/xUnit)
-**Version:** v0.59.0
+**Version:** v0.60.0
 **Framework:** IDPF-QA-Automation
 
 ## Overview

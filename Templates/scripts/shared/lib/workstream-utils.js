@@ -1,12 +1,12 @@
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * workstream-utils.js — Shared Workstream Utility Library
  *
  * Provides consistent metadata operations for workstream-aware commands:
  * /merge-branch, /destroy-branch, and /plan-workstreams.
  *
- * @see https://github.com/rubrical-studios/idpf-praxis/issues/1461
+ * @see https://github.com/rubrical-works/idpf-praxis-dev/issues/1461
  */
 
 'use strict';

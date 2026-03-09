@@ -1,6 +1,6 @@
 # IDPF — Interactive Development Process Frameworks
 
-[![Version](https://img.shields.io/github/v/release/rubrical-studios/idpf-praxis-dist?label=version&color=blue)](https://github.com/rubrical-studios/idpf-praxis-dist/releases)
+[![Version](https://img.shields.io/github/v/release/rubrical-works/idpf-praxis?label=version&color=blue)](https://github.com/rubrical-works/idpf-praxis/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Claude%20Code-blueviolet)](https://claude.ai/code)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
@@ -106,7 +106,7 @@ Open **px-manager** and use the project wizard to add IDPF to an existing projec
 
 ## Source Repository
 
-https://github.com/rubrical-studios/idpf-praxis
+https://github.com/rubrical-works/idpf-praxis-dev
 
 ---
 

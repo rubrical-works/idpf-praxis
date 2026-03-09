@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * check-upgrade.js — Post-upgrade verification for IDPF user projects
  *
  * Exports 5 check functions for verifying hub upgrade integrity:
- *   - checkExtensionIntegrity(projectDir)
+ *   - checkExtensionIntegrity(projectDir, options?)
  *   - checkCustomScripts(projectDir)
  *   - checkCommandVersionDrift(projectDir, hubDir)
  *   - checkStaleConfigReferences(projectDir, hubDir)
@@ -13,7 +13,7 @@
  *
  * Each function returns { pass: boolean, status: 'PASS'|'WARN'|'FAIL', findings: string[] }
  *
- * @see https://github.com/rubrical-studios/idpf-praxis/issues/1501
+ * @see https://github.com/rubrical-works/idpf-praxis-dev/issues/1501
  */
 
 const fs = require('fs');
@@ -36,14 +36,63 @@ const EXPECTED_SYMLINKS = [
 ];
 
 /**
+ * Extract extension blocks from command file content.
+ * @param {string} content - File content to parse
+ * @returns {Map<string, string>} Map of blockName → block content (raw, untrimmed)
+ */
+function extractExtensionBlocks(content) {
+  const blocks = new Map();
+  const regex = new RegExp(EXTENSION_BLOCK_REGEX.source, EXTENSION_BLOCK_REGEX.flags);
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    blocks.set(match[1], match[2]);
+  }
+  return blocks;
+}
+
+/**
+ * Normalize whitespace for block content comparison.
+ * Collapses all whitespace sequences to single space and trims.
+ * @param {string} str - Content to normalize
+ * @returns {string} Normalized content
+ */
+function normalizeBlockWhitespace(str) {
+  return str.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Get file content from a specific git ref.
+ * @param {string} ref - Git ref (e.g., 'HEAD', 'HEAD~1')
+ * @param {string} relPath - Relative file path (forward slashes)
+ * @param {string} cwd - Working directory for git command
+ * @returns {string|null} File content or null if not found in ref
+ */
+function getGitFileContent(ref, relPath, cwd) {
+  try {
+    return execSync(`git show ${ref}:"${relPath}"`, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Check extension block integrity in EXTENSIBLE commands.
- * Verifies USER-EXTENSION blocks exist and contain content.
- * Compares against git state to detect post-upgrade content loss.
+ * Compares extension block content between committed version(s) and working
+ * tree to detect post-upgrade content loss. Uses git show for comparison
+ * instead of git diff parsing.
  *
  * @param {string} projectDir - Path to project root
+ * @param {object} [options] - Optional configuration
+ * @param {number} [options.deep=0] - Number of additional commits to scan (0 = HEAD only)
+ * @param {string} [options.hubDir=null] - Hub directory for release-aware tracking
  * @returns {{ pass: boolean, status: string, findings: string[] }}
  */
-function checkExtensionIntegrity(projectDir) {
+function checkExtensionIntegrity(projectDir, options = {}) {
+  const { deep = 0, hubDir = null } = options;
   const findings = [];
   const commandsDir = path.join(projectDir, '.claude', 'commands');
 
@@ -56,6 +105,21 @@ function checkExtensionIntegrity(projectDir) {
   let hasFailure = false;
   let hasWarning = false;
 
+  // Build hub extension block cache for release-aware tracking (AC5)
+  const hubBlocksCache = new Map();
+  if (hubDir) {
+    const hubCommandsDir = path.join(hubDir, '.claude', 'commands');
+    if (fs.existsSync(hubCommandsDir)) {
+      for (const file of files) {
+        const hubPath = path.join(hubCommandsDir, file);
+        if (fs.existsSync(hubPath)) {
+          const hubContent = fs.readFileSync(hubPath, 'utf8');
+          hubBlocksCache.set(file, extractExtensionBlocks(hubContent));
+        }
+      }
+    }
+  }
+
   for (const file of files) {
     const filePath = path.join(commandsDir, file);
     const content = fs.readFileSync(filePath, 'utf8');
@@ -64,42 +128,60 @@ function checkExtensionIntegrity(projectDir) {
     if (!header || header[1].toUpperCase() !== 'EXTENSIBLE') continue;
     extensibleCount++;
 
-    // Extract extension blocks
-    const blocks = [];
-    let match;
-    const regex = new RegExp(EXTENSION_BLOCK_REGEX.source, EXTENSION_BLOCK_REGEX.flags);
-    while ((match = regex.exec(content)) !== null) {
-      blocks.push({ name: match[1], content: match[2] });
+    // Extract working tree blocks
+    const currentBlocks = extractExtensionBlocks(content);
+
+    if (currentBlocks.size === 0) {
+      // Don't skip — proceed to comparison so we can detect if committed
+      // blocks had content (upstream removal vs user content loss)
     }
 
-    if (blocks.length === 0) {
-      findings.push(`${file}: No extension blocks found in EXTENSIBLE command`);
-      hasWarning = true;
-      continue;
+    // Build list of git refs to check
+    const refsToCheck = ['HEAD'];
+    for (let i = 1; i <= deep; i++) {
+      refsToCheck.push(`HEAD~${i}`);
     }
 
-    // Check for empty blocks (may be intentional but worth noting)
-    const emptyBlocks = blocks.filter(b => !b.content.trim());
-    if (emptyBlocks.length === blocks.length) {
-      // All blocks empty — expected for uncustomized commands
-      continue;
-    }
+    const relPath = path.relative(projectDir, filePath).replace(/\\/g, '/');
 
-    // Check git state for content loss
-    try {
-      const relPath = path.relative(projectDir, filePath).replace(/\\/g, '/');
-      const diff = execSync(`git diff HEAD -- "${relPath}"`, {
-        cwd: projectDir,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+    for (const ref of refsToCheck) {
+      const committedContent = getGitFileContent(ref, relPath, projectDir);
+      if (committedContent === null) continue; // File not in this ref — skip
 
-      if (diff.includes('USER-EXTENSION-START') && diff.startsWith('-')) {
-        findings.push(`${file}: Extension block content may have been lost (git diff shows removal)`);
-        hasFailure = true;
+      const committedBlocks = extractExtensionBlocks(committedContent);
+
+      for (const [blockName, committedValue] of committedBlocks) {
+        const normalizedCommitted = normalizeBlockWhitespace(committedValue);
+        if (!normalizedCommitted) continue; // Empty in committed — nothing to lose
+
+        const currentValue = currentBlocks.get(blockName);
+
+        if (currentValue === undefined) {
+          // Block marker removed entirely from working tree
+          const hubBlocks = hubBlocksCache.get(file);
+          if (hubBlocks && !hubBlocks.has(blockName)) {
+            findings.push(`${file}: extension block '${blockName}' removed by upstream (was present in ${ref})`);
+            hasWarning = true;
+          } else {
+            findings.push(`${file}: extension block '${blockName}' lost — was present in ${ref} but missing from working tree`);
+            hasFailure = true;
+          }
+          continue;
+        }
+
+        const normalizedCurrent = normalizeBlockWhitespace(currentValue);
+        if (!normalizedCurrent && normalizedCommitted) {
+          // Content was emptied — check if upstream removal
+          const hubBlocks = hubBlocksCache.get(file);
+          if (hubBlocks && !hubBlocks.has(blockName)) {
+            findings.push(`${file}: extension block '${blockName}' removed by upstream (content was present in ${ref})`);
+            hasWarning = true;
+          } else {
+            findings.push(`${file}: extension block '${blockName}' content lost — had content in ${ref} but empty in working tree`);
+            hasFailure = true;
+          }
+        }
       }
-    } catch {
-      // Git not available or not initialized — skip git check
     }
   }
 
@@ -481,6 +563,8 @@ module.exports = {
   checkSymlinkHealth,
   getCommitableFiles,
   getHubVersion,
+  extractExtensionBlocks,
+  normalizeBlockWhitespace,
   EXTENSION_BLOCK_REGEX,
   HEADER_REGEX,
   EXPECTED_SYMLINKS,
@@ -495,6 +579,8 @@ if (require.main === module) {
   const args = process.argv.slice(2);
   const commitFlag = args.includes('--commit');
   const noCommitFlag = args.includes('--no-commit');
+  const deepIdx = args.indexOf('--deep');
+  const deepValue = deepIdx !== -1 && args[deepIdx + 1] ? parseInt(args[deepIdx + 1], 10) : 0;
 
   console.log('/check-upgrade — Post-upgrade verification\n');
 
@@ -510,7 +596,7 @@ if (require.main === module) {
   }
 
   const checks = [
-    { name: 'Extension Integrity', fn: () => checkExtensionIntegrity(projectDir) },
+    { name: 'Extension Integrity', fn: () => checkExtensionIntegrity(projectDir, { deep: deepValue, hubDir }) },
     { name: 'Custom Scripts', fn: () => checkCustomScripts(projectDir) },
     { name: 'Symlink Health', fn: () => checkSymlinkHealth(projectDir) },
   ];

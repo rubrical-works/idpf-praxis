@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * @description Check for third-party framework/dependency upgrades
  *
  * This script is provided by the framework and may be updated.

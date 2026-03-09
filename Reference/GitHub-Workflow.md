@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.59.0
+**Version:** v0.60.0
 **MUST READ:** This file must be read at session startup and after any compaction.
 This document configures Claude to automatically manage GitHub issues during development sessions.
 
@@ -38,7 +38,7 @@ fields:
             p2: P2
 ```
 **Derived values:**
-- **Repository:** `repositories[0]` (e.g., `rubrical-studios/idpf-praxis`)
+- **Repository:** `repositories[0]` (e.g., `rubrical-works/idpf-praxis-dev`)
 - **Project Board:** `https://github.com/users/{project.owner}/projects/{project.number}/views/1`
 Use the **alias** (left side) in commands: `gh pmu move 90 --status in_progress`
 If `.gh-pmu.json` doesn't exist, run `gh pmu init` to create it.

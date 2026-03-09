@@ -1,5 +1,5 @@
 ---
-version: "v0.59.0"
+version: "v0.60.0"
 description: Collaborative path analysis for proposals and enhancements (project)
 argument-hint: "#issue"
 ---

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * cleanup-artifacts.js - Clean up old GitHub Actions artifacts
  *
  * Deletes expired GitHub Actions artifacts with throttled API calls

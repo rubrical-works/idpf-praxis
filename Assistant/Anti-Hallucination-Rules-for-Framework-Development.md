@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Framework Development
-**Version:** v0.59.0
+**Version:** v0.60.0
 
 ## Core Principle
 **Accuracy over speed. Verification over assumption. Completeness over convenience.**

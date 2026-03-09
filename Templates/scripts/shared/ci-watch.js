@@ -2,7 +2,7 @@
 // Rubrical Systems (c) 2026
 
 /**
- * @framework-script 0.59.0
+ * @framework-script 0.60.0
  * CI Watch — Monitor GitHub Actions workflow runs by commit SHA
  *
  * Polls for CI run status and reports structured JSON results.
