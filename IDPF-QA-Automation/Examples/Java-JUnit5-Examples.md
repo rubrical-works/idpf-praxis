@@ -1,5 +1,5 @@
 # Java Test Examples (JUnit 5)
-**Version:** v0.60.0
+**Version:** v0.61.0
 **Framework:** IDPF-QA-Automation
 
 ## Overview

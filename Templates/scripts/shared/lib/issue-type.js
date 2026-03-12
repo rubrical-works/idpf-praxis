@@ -1,6 +1,6 @@
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.60.0
+ * @framework-script 0.61.0
  * Issue Type Detection Utility
  *
  * Centralizes label-based issue type detection and review command routing.

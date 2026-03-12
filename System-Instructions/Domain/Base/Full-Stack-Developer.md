@@ -1,5 +1,5 @@
 # System Instructions: Full Stack Developer
-**Version:** v0.60.0
+**Version:** v0.61.0
 Extends: Core-Developer-Instructions.md
 **Purpose:** Specialized expertise spanning both frontend and backend development, enabling end-to-end application development with holistic architectural thinking.
 **Load with:** Core-Developer-Instructions.md (required foundation)

@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Desktop)
-**Version:** v0.60.0
+**Version:** v0.61.0
 **Revision Date:** 2024-11-13
 **Type:** Desktop Application Agent Behaviors
 **Extends:** Vibe-Agent-Core-Instructions.md (Rev 1.3)

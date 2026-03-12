@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.60.0
+ * @framework-script 0.61.0
  * extensions-cli.js
  *
  * Script-driven CLI for extension point operations.

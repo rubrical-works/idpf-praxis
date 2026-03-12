@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.60.0
+ * @framework-script 0.61.0
  * @description Parse commits since last tag, categorize by type
  * @checksum sha256:placeholder
  *

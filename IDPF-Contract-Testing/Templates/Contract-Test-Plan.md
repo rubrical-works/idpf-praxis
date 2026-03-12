@@ -1,5 +1,5 @@
 # Contract Test Plan: [Service/API Name]
-**Version:** v0.60.0
+**Version:** v0.61.0
 **Date:** YYYY-MM-DD
 **Author:** [Name]
 **Status:** Draft | In Review | Approved

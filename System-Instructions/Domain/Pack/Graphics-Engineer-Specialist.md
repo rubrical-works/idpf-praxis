@@ -1,5 +1,5 @@
 # System Instructions: Graphics Engineer Specialist
-**Version:** v0.60.0
+**Version:** v0.61.0
 Extends: Core-Developer-Instructions.md
 **Purpose:** Specialized expertise in WebGL, Three.js, D3.js, shader programming, and web-based graphics and data visualization development.
 **Load with:** Core-Developer-Instructions.md (required foundation)

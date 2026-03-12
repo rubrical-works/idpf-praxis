@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.60.0
+ * @framework-script 0.61.0
  * manage-skills.js — Unified skill management
  *
  * Shared script for skill lifecycle management: list, install, remove, info.
@@ -85,10 +85,10 @@ function listSkills(projectDir, options = {}) {
       description: entry.description,
       installed: projectSkills.includes(entry.name),
       isDefault: defaults.includes(entry.name),
+      category: entry.category || null,
     };
 
     if (options.verbose) {
-      skill.category = entry.category || null;
       skill.invocationMode = entry.invocationMode || 'auto';
     }
 
@@ -377,7 +377,13 @@ const INTERACTIVE_ACTIONS = [
  */
 function parseCommand(args) {
   if (!args || args.length === 0) {
-    return { mode: 'interactive' };
+    return { mode: 'list' };
+  }
+
+  // Bug #1765: When invoked via command spec with "$ARGUMENTS", the shell
+  // passes all args as a single string. Split if we get one token with spaces.
+  if (args.length === 1 && args[0].includes(' ')) {
+    args = args[0].split(/\s+/);
   }
 
   const subcommand = args[0];

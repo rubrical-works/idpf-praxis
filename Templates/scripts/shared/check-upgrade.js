@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Systems (c) 2026
 /**
- * @framework-script 0.60.0
+ * @framework-script 0.61.0
  * check-upgrade.js — Post-upgrade verification for IDPF user projects
  *
  * Exports 5 check functions for verifying hub upgrade integrity:

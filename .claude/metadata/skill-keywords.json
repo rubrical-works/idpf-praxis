@@ -403,9 +403,46 @@
       ]
     }
   },
+  "skillCategories": {
+    "anti-pattern-analysis": "code-quality",
+    "api-versioning": "architecture",
+    "astro-development": "platform",
+    "bdd-writing": "testing",
+    "beginner-testing": "testing",
+    "ci-cd-pipeline-design": "devops",
+    "code-path-discovery": "analysis",
+    "codebase-analysis": "code-quality",
+    "command-spec-audit": "code-quality",
+    "common-errors": "debugging",
+    "digitalocean-app-setup": "platform",
+    "drawio-generation": "documentation",
+    "electron-development": "platform",
+    "error-handling-patterns": "architecture",
+    "flask-setup": "platform",
+    "migration-patterns": "database",
+    "mutation-testing": "testing",
+    "playwright-explorer": "testing",
+    "playwright-setup": "testing",
+    "postgresql-integration": "database",
+    "privacy-compliance": "compliance",
+    "property-based-testing": "testing",
+    "railway-project-setup": "platform",
+    "render-project-setup": "platform",
+    "resilience-patterns": "architecture",
+    "seo-optimization": "web",
+    "sinatra-setup": "platform",
+    "sqlite-integration": "database",
+    "tdd-failure-recovery": "testing",
+    "tdd-green-phase": "testing",
+    "tdd-red-phase": "testing",
+    "tdd-refactor-phase": "testing",
+    "test-writing-patterns": "testing",
+    "vercel-project-setup": "platform"
+  },
   "_schema": {
     "defaultSkills": "Array of skill names to auto-install for all projects regardless of tech stack. These are universally applicable skills (development infrastructure, code review, TDD methodology). Merged before keyword matching in /charter; re-added on /charter refresh.",
     "skillKeywords": "Map of skill-name to array of keywords that indicate the skill is relevant",
-    "groupKeywords": "Keywords that suggest multiple related skills as a group"
+    "groupKeywords": "Keywords that suggest multiple related skills as a group",
+    "skillCategories": "Map of skill-name to category string for display grouping (mirrors skill-registry.json categories)"
   }
 }
