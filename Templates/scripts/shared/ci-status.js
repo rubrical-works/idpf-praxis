@@ -6,7 +6,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * View workflow status - lists all GitHub Actions workflows
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted output

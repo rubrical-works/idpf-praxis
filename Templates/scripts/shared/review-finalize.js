@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * review-finalize.js
  *
  * Consolidates all review cleanup work into a single script call:
@@ -78,6 +78,122 @@ function parseFindingsFile(filePath) {
   } catch (e) {
     return { error: { code: 'INVALID_JSON', message: `Failed to parse findings file: ${e.message}` } };
   }
+}
+
+// ─── Findings Normalization (#1828) ───
+
+/**
+ * Normalize alternate field names to the canonical schema before validation.
+ * Accepts common aliases the AI may produce when the schema isn't explicit.
+ * Mutates and returns the same object.
+ */
+function normalizeFindings(data) {
+  if (!data || typeof data !== 'object') return data;
+
+  // Top-level field aliases
+  if (data.issueNumber !== undefined && data.issue === undefined) {
+    data.issue = data.issueNumber;
+    delete data.issueNumber;
+  }
+
+  // criteria → findings structure transformation
+  if (data.criteria && !data.findings) {
+    const autoEvaluated = [];
+    const userEvaluated = [];
+
+    // criteria.common: keyed object → autoEvaluated array
+    if (data.criteria.common && typeof data.criteria.common === 'object') {
+      for (const [id, entry] of Object.entries(data.criteria.common)) {
+        autoEvaluated.push({
+          id,
+          criterion: entry.name || entry.criterion || id,
+          status: entry.status || 'skip',
+          evidence: entry.evidence || '',
+        });
+      }
+    }
+
+    // criteria.typeSpecific: keyed object → autoEvaluated array (appended)
+    if (data.criteria.typeSpecific && typeof data.criteria.typeSpecific === 'object') {
+      for (const [id, entry] of Object.entries(data.criteria.typeSpecific)) {
+        autoEvaluated.push({
+          id,
+          criterion: entry.name || entry.criterion || id,
+          status: entry.status || 'skip',
+          evidence: entry.evidence || '',
+        });
+      }
+    }
+
+    // criteria.extensions: keyed object → userEvaluated or autoEvaluated
+    if (data.criteria.extensions && typeof data.criteria.extensions === 'object') {
+      for (const [id, entry] of Object.entries(data.criteria.extensions)) {
+        autoEvaluated.push({
+          id,
+          criterion: entry.name || entry.criterion || id,
+          status: entry.status || 'skip',
+          evidence: entry.evidence || '',
+        });
+      }
+    }
+
+    data.findings = { autoEvaluated, userEvaluated };
+    delete data.criteria;
+  }
+
+  // Normalize finding entry field aliases: name → criterion
+  if (data.findings && typeof data.findings === 'object') {
+    for (const key of ['autoEvaluated', 'userEvaluated']) {
+      const arr = data.findings[key];
+      if (Array.isArray(arr)) {
+        for (const entry of arr) {
+          if (entry.name && !entry.criterion) {
+            entry.criterion = entry.name;
+            delete entry.name;
+          }
+        }
+      }
+    }
+  }
+
+  return data;
+}
+
+// ─── Findings Validation (#1825) ───
+
+const REQUIRED_FIELDS = ['issue', 'title', 'reviewNumber', 'type', 'findings', 'recommendation'];
+
+function validateFindings(findings) {
+  if (!findings || typeof findings !== 'object') {
+    return {
+      ok: false,
+      error: {
+        code: 'INVALID_FINDINGS',
+        message: 'Findings data is null or not an object',
+        missingFields: REQUIRED_FIELDS,
+      },
+    };
+  }
+
+  const missing = [];
+  for (const field of REQUIRED_FIELDS) {
+    if (findings[field] === undefined || findings[field] === null) {
+      missing.push(field);
+    }
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: {
+        code: 'INVALID_FINDINGS',
+        message: `Findings JSON is missing required fields: ${missing.join(', ')}. Expected schema: { issue, title, reviewNumber, type, findings: { autoEvaluated: [], userEvaluated: [] }, recommendation }`,
+        missingFields: missing,
+      },
+    };
+  }
+
+  return { ok: true };
 }
 
 // ─── Body Metadata Update ───
@@ -205,7 +321,15 @@ async function main() {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(1);
   }
-  const findings = findingsResult.data;
+  const findings = normalizeFindings(findingsResult.data);
+
+  // Validate required fields before proceeding (#1825)
+  const validation = validateFindings(findings);
+  if (!validation.ok) {
+    const result = buildErrorResult(validation.error);
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    process.exit(1);
+  }
 
   // Update body review count
   let bodyUpdated = false;
@@ -301,6 +425,8 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   parseFindingsFile,
+  normalizeFindings,
+  validateFindings,
   updateBodyReviewCount,
   formatReviewComment,
   determineLabel,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * done-preamble.js
  *
  * Consolidates deterministic validation and status transitions for the /done

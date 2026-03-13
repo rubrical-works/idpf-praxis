@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * lib/active-label.js
  *
  * Manages the 'active' label on branch tracker issues.

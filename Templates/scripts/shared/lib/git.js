@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * lib/git.js - Git command utilities
  *
  * Provides functions for interacting with git repositories.

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * Shared Review Format Constants
  *
  * Constants and patterns shared between review-finalize.js and resolve-preamble.js
@@ -35,6 +35,9 @@ const SECTION_HEADERS = {
 // Matches: ## PRD Review #1 — 2026-03-12
 // Matches: ## Test Plan Review #3 — 2026-03-12
 const REVIEW_HEADER_PATTERN = /^## (Issue|Proposal|PRD|Test Plan) Review #(\d+)\s*—\s*(\d{4}-\d{2}-\d{2})/m;
+
+// Matches malformed headers: ## Issue Review #undefined — 2026-03-13
+const MALFORMED_REVIEW_HEADER_PATTERN = /^## (Issue|Proposal|PRD|Test Plan) Review #(undefined|NaN|null)\s*—\s*(\d{4}-\d{2}-\d{2})/m;
 
 // ─── Review Types ───
 
@@ -157,6 +160,7 @@ module.exports = {
   SECTION_USER_EVALUATED,
   SECTION_RECOMMENDATION,
   REVIEW_HEADER_PATTERN,
+  MALFORMED_REVIEW_HEADER_PATTERN,
   REVIEW_TYPES,
   FINDING_LINE_PATTERN,
   RECOMMENDATION_PATTERN,

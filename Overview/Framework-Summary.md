@@ -1,5 +1,5 @@
 # Framework Summary
-**Version:** v0.62.0
+**Version:** v0.62.1
 **Purpose:** Compact startup reference for framework developers
 
 ## Quick Reference
@@ -86,7 +86,7 @@ For comprehensive information, load on-demand:
 | Framework-Development.md | IDPF-Agile, Vibe details, create-prd skill |
 | Framework-Testing.md | IDPF-Testing (criteria library) + 6 specialized frameworks |
 | Framework-System-Instructions.md | Core + 22 Domain Specialists (12 Base, 10 Pack) |
-| Framework-Skills.md | All 33 skills with descriptions |
+| Framework-Skills.md | All 34 skills with descriptions |
 | Framework-Transitions.md | Transition matrix, diagrams, hybrid usage |
 | Framework-Overview.md | Complete reference (all sections) |
 **End of Framework Summary**

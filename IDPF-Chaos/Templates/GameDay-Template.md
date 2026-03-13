@@ -1,5 +1,5 @@
 # GameDay: [Theme/Name]
-**Version:** v0.62.0
+**Version:** v0.62.1
 **Date:** YYYY-MM-DD
 **Duration:** [X hours]
 **Environment:** [Production/Staging]

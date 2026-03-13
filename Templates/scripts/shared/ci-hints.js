@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * CI Contextual Hints
  *
  * Generates state-aware hints that guide users toward logical next actions

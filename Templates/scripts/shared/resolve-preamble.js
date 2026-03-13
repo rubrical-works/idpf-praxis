@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.0
+ * @framework-script 0.62.1
  * resolve-preamble.js
  *
  * Consolidates resolve-review setup into a single script call:
@@ -17,6 +17,7 @@ const path = require('path');
 const {
   EMOJI,
   REVIEW_HEADER_PATTERN,
+  MALFORMED_REVIEW_HEADER_PATTERN,
   REVIEW_TYPES,
   FINDING_LINE_PATTERN,
   RECOMMENDATION_PATTERN,
@@ -47,6 +48,7 @@ function findLatestReview(comments) {
   }
 
   let latest = null;
+  let malformedFound = false;
 
   for (const comment of comments) {
     const match = comment.body.match(REVIEW_HEADER_PATTERN);
@@ -58,7 +60,14 @@ function findLatestReview(comments) {
       if (!latest || reviewNumber > latest.reviewNumber) {
         latest = { found: true, reviewType, reviewNumber, body: comment.body };
       }
+    } else if (comment.body.match(MALFORMED_REVIEW_HEADER_PATTERN)) {
+      // Track malformed reviews — only report if no well-formed review found
+      malformedFound = true;
     }
+  }
+
+  if (!latest && malformedFound) {
+    return { found: true, malformed: true };
   }
 
   return latest || { found: false };
@@ -200,6 +209,14 @@ async function main() {
     process.stdout.write(JSON.stringify(buildErrorEnvelope([{
       code: 'NO_REVIEW',
       message: `No review comments found on issue #${issue}`,
+    }]), null, 2) + '\n');
+    process.exit(1);
+  }
+
+  if (reviewResult.malformed) {
+    process.stdout.write(JSON.stringify(buildErrorEnvelope([{
+      code: 'MALFORMED_REVIEW',
+      message: `Issue #${issue} has a malformed review comment (undefined values in header). Re-run /review-issue --force to generate a valid review.`,
     }]), null, 2) + '\n');
     process.exit(1);
   }
