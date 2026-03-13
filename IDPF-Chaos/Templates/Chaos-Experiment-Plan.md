@@ -1,5 +1,5 @@
 # Chaos Experiment Plan: [Experiment Name]
-**Version:** v0.61.0
+**Version:** v0.62.0
 **Date:** YYYY-MM-DD
 **Author:** [Name]
 **Testing Framework:** IDPF-Chaos

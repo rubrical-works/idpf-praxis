@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * List available CI features with enabled/disabled status
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted output

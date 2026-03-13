@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * manage-skills.js — Unified skill management
  *
  * Shared script for skill lifecycle management: list, install, remove, info.
@@ -376,6 +376,10 @@ const INTERACTIVE_ACTIONS = [
  * @returns {object} { mode, skillName?, verbose? }
  */
 function parseCommand(args) {
+  // Bug #1814: Handle string input (split into array)
+  if (typeof args === 'string') {
+    args = args.trim().split(/\s+/);
+  }
   if (!args || args.length === 0) {
     return { mode: 'list' };
   }
@@ -660,3 +664,62 @@ module.exports = {
   getSymlinkType,
   INTERACTIVE_ACTIONS,
 };
+
+// CLI entry point — enables direct invocation through symlinks
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  const cmd = parseCommand(args);
+  const projectDir = process.cwd();
+
+  try {
+    switch (cmd.mode) {
+      case 'list': {
+        const result = listSkills(projectDir, { verbose: cmd.verbose });
+        console.log(JSON.stringify(result));
+        break;
+      }
+      case 'install': {
+        if (!cmd.skillName) {
+          console.log(JSON.stringify({ status: 'failed', reason: 'Skill name required.' }));
+          process.exit(1);
+        }
+        // hubDir must be resolved by the caller (command spec) — use frameworkPath
+        const configPath = path.join(projectDir, 'framework-config.json');
+        let hubDir = projectDir;
+        if (fs.existsSync(configPath)) {
+          const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          if (config.frameworkPath) {
+            hubDir = path.resolve(projectDir, config.frameworkPath);
+          }
+        }
+        const result = installSkill(projectDir, hubDir, cmd.skillName);
+        console.log(JSON.stringify(result));
+        break;
+      }
+      case 'remove': {
+        if (!cmd.skillName) {
+          console.log(JSON.stringify({ status: 'failed', reason: 'Skill name required.' }));
+          process.exit(1);
+        }
+        const result = removeSkill(projectDir, cmd.skillName);
+        console.log(JSON.stringify(result));
+        break;
+      }
+      case 'info': {
+        if (!cmd.skillName) {
+          console.log(JSON.stringify({ status: 'failed', reason: 'Skill name required.' }));
+          process.exit(1);
+        }
+        const result = skillInfo(projectDir, cmd.skillName);
+        console.log(JSON.stringify(result));
+        break;
+      }
+      default:
+        console.log(JSON.stringify({ status: 'failed', reason: `Unknown mode: ${cmd.mode}` }));
+        process.exit(1);
+    }
+  } catch (err) {
+    console.log(JSON.stringify({ status: 'failed', reason: err.message }));
+    process.exit(1);
+  }
+}

@@ -1,5 +1,5 @@
 # **Vibe-to-Structured Development Framework (Game)**
-**Version:** v0.61.0
+**Version:** v0.62.0
 **Type:** Game Development Specialization
 **Extends:** Vibe-to-Structured-Core-Framework.md (Rev 2)
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * Modify a workflow YAML file safely, preserving comments and structure.
  * @param {string} filePath - Path to the workflow YAML file
  * @param {Object} operation - The modification operation

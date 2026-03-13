@@ -1,9 +1,9 @@
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * Review Mode Helper Functions
  *
  * Provides utilities for filtering review criteria based on project's reviewMode configuration.

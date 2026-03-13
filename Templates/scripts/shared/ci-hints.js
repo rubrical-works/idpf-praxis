@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * CI Contextual Hints
  *
  * Generates state-aware hints that guide users toward logical next actions

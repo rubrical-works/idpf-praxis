@@ -1,0 +1,157 @@
+{
+  "version": "1.0",
+  "criteria": [
+    {
+      "id": "ac-coverage",
+      "name": "AC coverage",
+      "description": "Cross-reference PRD acceptance criteria against test plan test cases",
+      "type": "objective",
+      "autoCheckMethod": "Cross-reference PRD `- [ ]` items against test plan test cases — report coverage %",
+      "priority": "P0"
+    },
+    {
+      "id": "test-framework-specified",
+      "name": "Test framework specified",
+      "description": "Check for framework/tooling section",
+      "type": "objective",
+      "autoCheckMethod": "Check for framework/tooling section (e.g., Jest, Playwright, pytest)"
+    },
+    {
+      "id": "test-levels-defined",
+      "name": "Test levels defined",
+      "description": "Check for unit/integration/E2E level categorization",
+      "type": "objective",
+      "autoCheckMethod": "Check for unit/integration/E2E level categorization"
+    },
+    {
+      "id": "story-to-test-mapping",
+      "name": "Story-to-test mapping",
+      "description": "Verify each PRD story has a corresponding test section",
+      "type": "objective",
+      "autoCheckMethod": "Verify each PRD story has a corresponding test section"
+    },
+    {
+      "id": "error-scenarios-present",
+      "name": "Error scenarios present",
+      "description": "Check for negative/error test cases per story",
+      "type": "objective",
+      "autoCheckMethod": "Check for negative/error test cases per story"
+    },
+    {
+      "id": "boundary-conditions-tested",
+      "name": "Boundary conditions tested",
+      "description": "Check for boundary value tests",
+      "type": "objective",
+      "autoCheckMethod": "Check for boundary value tests (empty inputs, max values, off-by-one, null/undefined)"
+    },
+    {
+      "id": "failure-modes-covered",
+      "name": "Failure modes covered",
+      "description": "Check for failure mode tests",
+      "type": "objective",
+      "autoCheckMethod": "Check for failure mode tests (network errors, invalid data, timeouts, permission denied)"
+    },
+    {
+      "id": "integration-points-mapped",
+      "name": "Integration points mapped",
+      "description": "Check for integration test cases covering component interactions",
+      "type": "objective",
+      "autoCheckMethod": "Check for integration test cases covering interactions between components, epics, or stories"
+    },
+    {
+      "id": "component-interactions-verified",
+      "name": "Component interactions verified",
+      "description": "Check that integration tests cover data flow between components",
+      "type": "objective",
+      "autoCheckMethod": "Check that integration tests cover data flow between components (not just individual units)"
+    },
+    {
+      "id": "data-flow-boundaries-tested",
+      "name": "Data flow boundaries tested",
+      "description": "Check for tests at data transformation points",
+      "type": "objective",
+      "autoCheckMethod": "Check for tests at data transformation points (input parsing, output formatting, cross-system boundaries)"
+    },
+    {
+      "id": "e2e-critical-journeys",
+      "name": "E2E scenarios cover critical journeys",
+      "description": "Check for end-to-end test cases mapping to primary user workflows",
+      "type": "objective",
+      "autoCheckMethod": "Check for end-to-end test cases mapping to the PRD's primary user workflows"
+    },
+    {
+      "id": "e2e-happy-and-error-paths",
+      "name": "E2E happy paths and error paths",
+      "description": "Verify E2E section includes both success and failure scenarios",
+      "type": "objective",
+      "autoCheckMethod": "Verify E2E section includes both success and failure scenarios"
+    },
+    {
+      "id": "e2e-map-to-prd",
+      "name": "E2E scenarios map to PRD requirements",
+      "description": "Cross-reference E2E test cases against PRD requirements for traceability",
+      "type": "objective",
+      "autoCheckMethod": "Cross-reference E2E test cases against PRD requirements for traceability"
+    },
+    {
+      "id": "framework-consistent",
+      "name": "Framework consistent with test strategy",
+      "description": "Verify test plan aligns with project test strategy",
+      "type": "objective",
+      "autoCheckMethod": "If `Inception/Test-Strategy.md` exists, verify test plan aligns with its guidance"
+    },
+    {
+      "id": "coverage-targets-realistic",
+      "name": "Coverage targets realistic",
+      "description": "Compare stated coverage targets to project scope",
+      "type": "objective",
+      "autoCheckMethod": "Compare stated coverage targets to project scope — flag unrealistically high (100%) or low (<60%) targets"
+    },
+    {
+      "id": "test-coverage-proportionate",
+      "name": "Test coverage proportionate",
+      "description": "Assess whether test plan depth is proportionate to PRD scope",
+      "type": "objective",
+      "autoCheckMethod": "Assess whether the test plan's depth is proportionate to the PRD's scope. For each PRD story that adds or modifies code paths, verify the test plan includes tests at the appropriate level (unit for logic, integration for component interaction, E2E for user journeys). Flag stories with complex scope (multiple files, refactoring, new modules) that only have shallow test coverage (e.g., only 'existing tests pass' assertions)."
+    }
+  ],
+  "subjective": [
+    {
+      "id": "edge-cases-thorough",
+      "name": "Edge cases thorough",
+      "question": "Are the edge cases and error scenarios thorough enough for the project's risk profile?",
+      "header": "Edge Cases",
+      "options": [
+        { "label": "Thorough", "description": "Error scenarios, boundary conditions, and failure modes well covered" },
+        { "label": "Minor gaps", "description": "Most error cases covered but some stories missing boundary tests" },
+        { "label": "Significant gaps", "description": "Many stories lack error scenarios or failure mode testing" }
+      ],
+      "partialReviewNote": "Partial reviews are valid — if user declines to answer, record as '⊘ Skipped' and continue."
+    },
+    {
+      "id": "strategy-appropriate",
+      "name": "Strategy appropriate",
+      "question": "Is the overall test strategy appropriate for this project's scope and complexity?",
+      "header": "Strategy",
+      "options": [
+        { "label": "Appropriate", "description": "Coverage targets realistic, test level balance makes sense for the scope" },
+        { "label": "Needs refinement", "description": "Strategy exists but coverage targets or level balance could improve" },
+        { "label": "Inappropriate", "description": "Strategy misaligned with project scope or missing key considerations" }
+      ],
+      "partialReviewNote": "Partial reviews are valid — if user declines to answer, record as '⊘ Skipped' and continue."
+    }
+  ],
+  "coverageAnalysis": {
+    "description": "P0 coverage analysis procedure — cross-reference PRD acceptance criteria against test plan test cases",
+    "priority": "P0",
+    "procedure": [
+      "Extract all acceptance criteria from every user story in the PRD (all `- [ ]` items)",
+      "For each acceptance criterion, verify a corresponding test case exists in the test plan",
+      "Report coverage status for each story: Full coverage (all ACs have test cases), Partial coverage (some ACs missing test cases), No coverage (story has no test cases at all)"
+    ]
+  },
+  "_meta": {
+    "note": "Test plan review criteria for /review-test-plan. Extracted from inline command spec table and AskUserQuestion blocks.",
+    "source": "Extracted from .claude/commands/review-test-plan.md (#1800)"
+  }
+}

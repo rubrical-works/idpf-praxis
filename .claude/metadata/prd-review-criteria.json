@@ -1,0 +1,201 @@
+{
+  "version": "1.0",
+  "criteria": [
+    {
+      "id": "required-sections",
+      "name": "Required sections present",
+      "description": "Check for standard PRD sections",
+      "type": "objective",
+      "autoCheckMethod": "Check for: Summary, Problem Statement, Proposed Solution, User Stories, Acceptance Criteria, Out of Scope, NFRs",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "scope-boundaries",
+      "name": "Scope boundaries defined",
+      "description": "Check for explicit in-scope / out-of-scope sections",
+      "type": "objective",
+      "autoCheckMethod": "Check for explicit in-scope / out-of-scope sections with specific boundary statements",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "success-criteria-measurable",
+      "name": "Success criteria measurable",
+      "description": "Check for quantitative language and verifiable outcomes",
+      "type": "objective",
+      "autoCheckMethod": "Check for quantitative language, verifiable outcomes, or measurable thresholds in requirements",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "story-format-compliance",
+      "name": "Story format compliance",
+      "description": "Verify user story format",
+      "type": "objective",
+      "autoCheckMethod": "Verify each user story follows 'As a ... I want ... So that ...' pattern (or close variant)",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "all-stories-have-acs",
+      "name": "All stories have ACs",
+      "description": "Check each story/epic has checkbox items",
+      "type": "objective",
+      "autoCheckMethod": "Check each story/epic has '- [ ]' checkbox items",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "story-numbering-consistent",
+      "name": "Story numbering consistent",
+      "description": "Verify sequential numbering and cross-references",
+      "type": "objective",
+      "autoCheckMethod": "Verify epic/story numbering is sequential and cross-referenced correctly",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "story-priorities-assigned",
+      "name": "Story priorities assigned",
+      "description": "Check for priority indicators",
+      "type": "objective",
+      "autoCheckMethod": "Check if stories have priority indicators (P0/P1/P2) or priority ordering",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "stories-sized-appropriately",
+      "name": "Stories sized appropriately",
+      "description": "Check AC count and scope complexity",
+      "type": "objective",
+      "autoCheckMethod": "Check AC count and scope complexity per story — flag stories with >8 ACs or overly broad scope",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "ac-happy-and-error",
+      "name": "AC cover happy paths and error cases",
+      "description": "Verify ACs include success and error handling",
+      "type": "objective",
+      "autoCheckMethod": "For each story, verify ACs include both success scenarios and error/failure handling",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "edge-cases-identified",
+      "name": "Edge cases identified",
+      "description": "Check for edge case mentions",
+      "type": "objective",
+      "autoCheckMethod": "Check for edge case mentions in AC or body (boundary conditions, empty inputs, concurrent access, etc.)",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "cross-references-valid",
+      "name": "Cross-references valid",
+      "description": "Verify file paths and issue references exist",
+      "type": "objective",
+      "autoCheckMethod": "Verify file paths, issue numbers, and proposal references exist",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "performance-requirements",
+      "name": "Performance requirements specified",
+      "description": "Check NFR section for performance targets",
+      "type": "objective",
+      "autoCheckMethod": "Check NFR section for performance targets (response time, throughput, resource limits)",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "security-considerations",
+      "name": "Security considerations documented",
+      "description": "Check NFR section for security requirements",
+      "type": "objective",
+      "autoCheckMethod": "Check NFR section for security requirements (authentication, authorization, data handling, input validation)",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "scalability-availability",
+      "name": "Scalability or availability requirements",
+      "description": "Check NFR section for scalability and availability",
+      "type": "objective",
+      "autoCheckMethod": "Check NFR section for scalability limits, availability targets, or capacity planning",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "test-plan-presence",
+      "name": "Test plan presence",
+      "description": "Check if test plan file exists alongside PRD",
+      "type": "objective",
+      "autoCheckMethod": "Check if test plan file exists alongside PRD (from Step 2)",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "ac-coverage",
+      "name": "AC coverage (if test plan)",
+      "description": "Cross-reference ACs against test plan test cases",
+      "type": "objective",
+      "autoCheckMethod": "Cross-reference each '- [ ]' AC against test plan test cases — report coverage %",
+      "requiresTestPlan": true
+    },
+    {
+      "id": "integration-test-scenarios",
+      "name": "Integration test scenarios (if test plan)",
+      "description": "Check test plan for integration test cases",
+      "type": "objective",
+      "autoCheckMethod": "Check test plan for integration test cases covering component interactions",
+      "requiresTestPlan": true
+    },
+    {
+      "id": "e2e-test-scenarios",
+      "name": "E2E test scenarios (if test plan)",
+      "description": "Check test plan for end-to-end scenarios",
+      "type": "objective",
+      "autoCheckMethod": "Check test plan for end-to-end scenarios covering critical user journeys from the PRD",
+      "requiresTestPlan": true
+    },
+    {
+      "id": "test-coverage-approach",
+      "name": "Test coverage approach documented",
+      "description": "Check test plan for coverage targets",
+      "type": "objective",
+      "autoCheckMethod": "Check test plan for coverage targets and testing strategy section",
+      "requiresTestPlan": true
+    },
+    {
+      "id": "test-coverage-proportionate",
+      "name": "Test coverage proportionate",
+      "description": "Verify test ACs proportionate to story scope",
+      "type": "objective",
+      "autoCheckMethod": "For each user story, verify that ACs include test-related requirements proportionate to the story's scope. Stories that add or modify code paths should have ACs requiring unit tests, integration tests, or E2E tests as appropriate. Flag stories with complex scope (multiple files, refactoring, new modules) whose ACs lack any test requirement.",
+      "requiresTestPlan": false
+    },
+    {
+      "id": "screen-spec-alignment",
+      "name": "Screen spec alignment (UI PRDs)",
+      "description": "Verify PRD UI requirements align with referenced screen specs",
+      "type": "objective",
+      "autoCheckMethod": "If the PRD references screen specs (via `## Screen Specs` in the source proposal or direct `Screen-Specs/` references), verify that PRD acceptance criteria for UI features align with the referenced screen specs. Flag any PRD requirement that introduces UI elements not present in the proposal's screen specs. If no screen spec references exist, skip this check (non-blocking).",
+      "requiresTestPlan": false
+    }
+  ],
+  "subjective": [
+    {
+      "id": "ac-quality",
+      "name": "Acceptance criteria quality",
+      "question": "Are the acceptance criteria specific enough to be independently testable? (Auto-checks verified structure; this asks about semantic quality.)",
+      "header": "AC Quality",
+      "options": [
+        { "label": "Testable ✅", "description": "ACs are specific, measurable, and independently verifiable" },
+        { "label": "Mostly testable ⚠️", "description": "Most ACs are testable but some are vague or overlapping" },
+        { "label": "Not testable ❌", "description": "ACs are too vague, subjective, or not independently verifiable" }
+      ]
+    },
+    {
+      "id": "decomposition",
+      "name": "Problem decomposition",
+      "question": "Does the PRD adequately decompose the problem — are the epics/stories the right granularity for this scope?",
+      "header": "Decomposition",
+      "options": [
+        { "label": "Well decomposed ✅", "description": "Stories are right-sized, epics group logically, nothing missing" },
+        { "label": "Minor issues ⚠️", "description": "Some stories too large or grouping could improve" },
+        { "label": "Needs rework ❌", "description": "Stories too coarse, missing key functionality, or poorly grouped" }
+      ]
+    }
+  ],
+  "_meta": {
+    "note": "PRD review criteria for /review-prd. Extracted from inline command spec table.",
+    "source": "Extracted from .claude/commands/review-prd.md (#1783)"
+  }
+}

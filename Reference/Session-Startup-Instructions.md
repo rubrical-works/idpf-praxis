@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.61.0
+**Version:** v0.62.0
 **Purpose:** Standard initialization procedure for AI assistant sessions
 
 ## Startup Sequence
@@ -49,6 +49,15 @@ Use the Read tool on `framework-config.json` (already read in Step 1) and check 
 **If projectSkills array exists and is non-empty:**
 - Report: "Project Skills: {skill-list}"
 **If no projectSkills:** Skip this report.
+
+### 3c. Status Line Setup (Non-Blocking)
+Detect whether a Claude Code status line is configured and set up a default if missing.
+1. Run: `node .claude/scripts/shared/statusline-check.js`
+2. Parse JSON output:
+   - If `configured: true` → continue silently
+   - If `configured: false` → spawn `statusline-setup` agent to configure a default status line showing model name and context usage percentage
+   - If script fails or output is not JSON → warn and continue (non-blocking)
+3. This step never blocks session startup
 
 ### 4. Display Session Initialized Block
 Display a consolidated status block. **Date appears ONLY here** (not elsewhere in startup).

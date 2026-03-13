@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Web)
-**Version:** v0.61.0
+**Version:** v0.62.0
 **Revision Date:** 2024-11-13
 **Type:** Web Application Agent Behaviors
 **Extends:** Vibe-Agent-Core-Instructions.md (Rev 1.3)

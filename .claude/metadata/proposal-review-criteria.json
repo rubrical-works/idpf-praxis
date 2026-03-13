@@ -1,0 +1,149 @@
+{
+  "version": "1.0",
+  "criteria": [
+    {
+      "id": "required-sections",
+      "name": "Required sections present",
+      "description": "Check for standard proposal sections",
+      "type": "objective",
+      "autoCheckMethod": "Check for: Problem Statement, Proposed Solution, Acceptance Criteria, Out of Scope sections"
+    },
+    {
+      "id": "status-field",
+      "name": "Status field present",
+      "description": "Check for status metadata field",
+      "type": "objective",
+      "autoCheckMethod": "Check for `**Status:**` metadata field"
+    },
+    {
+      "id": "cross-references-valid",
+      "name": "Cross-references valid",
+      "description": "Verify file paths mentioned in proposal exist on disk",
+      "type": "objective",
+      "autoCheckMethod": "Verify any file paths mentioned in the proposal exist on disk"
+    },
+    {
+      "id": "acceptance-criteria-defined",
+      "name": "Acceptance criteria defined",
+      "description": "Check for checkbox items or numbered criteria",
+      "type": "objective",
+      "autoCheckMethod": "Check for `- [ ]` checkbox items or numbered criteria list"
+    },
+    {
+      "id": "prerequisites-documented",
+      "name": "Prerequisites documented",
+      "description": "Check for prerequisites or dependencies section",
+      "type": "objective",
+      "autoCheckMethod": "Check for prerequisites/dependencies section if applicable"
+    },
+    {
+      "id": "no-internal-contradictions",
+      "name": "No internal contradictions",
+      "description": "Verify solution addresses stated problem without contradictions",
+      "type": "objective",
+      "autoCheckMethod": "Verify solution addresses the stated problem; out-of-scope items not duplicated in solution"
+    },
+    {
+      "id": "solution-detail-sufficient",
+      "name": "Solution detail sufficient for implementation",
+      "description": "Check for concrete implementation details",
+      "type": "objective",
+      "autoCheckMethod": "Check for named files, APIs, data structures, or implementation steps (not just high-level prose)"
+    },
+    {
+      "id": "alternatives-considered",
+      "name": "Alternatives considered",
+      "description": "Check for alternatives or tradeoffs section",
+      "type": "objective",
+      "autoCheckMethod": "Check for alternatives/tradeoffs section documenting at least one rejected approach"
+    },
+    {
+      "id": "impact-assessment",
+      "name": "Impact assessment present",
+      "description": "Check for impact, risk, or effort section",
+      "type": "objective",
+      "autoCheckMethod": "Check for impact/risk/effort section covering scope, risk, and estimated effort"
+    },
+    {
+      "id": "criteria-match-solution",
+      "name": "Implementation criteria match solution",
+      "description": "Cross-reference ACs against proposed solution",
+      "type": "objective",
+      "autoCheckMethod": "Cross-reference AC items against the proposed solution — each AC should map to a solution element"
+    },
+    {
+      "id": "edge-cases-addressed",
+      "name": "Edge cases and error handling addressed",
+      "description": "Check for error handling or failure mode sections",
+      "type": "objective",
+      "autoCheckMethod": "Check for error handling, edge case, or failure mode sections"
+    },
+    {
+      "id": "proposal-self-contained",
+      "name": "Proposal self-contained",
+      "description": "Check that external references are explained inline",
+      "type": "objective",
+      "autoCheckMethod": "Check if external references (URLs, other repos, tools) are explained inline without requiring context"
+    },
+    {
+      "id": "writing-clear",
+      "name": "Writing clear and unambiguous",
+      "description": "Evaluate prose for vague or ambiguous language",
+      "type": "objective",
+      "autoCheckMethod": "Evaluate prose for vague language (\"should work\", \"might need\", \"probably\"), undefined terms, or ambiguous scope"
+    },
+    {
+      "id": "technical-feasibility",
+      "name": "Technical feasibility",
+      "description": "Assess whether the proposed solution is technically achievable",
+      "type": "objective",
+      "autoCheckMethod": "Assess whether the proposed solution is technically achievable. Check for: technical complexity and risk factors (novel tech, unproven approaches, scaling concerns), dependency availability and compatibility (external libraries, APIs, services), scope clarity and implementation feasibility (can the solution be built as described?), resource/effort proportionality (is the effort reasonable for the value?). Present any feasibility concerns with evidence."
+    },
+    {
+      "id": "test-coverage-proportionate",
+      "name": "Test coverage proportionate",
+      "description": "Check that testing strategy is proportionate to scope",
+      "type": "objective",
+      "autoCheckMethod": "When scope is non-trivial (multiple files, refactoring, new modules), check that the proposal mentions a testing strategy or includes test-related acceptance criteria. For simple single-file changes, testing mention is preferred but not required. Report scope assessment vs testing mentions with evidence."
+    },
+    {
+      "id": "diagrams-verified",
+      "name": "Diagrams verified",
+      "description": "Verify referenced diagram files exist on disk",
+      "type": "objective",
+      "autoCheckMethod": "If `**Diagrams:**` field lists file paths (not \"None\"), verify each referenced file exists on disk. Report missing files as fail. If field is \"None\" or absent, skip this check (not an error)."
+    },
+    {
+      "id": "path-analysis-present",
+      "name": "Path Analysis present",
+      "description": "Check for Path Analysis section in proposal",
+      "type": "objective",
+      "autoCheckMethod": "Check for `## Path Analysis` section in proposal document. If missing, suggest: \"Consider running `/paths #N` to identify scenario paths before PRD conversion.\" This is non-blocking — the review continues regardless of whether Path Analysis exists. If present, no suggestion displayed."
+    },
+    {
+      "id": "screen-coverage",
+      "name": "Screen coverage (UI proposals)",
+      "description": "Check for screen specs or mockups in UI-related proposals",
+      "type": "objective",
+      "autoCheckMethod": "If the proposal mentions screens, UI, forms, or user interface elements, check for `## Screen Specs` or `## Mockups` sections. If screens are mentioned but no specs/mockups are referenced, flag. If the proposal is CLI-only, API-only, or has no UI references, skip this check entirely."
+    }
+  ],
+  "subjective": [
+    {
+      "id": "scope-appropriate",
+      "name": "Scope appropriate",
+      "question": "Is the scope appropriate — neither too broad nor too narrow?",
+      "header": "Scope",
+      "options": [
+        { "label": "Appropriate", "description": "Scope is well-bounded, achievable, and addresses the core problem" },
+        { "label": "Needs adjustment", "description": "Slightly too broad or missing a key aspect" },
+        { "label": "Problematic", "description": "Scope is too large, too vague, or misses the core problem" }
+      ],
+      "partialReviewNote": "Partial reviews are valid — if user declines to answer, record as '⊘ Skipped' and continue."
+    }
+  ],
+  "_meta": {
+    "note": "Proposal review criteria for /review-proposal. Extracted from inline command spec table.",
+    "source": "Extracted from .claude/commands/review-proposal.md (#1794)"
+  }
+}

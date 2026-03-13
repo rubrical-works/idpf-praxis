@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.61.0",
+  "version": "0.62.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -154,7 +154,12 @@
           "upgrade-check.js",
           "work-preamble.js",
           "done-preamble.js",
-          "reset-issue-preamble.js"
+          "review-preamble.js",
+          "review-finalize.js",
+          "resolve-preamble.js",
+          "reset-issue-preamble.js",
+          "prd-skill-matcher.js",
+          "statusline-check.js"
         ]
       },
       "shared/lib": {
@@ -170,6 +175,7 @@
           "issue-type.js",
           "workstream-utils.js",
           "skill-keyword-matcher.js",
+          "review-format.js",
           "doc-templates.json",
           "qa-config.json"
         ]

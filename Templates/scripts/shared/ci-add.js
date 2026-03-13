@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +9,7 @@ const { modifyWorkflow } = require('./ci-modify.js');
 const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
 
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * Feature types determine how the template is applied to the workflow.
  * 'top-level' features add a root-level YAML key (e.g., concurrency:).
  * 'step' features add a step to an existing job.

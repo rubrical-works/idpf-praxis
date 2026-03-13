@@ -1,0 +1,33 @@
+{
+  "prerequisites": {
+    "common": [
+      "`gh pmu` extension installed",
+      "`.gh-pmu.json` configured in repository root"
+    ],
+    "descriptions": {
+      "gh-pmu": "GitHub Project Management Utility for issue tracking and status transitions",
+      "gh-pmu-json": "Project board configuration file created by `gh pmu init`"
+    }
+  },
+  "executionInstructions": {
+    "steps": [
+      "**Generate Todo List:** Parse the phases and extension points in this spec, then use `TodoWrite` to create todos",
+      "**Include Extensions:** For each non-empty `USER-EXTENSION` block, add a todo item",
+      "**Track Progress:** Mark todos `in_progress` → `completed` as you work",
+      "**Post-Compaction:** If resuming after context compaction, re-read this spec and regenerate todos"
+    ],
+    "todoRules": [
+      "One todo per numbered phase/step",
+      "One todo per active extension point (non-empty `USER-EXTENSION` blocks)",
+      "Skip commented-out extensions",
+      "Use the phase/step name as the todo content"
+    ]
+  },
+  "errorHandling": {
+    "common": [
+      { "situation": "Issue not found", "response": "\"Issue #N not found. Check the issue number?\"" },
+      { "situation": "gh pmu failure", "response": "\"Failed to update issue: {error}\" → STOP" },
+      { "situation": "No Inception/ artifacts", "response": "\"No charter context. Proceeding with limited validation.\"" }
+    ]
+  }
+}

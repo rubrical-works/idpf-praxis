@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * work-preamble.js
  *
  * Consolidates deterministic setup work for the /work command into a single

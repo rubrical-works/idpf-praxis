@@ -1,6 +1,6 @@
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * workstream-utils.js — Shared Workstream Utility Library
  *
  * Provides consistent metadata operations for workstream-aware commands:

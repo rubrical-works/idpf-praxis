@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Rubrical Systems (c) 2026
+// Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.61.0
+ * @framework-script 0.62.0
  * CI Watch — Monitor GitHub Actions workflow runs by commit SHA
  *
  * Polls for CI run status and reports structured JSON results.
