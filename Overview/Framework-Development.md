@@ -1,5 +1,5 @@
 # Framework Development Reference
-**Version:** v0.62.1
+**Version:** v0.63.0
 **Purpose:** Detailed reference for IDPF development frameworks (2 frameworks: Agile, Vibe)
 
 ## PRD Creation (Pre-Development)
@@ -278,7 +278,7 @@ The model switch happens **inline** — no `context: fork` required. The session
 Add the `model:` field to the YAML frontmatter:
 ```yaml
 ---
-version: "v0.62.1"
+version: "v0.63.0"
 description: Command description (project)
 model: sonnet
 ---

@@ -1,5 +1,5 @@
 ---
-version: "v0.62.1"
+version: "v0.63.0"
 description: Create a bug issue with standard template (project)
 argument-hint: "<title>"
 ---
@@ -50,10 +50,9 @@ Describe the bug (steps to reproduce, expected vs actual behavior):
 
 ### Step 2b: Detect Version
 Auto-detect the software version using this priority:
-1. `framework-config.json` → `frameworkVersion` (IDPF projects)
-2. `package.json` → `version` (Node.js projects)
-3. Latest git tag (`git describe --tags --abbrev=0`)
-4. If none found, prompt: `"Which version was this bug found in?"`
+1. `package.json` → `version` (Node.js projects)
+2. Latest git tag (`git describe --tags --abbrev=0`)
+3. If none found, prompt: `"Which version was this bug found in?"`
 **If a version is detected**, present for confirmation:
 ```
 Version found in: {detected-version} — correct? (Enter to confirm, or type a different version)
@@ -82,7 +81,18 @@ Build the issue body with a standard bug template:
 
 **Actual Behavior:**
 ...
+
+**Scope:**
+- **In scope:** {infer from description, or "To be documented"}
+- **Out of scope:** {infer from description, or "To be documented"}
+
+**Acceptance Criteria:**
+- [ ] {infer from description — e.g., "Bug no longer reproduces following the Steps to Reproduce", or "To be documented"}
+
+**Proposed Fix:**
+{infer from description if enough context, or "To be documented"}
 ```
+Populate sections from the user's description where possible. Use "To be documented" placeholders only for sections without enough input.
 Create the issue:
 ```bash
 gh pmu create --title "[Bug]: {title}" --label bug --status backlog --priority p1 --assignee @me -F .tmp-body.md

@@ -1,5 +1,5 @@
 ---
-version: "v0.62.1"
+version: "v0.63.0"
 description: Create an enhancement issue with standard template (project)
 argument-hint: "<title>"
 ---
@@ -58,11 +58,19 @@ Build the issue body with a standard enhancement template:
 {user description or "To be documented"}
 
 **Motivation:**
-...
+{infer from description, or "To be documented"}
 
 **Proposed Solution:**
-...
+{infer from description, or "To be documented"}
+
+**Scope:**
+- **In scope:** {infer from description, or "To be documented"}
+- **Out of scope:** {infer from description, or "To be documented"}
+
+**Acceptance Criteria:**
+- [ ] {infer from description, or "To be documented"}
 ```
+Populate sections from the user's description where possible. Use "To be documented" placeholders only for sections without enough input.
 Create the issue:
 ```bash
 gh pmu create --title "[Enhancement]: {title}" --label enhancement --status backlog --priority p2 --assignee @me -F .tmp-body.md

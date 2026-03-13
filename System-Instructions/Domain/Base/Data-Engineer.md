@@ -1,5 +1,5 @@
 # System Instructions: Data Engineer
-**Version:** v0.62.1
+**Version:** v0.63.0
 Extends: Core-Developer-Instructions.md
 **Purpose:** Specialized expertise in data pipelines, ETL/ELT, data warehousing, and analytics infrastructure.
 **Load with:** Core-Developer-Instructions.md (required foundation)

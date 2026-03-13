@@ -8,7 +8,7 @@ const { loadFeatureRegistry } = require('./ci-list.js');
 const { createBackup, validateYaml } = require('./ci-modify.js');
 
 /**
- * @framework-script 0.62.1
+ * @framework-script 0.63.0
  * Top-level keys associated with features that can be cleanly removed.
  */
 const FEATURE_TOP_LEVEL_KEYS = {

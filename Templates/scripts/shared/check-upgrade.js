@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.1
+ * @framework-script 0.63.0
  * check-upgrade.js — Post-upgrade verification for IDPF user projects
  *
  * Exports 5 check functions for verifying hub upgrade integrity:
@@ -328,7 +328,7 @@ function checkCommandVersionDrift(projectDir, hubDir) {
   }
 
   if (staleCount > 0) {
-    return { pass: false, status: 'FAIL', findings };
+    return { pass: true, status: 'DRIFT', findings };
   }
 
   findings.push(`${projectFiles.length} commands at current hub version`);
@@ -551,6 +551,28 @@ function getHubVersion(projectDir) {
   }
 }
 
+/**
+ * Determine overall result from individual check results.
+ * Distinguishes version drift (informational) from genuine integrity failures.
+ *
+ * @param {Array<{name: string, pass: boolean, status: string, findings: string[]}>} checkResults
+ * @returns {{ exitCode: number, statusLabel: string, hasDrift: boolean, overallPass: boolean }}
+ */
+function determineOverallResult(checkResults) {
+  const hasFailure = checkResults.some(r => !r.pass);
+  const hasDrift = checkResults.some(r => r.status === 'DRIFT');
+
+  if (hasFailure) {
+    return { exitCode: 1, statusLabel: 'FAIL', hasDrift, overallPass: false };
+  }
+
+  if (hasDrift) {
+    return { exitCode: 0, statusLabel: 'NEEDS UPDATE', hasDrift, overallPass: true };
+  }
+
+  return { exitCode: 0, statusLabel: 'PASS', hasDrift: false, overallPass: true };
+}
+
 // ======================================
 //  Module exports
 // ======================================
@@ -561,6 +583,7 @@ module.exports = {
   checkCommandVersionDrift,
   checkStaleConfigReferences,
   checkSymlinkHealth,
+  determineOverallResult,
   getCommitableFiles,
   getHubVersion,
   extractExtensionBlocks,
@@ -607,19 +630,34 @@ if (require.main === module) {
   }
   checks.push({ name: 'Stale Config References', fn: () => checkStaleConfigReferences(projectDir, hubDir) });
 
-  const statusIcon = { PASS: '\u2705', WARN: '\u26A0\uFE0F', FAIL: '\u274C' };
-  let overallPass = true;
+  const statusIcon = { PASS: '\u2705', WARN: '\u26A0\uFE0F', FAIL: '\u274C', DRIFT: '\u26A0\uFE0F' };
   const checkResults = [];
 
   for (const check of checks) {
     const result = check.fn();
     const icon = statusIcon[result.status] || '?';
     console.log(`  ${icon} ${check.name} — ${result.findings[0] || result.status}`);
-    if (!result.pass) overallPass = false;
     checkResults.push({ name: check.name, ...result });
   }
 
-  console.log(`\nOverall: ${overallPass ? 'PASS' : 'FAIL'}`);
+  const overall = determineOverallResult(checkResults);
+  const overallPass = overall.overallPass;
+
+  // Version drift informational message
+  if (overall.hasDrift) {
+    const projectVersion = getHubVersion(projectDir);
+    let hubVersion = null;
+    if (hubDir) {
+      hubVersion = getHubVersion(hubDir);
+    }
+    if (projectVersion && hubVersion) {
+      console.log(`\n  Project commands are at v${projectVersion} but hub is at v${hubVersion}. Run px-manager to refresh.`);
+    } else if (projectVersion) {
+      console.log(`\n  Project commands are at v${projectVersion} but hub has a newer version. Run px-manager to refresh.`);
+    }
+  }
+
+  console.log(`\nOverall: ${overall.statusLabel}`);
 
   // Structured JSON output for AI consumption
   const changedFiles = overallPass ? getCommitableFiles(projectDir) : [];

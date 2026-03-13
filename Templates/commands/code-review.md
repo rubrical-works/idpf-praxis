@@ -1,5 +1,5 @@
 ---
-version: "v0.62.1"
+version: "v0.63.0"
 description: Comprehensive code review with manifest-driven incremental tracking (project)
 argument-hint: "[--full] [--status] [--scope <globs>] [--batch <N>] [--with <domains>]"
 ---
@@ -56,7 +56,7 @@ If `--status` flag: read manifest, run discovery for counting only, report appro
 ### Step 3: Discover Source Files
 Scan codebase using Glob patterns. Auto-detect from charter tech stack:
 - JS/TS: `**/*.js`, `**/*.ts`, `**/*.jsx`, `**/*.tsx`; Python: `**/*.py`; Go: `**/*.go`; Rust: `**/*.rs`; Java: `**/*.java`
-**Default include patterns** (auto-detect from charter tech stack). **Default exclude patterns:**
+**Default exclude patterns:**
 `node_modules/`, `dist/`, `build/`, `out/`, `.git/`, `vendor/`, `__pycache__/`, `coverage/`, `.next/`, `.nuxt/`
 - Test files (reviewed by `/bad-test-review` instead)
 If `--scope` provided: use those globs instead of defaults. Still apply excludes.
@@ -68,7 +68,7 @@ Compute SHA-256 per file and compare against manifest:
 | New file | Not in manifest | N/A | **Queue** |
 | Existing | `approved` | Yes | **Skip** |
 | Existing | `approved` | No | **Queue** re-review |
-| Existing | `flagged` | Yes (unchanged) | **Skip** — flagged unchanged |
+| Existing | `flagged` | Yes (unchanged) | **Skip** |
 | Existing | `flagged` | No (changed) | **Queue** re-review |
 | Existing | `deferred` | Any | **Skip** |
 | Deleted | In manifest | N/A | **Remove** from manifest |
@@ -101,7 +101,7 @@ If `--with` specified:
 3. Call `loadCodeReviewExtensions(projectDir, domainIds)` from `.claude/scripts/shared/lib/load-review-extensions.js`
 4. For each domain: extract **Code Review Questions** section from criteria file
 5. Unknown IDs: warn with available list (`security, accessibility, performance, chaos, contract, qa, seo, privacy`)
-**Error handling:** All errors fall back to standard review only (non-blocking): unknown ID warns and skips, missing criteria file skips domain, missing registry falls back, no Code Review Questions section skips domain.
+**Error handling:** All errors fall back to standard review only (non-blocking).
 If `--with` not specified: skip extension loading.
 ### Step 6: Per-File Review
 Read each queued file and perform structured analysis:
@@ -117,9 +117,7 @@ Read each queued file and perform structured analysis:
 When `--with` active: after standard review, apply domain criteria questions. Tag findings with domain name. Domain findings can escalate but not downgrade severity.
 ### Step 7: Batch Mode Support
 `--batch N`: limit to N files per invocation, save manifest after batch, report progress.
-### Step 8: Structured Report
-Save to `Construction/Code-Reviews/YYYY-MM-DD-report.md`. Format: summary, findings grouped by severity, per-file status, aggregate statistics.
-### Step 9: Issue Creation
+### Step 8: Issue Creation
 | Finding Type | Issue Command |
 |-------------|---------------|
 | Correctness/security defect | `/bug` |
@@ -129,12 +127,16 @@ Save to `Construction/Code-Reviews/YYYY-MM-DD-report.md`. Format: summary, findi
 3. Group related findings sharing root cause
 4. Record issue refs in manifest
 **Info-level findings** reported but not offered as issues.
-### Step 9b: Security Finding Label
-If `--with security` or `--with all` was specified and any security domain finding has ⚠️ or ❌ severity, apply the `security-finding` label to each issue created from security findings:
+### Step 8b: Security Finding Label
+If `--with security` or `--with all` and any security domain finding has high/medium severity, apply `security-finding` label to each security issue:
 ```bash
 gh issue edit $ISSUE --add-label=security-finding
 ```
-If all security findings are ✅ (no issues detected), do not apply the label.
+If all security findings are clean, do not apply the label.
+### Step 9: Structured Report
+Save to `Construction/Code-Reviews/YYYY-MM-DD-report.md` **after** issue creation so issue numbers are available. Create directory if needed.
+Format: summary, findings grouped by severity with issue numbers, per-file status, aggregate statistics, issues created summary.
+Each finding entry must include its issue number (e.g., `Issue: #1234`) or `No issue` for info-level findings.
 ### Step 10: Manifest Update
 1. Write updated `.code-review-manifest.json`
 2. Update `charter.contentHash`

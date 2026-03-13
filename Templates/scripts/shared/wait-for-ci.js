@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.1
+ * @framework-script 0.63.0
  * @description Poll GitHub Actions workflow status with timeout
  * @checksum sha256:placeholder
  *

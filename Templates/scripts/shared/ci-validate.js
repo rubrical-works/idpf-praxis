@@ -6,7 +6,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.62.1
+ * @framework-script 0.63.0
  * Validate GitHub Actions workflow files
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted validation results

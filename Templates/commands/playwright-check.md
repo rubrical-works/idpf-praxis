@@ -1,5 +1,5 @@
 ---
-version: "v0.62.1"
+version: "v0.63.0"
 description: Verify Playwright installation and browser availability
 argument-hint: "[--fix]"
 ---

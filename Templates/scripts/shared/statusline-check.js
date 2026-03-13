@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.62.1
+ * @framework-script 0.63.0
  * statusline-check.js
  *
  * Detects whether a Claude Code status line is configured in user-level
@@ -22,6 +22,11 @@ const os = require('os');
 function checkStatusLine(options = {}) {
   const homeDir = options.homeDir || os.homedir();
   const projectDir = options.projectDir || process.cwd();
+  const force = options.force || false;
+
+  if (force) {
+    return { configured: false };
+  }
 
   const locations = [
     path.join(homeDir, '.claude', 'settings.json'),
@@ -47,7 +52,9 @@ function checkStatusLine(options = {}) {
 // ─── Main ───
 
 if (require.main === module) {
-  const result = checkStatusLine();
+  const args = process.argv.slice(2);
+  const force = args.includes('--force');
+  const result = checkStatusLine({ force });
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }
 

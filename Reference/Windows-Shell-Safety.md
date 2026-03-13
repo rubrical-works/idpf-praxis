@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.62.1
+**Version:** v0.63.0
 **MUST READ:** Auto-loaded on Windows at session startup.
 
 ## Shell Environment
