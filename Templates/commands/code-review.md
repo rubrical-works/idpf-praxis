@@ -1,5 +1,5 @@
 ---
-version: "v0.63.0"
+version: "v0.63.1"
 description: Comprehensive code review with manifest-driven incremental tracking (project)
 argument-hint: "[--full] [--status] [--scope <globs>] [--batch <N>] [--with <domains>]"
 ---
@@ -98,7 +98,7 @@ Skills loaded lazily. Supplementary, not required.
 If `--with` specified:
 1. Read `.claude/metadata/review-extensions.json` registry
 2. Parse: `all` loads all 8 extensions, comma-separated loads specific ones
-3. Call `loadCodeReviewExtensions(projectDir, domainIds)` from `.claude/scripts/shared/lib/load-review-extensions.js`
+3. Call `loadCodeReviewExtensions(projectDir, domainIds)` from `./.claude/scripts/shared/lib/load-review-extensions.js`
 4. For each domain: extract **Code Review Questions** section from criteria file
 5. Unknown IDs: warn with available list (`security, accessibility, performance, chaos, contract, qa, seo, privacy`)
 **Error handling:** All errors fall back to standard review only (non-blocking).

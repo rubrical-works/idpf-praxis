@@ -1,5 +1,5 @@
 ---
-version: "v0.63.0"
+version: "v0.63.1"
 allowed-tools: Bash, AskUserQuestion
 description: "Assign issues to a branch: [#issue...] [branch/...] [--add-ready] (project)"
 argument-hint: "[#issue...] [branch/name] [--add-ready]"

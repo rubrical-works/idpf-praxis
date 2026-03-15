@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * manage-skills.js — Unified skill management
  *
  * Shared script for skill lifecycle management: list, install, remove, info.

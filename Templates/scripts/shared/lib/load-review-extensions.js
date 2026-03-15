@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * Extension loading error messages and utilities for /review-issue and /code-review
  * Referenced by .claude/commands/review-issue.md Step 2b
  * Referenced by .claude/commands/code-review.md Step 5c (#1767)

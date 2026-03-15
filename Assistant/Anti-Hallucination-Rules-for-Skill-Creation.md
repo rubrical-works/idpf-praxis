@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Skill Creation
-**Version:** v0.63.0
+**Version:** v0.63.1
 
 ## Core Principle
 **Accuracy over helpfulness. Precision over assumption. Verification over invention.**

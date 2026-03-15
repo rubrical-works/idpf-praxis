@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * statusline-check.js
  *
  * Detects whether a Claude Code status line is configured in user-level

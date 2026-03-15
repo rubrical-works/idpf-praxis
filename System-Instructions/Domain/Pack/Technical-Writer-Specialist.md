@@ -1,5 +1,5 @@
 # System Instructions: Technical Writer Specialist
-**Version:** v0.63.0
+**Version:** v0.63.1
 Extends: Core-Developer-Instructions.md
 **Purpose:** Specialized expertise in technical documentation, docs-as-code workflows, API documentation, and documentation engineering.
 **Load with:** Core-Developer-Instructions.md (required foundation)

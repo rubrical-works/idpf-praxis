@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * @description Parse commits since last tag, categorize by type
  * @checksum sha256:placeholder
  *

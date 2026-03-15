@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -59,13 +59,16 @@ process.stdin.on('end', () => {
         // Done trigger - matches standalone "done" or "done #N" at message start
         // Contextual detection happens later (queries active issues)
         const doneTrigger = promptLower.match(/^done(\s|$)/i);
-        // Review trigger - "review" with issue reference routes to /review-issue (#1210)
+        // Review trigger - "review" with issue reference routes to /review-issue (#1210, #1836)
         // review is a tracked action (not passive analysis like evaluate/assess/etc.)
-        const hasReviewKeyword = promptLower.includes('review');
-        const hasIssueRef = prompt.match(/#\d+|\bissue\s+\d+|\b\d{2,}\b/i);
-        const reviewTrigger = hasReviewKeyword && hasIssueRef && !workTrigger;
+        // Require whole-word "review" (not "reviewed", "review-criteria") and #N format for issue refs
+        const hasReviewKeyword = /\breview\b/i.test(prompt);
+        const hasStrictIssueRef = prompt.match(/#\d+|\bissue\s+\d+/i);
+        const reviewTrigger = hasReviewKeyword && hasStrictIssueRef && !workTrigger;
         // Analysis trigger - detect analysis keywords with issue references
         // This prevents "evaluate #123" from drifting into implementation
+        // Analysis keeps loose matching (bare numbers) since it's non-mutating (read-only)
+        const hasIssueRef = prompt.match(/#\d+|\bissue\s+\d+|\b\d{2,}\b/i);
         const hasAnalysisKeyword = ANALYSIS_KEYWORDS.some(kw => promptLower.includes(kw));
         const analysisMatch = hasAnalysisKeyword && hasIssueRef && !workTrigger && !reviewTrigger;
 
@@ -325,7 +328,7 @@ process.stdin.on('end', () => {
         // Handle review commands - route to /review-issue (#1210)
         if (reviewTrigger) {
             // Extract all issue numbers from the prompt
-            const issueMatches = prompt.match(/#(\d+)/g) || prompt.match(/\b(\d{2,})\b/g) || [];
+            const issueMatches = prompt.match(/#(\d+)/g) || [];
             const issueArgs = issueMatches.map(n => n.replace('#', '')).join(' ');
             const output = {
                 systemMessage: 'Success',

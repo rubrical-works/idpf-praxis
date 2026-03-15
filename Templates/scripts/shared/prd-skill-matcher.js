@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * prd-skill-matcher.js - PRD-aware skill matching for /create-prd
  *
  * Reads a PRD file, extracts technical requirements, and matches

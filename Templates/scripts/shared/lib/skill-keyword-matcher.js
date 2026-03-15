@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * lib/skill-keyword-matcher.js - Skill keyword matching for skill suggestion phases
  *
  * Replaces ad-hoc inline node -e code in /create-prd, /create-backlog, /add-story.

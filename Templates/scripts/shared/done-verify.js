@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.0
+ * @framework-script 0.63.1
  * done-verify.js - Diff verification for /done command
  *
  * Analyzes commits referencing an issue to detect hallucinated completions.

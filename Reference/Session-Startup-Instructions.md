@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.63.0
+**Version:** v0.63.1
 **Purpose:** Standard initialization procedure for AI assistant sessions
 ## Startup Sequence
 **Run all startup steps sequentially -- never in parallel.** Parallel tool calls cascade: if one fails, all siblings abort.
@@ -8,7 +8,7 @@ Collect the following for the Session Initialized block. **Run each step sequent
 | Field | Source | Tool |
 |-------|--------|------|
 | Date | Current date | Use `node -e "console.log(new Date().toISOString().slice(0,10))"` via Bash, or environment date |
-| Repository | Git repo name | `git rev-parse --show-toplevel` via Bash (parse last segment -- do not pipe through `tr`) |
+| Repository | Git repo name | `git rev-parse --show-toplevel` via Bash (returns forward-slash path; parse last segment -- do not pipe through `tr`) |
 | Branch | Current branch + clean/dirty | `git branch --show-current` via Bash, then `git status --porcelain` |
 | Process Framework | `framework-config.json` -> `processFramework` | Read tool |
 | Framework Version | `framework-config.json` -> `frameworkVersion` | Read tool |
