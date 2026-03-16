@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes
  * @checksum sha256:placeholder
  *
@@ -332,7 +332,7 @@ async function main() {
         const notes = transformToReleaseFormat(version, date, rawContent, repoUrl, previousTag, projectName);
 
         // Update GitHub release
-        const notesFile = path.join(process.cwd(), '.tmp-release-notes.md');
+        const notesFile = path.join(process.cwd(), `.tmp-release-notes.${process.pid}.${Date.now()}.md`);
         fs.writeFileSync(notesFile, notes);
 
         let result;

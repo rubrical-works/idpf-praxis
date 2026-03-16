@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * done-preamble.js
  *
  * Consolidates deterministic validation and status transitions for the /done
@@ -484,7 +484,17 @@ async function runSingleIssue(issueNum, options = {}) {
   let nextSteps = null;
   if (approvalGate) {
     const prdRef = parsePrdReference(dataResult.issue.body);
-    if (prdRef) {
+    // If this is a test plan approval issue, the PRD was necessarily reviewed
+    // (test plans are derived from reviewed PRDs) — skip PRD review suggestion (#1867)
+    const isTestPlanApproval = (dataResult.issue.labels || []).some(l => l.name === 'test-plan');
+    if (prdRef && isTestPlanApproval) {
+      nextSteps = {
+        prdTracker: prdRef,
+        guidance: [
+          `/create-backlog #${prdRef} — decompose into epics/stories`
+        ]
+      };
+    } else if (prdRef) {
       nextSteps = {
         prdTracker: prdRef,
         guidance: [

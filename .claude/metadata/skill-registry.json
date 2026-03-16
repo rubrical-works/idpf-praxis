@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-03-16T14:24:05.876Z",
+  "generatedAt": "2026-03-16T19:04:44.798Z",
   "version": "1.0.0",
-  "skillCount": 36,
+  "skillCount": 37,
   "skills": [
     {
       "name": "anti-pattern-analysis",
@@ -178,6 +178,23 @@
         "svg",
         "uml",
         "documentation"
+      ],
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
+    },
+    {
+      "name": "electron-cross-build",
+      "description": "Cross-compile Electron apps from Linux to produce Windows executables",
+      "triggers": [],
+      "category": "platform",
+      "relevantTechStack": [
+        "electron",
+        "linux",
+        "windows",
+        "wine",
+        "docker",
+        "electron-builder",
+        "electron-forge"
       ],
       "invocationMode": "auto",
       "copyright": "\"Rubrical Works (c) 2026\""

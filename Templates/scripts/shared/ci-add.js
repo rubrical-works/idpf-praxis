@@ -9,7 +9,7 @@ const { modifyWorkflow } = require('./ci-modify.js');
 const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
 
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * Feature types determine how the template is applied to the workflow.
  * 'top-level' features add a root-level YAML key (e.g., concurrency:).
  * 'step' features add a step to an existing job.
@@ -79,7 +79,8 @@ function isFeatureAlreadyEnabled(projectDir, featureId) {
     try {
       const content = fs.readFileSync(path.join(workflowsDir, file), 'utf8');
       for (const pattern of feature.detectionPatterns.yaml) {
-        const regex = new RegExp(pattern, 'i');
+        let regex;
+        try { regex = new RegExp(pattern, 'i'); } catch { continue; }
         if (regex.test(content)) return true;
       }
     } catch (_e) {
@@ -123,7 +124,9 @@ function addCIFeature(projectDir, featureId, _options = {}) {
     // Create a minimal workflow file
     const workflowsDir = path.join(projectDir, '.github', 'workflows');
     fs.mkdirSync(workflowsDir, { recursive: true });
-    const newFile = path.join(workflowsDir, target.suggestedName);
+    const { validateFilename } = require('./lib/input-validation');
+    const safeName = validateFilename(target.suggestedName);
+    const newFile = path.join(workflowsDir, safeName);
     fs.writeFileSync(newFile, `name: CI\non: push\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n`);
     target.file = newFile;
   }

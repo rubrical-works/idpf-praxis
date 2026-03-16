@@ -1,5 +1,5 @@
 # Domains
-**Version:** v0.64.0
+**Version:** v0.65.0
 ## Overview
 Domains are **specialized knowledge lenses** used during reviews. Each domain provides review criteria, guides, and templates for a specific testing or quality discipline. Loaded on demand via `--with` flag in review commands.
 Domains are **not process frameworks** — they serve as reference collections that review commands consume.

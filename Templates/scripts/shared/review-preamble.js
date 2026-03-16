@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * review-preamble.js
  *
  * Consolidates all review setup work into a single JSON response:

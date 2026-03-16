@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -59,12 +59,13 @@ process.stdin.on('end', () => {
         // Done trigger - matches standalone "done" or "done #N" at message start
         // Contextual detection happens later (queries active issues)
         const doneTrigger = promptLower.match(/^done(\s|$)/i);
-        // Review trigger - "review" with issue reference routes to /review-issue (#1210, #1836)
+        // Review trigger - "review" with issue reference routes to /review-issue (#1210, #1836, #1869)
         // review is a tracked action (not passive analysis like evaluate/assess/etc.)
-        // Require whole-word "review" (not "reviewed", "review-criteria") and #N format for issue refs
-        const hasReviewKeyword = /\breview\b/i.test(prompt);
+        // Require "review" at or near start of prompt to avoid triggering on assistant output
+        // that mentions review commands (e.g., "Say /review-issue #N to start")
+        const reviewAtStart = /^(?:please\s+)?review\b/i.test(prompt);
         const hasStrictIssueRef = prompt.match(/#\d+|\bissue\s+\d+/i);
-        const reviewTrigger = hasReviewKeyword && hasStrictIssueRef && !workTrigger;
+        const reviewTrigger = reviewAtStart && hasStrictIssueRef && !workTrigger;
         // Analysis trigger - detect analysis keywords with issue references
         // This prevents "evaluate #123" from drifting into implementation
         // Analysis keeps loose matching (bare numbers) since it's non-mutating (read-only)
@@ -325,11 +326,12 @@ process.stdin.on('end', () => {
             process.exit(0);
         }
 
-        // Handle review commands - route to /review-issue (#1210)
+        // Handle review commands - route to /review-issue (#1210, #1869)
         if (reviewTrigger) {
-            // Extract all issue numbers from the prompt
+            // Extract issue numbers only from #N patterns (not bare numbers)
+            // to avoid picking up stray numbers from conversation context
             const issueMatches = prompt.match(/#(\d+)/g) || [];
-            const issueArgs = issueMatches.map(n => n.replace('#', '')).join(' ');
+            const issueArgs = [...new Set(issueMatches.map(n => n.replace('#', '')))].join(' ');
             const output = {
                 systemMessage: 'Success',
                 hookSpecificOutput: {

@@ -144,6 +144,22 @@
       "xml diagram",
       "draw.io"
     ],
+    "electron-cross-build": [
+      "cross-compile",
+      "cross-compilation",
+      "linux to windows",
+      "wine build",
+      "wine electron",
+      "nsis linux",
+      "electron-builder cross",
+      "docker electron build",
+      "windows build from linux",
+      "cross-platform build",
+      "signtool wine",
+      "osslsigncode",
+      "electronuserland",
+      "prebuild-install"
+    ],
     "electron-development": [
       "electron",
       "desktop app",
@@ -439,6 +455,7 @@
     "common-errors": "debugging",
     "digitalocean-app-setup": "platform",
     "drawio-generation": "documentation",
+    "electron-cross-build": "platform",
     "electron-development": "platform",
     "error-handling-patterns": "architecture",
     "i18n-setup": "web",

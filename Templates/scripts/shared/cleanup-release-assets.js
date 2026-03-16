@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * cleanup-release-assets.js - Clean up old release assets
  *
  * Deletes binary assets from older GitHub releases, keeping only the

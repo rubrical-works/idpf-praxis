@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * review-finalize.js
  *
  * Consolidates all review cleanup work into a single script call:
@@ -336,7 +336,7 @@ async function main() {
   const bodyExport = await execSafe(`gh pmu view ${issue} --body-stdout`);
   if (bodyExport.ok) {
     const updatedBody = updateBodyReviewCount(bodyExport.output);
-    const tmpBodyFile = `.tmp-${issue}-body.md`;
+    const tmpBodyFile = `.tmp-${issue}-body.${process.pid}.md`;
     fs.writeFileSync(tmpBodyFile, updatedBody);
     const editResult = await execSafe(`gh pmu edit ${issue} -F ${tmpBodyFile}`);
     bodyUpdated = editResult.ok;
@@ -347,7 +347,7 @@ async function main() {
   let commentPosted = false;
   let commentUrl = null;
   const comment = formatReviewComment(findings);
-  const tmpCommentFile = `.tmp-${issue}-review-comment.md`;
+  const tmpCommentFile = `.tmp-${issue}-review-comment.${process.pid}.md`;
   fs.writeFileSync(tmpCommentFile, comment);
   const commentResult = await execSafe(`gh issue comment ${issue} -F ${tmpCommentFile}`);
   if (commentResult.ok) {

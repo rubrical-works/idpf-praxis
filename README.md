@@ -40,7 +40,7 @@ px-manager handles:
 
 ---
 
-## Skills (36)
+## Skills (37)
 
 **TDD:** tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns
 

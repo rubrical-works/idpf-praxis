@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * work-preamble.js
  *
  * Consolidates deterministic setup work for the /work command into a single
@@ -310,23 +310,29 @@ async function loadSubIssues(issueNum) {
  * @param {Array<{ number: number, title: string }>} subIssues
  * @returns {Promise<{ skipped: Array<{ number: number, status: string }>, active: Array<{ number: number, title: string }> }>}
  */
-async function checkSubIssueStatuses(subIssues) {
+async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
   const skipped = [];
   const active = [];
   const skipStatuses = ['in review', 'done'];
 
-  // Parallelize all sub-issue status checks
-  const statusResults = await Promise.all(
-    subIssues.map(async (sub) => {
-      try {
-        const { stdout } = await execAsync(`gh pmu view ${sub.number} --json=status`, EXEC_OPTS);
-        const data = JSON.parse(stdout.trim());
-        return { sub, status: data.status };
-      } catch (_e) {
-        return { sub, status: null };
-      }
-    })
+  // Parallelize all sub-issue status checks with timeout (#1883)
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Sub-issue status check timed out after ${timeoutMs / 1000}s`)), timeoutMs)
   );
+  const statusResults = await Promise.race([
+    Promise.all(
+      subIssues.map(async (sub) => {
+        try {
+          const { stdout } = await execAsync(`gh pmu view ${sub.number} --json=status`, EXEC_OPTS);
+          const data = JSON.parse(stdout.trim());
+          return { sub, status: data.status };
+        } catch (_e) {
+          return { sub, status: null };
+        }
+      })
+    ),
+    timeoutPromise
+  ]);
 
   for (const { sub, status } of statusResults) {
     if (status && skipStatuses.includes(status.toLowerCase())) {

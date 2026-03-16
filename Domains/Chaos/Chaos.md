@@ -1,5 +1,5 @@
 # IDPF-Chaos Framework
-**Version:** v0.64.0
+**Version:** v0.65.0
 **Type:** Domain
 ## Overview
 Domain for chaos engineering experiments: resilience testing, fault injection, failure scenario validation.

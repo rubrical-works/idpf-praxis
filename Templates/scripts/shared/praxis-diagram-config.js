@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * @description Praxis Diagram configuration utilities for charter integration
  * @checksum sha256:placeholder
  *

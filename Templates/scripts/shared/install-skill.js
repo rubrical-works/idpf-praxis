@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * install-skill.js - Skill package extraction and deployment
  *
  * Shared script for deploying skills from framework packages to projects.

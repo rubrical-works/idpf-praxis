@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.64.0",
+  "version": "0.65.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -44,6 +44,7 @@
     "common-errors",
     "digitalocean-app-setup",
     "drawio-generation",
+    "electron-cross-build",
     "electron-development",
     "error-handling-patterns",
     "flask-setup",
@@ -176,6 +177,8 @@
           "workstream-utils.js",
           "skill-keyword-matcher.js",
           "review-format.js",
+          "input-validation.js",
+          "debug.js",
           "doc-templates.json",
           "qa-config.json"
         ]

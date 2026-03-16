@@ -8,7 +8,7 @@ const { loadFeatureRegistry } = require('./ci-list.js');
 const { createBackup, validateYaml } = require('./ci-modify.js');
 
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * Top-level keys associated with features that can be cleanly removed.
  */
 const FEATURE_TOP_LEVEL_KEYS = {
@@ -39,7 +39,8 @@ function findFeatureInWorkflows(projectDir, featureId) {
       const matchedPatterns = [];
 
       for (const pattern of feature.detectionPatterns.yaml) {
-        const regex = new RegExp(pattern, 'i');
+        let regex;
+        try { regex = new RegExp(pattern, 'i'); } catch { continue; }
         if (regex.test(content)) {
           matchedPatterns.push(pattern);
         }

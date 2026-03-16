@@ -6,7 +6,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * List available CI features with enabled/disabled status
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted output
@@ -93,8 +93,9 @@ function isFeatureEnabled(workflowContents, feature) {
 
   for (const workflow of workflowContents) {
     for (const pattern of patterns) {
-      // Check raw content for pattern match
-      const regex = new RegExp(pattern, 'i');
+      // Check raw content for pattern match (safe regex from registry data)
+      let regex;
+      try { regex = new RegExp(pattern, 'i'); } catch { continue; }
       if (regex.test(workflow.content)) {
         return true;
       }

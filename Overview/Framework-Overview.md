@@ -1,5 +1,5 @@
 # Framework Overview
-**Version:** v0.64.0
+**Version:** v0.65.0
 
 **Purpose:** Comprehensive reference for AI assistants (Claude/Claude Code) and framework development
 **Change History:** See git log and CHANGELOG.md

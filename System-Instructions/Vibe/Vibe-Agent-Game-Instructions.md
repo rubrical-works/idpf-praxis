@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Game)
-**Version:** v0.64.0
+**Version:** v0.65.0
 
 **Revision Date:** 2024-11-13
 **Type:** Game Development Agent Behaviors

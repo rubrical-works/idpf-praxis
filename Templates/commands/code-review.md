@@ -1,5 +1,5 @@
 ---
-version: "v0.64.0"
+version: "v0.65.0"
 description: Comprehensive code review with manifest-driven incremental tracking (project)
 argument-hint: "[--full] [--status] [--scope <globs>] [--batch <N>] [--with <domains>] [--suggest]"
 copyright: "Rubrical Works (c) 2026"
@@ -60,8 +60,15 @@ If `--status` flag: read manifest, run discovery for counting only, report appro
 Scan codebase using Glob patterns. Auto-detect from charter tech stack:
 - JS/TS: `**/*.js`, `**/*.ts`, `**/*.jsx`, `**/*.tsx`; Python: `**/*.py`; Go: `**/*.go`; Rust: `**/*.rs`; Java: `**/*.java`
 **Default include patterns** (auto-detect from charter tech stack). **Default exclude patterns:**
-`node_modules/`, `dist/`, `build/`, `out/`, `.git/`, `vendor/`, `__pycache__/`
-- `coverage/`, `.next/`, `.nuxt/`
+| Category | Directories |
+|----------|------------|
+| Dependencies | `node_modules/`, `vendor/`, `Pods/`, `packages/` |
+| Python | `__pycache__/`, `.venv/`, `venv/`, `site-packages/`, `.tox/` |
+| Build output | `dist/`, `build/`, `out/`, `target/`, `bin/`, `obj/` |
+| Framework builds | `.next/`, `.nuxt/`, `.svelte-kit/`, `.angular/` |
+| Java/Gradle | `.gradle/`, `.maven/` |
+| Test coverage | `coverage/`, `.nyc_output/` |
+| System | `.git/` |
 - Test files (reviewed by `/bad-test-review` instead)
 If `--scope` provided: use those globs instead of defaults. Still apply excludes.
 **Language detection:** 1. Check CHARTER.md tech stack 2. Scan root configs 3. Count extensions
@@ -122,8 +129,12 @@ If `--with` specified (or domains from `--suggest` accepted):
 1. Read `.claude/metadata/review-extensions.json` registry
 2. Parse: `all` loads all 8 extensions, comma-separated loads specific ones
 3. Call `loadCodeReviewExtensions(projectDir, domainIds)` from `./.claude/scripts/shared/lib/load-review-extensions.js`
-4. For each domain: extract **Code Review Questions** section from criteria file
-5. Unknown IDs: warn with available list (`security, accessibility, performance, chaos, contract, qa, seo, privacy`)
+   **Return shape:** `{ ok: boolean, domains: { [id]: { description, domain, questions: string[] } }, warnings: string[] }`
+   - If `ok: false`: log `result.error`, fall back to standard review
+   - If `ok: true`: iterate `Object.entries(result.domains)` for loaded domain questions
+   - Report `result.warnings` if any (non-blocking)
+4. For each domain in `result.domains`: use `questions[]` array as Code Review Questions
+5. Unknown IDs: warn with available list (`security, accessibility, performance, chaos, contract, qa, seo, privacy, observability, i18n, api-design`)
 **Error handling:** All errors fall back to standard review only (non-blocking): unknown ID warns and skips, missing criteria file skips domain, missing registry falls back, no Code Review Questions section skips domain.
 If `--with` not specified: skip extension loading.
 ### Step 6: Per-File Review

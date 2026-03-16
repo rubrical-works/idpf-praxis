@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * lib/gh.js - GitHub CLI wrapper
  *
  * Provides functions for interacting with GitHub via the gh CLI.
@@ -100,8 +100,12 @@ function getLatestRun(repo) {
  */
 function getRuns(options = {}) {
     const { limit = 10, branch, repo } = options;
-    let args = `run list --limit ${limit} --json databaseId,status,conclusion,name,headBranch,createdAt,updatedAt`;
-    if (branch) args += ` --branch ${branch}`;
+    const safeLimit = Number.isInteger(Number(limit)) ? Number(limit) : 10;
+    let args = `run list --limit ${safeLimit} --json databaseId,status,conclusion,name,headBranch,createdAt,updatedAt`;
+    if (branch) {
+        const { validateBranchName } = require('./input-validation');
+        args += ` --branch ${validateBranchName(branch)}`;
+    }
     if (repo) args += ` --repo ${repo}`;
     return execJson(args);
 }

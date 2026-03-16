@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * lib/output.js - Output formatting utilities
  *
  * Provides consistent output formatting for all scripts.

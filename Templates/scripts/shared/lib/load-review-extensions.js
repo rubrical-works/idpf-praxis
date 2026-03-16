@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * Extension loading error messages and utilities for /review-issue and /code-review
  * Referenced by .claude/commands/review-issue.md Step 2b
  * Referenced by .claude/commands/code-review.md Step 5c (#1767)
@@ -45,8 +45,9 @@ function resolveAutoInclusion(projectDir, explicitDomains = [], options = {}) {
   let config = {};
   try {
     config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  } catch (_err) {
+  } catch (err) {
     // No config or malformed — no auto-inclusion
+    if (process.env.DEBUG) console.error(`[DEBUG load-review-extensions] Config load failed: ${err.message}`);
   }
 
   // Source 1: activeDomains from framework-config.json

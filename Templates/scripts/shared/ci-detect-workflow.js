@@ -6,7 +6,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.64.0
+ * @framework-script 0.65.0
  * Feature-to-workflow-category mapping.
  * Determines which type of workflow file each feature belongs in.
  */
