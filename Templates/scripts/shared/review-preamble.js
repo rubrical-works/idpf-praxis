@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * review-preamble.js
  *
  * Consolidates all review setup work into a single JSON response:
@@ -77,6 +77,7 @@ function parseArgs(args) {
   // First non-flag argument is issue number
   let issue = null;
   let withExtensions = null;
+  let withoutExtensions = null;
   let modeOverride = null;
   let force = false;
 
@@ -85,6 +86,9 @@ function parseArgs(args) {
     const arg = args[i];
     if (arg === '--with') {
       withExtensions = args[i + 1] || null;
+      i += 2;
+    } else if (arg === '--without') {
+      withoutExtensions = args[i + 1] || null;
       i += 2;
     } else if (arg === '--mode') {
       const val = args[i + 1];
@@ -114,6 +118,7 @@ function parseArgs(args) {
 
   const result = { issue };
   if (withExtensions !== null) result.withExtensions = withExtensions;
+  if (withoutExtensions !== null) result.withoutExtensions = withoutExtensions;
   if (modeOverride !== null) result.modeOverride = modeOverride;
   if (force) result.force = true;
   return result;
@@ -194,11 +199,7 @@ function loadCriteria(issueType, projectDir, modeOverride) {
 
 // ─── Extension Loading ───
 
-function loadExtensions(withArg, projectDir) {
-  if (!withArg) {
-    return { extensions: [], warnings: [] };
-  }
-
+function loadExtensions(withArg, projectDir, withoutArg) {
   const metadataDir = path.join(projectDir, '.claude', 'metadata');
   let registry;
   try {
@@ -214,22 +215,40 @@ function loadExtensions(withArg, projectDir) {
   const available = registry.extensions || {};
   const extensions = [];
   const warnings = [];
+  const withNone = withArg === 'none';
 
+  // Auto-inclusion: resolve activeDomains + relevantSpecialists
+  const { resolveAutoInclusion } = require('./lib/load-review-extensions');
+  const withoutList = withoutArg ? withoutArg.split(',').map(s => s.trim()) : [];
+  const explicitDomains = (withArg && withArg !== 'all' && withArg !== 'none')
+    ? withArg.split(',').map(s => s.trim())
+    : [];
+
+  const autoResult = resolveAutoInclusion(projectDir, explicitDomains, { withNone, without: withoutList });
+  const allDomainIds = new Set(autoResult.domains);
+
+  // If --with all, add all registered
   if (withArg === 'all') {
-    for (const [id, ext] of Object.entries(available)) {
-      extensions.push({ id, ...ext });
+    for (const id of Object.keys(available)) {
+      allDomainIds.add(id);
     }
-  } else {
-    const requested = withArg.split(',').map(s => s.trim()).filter(Boolean);
-    for (const id of requested) {
-      if (available[id]) {
-        extensions.push({ id, ...available[id] });
-      } else {
-        warnings.push({
-          code: 'EXTENSION_NOT_FOUND',
-          message: `Extension "${id}" not found in registry. Available: ${Object.keys(available).join(', ')}`
-        });
-      }
+  }
+
+  // If no explicit --with and no auto-included domains, return empty
+  if (allDomainIds.size === 0) {
+    return { extensions: [], warnings };
+  }
+
+  for (const id of allDomainIds) {
+    if (available[id]) {
+      const ext = available[id];
+      const source = autoResult.sources.get(id) || '--with';
+      extensions.push({ id, ...ext, autoSource: source });
+    } else {
+      warnings.push({
+        code: 'EXTENSION_NOT_FOUND',
+        message: `Extension "${id}" not found in registry. Available: ${Object.keys(available).join(', ')}`
+      });
     }
   }
 
@@ -374,7 +393,7 @@ async function main() {
   const criteria = loadCriteria(issueType, process.cwd(), args.modeOverride || null);
 
   // Load extensions
-  const extensionResult = loadExtensions(args.withExtensions || null, process.cwd());
+  const extensionResult = loadExtensions(args.withExtensions || null, process.cwd(), args.withoutExtensions || null);
   criteria.extensions = extensionResult.extensions;
 
   const allWarnings = [...extensionResult.warnings];

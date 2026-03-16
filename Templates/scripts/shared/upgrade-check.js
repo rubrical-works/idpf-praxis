@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * @description Check for third-party framework/dependency upgrades
  *
  * This script is provided by the framework and may be updated.

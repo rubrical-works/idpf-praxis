@@ -1,13 +1,16 @@
 # Deployment Awareness
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Purpose:** Document the deployment chain from development to distribution
 
 ## Overview
+
 This repository (`idpf-praxis-dev`) is the **development environment**. Changes made here must be evaluated for deployment impact to the **distribution repository** (`idpf-praxis`) which users install from.
 
 ## Deployment Architecture
 
 ### Source of Truth Chain
+
 ```
 idpf-praxis-dev (Development)           idpf-praxis (Distribution)
 ─────────────────────────────           ─────────────────────────────────────
@@ -23,6 +26,7 @@ Source Files (IDPF-*, Reference/, etc.)
 ```
 
 ### Command Template Chain
+
 ```
 .claude/commands/*.md (SOURCE)    ────→  .min-mirror/Templates/commands/*.md
     │                                     (via path remapping in minimize-config.json)
@@ -32,15 +36,19 @@ Source Files (IDPF-*, Reference/, etc.)
     ↓                                     ↓
 Framework uses full commands              Users get clean templates
 ```
+
 **Note:** `Templates/commands/` no longer exists. Commands are sourced from `.claude/commands/` with path remapping.
 
 ### Trigger
+
 Deployment to `-dist` is triggered by pushing a git tag matching `v*` (e.g., `v0.15.0`).
 
 ## Hub Architecture
 
 ### Central Hub Model
+
 Users install IDPF to a **central hub** that serves multiple projects:
+
 ```
 Hub (central installation)           Project (user's codebase)
 ──────────────────────────           ────────────────────────────
@@ -55,16 +63,20 @@ Hub (central installation)           Project (user's codebase)
 ```
 
 ### Hybrid Command Deployment
+
 Commands use a **hybrid model** based on extensibility:
+
 | Command Type | Marker | Project Behavior |
 |--------------|--------|------------------|
 | **Extensible** | `<!-- EXTENSIBLE -->` | **Copied** to project (enables customization) |
 | **Managed** | `<!-- MANAGED -->` | **Copied** as-is (no customization expected) |
+
 **Why commands are copied (not symlinked):**
 - Projects can customize extension blocks (`USER-EXTENSION-START/END`)
 - FRAMEWORK-ONLY content is stripped during copy
 - Existing extensions are preserved on hub update/reinstall
 - Commands are committed to project repo (not in `.gitignore`)
+
 **What stays symlinked:**
 - Rules (auto-update with hub)
 - Hooks (auto-update with hub)
@@ -73,12 +85,15 @@ Commands use a **hybrid model** based on extensibility:
 - Skills (extracted packages)
 
 ### Hub Management
+
 Hub creation and project setup are handled by **px-manager** (the Electron-based hub manager). CLI installer scripts (`install-hub.js`, `install-project-*.js`, `fetch-updates.js`) were retired in #1567 and archived to `Archive/Retired-Scripts/`.
 
 ## File Classification
 
 ### Deployed FROM `.min-mirror/`
+
 These directories are minimized and deployed to the distribution repo:
+
 | Directory | Content |
 |-----------|---------|
 | `IDPF-*` | All framework directories (10 total) |
@@ -89,14 +104,18 @@ These directories are minimized and deployed to the distribution repo:
 | `Templates/` | Command templates and lifecycle artifacts |
 
 ### Deployed DIRECTLY (Not Minimized)
+
 | Directory | Source | Notes |
 |-----------|--------|-------|
 | `Skills/Packaged/` | `Skills/Packaged/*.zip` | Skill zip files for installation |
 | `.claude/metadata/` | `.claude/metadata/*.json` | Registry files (skill, extension points, recipes) |
+
 **Note:** Skills are distributed as zip files only. px-manager extracts skills on demand from `Skills/Packaged/`. The source skill directories (`Skills/[name]/`) are NOT minimized or deployed. Metadata registries are generated JSON — not minimized, deployed as-is.
 
 ### Deployed AS-IS (Not Minimized)
+
 These files are copied directly without minimization:
+
 | File/Directory | Notes |
 |----------------|-------|
 | `README-DIST.md` | Becomes `README.md` in -dist |
@@ -105,7 +124,9 @@ These files are copied directly without minimization:
 | `framework-manifest.json` | Framework metadata |
 
 ### Dev-Only (Never Deployed)
+
 These stay in the development repo only:
+
 | Category | Examples |
 |----------|----------|
 | **Excluded Directories** | `Archive/`, `Proposal/`, `PRD/`, `Guides/`, `Market-Analysis/`, `Draft-Diagrams/` |
@@ -117,17 +138,21 @@ These stay in the development repo only:
 ## Issue Workflow Integration
 
 ### When Working on Issues
+
 Before implementing changes, consider:
+
 1. **Does this change affect user-facing files?**
    - Files in deployed directories (IDPF-*, Reference/, Skills/, etc.)
    - Templates or deployment scripts
    - Framework manifest or documentation
+
 2. **Is this dev-only?**
    - Proposals, PRDs, or Archive content
    - Maintainer commands or scripts
    - Internal tooling
 
 ### Pre-Commit Checklist for User-Facing Changes
+
 - [ ] Source files updated
 - [ ] Run `/minimize-files` to update `.min-mirror/`
 - [ ] Verify minimized output preserves functionality
@@ -137,7 +162,9 @@ Before implementing changes, consider:
 ## Quick Reference
 
 ### Minimization Scope
+
 Defined in `.claude/scripts/framework/minimize-config.json`:
+
 ```json
 {
   "includedDirectories": [
@@ -157,6 +184,7 @@ Defined in `.claude/scripts/framework/minimize-config.json`:
   }
 }
 ```
+
 **Notes:**
 - `.claude/commands/` is the source for command templates, remapped to `.min-mirror/Templates/commands/`
 - `Templates/commands/` is excluded (no longer exists - commands sourced from `.claude/commands/`)
@@ -164,6 +192,7 @@ Defined in `.claude/scripts/framework/minimize-config.json`:
 - Skills is NOT in `includedDirectories` because skill source files are not minimized
 
 ### Key Commands
+
 | Command | Purpose |
 |---------|---------|
 | `/minimize-files` | Update `.min-mirror/` from source files |
@@ -172,10 +201,12 @@ Defined in `.claude/scripts/framework/minimize-config.json`:
 | `/prepare-release` | Full release preparation including minimization |
 
 ## Related Files
+
 | File | Purpose |
 |------|---------|
 | `.github/workflows/deploy-dist.yml` | Deployment workflow |
 | `.claude/scripts/minimize-config.json` | Minimization scope |
 | `.claude/commands/minimize-files.md` | Minimization command |
 | `.claude/commands/prepare-release.md` | Release preparation |
+
 **End of Deployment Awareness**

@@ -1,12 +1,18 @@
 # Anti-Hallucination Rules for PRD Work
-**Version:** v0.63.1
+**Version:** v0.64.0
 
 ## Core Principle
+
 **Stakeholder truth over helpful invention. Traceability over assumption. Validation over completion.**
+
 PRD work requires rigorous accuracy because fabricated requirements lead to building the wrong product. Every requirement must trace to a stakeholder statement, existing code, or documented source—never to the assistant's imagination.
 
+------
+
 ## Information Source Hierarchy
+
 Always prioritize information in this order:
+
 1. **Stakeholder statements** (absolute authority)
    - Direct quotes from conversations
    - Written feedback and emails
@@ -26,9 +32,12 @@ Always prioritize information in this order:
    - Must be validated with stakeholder
    - Must not be stated as fact
 
+------
+
 ## Absolute "Never Do" Rules
 
 ### NEVER Invent:
+
 - ❌ Requirements not stated by stakeholders
 - ❌ User stories without evidence of user need
 - ❌ Acceptance criteria beyond what's testable/traceable
@@ -41,6 +50,7 @@ Always prioritize information in this order:
 - ❌ Timeline estimates without team input
 
 ### NEVER Assume:
+
 - ❌ What stakeholders "probably meant"
 - ❌ Requirements are complete without asking
 - ❌ User needs beyond what was stated
@@ -51,18 +61,23 @@ Always prioritize information in this order:
 - ❌ NFR targets (response time, uptime) without discussion
 
 ### NEVER Defer or Make Optional Without Confirmation:
+
 When documenting requirements from stakeholder input, you must include ALL stated requirements. Unilateral decisions to defer or downgrade requirements are prohibited.
+
 - ❌ Mark stakeholder requirements as "optional" without their approval
 - ❌ Defer requirements to "Phase 2" or "future release" without explicit agreement
 - ❌ Downgrade priority (Must Have → Should Have) without stakeholder confirmation
 - ❌ Remove requirements because implementation seems complex
 - ❌ Split or reduce scope of stated requirements without consent
 - ❌ Move requirements to "Out of Scope" without stakeholder decision
+
 **When scope or priority concerns arise:**
+
 1. **STOP** - Do not silently defer or downgrade
 2. **REPORT** - Explain the concern (complexity, timeline, dependencies)
 3. **ASK** - "Should this remain as stated, or would you like to adjust priority/scope?"
 4. **WAIT** - Get explicit stakeholder decision before any changes
+
 ```markdown
 ❌ BAD: "I've captured the core requirements. The reporting features can be
         Phase 2 since they'll require significant development."
@@ -72,12 +87,16 @@ When documenting requirements from stakeholder input, you must include ALL state
          discuss deferring some to a later release?"
 ```
 
+------
+
 ## STOP Boundary Enforcement
 
 ### Command Spec STOP Boundaries Are Absolute
+
 When a command specification includes a STOP boundary section (e.g., `## STOP — Workflow Boundary`), this is a **hard stop**, not a suggestion.
 
 ### Rules:
+
 1. **STOP means STOP** - Execution must halt at the boundary
 2. **No "helpful continuation"** - Do not proceed past STOP boundaries even if:
    - The next steps seem logical
@@ -90,6 +109,7 @@ When a command specification includes a STOP boundary section (e.g., `## STOP �
    - Do not assume pre-compaction state
 
 ### Why This Matters
+
 STOP boundaries exist to:
 - Separate distinct workflow phases
 - Allow user review before critical operations
@@ -97,16 +117,21 @@ STOP boundaries exist to:
 - Give users control over destructive or irreversible operations
 
 ### Example
+
 ```markdown
 ## STOP — Workflow Boundary
 **This command ends here.** Wait for user confirmation before proceeding.
 ```
+
 **Correct Response:** Report completion and wait for user's next instruction
 **Incorrect Response:** Proceeding to push changes because it's the "logical next step"
+
+------
 
 ## Requirement Source Attribution
 
 ### Every Requirement MUST Have a Source
+
 ```markdown
 ✅ GOOD:
 REQ-001: User can reset password via email
@@ -119,6 +144,7 @@ REQ-001: User can reset password via email
 ```
 
 ### Source Types and Confidence
+
 | Source Type | Confidence | Action |
 |-------------|------------|--------|
 | Direct stakeholder quote | High | Document verbatim |
@@ -128,23 +154,30 @@ REQ-001: User can reset password via email
 | Assistant suggestion | Low | Flag as "Suggested", require validation |
 
 ### Attribution Format
+
 ```markdown
 **Requirement:** [Description]
 **Confidence:** High | Medium | Low
 **Status:** [ ] Confirmed [ ] Pending Validation
 ```
 
+------
+
 ## Scope Boundary Rules
 
 ### In-Scope MUST Be Explicit
+
 Only include features that stakeholders explicitly requested:
+
 ```markdown
 ❌ BAD: Adding "admin dashboard" because "they'll probably need it"
 ✅ GOOD: "Admin dashboard not discussed. Should this be in scope?"
 ```
 
 ### Out-of-Scope MUST Be Documented
+
 When stakeholders mention something won't be included:
+
 ```markdown
 ✅ GOOD:
 ## Out of Scope
@@ -153,15 +186,20 @@ When stakeholders mention something won't be included:
 ```
 
 ### Scope Creep Detection
+
 Flag when you're tempted to add:
 - Features "users will expect"
 - Capabilities "competitors have"
 - Functionality that "makes sense"
+
 **Response:** "This wasn't explicitly discussed. Should I add [X] to the requirements, or confirm with stakeholders first?"
+
+------
 
 ## Priority Assignment Rules
 
 ### Never Assign Priority Without Stakeholder Input
+
 ```markdown
 ❌ BAD:
 REQ-001: User login [Must Have]
@@ -173,6 +211,7 @@ Note: Awaiting stakeholder prioritization
 ```
 
 ### MoSCoW Requires Explicit Confirmation
+
 | Priority | Requires |
 |----------|----------|
 | Must Have | Stakeholder explicitly said "required", "must", "critical" |
@@ -181,6 +220,7 @@ Note: Awaiting stakeholder prioritization
 | Won't Have | Stakeholder explicitly excluded |
 
 ### When Unsure About Priority
+
 ```markdown
 "The following requirements need priority assignment:
 - REQ-001: [Description]
@@ -189,10 +229,14 @@ Note: Awaiting stakeholder prioritization
 Which are Must Have vs Should Have vs Could Have?"
 ```
 
+------
+
 ## NFR (Non-Functional Requirements) Rules
 
 ### Code-Inferred NFRs (codebase-analysis)
+
 When extracting NFRs from code patterns:
+
 ```markdown
 ✅ GOOD:
 NFR-SEC-001: Password hashing required
@@ -206,7 +250,9 @@ NFR-SEC-001: Password hashing required
 ```
 
 ### Stakeholder-Stated NFRs
+
 When stakeholders mention performance/security/etc:
+
 ```markdown
 ✅ GOOD:
 NFR-PERF-001: Page load under 3 seconds
@@ -220,14 +266,18 @@ NFR-PERF-001: Page load under 2 seconds
 ```
 
 ### Never Invent NFR Targets
+
 ```markdown
 ❌ BAD: "System must have 99.9% uptime" [Where did this come from?]
 ✅ GOOD: "Uptime requirement not discussed. What availability target is needed?"
 ```
 
+------
+
 ## Acceptance Criteria Rules
 
 ### Derive Only From Stated Requirements
+
 ```markdown
 ✅ GOOD:
 Requirement: User can register with email
@@ -241,22 +291,29 @@ AC: And user is auto-logged in [Not discussed!]
 ```
 
 ### Flag Implied Acceptance Criteria
+
 When AC seems obvious but wasn't stated:
+
 ```markdown
 AC: [Derived] User sees error message on invalid email
 Note: Error handling not explicitly discussed - confirm this AC
 ```
 
 ### Testability Requirement
+
 Every AC must be:
 - Verifiable through testing
 - Specific (no "fast", "user-friendly", "secure")
 - Traceable to the parent requirement
 
+------
+
 ## Codebase Extraction Rules (codebase-analysis)
 
 ### Code Evidence Requirements
+
 When extracting from existing code:
+
 | Extraction | Minimum Evidence |
 |------------|------------------|
 | Feature exists | Test file + passing assertions |
@@ -265,6 +322,7 @@ When extracting from existing code:
 | Data model | Schema/migration + usage |
 
 ### Confidence Level Honesty
+
 ```markdown
 ✅ GOOD:
 Feature: User Registration
@@ -284,6 +342,7 @@ Status: Needs validation - may be incomplete/deprecated
 ```
 
 ### Never Over-State Code Evidence
+
 ```markdown
 ❌ BAD: "The system has comprehensive user authentication"
         [Based on seeing one login test]
@@ -293,9 +352,12 @@ Status: Needs validation - may be incomplete/deprecated
          Confirm if these exist or are needed."
 ```
 
+------
+
 ## Elicitation Session Rules
 
 ### Record, Don't Interpret
+
 ```markdown
 ❌ BAD:
 Stakeholder said they want better performance.
@@ -307,7 +369,9 @@ Stakeholder said: "The current system takes too long to load reports"
 ```
 
 ### Clarify Ambiguity Immediately
+
 When stakeholder uses vague terms:
+
 | Vague Term | Required Clarification |
 |------------|----------------------|
 | "Fast" | What response time in seconds? |
@@ -317,6 +381,7 @@ When stakeholder uses vague terms:
 | "Scalable" | How many users? What data volume? |
 
 ### Don't Fill Gaps Silently
+
 ```markdown
 ❌ BAD: [Stakeholder didn't mention error handling]
         [Assistant adds error handling requirements anyway]
@@ -327,10 +392,14 @@ When stakeholder uses vague terms:
          c) Schedule follow-up to discuss?"
 ```
 
+------
+
 ## PRD Document Rules
 
 ### Section Completeness Honesty
+
 When PRD sections are incomplete:
+
 ```markdown
 ✅ GOOD:
 ## User Personas
@@ -344,6 +413,7 @@ Placeholder personas below need validation:
 ```
 
 ### Distinguish Fact From Suggestion
+
 ```markdown
 ✅ GOOD:
 ## Technical Constraints
@@ -354,9 +424,12 @@ Placeholder personas below need validation:
 - Consider Redis for caching (assistant recommendation)
 ```
 
+------
+
 ## Self-Checking Before Finalizing
 
 ### PRD Completion Checklist
+
 - [ ] Every requirement has a documented source
 - [ ] No requirements were invented without stakeholder input
 - [ ] All priorities were assigned by stakeholders
@@ -367,6 +440,7 @@ Placeholder personas below need validation:
 - [ ] Assumptions are documented and flagged for validation
 
 ### Codebase Extraction Completion Checklist
+
 - [ ] All features traced to code/test evidence
 - [ ] Confidence levels accurately reflect evidence strength
 - [ ] Inferred requirements flagged for validation
@@ -374,9 +448,12 @@ Placeholder personas below need validation:
 - [ ] Gaps in coverage explicitly noted
 - [ ] Output marked as draft requiring human refinement
 
+------
+
 ## Response Templates
 
 ### Template 1: Missing Stakeholder Input
+
 ```
 "This PRD section requires stakeholder input:
 
@@ -391,6 +468,7 @@ Which approach would you prefer?"
 ```
 
 ### Template 2: Inferred Requirement
+
 ```
 "Based on [evidence source], I've inferred this requirement:
 
@@ -404,6 +482,7 @@ Should I add it as a draft requirement?"
 ```
 
 ### Template 3: Ambiguous Stakeholder Statement
+
 ```
 "The stakeholder mentioned: '[exact quote]'
 
@@ -416,6 +495,7 @@ Would you like me to note this as needing clarification?"
 ```
 
 ### Template 4: Scope Boundary Question
+
 ```
 "[Feature/capability] wasn't explicitly discussed but seems related.
 
@@ -427,9 +507,12 @@ c) Add to 'Questions for Stakeholders' section
 Which approach?"
 ```
 
+------
+
 ## Integration Points
 
 ### When This Ruleset Applies
+
 Load these rules when:
 - Using IDPF-PRD framework for requirements gathering
 - PRD-Analyst domain specialist is active
@@ -438,6 +521,7 @@ Load these rules when:
 - Eliciting requirements from stakeholders
 
 ### Relationship to Other Rulesets
+
 | Ruleset | Use When |
 |---------|----------|
 | **PRD Work** (this) | Requirements gathering, PRD creation, codebase extraction |
@@ -445,10 +529,14 @@ Load these rules when:
 | **Framework Development** | Working on IDPF framework itself |
 | **Skill Creation** | Creating new skills |
 
+------
+
 ## Diagram Generation Rules
+
 When generating UML diagrams as part of PRD creation, apply these additional rules to prevent hallucinated diagram elements.
 
 ### NEVER Invent:
+
 - ❌ Actors/personas not explicitly named in PRD
 - ❌ States/transitions not derived from acceptance criteria
 - ❌ Components not mentioned in technical notes or architecture
@@ -458,6 +546,7 @@ When generating UML diagrams as part of PRD creation, apply these additional rul
 - ❌ System boundaries not defined in scope
 
 ### ALWAYS Verify:
+
 - ✓ Every actor appears in a user story "As a..." clause or PRD personas
 - ✓ Every state maps to an acceptance criterion or documented status
 - ✓ Every sequence step traces to documented behavior
@@ -465,7 +554,9 @@ When generating UML diagrams as part of PRD creation, apply these additional rul
 - ✓ Every relationship has a source in requirements or constraints
 
 ### Traceability Requirement
+
 Each diagram element MUST cite its source:
+
 ```
 ✅ GOOD:
 Actor: "Framework Maintainer" (Story 1.1, 2.1, 3.1)
@@ -479,6 +570,7 @@ Activity Step: "Send notification" [Not in acceptance criteria]
 ```
 
 ### Diagram-Specific Checks
+
 | Diagram Type | Must Verify |
 |--------------|-------------|
 | Use Case | All actors from PRD; all use cases from stories |
@@ -489,7 +581,9 @@ Activity Step: "Send notification" [Not in acceptance criteria]
 | Deployment | All components from Technical Notes |
 
 ### When Evidence Is Insufficient
+
 If PRD content is insufficient for a diagram:
+
 ```
 "Cannot generate [diagram type] for Epic: [name]
 
@@ -505,7 +599,9 @@ Options:
 ```
 
 ### Appropriateness Override
+
 When advising against a diagram:
+
 ```
 "Skipping [diagram type] for Epic: [name]
 
@@ -515,17 +611,27 @@ Example: "Activity diagram not appropriate—only 2 steps in workflow"
 This is guidance, not a hard rule. Override with: "Generate anyway"
 ```
 
+------
+
 ## Final Reminder
+
 **Invented requirements build the wrong product.**
+
 Every requirement you add without stakeholder evidence is a risk:
 - Development time wasted on unwanted features
 - User needs not actually met
 - Scope creep and budget overruns
 - Stakeholder trust eroded
+
 When tempted to "help" by adding requirements:
+
 1. **Stop** - Is this from a stakeholder or your imagination?
 2. **Source** - Can you cite where this came from?
 3. **Flag** - If inferred, mark it clearly
 4. **Validate** - Get stakeholder confirmation before finalizing
+
 The best PRD accurately reflects what stakeholders said—not what the assistant thinks they should have said.
+
+------
+
 **End of Anti-Hallucination Rules for PRD Work**

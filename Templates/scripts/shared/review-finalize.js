@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * review-finalize.js
  *
  * Consolidates all review cleanup work into a single script call:

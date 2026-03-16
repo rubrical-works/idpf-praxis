@@ -1,14 +1,18 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **MUST READ:** Auto-loaded on Windows at session startup.
 
 ## Shell Environment
+
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
 
 ## Golden Rules
+
 **Always use Unix-style commands and patterns.**
 
 ### Command Translations
+
 | Windows CMD | Unix/Bash |
 |-------------|-----------|
 | `date /t` | `date "+%Y-%m-%d"` |
@@ -23,6 +27,7 @@ Claude Code uses Git Bash on Windows. Most Unix commands work, but these pattern
 | `taskkill /F /IM` | `powershell -Command 'Stop-Process ...'` |
 
 ### Pattern Safety
+
 | Pattern | Safe? | Use Instead |
 |---------|:-----:|-------------|
 | `$(cmd)` — short, predictable output | ✅ | — |
@@ -43,8 +48,11 @@ Claude Code uses Git Bash on Windows. Most Unix commands work, but these pattern
 | `--body-stdout` / `--body-stdin` | ✅ | Use `.tmp-{issue#}.md` for edits |
 
 ### Parallel Tool Failures
+
 **"Sibling tool call errored" is NOT the real error.**
+
 When Claude Code runs multiple tools in parallel and one fails, all siblings are aborted. Look for the ONE tool with the actual error message, fix it, then retry.
+
 ```
 ● Bash(date /t)                    ← ROOT CAUSE (find this)
   ⎿  Error: date: invalid date '/t'
@@ -54,7 +62,9 @@ When Claude Code runs multiple tools in parallel and one fails, all siblings are
 ```
 
 ## Heredocs with Backticks
+
 **NEVER use backticks inside heredocs.**
+
 ```bash
 # BAD - fails on Windows
 git commit -m "$(cat <<'EOF'
@@ -68,10 +78,13 @@ rm .tmp-msg.txt
 ```
 
 ## Command Substitution
+
 **Rule of thumb:** If the output is short, single-line, and guaranteed free of backticks, quotes, or special characters, `$(...)` is safe. If the output could contain markdown, code, user-generated content, or multi-line text, use a temp file.
 
 ### Safe `$(...)` Patterns
+
 Simple substitutions with short, predictable output work reliably:
+
 ```bash
 # SAFE - short, predictable output, no special chars
 today=$(date "+%Y-%m-%d")
@@ -86,7 +99,9 @@ git tag "v$(node -e "console.log(require('./package.json').version)")"
 ```
 
 ### Unsafe `$(...)` Patterns
+
 These fail because the output may contain backticks, quotes, newlines, or unpredictable content:
+
 ```bash
 # BAD - file content may contain backticks, quotes, newlines
 gh issue create --body "$(cat README.md)"
@@ -108,7 +123,9 @@ rm .tmp-commits.txt
 ```
 
 ## Issue/PR Bodies with Backticks (IMPORTANT)
+
 **ALWAYS use temp file approach for issue/PR bodies.** Issue and PR bodies almost always contain backticks (code blocks, inline code), which fail with heredocs or `--body`.
+
 ```bash
 # BAD - backticks in body cause failures
 gh issue create --body "Fix the \`calculateTotal\` function"
@@ -117,14 +134,12 @@ code here
 ```"
 
 # GOOD - Write tool + temp file
-
 # [Claude's Write tool creates .tmp-body.md with content]
 gh pmu create --title "Bug: ..." -F .tmp-body.md --status backlog
 rm .tmp-body.md
 
 # GOOD - For editing existing issues (use issue-specific name)
 gh pmu view 123 --body-stdout > .tmp-123.md
-
 # [edit .tmp-123.md]
 gh pmu edit 123 -F .tmp-123.md && rm .tmp-123.md
 ```
@@ -138,10 +153,8 @@ The `gh pmu` extension provides Windows-safe body handling. **Prefer `--body-std
 ### Preferred: Stdout/Stdin Pattern
 
 ```bash
-
 # Export body, edit, update (use issue-specific temp file name)
 gh pmu view 123 --body-stdout > .tmp-123.md
-
 # [edit .tmp-123.md]
 gh pmu edit 123 -F .tmp-123.md && rm .tmp-123.md
 
@@ -155,7 +168,6 @@ cat issue-body.md | gh pmu edit 123 --body-stdin
 ### Alternative: Body-File Pattern
 
 ```bash
-
 # Uses tmp/ directory (requires cleanup)
 gh pmu view 123 --body-file    # Creates tmp/issue-123.md
 gh pmu edit 123 -F tmp/issue-123.md
@@ -169,7 +181,6 @@ rm tmp/issue-123.md
 **Use forward slashes. Quote paths with spaces.**
 
 ```bash
-
 # BAD - backslashes get stripped by shell escaping
 cd C:\Users\Name\My Projects
 cat C:\path\to\file.txt
@@ -192,9 +203,7 @@ cd "$USERPROFILE/My Projects"
    - Prevents accidental overwrites when working on several issues in sequence
 
 ```bash
-
 # Pattern: Write tool creates file, Bash uses it
-
 # [Claude's Write tool creates .tmp-body.md with content]
 gh issue create --body-file .tmp-body.md
 rm .tmp-body.md
@@ -205,7 +214,6 @@ rm .tmp-body.md
 **Prefer double quotes. Escape special characters.**
 
 ```bash
-
 # BAD - single quotes behave differently in some contexts
 echo '$HOME'  # May print literal $HOME
 
@@ -220,12 +228,10 @@ echo "Use a \"quoted\" string"
 **Use temp files for JSON payloads.**
 
 ```bash
-
 # BAD - quote escaping nightmare
 gh api graphql -f query='{ "query": "..." }'
 
 # GOOD - Write tool creates JSON file
-
 # [Claude's Write tool creates .tmp-query.json]
 gh api graphql --input .tmp-query.json
 rm .tmp-query.json
@@ -236,14 +242,12 @@ rm .tmp-query.json
 **Use temp files for multi-line content.**
 
 ```bash
-
 # BAD - heredoc issues
 gh issue create --body "Line 1
 Line 2
 Line 3"
 
 # GOOD - Write tool creates temp file
-
 # [Claude's Write tool creates .tmp-body.md]
 gh issue create --body-file .tmp-body.md
 rm .tmp-body.md
@@ -256,12 +260,9 @@ rm .tmp-body.md
 On Windows Git Bash, `--flag value` can be misinterpreted as `--flag` (no value) plus `value` (extra argument).
 
 ```bash
-
 # BAD - value interpreted as separate argument
 gh pmu view 3 --json status --jq '.status'
-
 #              ↑ shell sees: --json (flag) + status (extra arg)
-
 # Error: accepts 1 arg(s), received 2
 
 # GOOD - use = to attach value directly
@@ -289,7 +290,6 @@ gh pmu view 3 --json=number,title,status
 ### Failing Patterns
 
 ```bash
-
 # BAD - for loop with command substitution
 for file in $(find . -name "*.md"); do
     echo "$file"
@@ -314,11 +314,11 @@ done
 
 **1. Use file globbing (works reliably):**
 ```bash
-
 # GOOD - glob patterns work
 for file in *.md; do
     echo "$file"
 done
+
 for file in Skills/*/*.md; do
     echo "$file"
 done
@@ -326,7 +326,6 @@ done
 
 **2. Use helper scripts for complex operations:**
 ```bash
-
 # GOOD - Node.js helper for file processing
 node -e "require('fs').readdirSync('.').filter(f => f.endsWith('.md')).forEach(f => console.log(f))"
 
@@ -340,20 +339,17 @@ rm .tmp-commits.txt
 
 **3. Break into sequential simple commands:**
 ```bash
-
 # GOOD - avoid nesting
 realpath "$file" > .tmp-path.txt
 dir=$(dirname "$(cat .tmp-path.txt)")
 rm .tmp-path.txt
 
 # GOOD - use intermediate variables set by tools
-
 # [Read tool provides file content directly]
 ```
 
 **4. Use native tools with proper flags:**
 ```bash
-
 # GOOD - find with -exec instead of loop
 find . -name "*.md" -exec wc -l {} \;
 
@@ -366,7 +362,6 @@ find . -name "*.txt" -print0 | xargs -0 cat
 **Use Unix-style syntax in Git Bash.**
 
 ```bash
-
 # BAD - Windows cmd style
 echo %USERPROFILE%
 set MY_VAR=value
@@ -381,13 +376,11 @@ export MY_VAR=value
 **Standard piping works. Be careful with encoding.**
 
 ```bash
-
 # GOOD - piping works
 git diff | head -20
 gh issue list --json number,title | jq '.[0]'
 
 # CAUTION - encoding issues with non-ASCII
-
 # If output has special characters, may need encoding conversion
 ```
 
@@ -398,7 +391,6 @@ gh issue list --json number,title | jq '.[0]'
 Path expansion can fail catastrophically and delete unintended directories.
 
 ```bash
-
 # DANGEROUS - path expansion can fail
 rm -rf .vite/ out/ dist/
 rm -rf **/.vite
@@ -421,7 +413,6 @@ ls -la .vite && rm -rf .vite
 **Affected directories in user projects:** `.claude/metadata/`, `.claude/rules/`, `.claude/scripts/shared/`, `.claude/skills/` — these are symlinked to the hub installation.
 
 ```bash
-
 # BAD - Glob returns empty for symlinked directories
 Glob({ pattern: ".claude/metadata/skill-keywords.json" })  # → No files found
 
@@ -443,7 +434,6 @@ Read({ file_path: ".claude/metadata/skill-keywords.json" })  # → Works
 Git Bash mangles Windows command flags (interprets `/F` as a path).
 
 ```bash
-
 # BAD - Git Bash interprets /F as F:/ path
 taskkill /F /IM "electron.exe"
 
@@ -461,7 +451,6 @@ powershell -Command 'Stop-Process -Name "YourApp" -Force -ErrorAction SilentlyCo
 **Recommended cleanup sequence for Electron development:**
 
 ```bash
-
 # 1. Kill app processes
 powershell -Command 'Stop-Process -Name "YourAppName" -Force -ErrorAction SilentlyContinue'
 

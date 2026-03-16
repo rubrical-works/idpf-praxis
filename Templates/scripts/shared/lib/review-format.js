@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * Shared Review Format Constants
  *
  * Constants and patterns shared between review-finalize.js and resolve-preamble.js

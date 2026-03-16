@@ -1,0 +1,83 @@
+{
+  "version": "1.0.0",
+  "description": "Domain-to-signal mapping for charter-aware domain filtering. Maps each review domain to keywords that indicate applicability based on charter Tech Stack, In Scope, and codebase signals.",
+  "domains": {
+    "security": {
+      "charterKeywords": ["script", "api", "user input", "file", "authentication", "auth", "login", "token", "password", "secret", "credential", "encrypt", "session", "permission"],
+      "fileSignals": ["*.js", "*.ts", "*.py", "*.go", "*.java", "*.rs"],
+      "packageSignals": [],
+      "alwaysApplicable": true,
+      "reason": "Nearly always applicable — scripts, APIs, user input, file I/O"
+    },
+    "accessibility": {
+      "charterKeywords": ["ui", "web", "frontend", "react", "html", "css", "browser", "component", "widget", "form", "button", "modal", "dialog", "wcag", "aria"],
+      "fileSignals": ["*.jsx", "*.tsx", "*.vue", "*.svelte", "*.html", "*.css", "*.scss"],
+      "packageSignals": ["react", "vue", "svelte", "angular", "@angular/core", "next", "nuxt", "gatsby"],
+      "alwaysApplicable": false,
+      "reason": "UI, web, frontend, React, HTML, CSS, browser"
+    },
+    "performance": {
+      "charterKeywords": ["api", "database", "request", "handler", "server", "real-time", "latency", "throughput", "cache", "queue", "worker", "stream", "batch", "concurrent"],
+      "fileSignals": [],
+      "packageSignals": ["express", "fastify", "koa", "hapi", "django", "flask", "spring", "redis", "pg", "mysql", "mongodb"],
+      "alwaysApplicable": false,
+      "reason": "APIs, database, request handlers, server, real-time"
+    },
+    "chaos": {
+      "charterKeywords": ["distributed", "microservice", "network", "queue", "message", "event-driven", "cluster", "replica", "failover", "circuit breaker", "retry", "timeout"],
+      "fileSignals": [],
+      "packageSignals": ["amqplib", "kafka", "nats", "grpc", "kubernetes", "docker"],
+      "alwaysApplicable": false,
+      "reason": "Distributed systems, microservices, network, queues"
+    },
+    "contract": {
+      "charterKeywords": ["api", "consumer", "provider", "rest", "graphql", "grpc", "openapi", "swagger", "endpoint", "schema", "contract"],
+      "fileSignals": ["*.graphql", "*.proto", "openapi.yaml", "openapi.json", "swagger.yaml", "swagger.json"],
+      "packageSignals": ["@apollo/server", "graphql", "express", "fastify", "@grpc/grpc-js", "pact"],
+      "alwaysApplicable": false,
+      "reason": "APIs, consumer/provider, REST, GraphQL, gRPC"
+    },
+    "qa": {
+      "charterKeywords": ["test", "ci", "pipeline", "coverage", "automation", "quality"],
+      "fileSignals": ["jest.config.*", "vitest.config.*", ".github/workflows/*", "cypress.config.*", "playwright.config.*", "pytest.ini", "tox.ini"],
+      "packageSignals": ["jest", "vitest", "mocha", "cypress", "playwright", "pytest"],
+      "alwaysApplicable": false,
+      "reason": "Test files present, CI pipeline"
+    },
+    "seo": {
+      "charterKeywords": ["web page", "ssr", "public url", "crawl", "seo", "meta tag", "sitemap", "static site", "blog", "marketing"],
+      "fileSignals": ["*.html", "sitemap.xml", "robots.txt"],
+      "packageSignals": ["next", "nuxt", "gatsby", "astro", "eleventy", "@11ty/eleventy"],
+      "alwaysApplicable": false,
+      "reason": "Web pages, SSR, public URLs, crawlable content"
+    },
+    "privacy": {
+      "charterKeywords": ["user data", "cookie", "analytics", "pii", "authentication", "gdpr", "ccpa", "consent", "tracking", "personal data", "data protection"],
+      "fileSignals": [],
+      "packageSignals": ["cookie-parser", "express-session", "passport", "analytics", "segment"],
+      "alwaysApplicable": false,
+      "reason": "User data, cookies, analytics, PII, authentication"
+    },
+    "observability": {
+      "charterKeywords": ["logging", "tracing", "metrics", "monitoring", "alerting", "dashboard", "observability", "telemetry", "apm"],
+      "fileSignals": [],
+      "packageSignals": ["winston", "pino", "bunyan", "opentelemetry", "datadog", "newrelic", "prometheus"],
+      "alwaysApplicable": false,
+      "reason": "Structured logging, distributed tracing, metrics, alerting"
+    },
+    "i18n": {
+      "charterKeywords": ["internationalization", "i18n", "locale", "translation", "multilingual", "rtl", "right-to-left", "localization", "l10n"],
+      "fileSignals": ["*.po", "*.pot", "*.xliff"],
+      "packageSignals": ["i18next", "react-intl", "vue-i18n", "formatjs", "globalize"],
+      "alwaysApplicable": false,
+      "reason": "Internationalization, locale formatting, RTL support"
+    },
+    "api-design": {
+      "charterKeywords": ["api", "rest", "graphql", "endpoint", "resource", "versioning", "openapi", "swagger"],
+      "fileSignals": ["*.graphql", "*.proto", "openapi.yaml", "openapi.json"],
+      "packageSignals": ["express", "fastify", "koa", "@apollo/server", "graphql", "@grpc/grpc-js"],
+      "alwaysApplicable": false,
+      "reason": "REST/GraphQL API design, resource naming, error contracts"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * resolve-preamble.js
  *
  * Consolidates resolve-review setup into a single script call:

@@ -1,44 +1,72 @@
 {
-  "version": "1.0.0",
-  "description": "Review command domain extensions — maps extension IDs to criteria file paths",
+  "version": "2.0.0",
+  "description": "Review command domain extensions — maps extension IDs to criteria file paths and auto-inclusion rules",
   "extensions": {
     "security": {
-      "source": "IDPF-Testing/review-criteria/security.md",
-      "framework": "IDPF-Security",
-      "description": "OWASP-based security review criteria for proposals, PRDs, and issues"
+      "source": "Domains/Security/review-criteria.md",
+      "domain": "Security",
+      "description": "OWASP-based security review criteria for proposals, PRDs, and issues",
+      "relevantSpecialists": ["Backend-Specialist", "Full-Stack-Developer", "SRE-Specialist", "Security-Engineer", "DevOps-Engineer", "Cloud-Solutions-Architect"]
     },
     "accessibility": {
-      "source": "IDPF-Testing/review-criteria/accessibility.md",
-      "framework": "IDPF-Accessibility",
-      "description": "WCAG-based accessibility review criteria for proposals, PRDs, and issues"
+      "source": "Domains/Accessibility/review-criteria.md",
+      "domain": "Accessibility",
+      "description": "WCAG-based accessibility review criteria for proposals, PRDs, and issues",
+      "relevantSpecialists": ["Frontend-Specialist", "Full-Stack-Developer", "Mobile-Specialist", "Accessibility-Specialist"]
     },
     "performance": {
-      "source": "IDPF-Testing/review-criteria/performance.md",
-      "framework": "IDPF-Performance",
-      "description": "Threshold and load-profile review criteria for proposals, PRDs, and issues"
+      "source": "Domains/Performance/review-criteria.md",
+      "domain": "Performance",
+      "description": "Threshold and load-profile review criteria for proposals, PRDs, and issues",
+      "relevantSpecialists": ["Backend-Specialist", "SRE-Specialist", "Performance-Engineer", "Database-Engineer"]
     },
     "chaos": {
-      "source": "IDPF-Testing/review-criteria/chaos.md",
-      "framework": "IDPF-Chaos",
-      "description": "Resilience and failure-mode review criteria for proposals, PRDs, and issues"
+      "source": "Domains/Chaos/review-criteria.md",
+      "domain": "Chaos",
+      "description": "Resilience and failure-mode review criteria for proposals, PRDs, and issues",
+      "relevantSpecialists": ["SRE-Specialist", "Cloud-Solutions-Architect", "Platform-Engineer"]
     },
     "contract": {
-      "source": "IDPF-Testing/review-criteria/contract-testing.md",
-      "framework": "IDPF-Contract-Testing",
-      "description": "Consumer/provider contract review criteria for proposals, PRDs, and issues"
+      "source": "Domains/Contract-Testing/review-criteria.md",
+      "domain": "Contract-Testing",
+      "description": "Consumer/provider contract review criteria for proposals, PRDs, and issues",
+      "relevantSpecialists": ["Backend-Specialist", "Full-Stack-Developer", "API-Integration-Specialist"]
     },
     "qa": {
-      "source": "IDPF-Testing/review-criteria/qa-automation.md",
-      "framework": "IDPF-QA-Automation",
-      "description": "Coverage and automation review criteria for proposals, PRDs, and issues"
+      "source": "Domains/QA-Automation/review-criteria.md",
+      "domain": "QA-Automation",
+      "description": "Coverage and automation review criteria for proposals, PRDs, and issues",
+      "relevantSpecialists": ["QA-Test-Engineer", "Full-Stack-Developer"]
     },
     "seo": {
-      "source": "IDPF-Testing/review-criteria/seo.md",
-      "description": "SEO review criteria for technical optimization, meta tags, structured data, and crawlability"
+      "source": "Domains/SEO/review-criteria.md",
+      "domain": "SEO",
+      "description": "SEO review criteria for technical optimization, meta tags, structured data, and crawlability",
+      "relevantSpecialists": ["Frontend-Specialist", "Full-Stack-Developer"]
     },
     "privacy": {
-      "source": "IDPF-Testing/review-criteria/privacy.md",
-      "description": "Privacy compliance review criteria for consent management, cookie compliance, and regulatory considerations"
+      "source": "Domains/Privacy/review-criteria.md",
+      "domain": "Privacy",
+      "description": "Privacy compliance review criteria for consent management, cookie compliance, and regulatory considerations",
+      "relevantSpecialists": ["Full-Stack-Developer", "Backend-Specialist", "Security-Engineer"]
+    },
+    "observability": {
+      "source": "Domains/Observability/review-criteria.md",
+      "domain": "Observability",
+      "description": "Structured logging, distributed tracing, metrics, and alerting review criteria",
+      "relevantSpecialists": ["SRE-Specialist", "Backend-Specialist", "DevOps-Engineer", "Platform-Engineer"]
+    },
+    "i18n": {
+      "source": "Domains/i18n/review-criteria.md",
+      "domain": "i18n",
+      "description": "Internationalization review criteria for string externalization, locale formatting, and RTL support",
+      "relevantSpecialists": ["Frontend-Specialist", "Full-Stack-Developer", "Mobile-Specialist"]
+    },
+    "api-design": {
+      "source": "Domains/API-Design/review-criteria.md",
+      "domain": "API-Design",
+      "description": "REST/GraphQL API design review criteria for resource naming, error contracts, and versioning",
+      "relevantSpecialists": ["Backend-Specialist", "Full-Stack-Developer", "API-Integration-Specialist"]
     }
   }
 }

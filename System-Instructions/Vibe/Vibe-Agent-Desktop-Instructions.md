@@ -1,14 +1,18 @@
 # Vibe Agent System Instructions (Desktop)
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Revision Date:** 2024-11-13
 **Type:** Desktop Application Agent Behaviors
 **Extends:** Vibe-Agent-Core-Instructions.md (Rev 1.3)
 
 ## **Purpose**
+
 These behavioral instructions specialize the **Vibe Agent Core Instructions** for desktop application development on Windows, macOS, and Linux.
+
 **Read this in combination with:**
 - `Vibe-Agent-Core-Instructions.md` - Core agent behaviors
 - `IDPF-Vibe/Vibe-to-Structured-Desktop-Framework.md` - Desktop workflow
+
 **This document adds ONLY desktop-specific behaviors:**
 - Platform-specific path handling
 - OS-specific command syntax
@@ -18,12 +22,15 @@ These behavioral instructions specialize the **Vibe Agent Core Instructions** fo
 ## **Platform Detection**
 
 ### **Identifying Desktop Projects**
+
 During initialization, identify desktop projects by:
+
 **Direct indicators:**
 - User says "CLI tool", "desktop app", "GUI application"
 - Mentions Windows, macOS, or Linux specifically
 - References file system operations
 - Talks about command-line usage
+
 **Language/framework indicators:**
 - Python + tkinter/PyQt/Kivy
 - Ruby + shoes/gtk
@@ -31,6 +38,7 @@ During initialization, identify desktop projects by:
 - C# + WinForms/WPF/Avalonia
 - Swift + AppKit/SwiftUI (macOS)
 - Rust + iced/egui
+
 **Project type questions:**
 - "Is this a CLI tool or GUI app?"
 - "What platform are you developing on?"
@@ -39,29 +47,35 @@ During initialization, identify desktop projects by:
 ## **Windows-Specific Behaviors**
 
 ### **Windows is Primary**
+
 **Default to Windows when:**
 - User doesn't specify platform
 - User is on Windows (if known)
 - Project type suggests Windows focus
 
 ### **Path Syntax**
+
 **ALWAYS use backslashes for Windows paths:**
+
 ✅ Correct:
 ```
 STEP 1: Open src\main.py
 STEP 2: Save to E:\Projects\my-app\data\output.txt
 STEP 3: Run: python src\main.py
 ```
+
 ❌ Incorrect:
 ```
 STEP 1: Open src/main.py
 STEP 2: Save to E:/Projects/my-app/data/output.txt
 ```
+
 **Handle spaces in paths:**
 ```
 STEP 4: Run with file argument:
 python src\main.py "C:\Users\John Doe\Documents\input.txt"
 ```
+
 **Use environment variables:**
 ```
 STEP 5: Save to user directory:
@@ -69,7 +83,9 @@ Save to %USERPROFILE%\Documents\my-app\config.json
 ```
 
 ### **Script Files**
+
 **Create .cmd or .bat files, NOT .ps1:**
+
 ✅ Correct:
 ```
 TASK: Create build script
@@ -89,10 +105,12 @@ build.cmd
 
 STEP 4: Report results
 ```
+
 ❌ Incorrect:
 ```
 STEP 1: Create build.ps1 with PowerShell script
 ```
+
 **Alternative: Ruby for complex scripts:**
 ```
 TASK: Create build automation
@@ -113,7 +131,9 @@ STEP 4: Report results
 ```
 
 ### **Command Syntax**
+
 **Use cmd.exe syntax:**
+
 ```
 TASK: Test the CLI tool
 
@@ -131,6 +151,7 @@ type results\output.txt
 
 STEP 5: Report results
 ```
+
 **Windows-specific commands:**
 - `dir` (not `ls`)
 - `type` (not `cat`)
@@ -140,6 +161,7 @@ STEP 5: Report results
 - `cls` (not `clear`)
 
 ### **Verification Examples (Windows)**
+
 **CLI application:**
 ```
 STEP 6: Test the tool:
@@ -154,6 +176,7 @@ STEP 9: Check results in console
 
 STEP 10: Report what you see
 ```
+
 **GUI application:**
 ```
 STEP 6: Launch the application:
@@ -172,6 +195,7 @@ STEP 9: Report what happens
 ## **macOS-Specific Behaviors**
 
 ### **When to Use macOS Mode**
+
 Switch to macOS behaviors when:
 - User explicitly mentions macOS or Mac
 - Project requires macOS-specific frameworks (AppKit, SwiftUI)
@@ -179,18 +203,22 @@ Switch to macOS behaviors when:
 - Cross-platform project being tested on macOS
 
 ### **Path Syntax**
+
 **Use forward slashes for macOS paths:**
+
 ✅ Correct:
 ```
 STEP 1: Open src/main.py
 STEP 2: Save to /Users/username/Projects/my-app/data/output.txt
 STEP 3: Run: python3 src/main.py
 ```
+
 **Use tilde for home directory:**
 ```
 STEP 2: Save to user directory:
 Save to ~/Documents/my-app/config.json
 ```
+
 **Handle spaces in paths:**
 ```
 STEP 4: Run with file argument:
@@ -200,7 +228,9 @@ python3 src/main.py "$HOME/Documents/My Folder/input.txt"
 ```
 
 ### **Script Files**
+
 **Create .sh bash scripts:**
+
 ```
 TASK: Create build script
 
@@ -223,7 +253,9 @@ STEP 5: Report results
 ```
 
 ### **Command Syntax**
+
 **Use bash/zsh syntax:**
+
 ```
 TASK: Test the CLI tool
 
@@ -241,6 +273,7 @@ cat results/output.txt
 
 STEP 5: Report results
 ```
+
 **macOS-specific considerations:**
 - Use `python3` (not `python`)
 - Use `pip3` (not `pip`)
@@ -250,6 +283,7 @@ STEP 5: Report results
 ## **Linux-Specific Behaviors**
 
 ### **When to Use Linux Mode**
+
 Switch to Linux behaviors when:
 - User explicitly mentions Linux, Ubuntu, Fedora, etc.
 - Project uses Linux-specific features
@@ -257,13 +291,16 @@ Switch to Linux behaviors when:
 - Cross-platform project being tested on Linux
 
 ### **Path Syntax**
+
 **Use forward slashes for Linux paths:**
+
 ✅ Correct:
 ```
 STEP 1: Open src/main.py
 STEP 2: Save to /home/username/projects/my-app/data/output.txt
 STEP 3: Run: python3 src/main.py
 ```
+
 **Use tilde and environment variables:**
 ```
 STEP 2: Save to user directory:
@@ -274,7 +311,9 @@ Save to $XDG_CONFIG_HOME/my-app/config.json
 ```
 
 ### **Script Files**
+
 **Create .sh bash scripts:**
+
 ```
 TASK: Create build script
 
@@ -301,7 +340,9 @@ STEP 5: Report results
 ## **Cross-Platform Code Patterns**
 
 ### **When Writing Cross-Platform Code**
+
 **Always use platform-agnostic path handling:**
+
 ✅ Correct:
 ```python
 import os
@@ -314,6 +355,7 @@ data_file = os.path.join('data', 'input.txt')
 project_root = Path(__file__).parent
 config_file = project_root / 'config' / 'settings.json'
 ```
+
 ❌ Incorrect:
 ```python
 # Hardcoded Windows path
@@ -342,6 +384,7 @@ config_file = '/home/user/config/settings.json'
 - **Linux:** `.sh`
 
 ### **Common Commands**
+
 | Action | Windows | macOS/Linux |
 |--------|---------|-------------|
 | List files | `dir` | `ls` |
@@ -350,4 +393,5 @@ config_file = '/home/user/config/settings.json'
 | Copy | `copy` | `cp` |
 | Move | `move` | `mv` |
 | Clear screen | `cls` | `clear` |
+
 **End of Desktop Agent Instructions**

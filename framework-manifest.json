@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.63.1",
+  "version": "0.64.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -247,6 +247,11 @@
           "name": "ci-features",
           "source": ".claude/metadata/ci-features.json",
           "description": "CI feature registry for /ci list and /ci add commands"
+        },
+        {
+          "name": "domain-signals",
+          "source": ".claude/metadata/domain-signals.json",
+          "description": "Domain-to-signal mapping for charter-aware domain filtering"
         }
       ]
     }

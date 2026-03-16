@@ -1,11 +1,14 @@
 # Vibe Agent System Instructions (Mobile)
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Revision Date:** 2024-11-13
 **Type:** Mobile Application Agent Behaviors
 **Extends:** Vibe-Agent-Core-Instructions.md (Rev 1.3)
 
 ## **Purpose**
+
 Specializes core instructions for mobile app development on iOS and Android.
+
 **Adds ONLY mobile-specific behaviors:**
 - Mobile platform detection
 - Simulator/emulator management
@@ -13,10 +16,12 @@ Specializes core instructions for mobile app development on iOS and Android.
 - Platform-specific patterns
 
 ## **Mobile Platform Detection**
+
 **Direct indicators:**
 - User says "mobile app", "iOS app", "Android app"
 - Mentions "React Native", "Flutter", "Swift", "Kotlin"
 - References "simulator", "emulator"
+
 **Language/framework indicators:**
 - Swift → iOS native
 - Kotlin/Java → Android native
@@ -26,6 +31,7 @@ Specializes core instructions for mobile app development on iOS and Android.
 ## **Platform-Specific Behaviors**
 
 ### **iOS (Xcode)**
+
 **Building and running:**
 ```
 STEP 6: Build and run:
@@ -45,6 +51,7 @@ STEP 10: Report results
 ```
 
 ### **Android (Android Studio)**
+
 **Building and running:**
 ```
 STEP 6: Build and run:
@@ -64,6 +71,7 @@ STEP 10: Report results
 ```
 
 ### **React Native**
+
 **Running on both platforms:**
 ```
 STEP 1: Start Metro bundler:
@@ -84,6 +92,7 @@ STEP 5: Report behavior on both platforms
 ```
 
 ### **Flutter**
+
 **Running multi-platform:**
 ```
 STEP 1: Run Flutter app:
@@ -103,12 +112,15 @@ STEP 5: Report results
 ## **Mobile UI/UX Guidance**
 
 ### **Touch Target Sizes**
+
 **Minimum sizes:**
 - iOS: 44x44 points
 - Android: 48x48 dp
+
 **Always ensure buttons are large enough for touch.**
 
 ## **Common Mobile Errors**
+
 **Simulator not booting (iOS):**
 ```
 STEP 1: Kill stuck processes:
@@ -120,6 +132,7 @@ open -a Simulator
 STEP 3: If still stuck, reset:
 xcrun simctl erase "iPhone 15 Pro"
 ```
+
 **Emulator not starting (Android):**
 ```
 STEP 1: Check if running:
@@ -136,6 +149,7 @@ emulator -avd Pixel_7_API_33
 ## **Quick Reference**
 
 ### **Running Apps**
+
 | Platform | Command |
 |----------|---------|
 | iOS (Xcode) | Cmd+R |
@@ -145,8 +159,10 @@ emulator -avd Pixel_7_API_33
 | Flutter | `flutter run` |
 
 ### **Hot Reload**
+
 | Platform | Method |
 |----------|--------|
 | React Native | Press 'r' in Metro |
 | Flutter | Press 'r' in terminal |
+
 **End of Mobile Agent Instructions**

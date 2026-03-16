@@ -1,24 +1,30 @@
 # Framework System Instructions Reference
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Purpose:** Detailed reference for System Instructions
 
 ## System Instructions Overview
+
 **Location:** `System-Instructions/`
 **Purpose:** Define assistant identity, expertise, and behavioral patterns
+
 **Critical Requirement:** System Instructions are **REQUIRED** for all framework operation. Frameworks define process; System Instructions define identity and expertise.
 
 ## Domain Specialization Architecture
+
 **Architecture Pattern:** Core + Domain Specialization
 - **Core-Developer-Instructions.md (Rev 1.0)**: Foundation competencies for all developers
 - **22 Domain Specialists**: Specialized expertise profiles (loaded with Core)
 - **Domain-Selection-Guide.md (Rev 1.0)**: Guide for choosing appropriate specialist(s)
 
 ### Loading Pattern
+
 1. Load Core-Developer-Instructions.md (universal competencies)
 2. Load appropriate Domain specialist file(s) for depth
 3. Domain extends and deepens core competencies
 
 ### Core Developer Competencies
+
 - Version Control (Git workflows, branching strategies, PR reviews)
 - Testing Fundamentals (Unit, Integration, E2E, TDD methodology)
 - Agile Development (Scrum, Kanban, backlog management, CI/CD)
@@ -180,6 +186,7 @@
 ## Domain Selection Guide
 
 ### Quick Reference
+
 | Use Case | Recommended Domains |
 |----------|---------------------|
 | Full-Stack Web | Core + Backend + Frontend + Database |
@@ -189,6 +196,7 @@
 | Secure Production System | Core + Backend + Security + SRE |
 
 ### Decision Tree
+
 - If building APIs/services → Backend-Specialist
 - If building UIs → Frontend-Specialist
 - If managing infrastructure → DevOps-Engineer or Platform-Engineer
@@ -208,6 +216,7 @@
 - If graphics/rendering → Graphics-Engineer-Specialist
 - If systems/low-level → Systems-Programmer-Specialist
 - If documentation → Technical-Writer-Specialist
+
 **Multiple domains can be combined for cross-functional expertise.**
 
 ## Vibe Agent System Instructions
@@ -229,4 +238,5 @@
 - Core Vibe instructions apply to all platforms
 - Platform-specific instructions add specialized guidance
 - Both must be loaded together for proper behavior
+
 **End of Framework System Instructions Reference**

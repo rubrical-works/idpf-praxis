@@ -1,21 +1,27 @@
 # Runtime Artifact Triggers
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Purpose:** Define when to offer artifact creation/update during development and transition phases.
 
 ## Overview
+
 Runtime artifact population happens **during development**, not at charter creation. Claude offers to document decisions, plans, and procedures when they arise naturally in conversation.
+
 **Key Principle:** Offer, don't force. Users can decline any artifact creation.
 
 ## Construction/ Artifacts
 
 ### Design-Decisions/
+
 **Trigger:** User makes or discusses architectural choice
+
 | Trigger Pattern | Example Phrases |
 |-----------------|-----------------|
 | Technology selection | "Let's use Redis for caching", "We should go with PostgreSQL" |
 | Architecture decision | "We'll use a microservices approach", "Let's add a message queue" |
 | Pattern adoption | "We'll implement the repository pattern", "Using event sourcing" |
 | Trade-off discussion | "We chose X over Y because...", "The trade-off is..." |
+
 **Detection:**
 ```
 If conversation contains:
@@ -26,7 +32,9 @@ If conversation contains:
 Then:
   → Offer: "Would you like me to document this decision in Construction/Design-Decisions/?"
 ```
+
 **Template:** `Construction/Design-Decisions/YYYY-MM-DD-[decision-name].md`
+
 ```markdown
 # Design Decision: [Title]
 
@@ -61,13 +69,16 @@ Then:
 ```
 
 ### Test-Plans/
+
 **Trigger:** User discusses testing approach or strategy
+
 | Trigger Pattern | Example Phrases |
 |-----------------|-----------------|
 | Test strategy | "We should test this with...", "For testing, let's..." |
 | Coverage discussion | "We need unit tests for...", "Integration tests should cover..." |
 | Test data | "Test data should include...", "Edge cases to test..." |
 | Test environment | "We'll need a staging environment for...", "Mock the external API" |
+
 **Detection:**
 ```
 If conversation contains:
@@ -78,7 +89,9 @@ If conversation contains:
 Then:
   → Offer: "Would you like me to capture this test plan in Construction/Test-Plans/?"
 ```
+
 **Template:** `Construction/Test-Plans/[feature-name]-test-plan.md`
+
 ```markdown
 # Test Plan: [Feature Name]
 
@@ -116,13 +129,16 @@ Then:
 ```
 
 ### Tech-Debt/
+
 **Trigger:** User defers work or notes shortcuts
+
 | Trigger Pattern | Example Phrases |
 |-----------------|-----------------|
 | Deferral | "We'll fix that later", "TODO:", "FIXME:" |
 | Shortcuts | "Quick fix for now", "Temporary workaround" |
 | Known issues | "This isn't ideal but...", "We'll need to refactor" |
 | Performance notes | "This could be optimized", "Not efficient but works" |
+
 **Detection:**
 ```
 If conversation contains:
@@ -133,7 +149,9 @@ If conversation contains:
 Then:
   → Offer: "Would you like me to track this in Construction/Tech-Debt/?"
 ```
+
 **Template:** `Construction/Tech-Debt/[item-name].md`
+
 ```markdown
 # Tech Debt: [Title]
 
@@ -169,12 +187,15 @@ Then:
 ## Transition/ Artifacts
 
 ### Deployment-Guide.md
+
 **Trigger:** During `/prepare-release` when missing or stale
+
 | Trigger Pattern | Automatic Check |
 |-----------------|-----------------|
 | Release preparation | `/prepare-release` checks for Deployment-Guide.md |
 | Missing file | File doesn't exist → prompt to create |
 | Stale content | Last updated > 30 days ago → prompt to review |
+
 **Detection:**
 ```
 During /prepare-release:
@@ -182,7 +203,9 @@ During /prepare-release:
     - Does not exist → "Deployment guide is missing. Create now?"
     - Exists but old → "Deployment guide may be stale. Review/update?"
 ```
+
 **Template:** `Transition/Deployment-Guide.md`
+
 ```markdown
 # Deployment Guide
 
@@ -229,13 +252,16 @@ During /prepare-release:
 ```
 
 ### Runbook.md
+
 **Trigger:** When operational procedures discussed
+
 | Trigger Pattern | Example Phrases |
 |-----------------|-----------------|
 | Operations | "To restart the service...", "If the database goes down..." |
 | Monitoring | "Watch for...", "Alert threshold is..." |
 | Incident response | "When this happens, do...", "Escalation path is..." |
 | Maintenance | "Monthly we need to...", "Backup procedure is..." |
+
 **Detection:**
 ```
 If conversation contains:
@@ -246,7 +272,9 @@ If conversation contains:
 Then:
   → Offer: "Would you like me to add this to Transition/Runbook.md?"
 ```
+
 **Template:** `Transition/Runbook.md`
+
 ```markdown
 # Operations Runbook
 
@@ -302,13 +330,16 @@ Then:
 ```
 
 ### User-Documentation.md
+
 **Trigger:** When user-facing features complete
+
 | Trigger Pattern | Example Phrases |
 |-----------------|-----------------|
 | Feature complete | "That feature is done", issue moved to Done |
 | UI changes | "The new button...", "Users will see..." |
 | API changes | "The endpoint now...", "New parameter added" |
 | Workflow changes | "Users can now...", "The new process is..." |
+
 **Detection:**
 ```
 If conversation contains:
@@ -319,7 +350,9 @@ If conversation contains:
 Then:
   → Offer: "Would you like to update Transition/User-Documentation.md?"
 ```
+
 **Template:** `Transition/User-Documentation.md`
+
 ```markdown
 # User Documentation
 
@@ -375,6 +408,7 @@ Then:
 ## Behavior Rules
 
 ### Offering vs Forcing
+
 | Behavior | Implementation |
 |----------|----------------|
 | **Always offer** | Present option, accept "no" gracefully |
@@ -383,12 +417,14 @@ Then:
 | **Context-aware** | Only offer when genuinely relevant |
 
 ### Offer Format
+
 ```
 "I noticed you [made a decision/discussed testing/etc.].
 Would you like me to document this in [artifact location]? (yes/no)"
 ```
 
 ### After User Accepts
+
 1. Generate artifact using template
 2. Show user the content
 3. Ask for any edits
@@ -396,9 +432,11 @@ Would you like me to document this in [artifact location]? (yes/no)"
 5. Report: "Saved to [path]"
 
 ## Token Budget
+
 | Trigger Check | Tokens |
 |---------------|--------|
 | Pattern detection | ~0 (in-conversation) |
 | Template loading | ~200-400 per template |
 | Artifact generation | ~300-600 per artifact |
+
 **End of Runtime Artifact Triggers**

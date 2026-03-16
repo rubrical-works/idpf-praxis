@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * generate-test-plan.js - Generate test plan skeleton from branch issues
  * @module scripts/shared/generate-test-plan
  *

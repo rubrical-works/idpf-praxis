@@ -1,12 +1,18 @@
 # Anti-Hallucination Rules for Skill Creation
-**Version:** v0.63.1
+**Version:** v0.64.0
 
 ## Core Principle
+
 **Accuracy over helpfulness. Precision over assumption. Verification over invention.**
+
 When creating Skills from System Instructions or Frameworks, it is always better to preserve the original intent and structure than to "improve" with invented additions.
 
+------
+
 ## Information Source Hierarchy
+
 Always prioritize information in this order:
+
 1. **Source files being converted** (absolute authority)
    - System Instructions files
    - Framework documents
@@ -25,9 +31,12 @@ Always prioritize information in this order:
    - Must not add content not present in source
    - Must preserve original language and terminology
 
+------
+
 ## Absolute "Never Do" Rules
 
 ### NEVER Invent:
+
 - ❌ Additional instructions not in the source document
 - ❌ Example code or scenarios not present in source
 - ❌ Tool configurations or parameters not specified
@@ -40,6 +49,7 @@ Always prioritize information in this order:
 - ❌ Additional resources or references not in source
 
 ### NEVER Assume:
+
 - ❌ That vague instructions need clarification or expansion
 - ❌ That examples need to be added for clarity
 - ❌ That additional context would be helpful
@@ -50,18 +60,23 @@ Always prioritize information in this order:
 - ❌ That better organization means adding sections
 
 ### NEVER Defer or Omit Source Content Without Confirmation:
+
 When converting source documents to Skills, you must include ALL content from the source. Unilateral decisions to skip or defer content are prohibited.
+
 - ❌ Skip sections because they seem "less important"
 - ❌ Mark source content as "future enhancement" without approval
 - ❌ Omit parts of the source because they're complex to format
 - ❌ Defer content to "later" without explicit agreement
 - ❌ Simplify by removing source material without consent
 - ❌ Leave out source sections that don't fit neatly into Skill format
+
 **When conversion concerns arise:**
+
 1. **STOP** - Do not silently omit source content
 2. **REPORT** - Explain which content is difficult to include and why
 3. **ASK** - "Should I include this as-is, or would you like to handle it differently?"
 4. **WAIT** - Get explicit user decision before omitting anything
+
 ```markdown
 ❌ BAD: "I've converted the main sections. The appendices can be added
         as resources later if needed."
@@ -70,12 +85,16 @@ When converting source documents to Skills, you must include ALL content from th
          resource files, or handle them differently?"
 ```
 
+------
+
 ## STOP Boundary Enforcement
 
 ### Command Spec STOP Boundaries Are Absolute
+
 When a command specification includes a STOP boundary section (e.g., `## STOP — Workflow Boundary`), this is a **hard stop**, not a suggestion.
 
 ### Rules:
+
 1. **STOP means STOP** - Execution must halt at the boundary
 2. **No "helpful continuation"** - Do not proceed past STOP boundaries even if:
    - The next steps seem logical
@@ -88,6 +107,7 @@ When a command specification includes a STOP boundary section (e.g., `## STOP �
    - Do not assume pre-compaction state
 
 ### Why This Matters
+
 STOP boundaries exist to:
 - Separate distinct workflow phases
 - Allow user review before critical operations
@@ -95,26 +115,36 @@ STOP boundaries exist to:
 - Give users control over destructive or irreversible operations
 
 ### Example
+
 ```markdown
 ## STOP — Workflow Boundary
 **This command ends here.** Wait for user confirmation before proceeding.
 ```
+
 **Correct Response:** Report completion and wait for user's next instruction
 **Incorrect Response:** Proceeding to push changes because it's the "logical next step"
+
+------
 
 ## Decision Trees for Common Scenarios
 
 ### When Converting System Instructions to Skills
+
 **Step 1: Analyze source structure**
+
 - ✅ **Clearly organized** → Map sections directly to Skill format
 - ⚠️ **Mixed formats** → Preserve all content, organize minimally
 - ❓ **Unclear structure** → Use minimal organization, preserve everything
+
 **Step 2: Determine resource file needs**
+
 - 📄 **Examples in source** → Extract to resource files
 - 📋 **Templates in source** → Extract to resource files
 - 📊 **Reference data in source** → Extract to resource files
 - 🚫 **No extractable content** → No resource files needed
+
 **Step 3: Create SKILL.md structure**
+
 ```
 ✅ GOOD: Organize existing content under appropriate Skill sections
 ❌ BAD: Add new sections or content not in source
@@ -127,12 +157,16 @@ STOP boundaries exist to:
 ```
 
 ### When Creating Resource Files
+
 **Step 1: Identify extractable content**
+
 - Code examples explicitly provided in source
 - Templates or boilerplate shown in source
 - Reference tables or data structures from source
 - Checklists or workflows detailed in source
+
 **Step 2: Organize resource files**
+
 ```
 ✅ GOOD: Create files that exactly match examples in source
 ❌ BAD: Create "helpful" additional examples
@@ -145,7 +179,9 @@ STOP boundaries exist to:
 ```
 
 ### When Source Content is Ambiguous
+
 **Don't clarify by adding. Instead:**
+
 ```
 Option 1: Preserve ambiguity exactly as stated in source
 Option 2: Ask user: "The source document contains [ambiguous instruction].
@@ -157,7 +193,9 @@ NEVER: Add your interpretation as if it was in the source
 ```
 
 ### When Source Content Seems Incomplete
+
 **Don't complete it. Instead:**
+
 ```
 ✅ GOOD: "The source document provides [what's there].
           Should I include only this, or is there additional material
@@ -170,15 +208,21 @@ NEVER: Add your interpretation as if it was in the source
 ❌ BAD: Flesh out the Skill with "helpful" additions
 ```
 
+------
+
 ## Domain-Specific Rules
 
 ### Framework to Skill Conversion
+
 **Preserve framework structure:**
+
 - Frameworks have intentional organization - maintain it
 - Section headings in frameworks map to Skill sections
 - Don't reorganize for "better flow" - preserve original flow
 - Framework examples belong in resource files, not invented ones
+
 **Handle framework-specific elements:**
+
 ```
 ✅ GOOD: Convert framework decision trees to Skill guidelines exactly
 ❌ BAD: Simplify decision trees by removing options
@@ -191,12 +235,16 @@ NEVER: Add your interpretation as if it was in the source
 ```
 
 ### System Instructions to Skill Conversion
+
 **Instruction fidelity:**
+
 - System instructions are prescriptive - don't dilute them
 - Keep directive language ("MUST", "NEVER", "ALWAYS")
 - Don't soften instructions by adding "typically" or "usually"
 - Preserve the instruction hierarchy and priority
+
 **Context preservation:**
+
 ```
 ✅ GOOD: "When X occurs, do Y" stays exactly that
 ❌ BAD: "When X occurs, you might want to consider Y"
@@ -206,10 +254,13 @@ NEVER: Add your interpretation as if it was in the source
 ```
 
 ### Metadata and Skill Configuration
+
 **Description accuracy:**
+
 - Description must only reference content actually in the Skill
 - Don't promise capabilities not present in source
 - Use specific, verifiable language from source material
+
 ```
 ✅ GOOD: "Converts vibe descriptions into structured requirements using
           the framework from [source]"
@@ -218,7 +269,9 @@ NEVER: Add your interpretation as if it was in the source
 ```
 
 ### Resource File Organization
+
 **File structure rules:**
+
 ```
 resources/
   ├── examples/          # Only if examples exist in source
@@ -230,10 +283,14 @@ resources/
 ❌ BAD: Create "standard" structure regardless of source content
 ```
 
+------
+
 ## Self-Checking Before Finalizing
+
 Before completing a Skill conversion, verify:
 
 ### ✓ Content Fidelity
+
 - [ ] Every instruction in SKILL.md comes from source
 - [ ] No explanatory content added beyond source
 - [ ] Terminology matches source exactly
@@ -242,6 +299,7 @@ Before completing a Skill conversion, verify:
 - [ ] Structure reflects source organization
 
 ### ✓ Resource Files
+
 - [ ] Each resource file has corresponding source content
 - [ ] No template files created from scratch
 - [ ] Example code is quoted from source
@@ -249,44 +307,56 @@ Before completing a Skill conversion, verify:
 - [ ] No "standard" files added for completeness
 
 ### ✓ Skill Metadata
+
 - [ ] Description only mentions actual Skill content
 - [ ] Trigger patterns match actual Skill capabilities
 - [ ] Tags reflect source document domain
 - [ ] No promises of functionality not in source
 
 ### ✓ Format Compliance
+
 - [ ] SKILL.md follows Claude Skill format
 - [ ] Resources organized per Skill standards
 - [ ] Markdown formatting is correct
 - [ ] File references are accurate
 - [ ] Directory structure is proper
 
+------
+
 ## Confidence Level Indicators
+
 Use explicit language about source content:
 
 ### Direct Source Content
+
 - "From the source document: [exact quote]"
 - "The original framework specifies..."
 - "As stated in the system instructions..."
 
 ### Organizational Decisions
+
 - "Organizing source content into..."
 - "Structuring the [source section] as..."
 - "Categorizing the instructions from [source]..."
 
 ### When Uncertain About Source Intent
+
 - "The source document states [X]. Should this be..."
 - "The instruction [quote] could be organized as... or as..."
 - "Would you like me to preserve [ambiguity] or clarify?"
 
 ### When Source is Minimal
+
 - "The source document provides minimal guidance on [X]"
 - "Converting available content - source is brief on [topic]"
 - "Source focuses on [Y] without detail on [X]"
 
+------
+
 ## Common Pitfalls to Avoid
 
 ### Pitfall 1: "Improving" the Source
+
 ```
 ❌ BAD: Source says "Check the file"
        You write: "Check the file for syntax errors, missing imports,
@@ -297,6 +367,7 @@ Use explicit language about source content:
 ```
 
 ### Pitfall 2: Adding "Helpful" Context
+
 ```
 ❌ BAD: Source: "Use version control"
        You add: "Use version control like Git, with feature branches
@@ -307,6 +378,7 @@ Use explicit language about source content:
 ```
 
 ### Pitfall 3: Creating Examples
+
 ```
 ❌ BAD: Source explains a concept
        You add: "For example, if building a web app..."
@@ -316,6 +388,7 @@ Use explicit language about source content:
 ```
 
 ### Pitfall 4: Standardizing Structure
+
 ```
 ❌ BAD: Source has unusual organization
        You reorganize: Into "standard" sections you think are better
@@ -325,6 +398,7 @@ Use explicit language about source content:
 ```
 
 ### Pitfall 5: Filling Perceived Gaps
+
 ```
 ❌ BAD: Source doesn't mention testing
        You add: A testing section because "it should be there"
@@ -333,8 +407,12 @@ Use explicit language about source content:
          You create: Skill without testing section
 ```
 
+------
+
 ## Quality Assurance Checklist
+
 Before submitting a converted Skill, verify:
+
 - [ ] **Source fidelity**: Can trace every instruction back to source
 - [ ] **No additions**: Nothing present that isn't in source
 - [ ] **No modifications**: Original language preserved
@@ -346,9 +424,12 @@ Before submitting a converted Skill, verify:
 - [ ] **No improvements**: To wording or structure
 - [ ] **Proper format**: Follows Claude Skill standards
 
+------
+
 ## Conversion Workflow
 
 ### Phase 1: Analysis
+
 1. Read source document completely
 2. Identify main sections and structure
 3. Note any extractable content (examples, templates)
@@ -356,6 +437,7 @@ Before submitting a converted Skill, verify:
 5. **Do NOT plan improvements or additions**
 
 ### Phase 2: Mapping
+
 1. Map source sections to Skill format sections
 2. Identify content for main SKILL.md
 3. Identify content for resource files
@@ -363,6 +445,7 @@ Before submitting a converted Skill, verify:
 5. **Do NOT add sections not in source**
 
 ### Phase 3: Extraction
+
 1. Copy content from source to Skill format
 2. Preserve exact wording and structure
 3. Extract examples/templates to resource files
@@ -370,15 +453,19 @@ Before submitting a converted Skill, verify:
 5. **Do NOT rephrase or elaborate**
 
 ### Phase 4: Verification
+
 1. Compare Skill line-by-line with source
 2. Verify no additions were made
 3. Confirm structure matches source
 4. Check resource files match source examples
 5. **Do NOT make "final improvements"**
 
+------
+
 ## Response Templates
 
 ### Template 1: Ambiguous Source
+
 ```
 "The source document contains this instruction: [exact quote]
 
@@ -388,6 +475,7 @@ which interpretation?"
 ```
 
 ### Template 2: Minimal Source
+
 ```
 "I've converted the available content from [source]. The original document
 is relatively brief on [topic area], providing [what's there].
@@ -397,6 +485,7 @@ material to incorporate?"
 ```
 
 ### Template 3: Complex Structure
+
 ```
 "The source document has [describe unusual structure]. I'll preserve this
 structure in the Skill to maintain the original organization and flow.
@@ -405,6 +494,7 @@ Would you like me to proceed with this structure, or reorganize?"
 ```
 
 ### Template 4: Verification
+
 ```
 "I've created the Skill from [source]. To verify accuracy:
 
@@ -416,15 +506,25 @@ Would you like me to proceed with this structure, or reorganize?"
 Ready to review?"
 ```
 
+------
+
 ## Final Reminder
+
 **A perfect Skill conversion is invisible - you can't tell it was converted.**
+
 The Skill should read as if the original author wrote it in Skill format. Your role is translator, not editor or enhancer.
+
 When tempted to improve:
+
 1. **Stop** - resist the urge to add
 2. **Verify** - check if it's in the source
 3. **Preserve** - keep source content unchanged
 4. **Document** - note what you're preserving
+
 Users trust Skill conversions that faithfully represent source material, not ones that add "helpful" improvements.
 
+------
+
 ## Integration Note
+
 These rules specifically govern the Skill creation and conversion process. They work alongside general anti-hallucination rules but take precedence for Skill-specific decisions. When in doubt, preserve source fidelity over any other consideration.

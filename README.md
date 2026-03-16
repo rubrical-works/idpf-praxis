@@ -31,16 +31,16 @@ px-manager handles:
 | **IDPF-Agile** | Story-based development with TDD |
 | **IDPF-Vibe** | Exploration phase, unclear requirements → evolves to Agile |
 
-### Testing Frameworks
-- IDPF-Testing, IDPF-QA-Automation, IDPF-Performance
-- IDPF-Security, IDPF-Accessibility, IDPF-Chaos, IDPF-Contract-Testing
+### Domains (11)
+- QA-Automation, Performance, Security, Accessibility, Chaos, Contract-Testing
+- API Design, Observability, i18n, SEO, Privacy
 
 ### Requirements
 > **Note:** Requirements engineering uses the `create-prd` skill (IDPF-PRD deprecated in v0.24).
 
 ---
 
-## Skills (34)
+## Skills (36)
 
 **TDD:** tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns
 
@@ -69,6 +69,8 @@ px-manager handles:
 **Deployment Platforms:** vercel-project-setup, railway-project-setup, render-project-setup, digitalocean-app-setup
 
 **Compliance:** seo-optimization, privacy-compliance
+
+**Internationalization:** i18n-setup, observability-setup
 
 ---
 

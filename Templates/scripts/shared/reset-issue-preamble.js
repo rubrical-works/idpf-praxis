@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * reset-issue-preamble.js
  *
  * Analyzes an issue to determine what /reset-issue would do.

@@ -7,7 +7,7 @@ const path = require('path');
 const { detectLanguages, detectPrimaryLanguage } = require('./ci-detect-lang.js');
 
 /**
- * @framework-script 0.63.1
+ * @framework-script 0.64.0
  * Test tooling indicators per language ecosystem.
  */
 const TEST_TOOLING_JS = ['jest', 'mocha', 'vitest', 'ava', 'tape', 'jasmine'];

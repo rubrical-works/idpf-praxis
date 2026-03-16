@@ -1,12 +1,16 @@
 # Charter Enforcement
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Purpose:** Define checkpoints where charter validation should occur and how to handle scope conflicts.
 
 ## Overview
+
 Charter enforcement validates that work items align with the project's defined scope. Validation is **conversational, not blocking**—users can choose to expand scope, proceed anyway, or revise work.
 
 ## Checkpoint Detection
+
 Validate charter scope at these checkpoints:
+
 | Checkpoint | Trigger | What to Load |
 |------------|---------|--------------|
 | **Proposal Creation** | User creates file in `Proposal/` | CHARTER.md, Inception/Scope-Boundaries.md |
@@ -18,6 +22,7 @@ Validate charter scope at these checkpoints:
 | **Create-Backlog Command** | User runs `Create-Backlog` from PRD | CHARTER.md, Inception/Scope-Boundaries.md |
 
 ### Detection Logic
+
 ```
 On user action:
   1. Check if CHARTER.md exists
@@ -41,6 +46,7 @@ On user action:
 ```
 
 ### Checkpoint Priority
+
 | Priority | Checkpoint | Validation Depth |
 |----------|------------|------------------|
 | High | Create-Backlog, PRD creation | Full scope check |
@@ -48,9 +54,11 @@ On user action:
 | Low | Add-Story | Quick alignment check |
 
 ## Scope Validation
+
 After loading charter context, validate the work item:
 
 ### Validation Process
+
 ```
 1. Extract key concepts from work item:
    - Title keywords
@@ -70,6 +78,7 @@ After loading charter context, validate the work item:
 ```
 
 ### Alignment Categories
+
 | Category | Description | Action |
 |----------|-------------|--------|
 | **Aligned** | Work clearly fits in-scope items | Proceed without interruption |
@@ -77,9 +86,11 @@ After loading charter context, validate the work item:
 | **Conflicts** | Work matches out-of-scope items | Flag conflict, offer resolution |
 
 ## Conversational Resolution
+
 When misalignment detected, engage user conversationally:
 
 ### Resolution Options
+
 ```
 "This [proposal/feature/story] involves [X], which isn't currently in scope.
 
@@ -93,6 +104,7 @@ Which would you like to do?"
 ```
 
 ### Resolution Actions
+
 | User Choice | Action |
 |-------------|--------|
 | **Expand scope** | Update Inception/Scope-Boundaries.md, sync CHARTER.md if needed |
@@ -101,7 +113,9 @@ Which would you like to do?"
 | **Revise** | Help user modify work item to fit scope |
 
 ### Expansion Flow
+
 If user chooses to expand scope:
+
 ```
 1. "What scope item should we add?"
    → User provides description
@@ -118,9 +132,11 @@ If user chooses to expand scope:
 ```
 
 ## /prepare-release Validation Gate
+
 The `/prepare-release` command includes final scope validation:
 
 ### Pre-Release Check
+
 ```
 1. List all issues assigned to release
 2. For each issue:
@@ -136,14 +152,17 @@ The `/prepare-release` command includes final scope validation:
 ```
 
 ### Validation Severity
+
 | Finding | Severity | Release Blocked? |
 |---------|----------|------------------|
 | All aligned | Info | No |
 | Some possibly misaligned | Warning | No (user decides) |
 | Conflicts with out-of-scope | Error | No (user decides, but warned) |
+
 **Note:** Validation is advisory only. User always has final decision.
 
 ## Token Budget
+
 | Checkpoint Type | Artifacts Loaded | Estimated Tokens |
 |-----------------|------------------|------------------|
 | High priority | CHARTER.md + Scope-Boundaries.md | ~600-1,000 |
@@ -153,21 +172,28 @@ The `/prepare-release` command includes final scope validation:
 ## Configuration
 
 ### Opt-Out
+
 Users can disable charter enforcement:
+
 1. **Per-session:** "Skip charter validation for this session"
 2. **Permanent:** Create `.no-charter-enforcement` file
 
 ### Quiet Mode
+
 Users can request less verbose validation:
+
 ```
 "Validate silently - only warn on conflicts"
 ```
+
 This skips confirmation for "possibly misaligned" items.
 
 ## Framework Exclusions
+
 IDPF framework files are **automatically excluded** from charter scope validation. These are infrastructure files, not project code.
 
 ### Excluded Patterns
+
 | Pattern | Description |
 |---------|-------------|
 | `.claude/**` | Rules, hooks, scripts, commands |
@@ -184,14 +210,17 @@ IDPF framework files are **automatically excluded** from charter scope validatio
 | `.gh-pmu.json` | Project management config |
 
 ### Why Exclude
+
 1. **Not project code** - Framework files are infrastructure
 2. **Avoid false positives** - Framework changes don't relate to project scope
 3. **Reduce noise** - Don't prompt for every framework update
 
 ### Charter Scope Applies To
+
 - Application source code (`src/`, `lib/`, `app/`, etc.)
 - Project tests (`tests/`, `__tests__/`, `spec/`)
 - Project configuration (non-framework configs)
 - Project documentation (project README, docs/)
 - Proposals and PRDs (`Proposal/`, `PRD/`)
+
 **End of Charter Enforcement**

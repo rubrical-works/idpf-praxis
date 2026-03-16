@@ -1,38 +1,44 @@
 # Framework Summary
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Purpose:** Compact startup reference for framework developers
 
 ## Quick Reference
+
 | Component | Count | Location |
 |-----------|-------|----------|
-| Development Frameworks | 2 | IDPF-Agile, IDPF-Vibe (7 variants) |
-| Testing Frameworks | 7 | IDPF-Testing (review criteria library) + 6 specialized |
+| Process Frameworks | 2 | IDPF-Agile, IDPF-Vibe (7 variants) |
+| Domains | 11 | Domains/ (testing criteria, guides, templates) |
 | Domain Specialists | 22 | 12 Base + 10 Pack |
 | Core Instructions | 2 | Core-Developer-Instructions + Domain-Selection-Guide |
-| Skills | 34 | Skills/ |
+| Skills | 36 | Skills/ |
 | Assistant Guidelines | 4 | Assistant/ |
 
 ## Current Versions
 
 ### Development Frameworks
+
 | Framework | Revision | Type |
 |-----------|----------|------|
 | IDPF-Agile | 3 | Story-Driven Development with TDD |
 | IDPF-Vibe (Core) | 4.0 | Exploratory → Agile |
+
 > **Note:** IDPF-PRD was deprecated in v0.24 and replaced by the `create-prd` skill.
 
-### Testing Frameworks
-| Framework | Revision | Extends |
-|-----------|----------|---------|
-| IDPF-Testing | 1 | (Review criteria library) |
-| IDPF-QA-Automation | 1 | IDPF-Testing |
-| IDPF-Performance | 1 | IDPF-Testing |
-| IDPF-Security | 1 | IDPF-Testing |
-| IDPF-Accessibility | 1 | IDPF-Testing |
-| IDPF-Chaos | 1 | IDPF-Testing |
-| IDPF-Contract-Testing | 1 | IDPF-Testing |
+### Domains
+
+| Domain | Revision | Location |
+|--------|----------|----------|
+| Testing | 1 | Domains/Testing/ (review criteria library) |
+| QA-Automation | 1 | Domains/QA-Automation/ |
+| Performance | 1 | Domains/Performance/ |
+| Security | 1 | Domains/Security/ |
+| Accessibility | 1 | Domains/Accessibility/ |
+| Chaos | 1 | Domains/Chaos/ |
+| Contract-Testing | 1 | Domains/Contract-Testing/ |
 
 ### Skills Registry
+
 | Skill | Category |
 |-------|----------|
 | tdd-red-phase | TDD |
@@ -61,32 +67,39 @@
 | electron-development | Desktop |
 
 ## Framework Selection Matrix
+
 | Project Type | Starting Point | Evolution Path |
 |--------------|---------------|----------------|
 | Evolving requirements, iterative delivery | IDPF-Agile | Terminal |
 | Unclear requirements, exploration | IDPF-Vibe | → Agile |
-| Separate test repository | IDPF-Testing | Use Agile |
+| Separate test repository | Domains/ | Use Agile |
 
 ## Core Principle
+
 **System Instructions** define WHO the assistant is
 **Frameworks** define WHAT process to follow
 **Skills** provide reusable capabilities
 **Assistant Guidelines** ensure accuracy and quality
 
 ## Valid Framework Transitions
+
 ```
 VIBE ──► AGILE (Terminal)
 ```
+
 **Invalid:** Agile → Vibe (quality standards should never decrease)
 
 ## Detailed Documentation
+
 For comprehensive information, load on-demand:
+
 | File | Content |
 |------|---------|
 | Framework-Development.md | IDPF-Agile, Vibe details, create-prd skill |
-| Framework-Testing.md | IDPF-Testing (criteria library) + 6 specialized frameworks |
+| Framework-Testing.md | Domains/ — testing criteria library + 6 specialized domains |
 | Framework-System-Instructions.md | Core + 22 Domain Specialists (12 Base, 10 Pack) |
 | Framework-Skills.md | All 34 skills with descriptions |
 | Framework-Transitions.md | Transition matrix, diagrams, hybrid usage |
 | Framework-Overview.md | Complete reference (all sections) |
+
 **End of Framework Summary**

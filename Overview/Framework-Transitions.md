@@ -1,10 +1,12 @@
 # Framework Transitions Reference
-**Version:** v0.63.1
+**Version:** v0.64.0
+
 **Purpose:** Framework transition rules, diagrams, and hybrid usage patterns
 
 ## Framework Transition Matrix
 
 ### Workflow Diagram
+
 **Development Path:**
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -23,6 +25,7 @@
 
 Legend:  ───► Valid transition
 ```
+
 **Invalid Transition:**
 ```
      ┌───────────┐                   ┌───────────┐
@@ -34,6 +37,7 @@ Legend:  ───► Valid transition
 ```
 
 ## Valid Transitions
+
 | From Framework | To Framework | When to Transition |
 |----------------|--------------|-------------------|
 | **Vibe** | **Agile** | Exploration complete, requirements understood, ready for structured development |
@@ -41,6 +45,7 @@ Legend:  ───► Valid transition
 ## Transition Principles
 
 ### Always Preserved Across Transitions
+
 - All existing code and tests
 - Git repository and commit history
 - TDD methodology (RED-GREEN-REFACTOR)
@@ -49,12 +54,14 @@ Legend:  ───► Valid transition
 - Dependencies and configurations
 
 ### What Changes
+
 - Documentation format (informal → User Stories)
 - Workflow structure (conversational → Story-Driven)
 - Planning granularity (ad-hoc → Stories/Epics)
 - Progress tracking (informal → Backlog Management)
 
 ### Transition Best Practices
+
 1. Complete current work unit before transitioning
 2. Ensure all tests pass (100% green)
 3. Commit all work-in-progress
@@ -64,8 +71,10 @@ Legend:  ───► Valid transition
 7. Communicate transition to stakeholders (if applicable)
 
 ## Invalid Transitions
+
 **Never transition:**
 - ❌ Agile → Vibe (defeats structured discipline)
+
 **Rationale:**
 - Returning to Vibe from Agile abandons testing discipline
 - Quality standards should never decrease (always increase or maintain)
@@ -74,14 +83,17 @@ Legend:  ───► Valid transition
 
 ### Vibe → Agile
 **When:** Exploration complete, requirements understood, ready for structured development
+
 **Preserves:**
 - Code, tests, Git history
 - Any tests written during exploration
+
 **Changes:**
 - Informal dev → User Stories
 - Ad-hoc → Story-driven workflow
 - Add backlog management
 - Formalize requirements as epics/stories
+
 **Steps:**
 1. Document discovered requirements
 2. Create initial backlog with epics
@@ -94,6 +106,7 @@ Legend:  ───► Valid transition
 - No transitions FROM Agile to any other framework
 - Projects in Agile continue until completion
 - Maintenance work continues within Agile framework
+
 **If Starting Fresh:**
 - ✅ New projects can start with Vibe for exploration
 - ✅ New projects can start directly with Agile if requirements are clear
@@ -101,17 +114,21 @@ Legend:  ───► Valid transition
 ## Simultaneous Framework Usage
 
 ### Valid Hybrid Scenarios
+
 Projects may have different concerns/aspects in different frameworks simultaneously:
+
 **Example 1: Exploration + Production**
 - New feature exploration: IDPF-Vibe
 - Main product development: IDPF-Agile
 - Separate branches or feature flags per concern
+
 **Example 2: Multiple Products**
 - Product A in active development: IDPF-Agile
 - Product B in exploration phase: IDPF-Vibe
 - Separate repositories per product
 
 ### Guidelines for Hybrid Usage
+
 - Clearly document which framework governs which concern
 - Use separate documentation for each framework scope
 - Maintain clear boundaries between framework contexts
@@ -121,6 +138,7 @@ Projects may have different concerns/aspects in different frameworks simultaneou
 ## Framework Integration Architecture
 
 ### Dependency Hierarchy
+
 ```
 System Instructions (REQUIRED foundation - WHO + EXPERTISE)
     ↓
@@ -132,6 +150,7 @@ Assistant Guidelines (HOW WELL - quality control)
 ```
 
 ### Selection Criteria
+
 **Use IDPF-Agile when:**
 - Building products with evolving requirements
 - Iterative delivery with regular feedback
@@ -140,6 +159,7 @@ Assistant Guidelines (HOW WELL - quality control)
 - Structured backlog and story management needed
 - Team collaboration requires structured workflow
 - Ready for structured development process
+
 **Use IDPF-Vibe when:**
 - Starting with unclear requirements
 - Need exploration phase first
@@ -148,22 +168,26 @@ Assistant Guidelines (HOW WELL - quality control)
 - Plan to evolve to Agile afterward
 
 ### Common Elements Across Frameworks
+
 **TDD Methodology:**
 - All frameworks use RED-GREEN-REFACTOR cycles
 - Identical test-writing discipline
 - Same verification requirements
 - Skills invoked at appropriate TDD phases
+
 **Claude Code Communication:**
 - Single code block format (numbered STEP format)
 - Complete, runnable code with no placeholders
 - Exact file paths and verification steps
 - Report results back to assistant
 - Two-tool workflow (ASSISTANT + Claude Code + User)
+
 **Context Preservation:**
 - Full awareness of previous steps and decisions
 - Cumulative conversation context
 - Reference previous implementations naturally
 - Maintain session continuity
+
 **Git Workflows:**
 - All frameworks support GitFlow, GitHub Flow, trunk-based
 - Commit conventions (Conventional Commits)
@@ -171,9 +195,11 @@ Assistant Guidelines (HOW WELL - quality control)
 - Branch management strategies
 
 ## Framework Selection Matrix
+
 | Project Type | Starting Point | Evolution Path | Target Outcome |
 |--------------|---------------|----------------|----------------|
 | Evolving requirements, iterative delivery | IDPF-Agile | Terminal | Story-driven delivery with TDD |
 | Unclear requirements, exploration | IDPF-Vibe | → Agile | Discovered requirements + TDD |
-| Separate test repository | IDPF-Testing | Use Agile for test dev | Test automation codebase |
+| Separate test repository | Domains/ | Use Agile for test dev | Test automation codebase |
+
 **End of Framework Transitions Reference**

@@ -1,7 +1,8 @@
 ---
-version: "v0.63.1"
+version: "v0.64.0"
 description: Review a test plan against its PRD (project)
 argument-hint: "#issue [--mode ...] [--force]"
+copyright: "Rubrical Works (c) 2026"
 ---
 
 <!-- MANAGED -->
@@ -23,7 +24,7 @@ Reviews a TDD test plan document linked from a GitHub issue, cross-referencing i
 ## Execution Instructions
 **REQUIRED:** Before executing:
 1. **Create Todo List:** Use `TodoWrite` to create todos from the steps below
-2. **Track Progress:** Mark todos `in_progress` -> `completed` as you work
+2. **Track Progress:** Mark todos `in_progress` → `completed` as you work
 3. **Post-Compaction:** If resuming after context compaction, re-read this spec and regenerate todos
 ---
 ## Workflow
@@ -31,10 +32,10 @@ Reviews a TDD test plan document linked from a GitHub issue, cross-referencing i
 ```bash
 node ./.claude/scripts/shared/review-preamble.js $ISSUE [--mode mode] [--force]
 ```
-Parse JSON output. If `ok: false`: report `errors[0].message` -> **STOP**.
+Parse JSON output. If `ok: false`: report `errors[0].message` → **STOP**.
 If `earlyExit: true`: report review count and **STOP**.
 Extract: `context` (issue data, reviewNumber, `**Test Plan:**` and `**PRD:**` file paths), `criteria`, `warnings`.
-Read both the test plan file and PRD file at extracted paths. If either not found -> **STOP**.
+Read both the test plan file and PRD file at extracted paths. If either not found → **STOP**.
 
 <!-- USER-EXTENSION-START: pre-review -->
 <!-- USER-EXTENSION-END: pre-review -->
@@ -42,7 +43,7 @@ Read both the test plan file and PRD file at extracted paths. If either not foun
 ### Step 2: Evaluate Criteria
 
 **Step 2a: Auto-Evaluate Objective Criteria**
-Re-read `.claude/metadata/test-plan-review-criteria.json` from disk (not memory). For each criterion, use `autoCheckMethod` to evaluate the test plan and PRD. Emit pass/warn/fail with evidence. Use `shouldEvaluate(criterionId, ...)` from `review-mode.js` to filter by reviewMode.
+Re-read `.claude/metadata/test-plan-review-criteria.json` from disk (not memory). For each criterion, use `autoCheckMethod` to evaluate the test plan and PRD. Emit ✅/⚠️/❌ with evidence. Use `shouldEvaluate(criterionId, ...)` from `review-mode.js` to filter by reviewMode.
 **Coverage Analysis (P0):** Execute `coverageAnalysis.procedure` from the criteria file. Map acceptance criteria from PRD to test cases in test plan. Report coverage as structured findings.
 **Graceful degradation:** If `test-plan-review-criteria.json` not found or malformed, warn and use inline defaults: AC coverage, Test framework specified, Test levels defined, Story-to-test mapping, Error scenarios present, Boundary conditions tested, Failure modes covered, Integration points mapped, Component interactions verified, Data flow boundaries tested, E2E scenarios cover critical journeys, E2E happy paths and error paths, E2E scenarios map to PRD requirements, Framework consistent with test strategy, Coverage targets realistic, Test coverage proportionate. If criteria array is empty or no criteria found, warn and fall back to inline defaults. Per-criterion validation: skip criteria missing `autoCheckMethod`. All failures non-blocking.
 
@@ -51,10 +52,10 @@ Load subjective criteria from `test-plan-review-criteria.json`. Use `AskUserQues
 **Coverage gaps are reported as bullet-point concerns** (not tables) for `/resolve-review` parser compatibility.
 
 **Step 2c: Determine Recommendation**
-- **Ready for approval** -- All ACs have test cases, no blocking concerns
-- **Ready with minor gaps** -- Small coverage gaps
-- **Needs revision** -- Significant coverage gaps
-- **Needs major rework** -- Fundamental coverage issues
+- **Ready for approval** — All ACs have test cases, no blocking concerns
+- **Ready with minor gaps** — Small coverage gaps
+- **Needs revision** — Significant coverage gaps
+- **Needs major rework** — Fundamental coverage issues
 
 ### Step 3: Update Test Plan File
 **Update `**Reviews:** N` field:** Increment if exists, add `**Reviews:** 1` after metadata fields if not.
@@ -67,7 +68,7 @@ Load subjective criteria from `test-plan-review-criteria.json`. Use `AskUserQues
 Each review appends a new row. **Never edit or delete existing rows.**
 
 ### Step 4: Finalize (Self-Contained)
-Write structured findings to `.tmp-$ISSUE-findings.json` and run finalize script directly (not delegated to calling orchestrator):
+Write structured findings to `.tmp-$ISSUE-findings.json` and run finalize script directly (not delegated to calling orchestrator — restores #1404 Step 5.6 behavior lost in #1810 refactor):
 ```bash
 node ./.claude/scripts/shared/review-finalize.js $ISSUE -F .tmp-$ISSUE-findings.json
 ```
@@ -79,7 +80,7 @@ The finalize script handles: body metadata update (`**Reviews:** N` increment), 
    ```bash
    gh pmu view $ISSUE --body-stdout > .tmp-$ISSUE.md
    ```
-2. For each `- [ ]` checkbox in the issue body: if the corresponding criterion **passed**, replace with `- [x]`. If **failed or flagged**, leave as `- [ ]`.
+2. For each `- [ ]` checkbox in the issue body: if the corresponding criterion **passed** (✅), replace with `- [x]`. If **failed or flagged** (❌ or ⚠️), leave as `- [ ]`.
 3. Update the issue body:
    ```bash
    gh pmu edit $ISSUE -F .tmp-$ISSUE.md && rm .tmp-$ISSUE.md
@@ -93,7 +94,7 @@ The finalize script handles: body metadata update (`**Reviews:** N` increment), 
    Approval gate: X/Y criteria checked off. Issue #$ISSUE moved to in_review.
    Run /done #$ISSUE to close the approval gate.
    ```
-**If recommendation is NOT "Ready for approval":** Skip this step entirely.
+**If recommendation is NOT "Ready for approval":** Skip this step entirely — no AC check-off, no status transition.
 
 <!-- USER-EXTENSION-START: post-review -->
 <!-- USER-EXTENSION-END: post-review -->
@@ -102,10 +103,10 @@ The finalize script handles: body metadata update (`**Reviews:** N` increment), 
 ## Error Handling
 | Situation | Response |
 |-----------|----------|
-| Preamble `ok: false` | Report `errors[0].message` -> STOP |
-| Test plan file not found | Report path error -> STOP |
-| PRD file not found | Report path error -> STOP |
+| Preamble `ok: false` | Report `errors[0].message` → STOP |
+| Test plan file not found | Report path error → STOP |
+| PRD file not found | Report path error → STOP |
 | Issue closed | Ask user (from preamble context) |
-| File write fails | Report error -> STOP |
+| File write fails | Report error → STOP |
 ---
 **End of /review-test-plan Command**

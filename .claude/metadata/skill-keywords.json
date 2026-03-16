@@ -176,6 +176,17 @@
       "error recovery",
       "graceful degradation"
     ],
+    "i18n-setup": [
+      "i18n",
+      "internationalization",
+      "localization",
+      "i18next",
+      "react-intl",
+      "formatjs",
+      "translation",
+      "locale",
+      "multilingual"
+    ],
     "flask-setup": [
       "flask",
       "python web",
@@ -195,6 +206,18 @@
       "prisma migrate",
       "db migration",
       "schema change"
+    ],
+    "observability-setup": [
+      "observability",
+      "opentelemetry",
+      "grafana",
+      "prometheus",
+      "structured logging",
+      "distributed tracing",
+      "metrics",
+      "alerting",
+      "monitoring",
+      "SLO"
     ],
     "mutation-testing": [
       "mutation testing",
@@ -418,8 +441,10 @@
     "drawio-generation": "documentation",
     "electron-development": "platform",
     "error-handling-patterns": "architecture",
+    "i18n-setup": "web",
     "flask-setup": "platform",
     "migration-patterns": "database",
+    "observability-setup": "devops",
     "mutation-testing": "testing",
     "playwright-explorer": "testing",
     "playwright-setup": "testing",

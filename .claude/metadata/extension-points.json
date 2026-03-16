@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-15T16:24:18.511Z",
+  "generatedAt": "2026-03-16T14:23:51.063Z",
   "version": "1.0.0",
   "commandCount": 18,
   "extensionPointCount": 79,
@@ -18,7 +18,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "catalog-screens": {
       "type": "EXTENSIBLE",
@@ -39,7 +40,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "ci": {
       "type": "EXTENSIBLE",
@@ -70,7 +72,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "create-branch": {
       "type": "EXTENSIBLE",
@@ -86,7 +89,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "create-prd": {
       "type": "EXTENSIBLE",
@@ -142,7 +146,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "destroy-branch": {
       "type": "EXTENSIBLE",
@@ -163,7 +168,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "done": {
       "type": "EXTENSIBLE",
@@ -179,7 +185,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "enhancement": {
       "type": "EXTENSIBLE",
@@ -195,7 +202,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "merge-branch": {
       "type": "EXTENSIBLE",
@@ -231,7 +239,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "mockups": {
       "type": "EXTENSIBLE",
@@ -247,7 +256,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "paths": {
       "type": "EXTENSIBLE",
@@ -268,7 +278,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "prepare-beta": {
       "type": "EXTENSIBLE",
@@ -324,7 +335,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "prepare-release": {
       "type": "EXTENSIBLE",
@@ -400,7 +412,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "proposal": {
       "type": "EXTENSIBLE",
@@ -416,7 +429,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "review-issue": {
       "type": "EXTENSIBLE",
@@ -437,7 +451,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "review-prd": {
       "type": "EXTENSIBLE",
@@ -458,7 +473,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "review-proposal": {
       "type": "EXTENSIBLE",
@@ -479,7 +495,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     },
     "work": {
       "type": "EXTENSIBLE",
@@ -505,7 +522,8 @@
           "location": "",
           "purpose": ""
         }
-      ]
+      ],
+      "copyright": "Rubrical Works (c) 2026"
     }
   }
 }

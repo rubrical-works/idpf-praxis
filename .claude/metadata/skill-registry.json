@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-03-15T16:24:09.387Z",
+  "generatedAt": "2026-03-16T14:24:05.876Z",
   "version": "1.0.0",
-  "skillCount": 34,
+  "skillCount": 36,
   "skills": [
     {
       "name": "anti-pattern-analysis",
@@ -18,7 +18,8 @@
         "ruby",
         "csharp"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "api-versioning",
@@ -32,7 +33,8 @@
         "node",
         "express"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "astro-development",
@@ -47,7 +49,8 @@
         "vue",
         "svelte"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "bdd-writing",
@@ -61,7 +64,8 @@
         "javascript",
         "typescript"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "beginner-testing",
@@ -75,7 +79,8 @@
         "ruby",
         "tdd"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "ci-cd-pipeline-design",
@@ -89,7 +94,8 @@
         "docker",
         "kubernetes"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "code-path-discovery",
@@ -100,7 +106,8 @@
         "javascript",
         "typescript"
       ],
-      "invocationMode": "manual"
+      "invocationMode": "manual",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "codebase-analysis",
@@ -121,14 +128,16 @@
         "kotlin",
         "csharp"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "command-spec-audit",
       "description": "Evaluate command specifications for quality, completeness, and extension point coverage",
       "triggers": [],
       "category": "code-quality",
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "common-errors",
@@ -141,7 +150,8 @@
         "python",
         "ruby"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "digitalocean-app-setup",
@@ -154,7 +164,8 @@
         "node",
         "python"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "drawio-generation",
@@ -168,7 +179,8 @@
         "uml",
         "documentation"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "electron-development",
@@ -182,7 +194,8 @@
         "typescript",
         "windows"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "error-handling-patterns",
@@ -199,7 +212,8 @@
         "node",
         "error-handling"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "flask-setup",
@@ -212,7 +226,23 @@
         "virtualenv",
         "pip"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
+    },
+    {
+      "name": "i18n-setup",
+      "description": "Scaffold internationalization infrastructure including i18n library config, string extraction tooling, locale file scaffolding, and translation workflow setup",
+      "triggers": [],
+      "category": "web",
+      "relevantTechStack": [
+        "i18n",
+        "i18next",
+        "react-intl",
+        "formatjs",
+        "localization"
+      ],
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "migration-patterns",
@@ -227,7 +257,8 @@
         "knex",
         "prisma"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "mutation-testing",
@@ -240,7 +271,24 @@
         "javascript",
         "typescript"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
+    },
+    {
+      "name": "observability-setup",
+      "description": "Scaffold observability infrastructure including OpenTelemetry SDK config, Grafana dashboards, alert rules, and structured logging setup",
+      "triggers": [],
+      "category": "devops",
+      "relevantTechStack": [
+        "opentelemetry",
+        "grafana",
+        "prometheus",
+        "logging",
+        "metrics",
+        "tracing"
+      ],
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "playwright-explorer",
@@ -254,7 +302,8 @@
         "web-app",
         "frontend"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "playwright-setup",
@@ -267,7 +316,8 @@
         "browser-testing",
         "typescript"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "postgresql-integration",
@@ -281,7 +331,8 @@
         "python",
         "pg"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "privacy-compliance",
@@ -295,7 +346,8 @@
         "cookies",
         "consent"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "property-based-testing",
@@ -309,7 +361,8 @@
         "javascript",
         "python"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "railway-project-setup",
@@ -323,7 +376,8 @@
         "python",
         "deployment"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "render-project-setup",
@@ -337,7 +391,8 @@
         "python",
         "deployment"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "resilience-patterns",
@@ -354,7 +409,8 @@
         "java",
         "rust"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "seo-optimization",
@@ -368,7 +424,8 @@
         "structured-data",
         "sitemap"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "sinatra-setup",
@@ -381,7 +438,8 @@
         "bundler",
         "gem"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "sqlite-integration",
@@ -396,7 +454,8 @@
         "python",
         "ruby"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "tdd-failure-recovery",
@@ -413,7 +472,8 @@
         "rspec",
         "testing"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "tdd-green-phase",
@@ -430,7 +490,8 @@
         "rspec",
         "testing"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "tdd-red-phase",
@@ -447,7 +508,8 @@
         "rspec",
         "testing"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "tdd-refactor-phase",
@@ -464,7 +526,8 @@
         "rspec",
         "testing"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "test-writing-patterns",
@@ -482,7 +545,8 @@
         "tdd",
         "mocking"
       ],
-      "invocationMode": "auto"
+      "invocationMode": "auto",
+      "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "vercel-project-setup",
@@ -496,7 +560,8 @@
         "node",
         "deployment"
       ],
-      "invocationMode": "direct-only"
+      "invocationMode": "direct-only",
+      "copyright": "\"Rubrical Works (c) 2026\""
     }
   ]
 }
