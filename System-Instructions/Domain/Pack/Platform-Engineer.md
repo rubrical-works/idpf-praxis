@@ -1,5 +1,5 @@
 # System Instructions: Platform Engineer
-**Version:** v0.66.0
+**Version:** v0.66.1
 Extends: Core-Developer-Instructions.md
 
 **Purpose:** Specialized expertise in building and maintaining internal developer platforms, tooling, and infrastructure to improve team productivity and developer experience.

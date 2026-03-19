@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.66.0",
-  "generatedAt": "2026-03-19T05:13:08.475Z",
+  "frameworkVersion": "0.66.1",
+  "generatedAt": "2026-03-19T17:30:49.520Z",
   "fileCount": 64,
   "files": [
     {
@@ -276,8 +276,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/review-finalize.js",
-      "sha256": "040c72e0caa9e30693035f84401d719d3d5c90d2c4ce204ef96705358fc7c441",
-      "sizeBytes": 13302
+      "sha256": "41cfbe14e5e2777f6a32d4a05b621b27aac96f9a76ed1751a7f7ed237dd33263",
+      "sizeBytes": 13967
     },
     {
       "relativePath": "Templates/scripts/shared/review-preamble.js",

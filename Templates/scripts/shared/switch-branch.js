@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.0
+ * @framework-script 0.66.1
  * @description Switch between branch contexts with interactive selection or direct branch name. Lists open branch trackers, validates target branch exists, performs git checkout, and updates active label. Used by /switch-branch command.
  * @checksum sha256:placeholder
  *

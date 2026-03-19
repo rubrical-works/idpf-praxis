@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.0
+ * @framework-script 0.66.1
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
@@ -104,7 +104,7 @@ function normalizeFindings(data) {
         autoEvaluated.push({
           id,
           criterion: entry.name || entry.criterion || id,
-          status: entry.status || 'skip',
+          status: entry.status || entry.result || 'skip',
           evidence: entry.evidence || '',
         });
       }
@@ -116,7 +116,7 @@ function normalizeFindings(data) {
         autoEvaluated.push({
           id,
           criterion: entry.name || entry.criterion || id,
-          status: entry.status || 'skip',
+          status: entry.status || entry.result || 'skip',
           evidence: entry.evidence || '',
         });
       }
@@ -128,7 +128,7 @@ function normalizeFindings(data) {
         autoEvaluated.push({
           id,
           criterion: entry.name || entry.criterion || id,
-          status: entry.status || 'skip',
+          status: entry.status || entry.result || 'skip',
           evidence: entry.evidence || '',
         });
       }
@@ -138,7 +138,7 @@ function normalizeFindings(data) {
     delete data.criteria;
   }
 
-  // Normalize finding entry field aliases: name → criterion
+  // Normalize finding entry field aliases: name → criterion, result → status
   if (data.findings && typeof data.findings === 'object') {
     for (const key of ['autoEvaluated', 'userEvaluated']) {
       const arr = data.findings[key];
@@ -148,8 +148,26 @@ function normalizeFindings(data) {
             entry.criterion = entry.name;
             delete entry.name;
           }
+          if (entry.result && !entry.status) {
+            entry.status = entry.result;
+            delete entry.result;
+          }
         }
       }
+    }
+  }
+
+  // Normalize recommendation shorthand values (#1958)
+  if (typeof data.recommendation === 'string') {
+    const RECOMMENDATION_ALIASES = {
+      'ready': 'Ready for work',
+      'minor': 'Needs minor revision',
+      'revision': 'Needs revision',
+      'rework': 'Needs major rework',
+    };
+    const lower = data.recommendation.toLowerCase().trim();
+    if (RECOMMENDATION_ALIASES[lower]) {
+      data.recommendation = RECOMMENDATION_ALIASES[lower];
     }
   }
 

@@ -1,5 +1,5 @@
 # Test Repository Structure Guide
-**Version:** v0.66.0
+**Version:** v0.66.1
 
 **Source:** Domains
 

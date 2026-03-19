@@ -1,5 +1,5 @@
 ---
-version: "v0.66.0"
+version: "v0.66.1"
 description: Audit extension point content for quality and consistency (project)
 argument-hint: "[all|<command-name>|<group description>]"
 copyright: "Rubrical Works (c) 2026"

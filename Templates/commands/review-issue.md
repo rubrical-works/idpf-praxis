@@ -1,5 +1,5 @@
 ---
-version: "v0.66.0"
+version: "v0.66.1"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...] [--with ...] [--mode ...] [--force]"
 copyright: "Rubrical Works (c) 2026"
@@ -60,7 +60,25 @@ Re-read `.claude/metadata/review-mode-criteria.json` from disk. Use AskUserQuest
 **Step 2d: Recommendation**
 Ready for work / Needs minor revision / Needs revision / Needs major rework.
 ### Step 3: Finalize (Script)
-Write findings to `.tmp-$ISSUE-findings.json` (schema: `.claude/scripts/shared/lib/findings-schema.json`).
+Write findings to `.tmp-$ISSUE-findings.json`:
+```json
+{
+  "issue": 42,
+  "title": "Issue title from context",
+  "reviewNumber": 1,
+  "type": "bug",
+  "findings": {
+    "autoEvaluated": [
+      { "id": "title-clear", "criterion": "Title clear?", "status": "pass", "evidence": "..." }
+    ],
+    "userEvaluated": []
+  },
+  "recommendation": "Ready for work",
+  "recommendationReason": "All criteria passed"
+}
+```
+**Required:** `issue`, `title`, `reviewNumber`, `type`, `findings`, `recommendation`.
+**Status:** `pass`, `warn`, `fail`, `skip`. **Recommendation:** `Ready for work`, `Needs minor revision`, `Needs revision`, `Needs major rework`. **Solo:** `userEvaluated` is `[]`.
 ```bash
 node ./.claude/scripts/shared/review-finalize.js $ISSUE -F .tmp-$ISSUE-findings.json
 ```

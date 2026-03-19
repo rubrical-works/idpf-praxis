@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Software Development
-**Version:** v0.66.0
+**Version:** v0.66.1
 
 ## Core Principle
 

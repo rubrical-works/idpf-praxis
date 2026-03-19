@@ -1,5 +1,5 @@
 # System Instructions: Embedded Systems Engineer
-**Version:** v0.66.0
+**Version:** v0.66.1
 Extends: Core-Developer-Instructions.md
 
 **Purpose:** Specialized expertise in embedded systems, firmware development, hardware interaction, real-time systems, and IoT.

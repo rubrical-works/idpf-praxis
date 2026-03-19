@@ -1,5 +1,5 @@
 # IDPF-Performance Framework
-**Version:** v0.66.0
+**Version:** v0.66.1
 **Type:** Domain
 ## Overview
 Domain for performance testing: load, stress, endurance, and capacity testing. Validates NFRs for response time, throughput, scalability, and resource utilization.

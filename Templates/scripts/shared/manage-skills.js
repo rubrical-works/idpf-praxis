@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.0
+ * @framework-script 0.66.1
  * @description Unified skill lifecycle management with subcommands: list (show installed/available), install (deploy from packages), remove (uninstall), info (show skill details). Uses symlink-based per-skill deployment. Successor to install-skill.js with improved architecture.
  * @checksum sha256:placeholder
  *

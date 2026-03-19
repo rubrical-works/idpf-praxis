@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.0
+ * @framework-script 0.66.1
  * @description Error types, validation utilities, and handling helpers for skill catalog operations. Exports ErrorTypes, CatalogError, and validation helpers. Used by manage-skills.js and px-manager.
  * @checksum sha256:placeholder
  *
