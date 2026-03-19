@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.2
+ * @framework-script 0.66.3
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  * @checksum sha256:placeholder
  *
@@ -582,7 +582,7 @@ async function runDiscovery(options = {}) {
   let output;
   try {
     const { stdout } = await execAsync(
-      'gh pmu list --status in_review',
+      'gh pmu list --branch current --status in_review',
       EXEC_OPTS
     );
     output = stdout.trim();

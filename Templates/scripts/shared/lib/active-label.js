@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.2
+ * @framework-script 0.66.3
  * @description Manage the 'active' label on branch tracker issues, ensuring at most one open tracker holds it. Exports ensureActiveLabel() and removeActiveLabelOnly(). Used by create-branch.js and destroy-branch.js.
  * @checksum sha256:placeholder
  *

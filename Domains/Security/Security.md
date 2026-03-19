@@ -1,5 +1,5 @@
 # IDPF-Security Framework
-**Version:** v0.66.2
+**Version:** v0.66.3
 **Type:** Domain
 ## Overview
 Domain for security testing: SAST, DAST, penetration testing, vulnerability management, and compliance.

@@ -1,5 +1,5 @@
 ---
-version: "v0.66.2"
+version: "v0.66.3"
 allowed-tools: Bash, AskUserQuestion
 description: "Assign or remove issues from a branch: [#issue...] [branch/...] [--add-ready] [--remove] (project)"
 argument-hint: "[#issue...] [branch/name] [--add-ready] [--remove]"

@@ -1,5 +1,5 @@
 # System Instructions: Security Engineer
-**Version:** v0.66.2
+**Version:** v0.66.3
 Extends: Core-Developer-Instructions.md
 
 **Purpose:** Specialized expertise in application security, identifying vulnerabilities, implementing security best practices, and ensuring compliance.

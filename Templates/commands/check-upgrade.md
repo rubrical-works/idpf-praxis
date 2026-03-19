@@ -1,5 +1,5 @@
 ---
-version: "v0.66.2"
+version: "v0.66.3"
 description: Verify hub upgrade integrity for project commands and scripts
 argument-hint: ""
 copyright: "Rubrical Works (c) 2026"

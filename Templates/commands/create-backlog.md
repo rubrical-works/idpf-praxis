@@ -1,5 +1,5 @@
 ---
-version: "v0.66.2"
+version: "v0.66.3"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -34,17 +34,8 @@ gh issue view $issue_num --json labels,body --jq '.labels[].name' | grep -q "prd
 If not a PRD issue: error and stop.
 **Step 3:** Extract PRD path: `Pattern: /PRD\/[A-Za-z0-9_-]+\/PRD-[A-Za-z0-9_-]+\.md/`
 ---
-## Phase 1b: Branch Validation
-**BLOCKING:** Requires an active branch.
-```bash
-gh pmu branch current
-gh pmu branch list
-```
-| Branches Found | Action |
-|----------------|--------|
-| **None** | STOP -- create branch first with /create-branch |
-| **Exactly one** | Auto-assign: `gh pmu move $issue_num --branch current` |
-| **Multiple** | Prompt user via `AskUserQuestion` |
+## Phase 1b: (Removed)
+Branch assignment is not performed during backlog creation. Use `/assign-branch` after.
 ---
 ## Phase 1c: PRD Review Gate
 **BLOCKING:** Decomposing an unreviewed PRD risks propagating issues.

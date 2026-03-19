@@ -1,5 +1,5 @@
 ---
-version: "v0.66.2"
+version: "v0.66.3"
 description: Discover and catalog screen elements from source code (project)
 argument-hint: "[screen-name...] [--scope <path>] [--update]"
 copyright: "Rubrical Works (c) 2026"

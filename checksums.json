@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.66.2",
-  "generatedAt": "2026-03-19T20:53:19.667Z",
+  "frameworkVersion": "0.66.3",
+  "generatedAt": "2026-03-19T23:32:43.758Z",
   "fileCount": 64,
   "files": [
     {
@@ -126,8 +126,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/done-preamble.js",
-      "sha256": "0b00ce09b49f2f9ff653ae71d7768bfcc856ae4d32c8b215752b44cf4fb7ca2e",
-      "sizeBytes": 21422
+      "sha256": "1b0f9c529c8edb4bb044b451ab8cbd2858cf8298dad25f4d0735215ed2ff65de",
+      "sizeBytes": 21439
     },
     {
       "relativePath": "Templates/scripts/shared/done-verify.js",

@@ -1,5 +1,5 @@
 ---
-version: "v0.66.2"
+version: "v0.66.3"
 description: Start working on issues with validation and auto-TODO (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -61,8 +61,12 @@ Re-read `.claude/scripts/shared/lib/doc-templates.json` from disk. Create if war
 **Re-read files before evaluating each AC.** Do NOT evaluate from memory.
 Can verify -> `[x]`. Cannot verify -> check QA extraction (4a), STOP, present options.
 Update issue body via `gh pmu view/edit` with temp file.
-#### Step 4a: Manual Test AC Detection / QA Extraction
-Re-read `.claude/scripts/shared/lib/qa-config.json`. Match ACs against keywords. AskUserQuestion (multiSelect). Create sub-issues with `qa-required` label via `gh pmu sub create`. Parent stays `in_review` until QA sub-issues closed.
+#### Step 4a: QA Extraction — Automatic Sub-Issue Creation
+Re-read `.claude/scripts/shared/lib/qa-config.json`. Match unverifiable ACs against keywords. For each match, **automatically** (no user confirmation):
+1. `gh pmu sub create --parent $ISSUE --title "QA: [AC description]" --label qa-required -F .tmp-qa-body.md`
+2. Sub-issue body: AC text, parent reference, QA context
+3. Annotate parent AC as `[x] AC text → QA: #NNN`
+Silent, automatic flow. Works in standard and `--nonstop` mode.
 #### Step 4b: Force-Move Prohibition
 **NEVER** use `--force` to bypass unchecked ACs on issues you implemented. Legitimate: epic parents, external, branch trackers, test-plan approvals.
 

@@ -1,5 +1,5 @@
 # Framework Transitions Reference
-**Version:** v0.66.2
+**Version:** v0.66.3
 
 **Purpose:** Framework transition rules, diagrams, and hybrid usage patterns
 

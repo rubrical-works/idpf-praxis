@@ -1,5 +1,5 @@
 # Framework Development Reference
-**Version:** v0.66.2
+**Version:** v0.66.3
 
 **Purpose:** Detailed reference for IDPF development frameworks (2 frameworks: Agile, Vibe)
 
@@ -317,7 +317,7 @@ Add the `model:` field to the YAML frontmatter:
 
 ```yaml
 ---
-version: "v0.66.2"
+version: "v0.66.3"
 description: Command description (project)
 model: sonnet
 ---

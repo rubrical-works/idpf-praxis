@@ -1,5 +1,5 @@
 # System Instructions: Systems Programmer Specialist
-**Version:** v0.66.2
+**Version:** v0.66.3
 
 Extends: Core-Developer-Instructions.md
 

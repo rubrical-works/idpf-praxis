@@ -1,5 +1,5 @@
 # Domain Registry
-**Version:** v0.66.2
+**Version:** v0.66.3
 ## Overview
 Domains are specialized knowledge lenses activated via `--with` during reviews. Each domain provides evaluative criteria across 5 surfaces: charter, proposal, PRD, issue, and code review.
 ## Registry

@@ -1,5 +1,5 @@
 # Privacy Domain
-**Version:** v0.66.2
+**Version:** v0.66.3
 **Type:** Domain
 **Companion Skill:** privacy-compliance
 ## Overview
