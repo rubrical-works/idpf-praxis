@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * review-finalize.js
+ * @framework-script 0.66.0
+ * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
+ * @checksum sha256:placeholder
  *
- * Consolidates all review cleanup work into a single script call:
- * update body metadata (Reviews count), format and post review comment,
- * assign label (reviewed/pending), propagate labels for epics.
- *
- * Usage:
- *   node review-finalize.js 42 -F .tmp-42-findings.json
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { exec: execCb } = require('child_process');
@@ -281,6 +278,7 @@ function buildSuccessResult(data) {
     commentUrl: data.commentUrl || null,
     labelAssigned: data.labelAssigned,
     epicSubIssuesLabeled: data.epicSubIssuesLabeled || 0,
+    closingNotification: data.closingNotification || null,
   };
 }
 
@@ -399,12 +397,16 @@ async function main() {
   // Clean up findings file
   try { fs.unlinkSync(findingsFile); } catch (_e) { /* ignore */ }
 
+  // Build closing notification
+  const closingNotification = `---\nReview complete: #${issue} — ${findings.title}\n---`;
+
   const result = buildSuccessResult({
     bodyUpdated,
     commentPosted,
     commentUrl,
     labelAssigned,
     epicSubIssuesLabeled,
+    closingNotification,
   });
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }

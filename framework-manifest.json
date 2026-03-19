@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.65.0",
+  "version": "0.66.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -65,6 +65,7 @@
     "tdd-green-phase",
     "tdd-red-phase",
     "tdd-refactor-phase",
+    "test-scaffold",
     "test-writing-patterns",
     "vercel-project-setup"
   ],
@@ -79,7 +80,6 @@
       "source": ".claude/commands/",
       "core": [
         "change-domain-expert.md",
-        "manage-skills.md",
         "playwright-check.md"
       ],
       "workflow": [
@@ -153,12 +153,16 @@
           "wait-for-ci.js",
           "ci-watch.js",
           "upgrade-check.js",
+          "epic-complexity.js",
           "work-preamble.js",
           "done-preamble.js",
           "review-preamble.js",
           "review-finalize.js",
+          "review-ac-checkoff.js",
+          "paths-preamble.js",
           "resolve-preamble.js",
           "reset-issue-preamble.js",
+          "validate-release.js",
           "prd-skill-matcher.js",
           "statusline-check.js"
         ]
@@ -179,6 +183,8 @@
           "review-format.js",
           "input-validation.js",
           "debug.js",
+          "catalog-errors.js",
+          "persist-skill-suggestions.js",
           "doc-templates.json",
           "qa-config.json"
         ]
@@ -288,7 +294,6 @@
     "transfer-issue",
     "charter",
     "extensions",
-    "manage-skills",
     "plan-workstreams",
     "resolve-review",
     "review-test-plan"

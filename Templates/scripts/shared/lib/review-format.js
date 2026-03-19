@@ -1,10 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * Shared Review Format Constants
+ * @framework-script 0.66.0
+ * @description Shared review format constants, emoji markers, section headers, and regex patterns for deterministic comment formatting and parsing. Exports EMOJI, SECTION_HEADERS, PATTERNS, and formatting helpers. Used by review-finalize.js and resolve-preamble.js.
+ * @checksum sha256:placeholder
  *
- * Constants and patterns shared between review-finalize.js and resolve-preamble.js
- * for deterministic comment formatting and parsing.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * Shared Review Format Constants
  */
 
 // ─── Emoji Markers ───

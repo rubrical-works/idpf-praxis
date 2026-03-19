@@ -1,16 +1,11 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * prd-skill-matcher.js - PRD-aware skill matching for /create-prd
+ * @framework-script 0.66.0
+ * @description Read a PRD document, extract technical requirements from feature sections, and match against the skill keyword registry (.claude/metadata/skill-keywords.json). Consolidates PRD-to-skill mapping into a single script call. Used by /create-prd technical skills phase.
+ * @checksum sha256:placeholder
  *
- * Reads a PRD file, extracts technical requirements, and matches
- * against the skill keyword registry. Consolidates Steps 1-2 of
- * the Technical Skills Mapping section.
- *
- * Usage:
- *   node prd-skill-matcher.js --prd <path> [--installed skill1,skill2]
- *
- * Output: JSON object with matchedSkills, existingSkills, newSkills, registryAvailable
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');

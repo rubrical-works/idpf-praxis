@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * install-skill.js - Skill package extraction and deployment
+ * @framework-script 0.66.0
+ * @description Deploy skills from framework zip packages to project .claude/skills/ directory via extraction. Handles package discovery, version validation, and file deployment. Used by /charter skill selection and /manage-skills install subcommand.
+ * @checksum sha256:placeholder
  *
- * Shared script for deploying skills from framework packages to projects.
- * Used by /charter skill selection and /install-skill command.
- *
- * Usage:
- *   node install-skill.js <skill-name> [--framework-path <path>] [--project-dir <path>]
- *   node install-skill.js --list [--installed]
- *   node install-skill.js --help
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');

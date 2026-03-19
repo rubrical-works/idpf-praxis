@@ -1,19 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * @description Extract CHANGELOG section and update GitHub Release page with formatted notes
+ * @framework-script 0.66.0
+ * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
- * This script transforms raw CHANGELOG entries into a standardized release page format:
- * - Title: "{Project Name} vX.Y.Z" (from CHARTER.md, or fallback)
- * - Release date
- * - Auto-generated summary
- * - Category sections (Added, Fixed, Changed, etc.)
- * - Full changelog comparison link
- *
  * This script is provided by the framework and may be updated.
- * To customize: copy to .claude/scripts/shared/ and modify.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');

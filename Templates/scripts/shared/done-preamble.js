@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * done-preamble.js
+ * @framework-script 0.66.0
+ * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
+ * @checksum sha256:placeholder
  *
- * Consolidates deterministic validation and status transitions for the /done
- * command into a single invocation returning structured JSON. Replaces 6-8
- * sequential round-trips with one script call.
- *
- * Usage:
- *   node done-preamble.js --issue N
- *   node done-preamble.js --issues "N,M"
- *   node done-preamble.js --issue N --force-move
- *   node done-preamble.js              (discovery mode — query in_review)
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { exec: execCb } = require('child_process');

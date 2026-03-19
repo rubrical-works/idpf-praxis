@@ -1,9 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * lib/git.js - Git command utilities
+ * @framework-script 0.66.0
+ * @description Git command utilities for tag retrieval, commit analysis, and repository state queries. Exports exec(), getLatestTag(), getCommitsSince(), and related helpers. Used by prepare-release, analyze-commits, and validation scripts.
+ * @checksum sha256:placeholder
  *
- * Provides functions for interacting with git repositories.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * lib/git.js - Git command utilities
  */
 
 const { execSync } = require('child_process');

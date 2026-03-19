@@ -1,10 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * lib/input-validation.js - Input validation utilities for shell safety
+ * @framework-script 0.66.0
+ * @description Input validation utilities to prevent command injection, path traversal, and ReDoS from externally-sourced inputs. Exports validateIssueNumber(), validateBranchName(), validatePath(), and related guards. Used by all preamble scripts accepting user input.
+ * @checksum sha256:placeholder
  *
- * Provides validation functions to prevent command injection, path traversal,
- * and ReDoS attacks from externally-sourced inputs.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * lib/input-validation.js - Input validation utilities for shell safety
  *
  * @see #1875 (command injection), #1876 (ReDoS), #1877 (path traversal)
  */

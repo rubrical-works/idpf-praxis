@@ -1,9 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * lib/gh.js - GitHub CLI wrapper
+ * @framework-script 0.66.0
+ * @description GitHub CLI wrapper with retry logic, transient-error detection, and safe exec helpers. Exports ghExec(), ghQuery(), isTransientError(), and related utilities. Used by most preamble and workflow scripts.
+ * @checksum sha256:placeholder
  *
- * Provides functions for interacting with GitHub via the gh CLI.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * lib/gh.js - GitHub CLI wrapper
  */
 
 const { execSync, spawnSync } = require('child_process');

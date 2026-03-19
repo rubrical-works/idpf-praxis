@@ -1,19 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * check-upgrade.js — Post-upgrade verification for IDPF user projects
+ * @framework-script 0.66.0
+ * @description Post-upgrade verification for IDPF user projects. Exports five check functions: extension block preservation, command version drift detection, stale config reference detection, symlink health validation, and overall upgrade integrity report. Used by /check-upgrade command.
+ * @checksum sha256:placeholder
  *
- * Exports 5 check functions for verifying hub upgrade integrity:
- *   - checkExtensionIntegrity(projectDir, options?)
- *   - checkCustomScripts(projectDir)
- *   - checkCommandVersionDrift(projectDir, hubDir)
- *   - checkStaleConfigReferences(projectDir, hubDir)
- *   - checkSymlinkHealth(projectDir)
- *
- * Each function returns { pass: boolean, status: 'PASS'|'WARN'|'FAIL', findings: string[] }
- *
- * @see https://github.com/rubrical-works/idpf-praxis-dev/issues/1501
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');

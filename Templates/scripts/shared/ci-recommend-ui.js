@@ -2,11 +2,12 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.65.0
- * CI Recommendation Report UI
+ * @framework-script 0.66.0
+ * @description Format CI recommendations as a numbered interactive menu and parse user selections. Provides the display layer between ci-recommend.js (analysis) and ci-apply.js (execution). Part of the /ci recommend subcommand.
+ * @checksum sha256:placeholder
  *
- * Formats recommendation output for display and parses user selections.
- * Used by the /ci recommend command.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 /**

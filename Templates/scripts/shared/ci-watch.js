@@ -2,22 +2,12 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.65.0
- * CI Watch — Monitor GitHub Actions workflow runs by commit SHA
+ * @framework-script 0.66.0
+ * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
+ * @checksum sha256:placeholder
  *
- * Polls for CI run status and reports structured JSON results.
- * Used by /done (Step 6b) for background monitoring and /ci watch for manual use.
- *
- * Usage: node ci-watch.js --sha <commit> [--timeout <seconds>] [--poll <seconds>] [--max-wait <seconds>] [--branch <name>]
- *
- * Exit codes:
- *   0 = all runs passed
- *   1 = one or more runs failed
- *   2 = timeout waiting for completion
- *   3 = no run found for commit
- *   4 = one or more runs cancelled
- *
- * Refs: #1358
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

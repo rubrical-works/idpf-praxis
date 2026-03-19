@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * @description Concurrent workstream planning — argument parsing, analysis, and execution
+ * @framework-script 0.66.0
+ * @description Concurrent workstream planning — argument parsing, analysis, and execution. Handles deterministic operations for /plan-workstreams: argument validation, directory scanning, module boundary detection, conflict risk matrix computation, workstream grouping via union-find, and branch creation with .workstreams.json metadata.
  * @checksum sha256:placeholder
  *
- * This script handles deterministic operations for /plan-workstreams:
- * - Argument parsing and validation
- * - Directory scanning and module boundary detection
- * - Conflict risk matrix computation
- * - Branch creation and metadata management
- *
- * LLM judgment tasks (reading epic descriptions, presenting analysis,
- * composing worktree guide) are handled by the command spec directives.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

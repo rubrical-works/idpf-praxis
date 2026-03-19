@@ -1,19 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * review-preamble.js
+ * @framework-script 0.66.0
+ * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
+ * @checksum sha256:placeholder
  *
- * Consolidates all review setup work into a single JSON response:
- * fetch issue, detect type, determine redirect, load review mode,
- * compute review number, load criteria (common + type-specific + extensions).
- *
- * Replaces 4-5 sequential round-trips with one script call.
- *
- * Usage:
- *   node review-preamble.js 42
- *   node review-preamble.js 42 --with security
- *   node review-preamble.js 42 --mode team --force
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { exec: execCb } = require('child_process');
@@ -80,6 +73,7 @@ function parseArgs(args) {
   let withoutExtensions = null;
   let modeOverride = null;
   let force = false;
+  let noRedirect = false;
 
   let i = 0;
   while (i < args.length) {
@@ -99,6 +93,9 @@ function parseArgs(args) {
       i += 2;
     } else if (arg === '--force') {
       force = true;
+      i += 1;
+    } else if (arg === '--no-redirect') {
+      noRedirect = true;
       i += 1;
     } else {
       // Positional: issue number
@@ -121,6 +118,7 @@ function parseArgs(args) {
   if (withoutExtensions !== null) result.withoutExtensions = withoutExtensions;
   if (modeOverride !== null) result.modeOverride = modeOverride;
   if (force) result.force = true;
+  if (noRedirect) result.noRedirect = true;
   return result;
 }
 
@@ -361,8 +359,8 @@ async function main() {
   const { getIssueType } = require('./lib/issue-type.js');
   const { type: issueType, redirect } = getIssueType(issue);
 
-  // If redirect, return immediately with redirect info
-  if (redirect) {
+  // If redirect and not suppressed, return immediately with redirect info
+  if (redirect && !args.noRedirect) {
     const envelope = buildSuccessEnvelope(
       {
         issue,
@@ -378,6 +376,10 @@ async function main() {
     return;
   }
 
+  // When redirect was suppressed (--no-redirect), derive type from redirect label name
+  // e.g., proposal label -> type 'proposal', prd label -> type 'prd', test-plan label -> type 'test-plan'
+  const resolvedType = issueType || ((issue.labels || []).find(l => ['proposal', 'prd', 'test-plan'].includes(l.name)) || {}).name || 'generic';
+
   // Load review mode
   const { getReviewMode } = require('./lib/review-mode.js');
   const reviewMode = getReviewMode(process.cwd(), args.modeOverride || null);
@@ -390,7 +392,7 @@ async function main() {
   roundTrips++;
 
   // Load criteria
-  const criteria = loadCriteria(issueType, process.cwd(), args.modeOverride || null);
+  const criteria = loadCriteria(resolvedType, process.cwd(), args.modeOverride || null);
 
   // Load extensions
   const extensionResult = loadExtensions(args.withExtensions || null, process.cwd(), args.withoutExtensions || null);
@@ -401,7 +403,7 @@ async function main() {
   // Build context
   const context = {
     issue,
-    type: issueType,
+    type: resolvedType,
     redirect: null,
     reviewMode,
     reviewNumber: Math.max(reviewNumber, commentCount + 1),

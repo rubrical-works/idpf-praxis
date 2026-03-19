@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * @description Parse commits since last tag, categorize by type
+ * @framework-script 0.66.0
+ * @description Parse git commits since the last semver tag and categorize by conventional commit type (feat, fix, chore, etc.). Extracts type, scope, breaking change flags, and issue references. Used by /prepare-release and piped into generate-changelog.js.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
- * To customize: copy to .claude/scripts/shared/ and modify.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

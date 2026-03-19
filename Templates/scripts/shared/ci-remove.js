@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description Remove CI features from GitHub Actions workflow files. Locates feature configuration across workflow YAML files and cleanly removes associated sections (top-level keys, job steps, triggers). Part of the /ci remove subcommand.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
@@ -8,7 +16,6 @@ const { loadFeatureRegistry } = require('./ci-list.js');
 const { createBackup, validateYaml } = require('./ci-modify.js');
 
 /**
- * @framework-script 0.65.0
  * Top-level keys associated with features that can be cleanly removed.
  */
 const FEATURE_TOP_LEVEL_KEYS = {

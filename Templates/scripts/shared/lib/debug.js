@@ -1,9 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * lib/debug.js - Debug logging utility
+ * @framework-script 0.66.0
+ * @description Provide DEBUG-gated diagnostic logging to stderr. Exports debug(), warn(), and DEBUG flag. Used by preamble scripts and library modules for conditional tracing.
+ * @checksum sha256:placeholder
  *
- * Provides DEBUG-gated diagnostic logging to stderr.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * lib/debug.js - Debug logging utility
  * Enable via: DEBUG=1 node script.js
  *
  * @see #1881

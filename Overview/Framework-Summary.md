@@ -1,5 +1,5 @@
 # Framework Summary
-**Version:** v0.65.0
+**Version:** v0.66.0
 
 **Purpose:** Compact startup reference for framework developers
 
@@ -11,7 +11,7 @@
 | Domains | 11 | Domains/ (testing criteria, guides, templates) |
 | Domain Specialists | 22 | 12 Base + 10 Pack |
 | Core Instructions | 2 | Core-Developer-Instructions + Domain-Selection-Guide |
-| Skills | 36 | Skills/ |
+| Skills | 38 | Skills/ |
 | Assistant Guidelines | 4 | Assistant/ |
 
 ## Current Versions
@@ -98,7 +98,7 @@ For comprehensive information, load on-demand:
 | Framework-Development.md | IDPF-Agile, Vibe details, create-prd skill |
 | Framework-Testing.md | Domains/ — testing criteria library + 6 specialized domains |
 | Framework-System-Instructions.md | Core + 22 Domain Specialists (12 Base, 10 Pack) |
-| Framework-Skills.md | All 34 skills with descriptions |
+| Framework-Skills.md | All 38 skills with descriptions |
 | Framework-Transitions.md | Transition matrix, diagrams, hybrid usage |
 | Framework-Overview.md | Complete reference (all sections) |
 

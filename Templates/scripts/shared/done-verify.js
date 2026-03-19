@@ -1,13 +1,11 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * done-verify.js - Diff verification for /done command
+ * @framework-script 0.66.0
+ * @description Analyze commits referencing an issue to detect hallucinated or incomplete work. Examines diffs for comment-only changes, EOF-only appends, and suspect patterns (e.g., TODO placeholders, empty function bodies). Parallelizes per-commit and per-file git operations for performance. Used by /done verification phase.
+ * @checksum sha256:placeholder
  *
- * Analyzes commits referencing an issue to detect hallucinated completions.
- * Detects: comment-only changes, EOF-only appends, suspect patterns.
- * Parallelizes per-commit and per-file git operations for performance.
- *
- * Usage: node done-verify.js --issue <number>
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { exec: execCb } = require('child_process');

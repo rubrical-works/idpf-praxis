@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description Analyze a project to detect languages, test tooling, deployment targets, and current CI configuration. Generates structured project profile used by ci-recommend.js to produce CI improvement recommendations. Part of the /ci recommend subcommand.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
@@ -7,7 +15,6 @@ const path = require('path');
 const { detectLanguages, detectPrimaryLanguage } = require('./ci-detect-lang.js');
 
 /**
- * @framework-script 0.65.0
  * Test tooling indicators per language ecosystem.
  */
 const TEST_TOOLING_JS = ['jest', 'mocha', 'vitest', 'ava', 'tape', 'jasmine'];

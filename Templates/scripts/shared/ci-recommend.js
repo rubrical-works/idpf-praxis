@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description Analyze a project and generate CI improvement recommendations based on detected languages, test tooling, deployment targets, and deprecated action versions. Produces structured recommendation objects consumed by ci-recommend-ui.js and ci-apply.js.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +18,6 @@ const { analyzeProject } = require('./ci-analyze.js');
 const RECOMMENDATION_TYPES = ['Add', 'Remove', 'Alter', 'Improve'];
 
 /**
- * @framework-script 0.65.0
  * Deprecated action versions — map old to recommended.
  */
 const DEPRECATED_ACTIONS = {

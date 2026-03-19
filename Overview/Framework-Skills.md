@@ -1,5 +1,5 @@
 # Framework Skills Reference
-**Version:** v0.65.0
+**Version:** v0.66.0
 
 **Purpose:** Detailed reference for all Skills
 
@@ -7,7 +7,7 @@
 
 **Location:** `Skills/`
 **Purpose:** Reusable capabilities for specific tasks
-**Total Skills:** 36 (6 TDD/BDD, 1 PRD, 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps (incl. observability-setup), 2 testing/browser, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform, 1 i18n)
+**Total Skills:** 38 (6 TDD/BDD, 1 PRD, 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps (incl. observability-setup), 2 testing/browser, 2 desktop (incl. electron-cross-build), 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform, 1 i18n, 1 test scaffolding)
 
 ### Skill Characteristics
 - Packaged as distributable units (SKILL.md + resources/ + LICENSE.txt)
@@ -23,14 +23,8 @@ Skills can be installed in two ways:
 **1. Automatic (via `/charter`):**
 During charter creation, skills are automatically suggested based on your tech stack and deployed to your project.
 
-**2. Manual (via `/manage-skills`):**
-```
-/manage-skills list                   # Show available and installed skills
-/manage-skills install <skill-name>   # Install a specific skill
-/manage-skills remove <skill-name>    # Remove an installed skill
-/manage-skills info <skill-name>      # View skill details
-/manage-skills                        # Interactive mode
-```
+**2. Manual (via px-manager):**
+Use the px-manager hub manager to install, remove, and update skills. Skill suggestions from PRD/backlog creation are persisted to `framework-config.json` → `suggestedSkills` for px-manager discovery.
 
 **Skill Location:** Installed skills are placed in `.claude/skills/{skill-name}/`.
 
@@ -441,6 +435,23 @@ During charter creation, skills are automatically suggested based on your tech s
 
 **Audience:** Intermediate to experienced developers
 
+### electron-cross-build
+**Function:** Cross-compile Electron apps from Linux to produce Windows executables
+
+**Coverage:**
+- Wine/Docker toolchain setup
+- electron-builder and electron-forge cross-platform configuration
+- Native module cross-compilation (node-gyp, prebuild-install)
+- NSIS installer generation from Linux
+- Code signing from Linux (Wine/signtool, cloud services)
+- CI/CD pipeline examples (GitHub Actions)
+
+**When Used:** Building Windows .exe from Linux CI/build environments
+
+**Resources:** cross-build-guide.md
+
+**Audience:** Intermediate to experienced developers with Electron experience
+
 ### drawio-generation
 **Function:** Generate Draw.io XML diagram files from architecture and design discussions
 
@@ -457,6 +468,22 @@ During charter creation, skills are automatically suggested based on your tech s
 
 **Audience:** All developers needing visual documentation
 
+### test-scaffold
+**Function:** Generate testing infrastructure from IDPF testing domain knowledge
+
+**Coverage:**
+- Config generation for accessibility (axe-core), chaos (toxiproxy), contract (Pact), performance (k6), QA automation (Playwright), and security (semgrep, ZAP, gitleaks)
+- Project detection for language, framework, and existing test setup
+- Domain selection with single or multi-domain orchestration
+- CI workflow generation (GitHub Actions)
+- Ready-to-run test specs and configurations
+
+**When Used:** Setting up testing infrastructure for a new or existing project
+
+**Resources:** multi-domain-example.md, domains/ (6 domain modules)
+
+**Audience:** Intermediate to experienced developers
+
 ## Framework-Skill Dependencies
 
 | Framework | Required Skills |
@@ -472,5 +499,6 @@ During charter creation, skills are automatically suggested based on your tech s
 - playwright-setup - Playwright test automation setup
 - drawio-generation - Draw.io diagram generation from design discussions
 - electron-development - Electron desktop application development
+- electron-cross-build - Cross-compile Electron apps from Linux to Windows
 
 **End of Framework Skills Reference**

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * @description Poll GitHub Actions workflow status with timeout
+ * @framework-script 0.66.0
+ * @description Poll GitHub Actions workflow status with timeout. Monitors workflow runs by commit SHA with 60-second polling intervals and 5-minute default timeout. Returns structured JSON with run status, conclusion, and URL. Used by /prepare-release CI gate.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
- * To customize: copy to .claude/scripts/shared/ and modify.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

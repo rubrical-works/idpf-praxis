@@ -116,9 +116,10 @@
     {
       "id": "path-analysis-present",
       "name": "Path Analysis present",
-      "description": "Check for Path Analysis section in proposal",
+      "description": "Check for Path Analysis section in proposal — gates review if missing",
       "type": "objective",
-      "autoCheckMethod": "Check for `## Path Analysis` section in proposal document. If missing, suggest: \"Consider running `/paths #N` to identify scenario paths before PRD conversion.\" This is non-blocking — the review continues regardless of whether Path Analysis exists. If present, no suggestion displayed."
+      "gate": true,
+      "autoCheckMethod": "Check for `## Path Analysis` section in proposal document. If present: ✅, continue normally. If missing: STOP evaluation and present AskUserQuestion with options: (1) \"Run /paths now (Recommended)\" — invoke `/paths #N`, then re-evaluate this criterion; (2) \"Continue without\" — record as ⚠️ and proceed. See review-proposal.md Step 2a-gate for flow details."
     },
     {
       "id": "screen-coverage",

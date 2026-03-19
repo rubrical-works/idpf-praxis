@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * manage-skills.js — Unified skill management
+ * @framework-script 0.66.0
+ * @description Unified skill lifecycle management with subcommands: list (show installed/available), install (deploy from packages), remove (uninstall), info (show skill details). Uses symlink-based per-skill deployment. Successor to install-skill.js with improved architecture.
+ * @checksum sha256:placeholder
  *
- * Shared script for skill lifecycle management: list, install, remove, info.
- * Replaces install-skill.js with symlink-based per-skill deployment.
- *
- * Usage:
- *   const { listSkills } = require('./manage-skills.js');
- *   const result = listSkills(projectDir, { verbose: false });
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');
@@ -638,6 +635,80 @@ function mergeSkillRecommendations(existing, matches) {
  * @param {string} skillMdContent - Content of SKILL.md
  * @returns {string} 'Direct only' or 'Auto-trigger'
  */
+/**
+ * Check installed skills for available updates against the catalog.
+ * @param {string} projectDir - Path to the project directory
+ * @returns {object} { ok, updates: [{ name, installed, available }], error? }
+ */
+function checkUpdates(projectDir) {
+  const catalogPath = path.join(projectDir, '.claude', 'metadata', 'skill-catalog.json');
+  const registryPath = path.join(projectDir, '.claude', 'metadata', 'skill-registry.json');
+  const configPath = path.join(projectDir, 'framework-config.json');
+
+  // Try catalog first, fall back to registry
+  let source;
+  let sourceName;
+  if (fs.existsSync(catalogPath)) {
+    try {
+      source = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
+      sourceName = 'catalog';
+    } catch (_err) {
+      // Fall through to registry
+    }
+  }
+  if (!source && fs.existsSync(registryPath)) {
+    try {
+      source = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+      sourceName = 'registry';
+    } catch (_err) {
+      return { ok: false, error: 'Could not read skill catalog or registry.' };
+    }
+  }
+  if (!source) {
+    return { ok: false, error: 'No skill catalog or registry found.' };
+  }
+
+  // Get installed skills and their versions from SKILL.md frontmatter
+  let projectSkills = [];
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
+    } catch (_err) { /* empty */ }
+  }
+
+  if (projectSkills.length === 0) {
+    return { ok: true, updates: [], source: sourceName };
+  }
+
+  const updates = [];
+  for (const skillName of projectSkills) {
+    const catalogEntry = source.skills.find(s => s.name === skillName);
+    if (!catalogEntry || !catalogEntry.version) continue;
+
+    // Get installed version from SKILL.md in the project's skill directory
+    const skillMdPath = path.join(projectDir, '.claude', 'skills', skillName, 'SKILL.md');
+    let installedVersion = null;
+    if (fs.existsSync(skillMdPath)) {
+      try {
+        const content = fs.readFileSync(skillMdPath, 'utf-8');
+        const match = content.match(/^version:\s*"?([^"\n]+)"?/m);
+        if (match) installedVersion = match[1];
+      } catch (_err) { /* empty */ }
+    }
+
+    if (installedVersion && catalogEntry.version !== installedVersion) {
+      updates.push({
+        name: skillName,
+        installed: installedVersion,
+        available: catalogEntry.version
+      });
+    }
+  }
+
+  return { ok: true, updates, source: sourceName };
+}
+
 function getInvocationMode(skillMdContent) {
   if (skillMdContent.includes('disable-model-invocation: true')) {
     return 'Direct only';
@@ -650,6 +721,7 @@ module.exports = {
   installSkill,
   removeSkill,
   skillInfo,
+  checkUpdates,
   getPostInstallHook,
   validateRegistryEntry,
   matchSkillsToTechStack,

@@ -1,9 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * lib/output.js - Output formatting utilities
+ * @framework-script 0.66.0
+ * @description Consistent output formatting for JSON, tables, and human-readable messages. Exports outputJSON(), outputTable(), setQuiet(), isTTY(), and formatting helpers. Used by all preamble and CLI scripts for structured output.
+ * @checksum sha256:placeholder
  *
- * Provides consistent output formatting for all scripts.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * lib/output.js - Output formatting utilities
  */
 
 // Check if we're in quiet mode (set via --quiet flag)

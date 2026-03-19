@@ -1,5 +1,5 @@
 # Python Test Examples (pytest)
-**Version:** v0.65.0
+**Version:** v0.66.0
 
 **Framework:** IDPF-QA-Automation
 

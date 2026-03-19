@@ -1,25 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * generate-changelog.js - Generate CHANGELOG entry from commits
+ * @framework-script 0.66.0
+ * @description Generate a Keep a Changelog formatted entry from categorized commits. Accepts piped input from analyze-commits.js or reads commits directly. Groups changes by type (Added, Changed, Fixed, Removed) with issue references. Used by /prepare-release.
+ * @checksum sha256:placeholder
  *
- * Analyzes commits and generates a Keep a Changelog formatted entry.
- * Can accept piped input from analyze-commits.js.
- *
- * Usage:
- *   node generate-changelog.js [options]
- *   node analyze-commits.js | node generate-changelog.js --version v0.8.0
- *
- * Options:
- *   --version <version>   Version for header (required)
- *   --date <date>         Date for header (default: today)
- *   --quiet               Suppress non-output messages
- *   --help                Show this help message
- *
- * Exit codes:
- *   0 - Success
- *   1 - Error
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const git = require('./lib/git');

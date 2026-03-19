@@ -1,0 +1,30 @@
+{
+  "functional": [
+    "service",
+    "handler",
+    "ipc",
+    "api",
+    "preload",
+    "search",
+    "filter",
+    "state management",
+    "crud",
+    "data flow",
+    "new page",
+    "new component"
+  ],
+  "restyle": [
+    "restyle",
+    "redesign",
+    "theme",
+    "styling",
+    "visual",
+    "css",
+    "color",
+    "font",
+    "layout",
+    "header band",
+    "e2e test update",
+    "test migration"
+  ]
+}

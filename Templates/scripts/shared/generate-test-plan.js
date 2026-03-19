@@ -1,23 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * generate-test-plan.js - Generate test plan skeleton from branch issues
+ * @framework-script 0.66.0
+ * @description Generate a test plan skeleton markdown file from the issues assigned to the current git branch. Auto-detects version from branch name or accepts version parameter. Outputs to Construction/Test-Plans/ directory. Used by /prepare-release test plan generation.
+ * @checksum sha256:placeholder
+ *
  * @module scripts/shared/generate-test-plan
  *
- * Usage:
- *   node .claude/scripts/shared/generate-test-plan.js [version]
- *
- * Examples:
- *   node .claude/scripts/shared/generate-test-plan.js v0.33.0
- *   node .claude/scripts/shared/generate-test-plan.js           # Auto-detects version
- *
- * Prerequisites:
- *   - gh CLI installed and authenticated
- *   - gh-pmu extension installed
- *   - Active branch with assigned issues
- *
- * Output:
- *   Creates Construction/Test-Plans/{version}-test-plan.md
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * statusline-check.js
+ * @framework-script 0.66.0
+ * @description Detect whether a Claude Code status line is configured in user-level or project-level settings.json. Returns JSON with configuration status and source path. Read-only utility used during session startup to determine if statusline-setup agent should run.
+ * @checksum sha256:placeholder
  *
- * Detects whether a Claude Code status line is configured in user-level
- * or project-level settings. Read-only — never modifies settings files.
- *
- * Usage:
- *   node statusline-check.js
- *
- * Returns JSON: { configured: boolean, source?: string }
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');

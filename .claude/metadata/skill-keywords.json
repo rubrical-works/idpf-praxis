@@ -12,6 +12,7 @@
     "tdd-green-phase",
     "tdd-red-phase",
     "tdd-refactor-phase",
+    "test-scaffold",
     "test-writing-patterns"
   ],
   "skillKeywords": {
@@ -390,6 +391,24 @@
       "clean up code",
       "improve design"
     ],
+    "test-scaffold": [
+      "scaffold testing",
+      "testing infrastructure",
+      "accessibility testing",
+      "chaos engineering",
+      "contract testing",
+      "performance testing",
+      "security testing",
+      "qa automation",
+      "axe-core",
+      "semgrep",
+      "k6",
+      "pact",
+      "toxiproxy",
+      "zap",
+      "gitleaks",
+      "test scaffold"
+    ],
     "test-writing-patterns": [
       "test pattern",
       "aaa pattern",
@@ -478,6 +497,7 @@
     "tdd-green-phase": "testing",
     "tdd-red-phase": "testing",
     "tdd-refactor-phase": "testing",
+    "test-scaffold": "testing",
     "test-writing-patterns": "testing",
     "vercel-project-setup": "platform"
   },

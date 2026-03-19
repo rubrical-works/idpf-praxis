@@ -1,9 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * lib/skill-keyword-matcher.js - Skill keyword matching for skill suggestion phases
+ * @framework-script 0.66.0
+ * @description Match skill keywords against content text for skill suggestion phases. Exports loadSkillKeywords() and matchSkills(). Used by /create-prd, /create-backlog, and /add-story for automated skill discovery.
+ * @checksum sha256:placeholder
  *
- * Replaces ad-hoc inline node -e code in /create-prd, /create-backlog, /add-story.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * lib/skill-keyword-matcher.js
  *
  * Usage:
  *   node lib/skill-keyword-matcher.js --content "story text" --installed skill1,skill2

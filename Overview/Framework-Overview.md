@@ -1,5 +1,5 @@
 # Framework Overview
-**Version:** v0.65.0
+**Version:** v0.66.0
 
 **Purpose:** Comprehensive reference for AI assistants (Claude/Claude Code) and framework development
 **Change History:** See git log and CHANGELOG.md
@@ -1354,7 +1354,7 @@ Assistant Guidelines (HOW WELL - quality control)
 - **2 Development Process Frameworks**: IDPF-Agile, IDPF-Vibe (7 variants)
 - **Domains**: 11 domain knowledge libraries (QA-Automation, Performance, Security, Accessibility, Chaos, Contract-Testing, API-Design, Observability, Privacy, SEO, i18n) in Domains/
 - **System Instructions**: 1 Core + 22 Domain Specialists + 1 Domain Selection Guide + 1 Legacy + Vibe Agent (Core + 6 platforms)
-- **36 Skills**: 6 TDD/BDD (experienced), 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps (incl. observability-setup), 2 testing/browser, 1 desktop, 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform, 1 i18n
+- **38 Skills**: 6 TDD/BDD (experienced), 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps (incl. observability-setup), 2 testing/browser, 2 desktop (incl. electron-cross-build), 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform, 1 i18n, 1 test scaffolding
 - **2 Assistant Guideline Documents**: Software dev (with file operations), Skill creation
 
 > **Note:** IDPF-PRD was deprecated in v0.24; requirements engineering now uses the `create-prd` skill.

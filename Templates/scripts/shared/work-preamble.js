@@ -1,17 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * work-preamble.js
+ * @framework-script 0.66.0
+ * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
+ * @checksum sha256:placeholder
  *
- * Consolidates deterministic setup work for the /work command into a single
- * invocation returning structured JSON. Replaces 7-9 sequential round-trips
- * with one script call.
- *
- * Usage:
- *   node work-preamble.js --issue N
- *   node work-preamble.js --issues "42,43,44"
- *   node work-preamble.js --status backlog
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { exec: execCb } = require('child_process');

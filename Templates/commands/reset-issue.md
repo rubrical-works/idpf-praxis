@@ -1,5 +1,5 @@
 ---
-version: "v0.65.0"
+version: "v0.66.0"
 description: Reset bug/enhancement/prd/proposal issue to clean slate (project)
 argument-hint: "#issue [--dry-run]"
 copyright: "Rubrical Works (c) 2026"

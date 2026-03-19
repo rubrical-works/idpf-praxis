@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * transfer-issue.js
+ * @framework-script 0.66.0
+ * @description Transfer an issue between branches or remove it from branch assignment. Validates source and target branches, updates gh pmu branch field, and reports the transfer. Used by /transfer-issue command.
+ * @checksum sha256:placeholder
  *
- * Transfer an issue between branches.
- * Used by /transfer-issue slash command.
- *
- * Usage:
- *   node transfer-issue.js #123                       # Show current and options
- *   node transfer-issue.js #123 --branch release/v2.0 # Move to different branch
- *   node transfer-issue.js #123 --remove-branch       # Remove from branch
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

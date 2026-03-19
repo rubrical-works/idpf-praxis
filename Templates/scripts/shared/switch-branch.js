@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * switch-branch.js
+ * @framework-script 0.66.0
+ * @description Switch between branch contexts with interactive selection or direct branch name. Lists open branch trackers, validates target branch exists, performs git checkout, and updates active label. Used by /switch-branch command.
+ * @checksum sha256:placeholder
  *
- * Switch between branch contexts.
- * Used by /switch-branch slash command.
- *
- * Usage:
- *   node switch-branch.js                    # Interactive mode (lists branches)
- *   node switch-branch.js release/v1.0       # Direct branch switch
- *   node switch-branch.js idpf/my-feature    # Any prefix works
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

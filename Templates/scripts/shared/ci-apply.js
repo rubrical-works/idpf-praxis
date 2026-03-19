@@ -5,11 +5,12 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.65.0
- * CI Apply Recommendations
+ * @framework-script 0.66.0
+ * @description Orchestrate application of selected CI recommendations with sequential execution, confirmation prompts, error recovery, and summary reporting. Accepts recommendation objects from ci-recommend.js and applies them via ci-add.js. Part of the /ci apply subcommand.
+ * @checksum sha256:placeholder
  *
- * Orchestrates the application of selected CI recommendations.
- * Handles confirmation, sequential execution, error recovery, and reporting.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 /**

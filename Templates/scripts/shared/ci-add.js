@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description Add selected CI features to a project's GitHub Actions workflows. Applies feature templates with YAML merging, handles confirmation prompts, and provides error recovery. Part of the /ci add subcommand.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +17,6 @@ const { modifyWorkflow } = require('./ci-modify.js');
 const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
 
 /**
- * @framework-script 0.65.0
  * Feature types determine how the template is applied to the workflow.
  * 'top-level' features add a root-level YAML key (e.g., concurrency:).
  * 'step' features add a step to an existing job.

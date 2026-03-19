@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * @description Recommend semver bump based on commit types
+ * @framework-script 0.66.0
+ * @description Recommend semver bump based on commit types. Classifies commits via conventional commit prefixes (feat:, fix:) with fallback to issue label lookup via GitHub API. Returns major/minor/patch recommendation with rationale. Used by /prepare-release version determination.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
- * To customize: copy to .claude/scripts/shared/ and modify.
- *
- * Supports both conventional commit prefixes (feat:, fix:, etc.)
- * and Refs #NNN style commits (classifies via issue label lookup
- * with keyword heuristic fallback).
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { execSync } = require('child_process');

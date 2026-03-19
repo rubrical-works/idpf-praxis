@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * resolve-preamble.js
+ * @framework-script 0.66.0
+ * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, and returns structured envelope for LLM-driven resolution.
+ * @checksum sha256:placeholder
  *
- * Consolidates resolve-review setup into a single script call:
- * parse review comments, extract findings, classify for auto-fix
- * vs user-input, and return a structured envelope.
- *
- * Usage:
- *   node resolve-preamble.js 42
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const path = require('path');

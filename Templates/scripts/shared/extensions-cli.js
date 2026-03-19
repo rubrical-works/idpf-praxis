@@ -1,28 +1,14 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * extensions-cli.js
- *
- * Script-driven CLI for extension point operations.
- * Replaces AI-interpreted markdown specs for read-only subcommands,
- * reducing execution from 3-16+ tool calls to 1 Bash call (<1s).
- *
- * Usage:
- *   node extensions-cli.js list [--command X] [--status]
- *   node extensions-cli.js view <command>:<point>
- *   node extensions-cli.js validate
- *   node extensions-cli.js summary
- *   node extensions-cli.js matrix              (alias for summary)
- *   node extensions-cli.js recipes [category]
- *   node extensions-cli.js help
- *
- * Exit codes:
- *   0 = success
- *   1 = validation failures found (validate subcommand)
- *   2 = fatal error (missing registry, invalid arguments)
+ * @framework-script 0.66.0
+ * @description Script-driven CLI for extension point operations. Replaces AI-interpreted markdown specs for read-only subcommands (list, view, diff, validate), reducing execution from 3-16+ tool calls to 1 Bash call. Used by /extensions command.
+ * @checksum sha256:placeholder
  *
  * @module .claude/scripts/shared/extensions-cli
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');

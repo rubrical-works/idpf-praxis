@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description Validate GitHub Actions workflow files. Checks YAML syntax and structural correctness (valid triggers, job definitions, step formatting) for all workflow files. Reports findings with line numbers. Part of the /ci validate subcommand.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.65.0
  * Validate GitHub Actions workflow files
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted validation results

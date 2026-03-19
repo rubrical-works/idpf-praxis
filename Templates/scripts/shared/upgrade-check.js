@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * @description Check for third-party framework/dependency upgrades
+ * @framework-script 0.66.0
+ * @description Check for third-party framework/dependency upgrades. Reads CHARTER.md or Tech-Stack.md for dependency list, queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
+ * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
- * To customize: copy to .claude/scripts/shared/ and modify.
- *
- * Usage:
- *   node upgrade-check.js [--force]     # Run upgrade check (--force ignores cooldown)
- *
- * Reads CHARTER.md or Inception/Tech-Stack.md to detect ecosystems,
- * then queries package registries for latest versions.
- * Checks are throttled to once every 14 days via .idpf-update-check.json.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const fs = require('fs');

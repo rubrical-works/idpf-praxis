@@ -1,26 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * cleanup-release-assets.js - Clean up old release assets
+ * @framework-script 0.66.0
+ * @description Delete binary assets from older GitHub releases, keeping only the N most recent tagged releases (default: 3). Preserves release metadata (notes, tags) while removing downloadable files to reduce storage.
+ * @checksum sha256:placeholder
  *
- * Deletes binary assets from older GitHub releases, keeping only the
- * N most recent tagged releases (default: 3).
- *
- * Usage:
- *   node cleanup-release-assets.js
- *   node cleanup-release-assets.js --keep 5
- *   node cleanup-release-assets.js --dry-run
- *
- * Options:
- *   --keep <n>            Number of recent releases to keep assets for (default: 3)
- *   --dry-run             Show what would be deleted without making changes
- *   --quiet               Suppress non-output messages
- *   --help                Show this help message
- *
- * Exit codes:
- *   0 - Success
- *   1 - Error
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const gh = require('./lib/gh');

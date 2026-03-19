@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description Modify a workflow YAML file safely, preserving comments and structure. Supports adding top-level keys, inserting steps into jobs, and merging configuration blocks. Used by ci-add.js and ci-remove.js for non-destructive YAML edits.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.65.0
  * Modify a workflow YAML file safely, preserving comments and structure.
  * @param {string} filePath - Path to the workflow YAML file
  * @param {Object} operation - The modification operation

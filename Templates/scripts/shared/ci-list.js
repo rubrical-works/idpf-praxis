@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description List available CI features with enabled/disabled status. Detects active features by scanning workflow YAML files and formats output with status indicators. Part of the /ci list subcommand.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.65.0
  * List available CI features with enabled/disabled status
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted output

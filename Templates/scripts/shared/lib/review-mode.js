@@ -1,13 +1,17 @@
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description Filter review criteria based on project reviewMode configuration (solo, team, enterprise). Exports getReviewMode(), filterCriteria(), getEnabledCriteria(), and shouldEvaluate(). Used by review-preamble.js and code-review-preamble.js.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * Review Mode Helper Functions
+ */
+
 const fs = require('fs');
 const path = require('path');
-
-/**
- * @framework-script 0.65.0
- * Review Mode Helper Functions
- *
- * Provides utilities for filtering review criteria based on project's reviewMode configuration.
- */
 
 let _criteriaCache = null;
 

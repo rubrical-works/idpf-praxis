@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * reset-issue-preamble.js
+ * @framework-script 0.66.0
+ * @description Analyze an issue to determine what /reset-issue would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
+ * @checksum sha256:placeholder
  *
- * Analyzes an issue to determine what /reset-issue would do.
- * Returns structured JSON with reset scope and actions.
- *
- * Usage:
- *   node reset-issue-preamble.js --issue N
- *   node reset-issue-preamble.js --issue N --dry-run
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { exec: execCb } = require('child_process');

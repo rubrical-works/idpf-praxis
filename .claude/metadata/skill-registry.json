@@ -1,12 +1,16 @@
 {
-  "generatedAt": "2026-03-16T19:04:44.798Z",
+  "generatedAt": "2026-03-19T04:34:09.615Z",
   "version": "1.0.0",
-  "skillCount": 37,
+  "skillCount": 38,
   "skills": [
     {
       "name": "anti-pattern-analysis",
       "description": "Systematic detection of anti-patterns during code review with actionable refactoring guidance",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "862835380df3f757f9ddd3fcf03853ba4c2092831e3daca58dfaff2fc4297483",
       "category": "code-quality",
       "relevantTechStack": [
         "javascript",
@@ -19,12 +23,17 @@
         "csharp"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "api-versioning",
       "description": "Guide developers through API versioning strategies, deprecation workflows, and backward compatibility patterns",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "81934c63ced2d87e4778bc73d0bccd7cfe3bb33831288bbbb3ee4611f16357f4",
       "category": "architecture",
       "relevantTechStack": [
         "rest",
@@ -40,6 +49,10 @@
       "name": "astro-development",
       "description": "Architectural decision patterns for Astro web framework — Islands hydration, Content Collections, multi-framework integration, and deployment",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "e124853afe2e71eae7a7648d6297b1fee5aacc5e3e924c143b0036e6c6254ca9",
       "category": "platform",
       "relevantTechStack": [
         "astro",
@@ -56,6 +69,10 @@
       "name": "bdd-writing",
       "description": "Guide developers on writing BDD specifications using Gherkin syntax, feature files, and step definitions",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "6638ecbe59834ab14446c071d5c4c8ada20630dd1ad127ca938b1f707bfb8007",
       "category": "testing",
       "relevantTechStack": [
         "cucumber",
@@ -71,6 +88,10 @@
       "name": "beginner-testing",
       "description": "Introduce test-driven development to beginners with simple Flask/Sinatra test examples and TDD concepts",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "697ab25b193e103bc2bfe52a2d865ef2f1282c6f3ffffe5270ba6bdec21b5ac3",
       "category": "testing",
       "relevantTechStack": [
         "flask",
@@ -86,6 +107,10 @@
       "name": "ci-cd-pipeline-design",
       "description": "Guide developers through CI/CD pipeline design including architecture patterns, stage design, and security considerations",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "26afbd56ff278c290d212e9303b5cbba4df0db11e1204881326866d348bc3731",
       "category": "devops",
       "relevantTechStack": [
         "github-actions",
@@ -101,18 +126,27 @@
       "name": "code-path-discovery",
       "description": "Scan TypeScript/JavaScript source files for behavioral paths and return candidates in 6-category format for /paths turn-based discovery",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "06d548f28ea16d76500ffac6e031ba7dd26757d4e563602304f8f3a3922fdf10",
       "category": "analysis",
       "relevantTechStack": [
         "javascript",
         "typescript"
       ],
       "invocationMode": "manual",
+      "defaultSkill": false,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "codebase-analysis",
       "description": "Analyze existing codebases to extract structure, tech stack, and patterns",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "365af40622e188bfb57d4b30fdaeeed8ff2d9d514bd2432733e59c683f1741b0",
       "category": "code-quality",
       "relevantTechStack": [
         "javascript",
@@ -129,12 +163,17 @@
         "csharp"
       ],
       "invocationMode": "direct-only",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "command-spec-audit",
       "description": "Evaluate command specifications for quality, completeness, and extension point coverage",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "94a9b693e1090797b72af8441462d006d16860d848c1e408bef136c0fee3f2e7",
       "category": "code-quality",
       "invocationMode": "direct-only",
       "copyright": "\"Rubrical Works (c) 2026\""
@@ -143,6 +182,10 @@
       "name": "common-errors",
       "description": "Diagnose and solve common beginner programming mistakes in Flask or Sinatra development with detailed explanations",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "deb19a0702a649c28e46f27d204314b2ecb7c9b67e2b7e1f04ef15096bae1089",
       "category": "debugging",
       "relevantTechStack": [
         "flask",
@@ -157,6 +200,10 @@
       "name": "digitalocean-app-setup",
       "description": "Configure automated preview, staging, and production deployments with DigitalOcean App Platform",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "8ff01330bb619de26d3feb45d0cb252b3cfe806cc2254cc6a4dc3e3317d79a7f",
       "category": "platform",
       "relevantTechStack": [
         "digitalocean",
@@ -171,6 +218,10 @@
       "name": "drawio-generation",
       "description": "Generate valid .drawio.svg diagrams with editable mxGraphModel structure",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "cb38a0ad611c04543a0bc6729b7152060d1c75a63094e0e8eb9cd23dd0034942",
       "category": "documentation",
       "relevantTechStack": [
         "drawio",
@@ -180,12 +231,17 @@
         "documentation"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "electron-cross-build",
       "description": "Cross-compile Electron apps from Linux to produce Windows executables",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "7fa0bb925c7155413bcb6dba618dbe9e143e130ac0c06c093d637e7dfacb5cd4",
       "category": "platform",
       "relevantTechStack": [
         "electron",
@@ -203,6 +259,10 @@
       "name": "electron-development",
       "description": "Patterns and solutions for Electron app development with Vite, Playwright E2E testing, and Windows platform considerations",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "322176670a38f622aca662fb79c1bea244be645a989c737d256c5cb2aba0beed",
       "category": "platform",
       "relevantTechStack": [
         "electron",
@@ -218,6 +278,10 @@
       "name": "error-handling-patterns",
       "description": "Guide developers through consistent error handling including error hierarchies, API responses, and logging integration",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "899c2f62045ffd7cb4b14901eddef51c8cdbfc0f8e39516eb34490c050369cb8",
       "category": "architecture",
       "relevantTechStack": [
         "javascript",
@@ -230,12 +294,17 @@
         "error-handling"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "flask-setup",
       "description": "Set up Python Flask development environment for beginners with step-by-step guidance, virtual environment creation, and troubleshooting",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "f4a4018b6ebb919f507feeb6ed74bf4e3f587a36ee90f2e6b3bad5356519137a",
       "category": "platform",
       "relevantTechStack": [
         "flask",
@@ -250,6 +319,10 @@
       "name": "i18n-setup",
       "description": "Scaffold internationalization infrastructure including i18n library config, string extraction tooling, locale file scaffolding, and translation workflow setup",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "c238affb1b567fba6a9eb3d416e4903d91a3c4f1db4458a3436ea3ff8e84d4a3",
       "category": "web",
       "relevantTechStack": [
         "i18n",
@@ -265,6 +338,10 @@
       "name": "migration-patterns",
       "description": "Guide developers through database migration best practices including versioning, rollbacks, and zero-downtime strategies",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "0666aa6fbbbc173ed9ef0cd101890bd6b8ff74d162941ce94541b66baf543741",
       "category": "database",
       "relevantTechStack": [
         "sql",
@@ -281,6 +358,10 @@
       "name": "mutation-testing",
       "description": "Guide developers through mutation testing to assess and improve test suite quality",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "d28181de7067fbf6870d04ad8fe624b97224e4c8c3a57826659c2c8e9f9ac34e",
       "category": "testing",
       "relevantTechStack": [
         "stryker",
@@ -295,6 +376,10 @@
       "name": "observability-setup",
       "description": "Scaffold observability infrastructure including OpenTelemetry SDK config, Grafana dashboards, alert rules, and structured logging setup",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "d182d4e8c3d0ffbb0cff54d17e618d1c14cea0da44b681ae5e4d51b4b8d3e5a2",
       "category": "devops",
       "relevantTechStack": [
         "opentelemetry",
@@ -311,6 +396,10 @@
       "name": "playwright-explorer",
       "description": "Interactive browser exploration using Playwright with natural language interaction, DOM reading, and session management",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "124f8ccf60eb3592d6b08166cd1b88da0d77cd75d6723bf0edc3717375ba941f",
       "category": "testing",
       "relevantTechStack": [
         "playwright",
@@ -326,6 +415,10 @@
       "name": "playwright-setup",
       "description": "Installation verification and troubleshooting for Playwright browser automation framework",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "5585afcbf261e03045d704e311d636f2fcf2b5ecfe4bc3209673bc5d39647db5",
       "category": "testing",
       "relevantTechStack": [
         "playwright",
@@ -340,6 +433,10 @@
       "name": "postgresql-integration",
       "description": "Guide developers through PostgreSQL setup, connection configuration, query patterns, and best practices",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "e26e2bb74001f0bb6041ed6ee1bee8a06f2b72b42c61a758f9b21bf7ada4bb80",
       "category": "database",
       "relevantTechStack": [
         "postgresql",
@@ -355,6 +452,10 @@
       "name": "privacy-compliance",
       "description": "Provide structured privacy compliance guidance for web and mobile projects covering consent management, cookie compliance, dark pattern avoidance, and regulatory landscape",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "418f0caddb1d968a9dbb9654354af95ce53a742bff84037a777208693e21b5f4",
       "category": "compliance",
       "relevantTechStack": [
         "gdpr",
@@ -370,6 +471,10 @@
       "name": "property-based-testing",
       "description": "Guide developers through property-based testing including property definition, shrinking, and framework-specific implementation",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "88929d82e473ddbecf47affaf0b9607e55a8ab0b705e0c7ab4a6bf52306f8915",
       "category": "testing",
       "relevantTechStack": [
         "fast-check",
@@ -385,6 +490,10 @@
       "name": "railway-project-setup",
       "description": "Configure automated preview, staging, and production deployments with Railway",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "c1f841166cd57f4a5d16fdd2f25e0fda9c86ff8ccb3f373a5555ace4b8813f2c",
       "category": "platform",
       "relevantTechStack": [
         "railway",
@@ -400,6 +509,10 @@
       "name": "render-project-setup",
       "description": "Configure automated preview, staging, and production deployments with Render",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "0cb893022af61292eb7f133a5337ff46056f2932439dd80bb2966478a47b1fd1",
       "category": "platform",
       "relevantTechStack": [
         "render",
@@ -415,6 +528,10 @@
       "name": "resilience-patterns",
       "description": "Fault tolerance patterns for distributed systems — retry, circuit breaker, fallback, bulkhead, and timeout",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "e1b74833c91f3b1e532ad0dd4688d48799318c367dce5eaee60ea1cf15ed4246",
       "category": "architecture",
       "relevantTechStack": [
         "distributed-systems",
@@ -433,6 +550,10 @@
       "name": "seo-optimization",
       "description": "Provide structured SEO guidance for web projects covering technical foundations and content optimization",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "69dc066ffb670e386eee163d8c8fe7ff2ffec87e5ec7443278f6dfc86fb05982",
       "category": "web",
       "relevantTechStack": [
         "seo",
@@ -448,6 +569,10 @@
       "name": "sinatra-setup",
       "description": "Set up Ruby Sinatra development environment for beginners with step-by-step guidance, Bundler setup, and troubleshooting",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "7d154d987348da695601245f2d2a32d9bca28efb4519eba242ea052952736285",
       "category": "platform",
       "relevantTechStack": [
         "sinatra",
@@ -462,6 +587,10 @@
       "name": "sqlite-integration",
       "description": "Add SQLite database to Flask or Sinatra app with beginner-friendly code examples and teaching comments",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "c24ba6a910714d42c6e4b426a5001312bccc345ced33296a95c58e403c0a2ad3",
       "category": "database",
       "relevantTechStack": [
         "sqlite",
@@ -478,6 +607,10 @@
       "name": "tdd-failure-recovery",
       "description": "Guide experienced developers through TDD failure scenarios and recovery procedures when tests behave unexpectedly",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "96b89edcd4fc5ab55ca64b1d361ca9c17472643faad3a98461bc254e485e50e5",
       "category": "testing",
       "relevantTechStack": [
         "tdd",
@@ -490,12 +623,17 @@
         "testing"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "tdd-green-phase",
       "description": "Guide experienced developers through GREEN phase of TDD cycle - writing minimal implementation to pass failing tests",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "d7440cb6c08c47ae0b149af8a06af725b878e3093a7a7108f33115604606297a",
       "category": "testing",
       "relevantTechStack": [
         "tdd",
@@ -508,12 +646,17 @@
         "testing"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "tdd-red-phase",
       "description": "Guide experienced developers through RED phase of TDD cycle - writing failing tests and verifying expected failures",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "58ab7ba20ef53d18e5b684ee84c9d1d0160d841074902f1da1c5255b1af335a2",
       "category": "testing",
       "relevantTechStack": [
         "tdd",
@@ -526,12 +669,17 @@
         "testing"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "tdd-refactor-phase",
       "description": "Guide experienced developers through REFACTOR phase of TDD cycle - improving code quality while maintaining green tests",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "3abe8fa6c8836511aa3a1188ece1f382c7e39f729f3d21ad77dded29f164a01b",
       "category": "testing",
       "relevantTechStack": [
         "tdd",
@@ -544,12 +692,43 @@
         "testing"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
+      "copyright": "\"Rubrical Works (c) 2026\""
+    },
+    {
+      "name": "test-scaffold",
+      "description": "Generate testing infrastructure from IDPF testing domain knowledge — configs, specs, CI workflows for accessibility, chaos, contract, performance, QA, and security testing",
+      "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "c4da0db5ab2b09be90803ea79f059d2752b18cf63117a42fcce4ed5a699cacba",
+      "category": "testing",
+      "relevantTechStack": [
+        "testing",
+        "playwright",
+        "axe-core",
+        "k6",
+        "pact",
+        "semgrep",
+        "zap",
+        "gitleaks",
+        "toxiproxy",
+        "ci",
+        "github-actions"
+      ],
+      "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "test-writing-patterns",
       "description": "Guide experienced developers on test structure, patterns, assertions, and test doubles for effective test-driven development",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "0183f0f6861fad4699e4c4554be4d85fb64db2ad6ae80620f70c2dc8429c9050",
       "category": "testing",
       "relevantTechStack": [
         "jest",
@@ -563,12 +742,17 @@
         "mocking"
       ],
       "invocationMode": "auto",
+      "defaultSkill": true,
       "copyright": "\"Rubrical Works (c) 2026\""
     },
     {
       "name": "vercel-project-setup",
       "description": "Configure automated preview, staging, and production deployments with Vercel",
       "triggers": [],
+      "version": "1.0.0",
+      "frameworkCompatibility": ">=0.60.0",
+      "lastUpdated": "2026-03-17",
+      "checksum": "a608ad45fba4916cc1f1fe8aa8f7a83d43572b509eda87e79cc9345185bca8d6",
       "category": "platform",
       "relevantTechStack": [
         "vercel",

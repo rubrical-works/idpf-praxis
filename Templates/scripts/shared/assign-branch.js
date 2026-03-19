@@ -1,27 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * assign-branch.js
+ * @framework-script 0.66.0
+ * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
+ * @checksum sha256:placeholder
  *
- * Interactive script to assign issues to branches.
- * Used by /assign-branch slash command.
- *
- * Implements: REQ-007 (Assign-Branch Command)
- *
- * Usage:
- *   node assign-branch.js                     # Interactive mode
- *   node assign-branch.js release/v1.0 123    # Direct assignment
- *   node assign-branch.js --add-ready         # Assign all ready issues (immediate)
- *
- * Flags:
- *   --add-ready   Assign all unassigned ready issues (immediate, no listing)
- *   --timing      Show timing information for performance debugging
- *
- * Performance notes:
- *   - Branch discovery uses label-based query (~0.8s) via getAllOpenTrackers()
- *   - gh pmu commands use local caching in .gh-pmu.json (~50ms when cached)
- *   - Parallel sub-issue count fetching for backlog listing
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const { exec, execSync } = require('child_process');
@@ -358,12 +343,38 @@ async function main() {
 
     // Parse args - order-independent parsing
     const addReady = args.includes('--add-ready');
+    const removeFlag = args.includes('--remove');
     showTiming = args.includes('--timing');
 
     // Auto-detect: arguments starting with # are issues, prefix/name patterns are branches
     let branch = args.find(a => !a.startsWith('-') && !a.match(/^#?\d+$/) && a.includes('/'));
     let issueNumbers = args.filter(a => a.match(/^#?\d+$/)).map(a => parseInt(a.replace('#', ''), 10));
     const userInput = args.find(a => !a.startsWith('-') && !a.includes('/') && !a.match(/^#?\d+$/));
+
+    // Handle --remove mode
+    if (removeFlag) {
+        console.log('=== Assign-Branch --remove ===\n');
+        if (issueNumbers.length === 0) {
+            console.log('Error: --remove requires at least one issue number.');
+            console.log('Usage: /assign-branch #N --remove');
+            return;
+        }
+
+        // Show affected issues for confirmation
+        const { expanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers);
+        console.log(`Issues to remove from branch (${expanded.length} total):`);
+        for (const num of expanded) {
+            const marker = epicSubIssues.has(num) ? ' (sub-issue)' : '';
+            console.log(`  #${num}${marker}`);
+        }
+        console.log('');
+
+        // Output for command spec to present confirmation via AskUserQuestion
+        console.log('CONFIRM_REMOVE');
+        console.log(JSON.stringify({ issues: expanded, epicSubIssues: [...epicSubIssues] }));
+        endTimer('total');
+        return;
+    }
 
     console.log('=== Assign-Branch ===\n');
     startTimer('total');
@@ -586,6 +597,63 @@ async function main() {
     endTimer('total');
 }
 
+// ============================================================================
+// REMOVE FROM BRANCH (--remove flag)
+// ============================================================================
+
+/**
+ * Remove a single issue from its branch assignment.
+ * Unlinks from tracker, removes assigned label, clears branch field, sets status to backlog.
+ * @param {number} issueNumber - Issue to remove
+ * @returns {{ ok: boolean, operations: string[], error?: string }}
+ */
+async function removeFromBranch(issueNumber) {
+    const operations = [];
+    try {
+        // Unlink from branch tracker sub-issues
+        const unlinkResult = await execAsyncSafe(`gh pmu sub remove ${issueNumber} 2>&1`);
+        operations.push(`unlink #${issueNumber} from tracker`);
+
+        // Remove assigned label
+        await execAsyncSafe(`gh issue edit ${issueNumber} --remove-label assigned 2>&1`);
+        operations.push(`remove assigned label from #${issueNumber}`);
+
+        // Clear branch field and set status to backlog
+        await execAsyncSafe(`gh pmu move ${issueNumber} --backlog 2>&1`);
+        operations.push(`set #${issueNumber} to backlog`);
+
+        return { ok: true, operations };
+    } catch (err) {
+        return { ok: false, operations, error: err.message };
+    }
+}
+
+/**
+ * Remove multiple issues from branch assignment.
+ * Handles epic expansion — if an issue is an epic, all sub-issues are also removed.
+ * @param {number[]} issueNumbers - Issues to remove
+ * @returns {{ removed: number, total: number, results: object[] }}
+ */
+async function removeIssues(issueNumbers) {
+    if (issueNumbers.length === 0) {
+        return { removed: 0, total: 0, results: [] };
+    }
+
+    // Expand epics to include sub-issues
+    const { expanded } = await expandEpicSubIssues(issueNumbers);
+
+    const results = [];
+    let removed = 0;
+
+    for (const num of expanded) {
+        const result = await removeFromBranch(num);
+        results.push({ issue: num, ...result });
+        if (result.ok) removed++;
+    }
+
+    return { removed, total: expanded.length, results };
+}
+
 // Run main only when executed directly (not when required for testing)
 if (require.main === module) {
     main().catch(console.error);
@@ -600,6 +668,8 @@ module.exports = {
     getOpenBranches,
     getIssuesByStatus,
     assignToBranch,
+    removeFromBranch,
+    removeIssues,
     linkToTracker,
     linkAllToTracker,
     expandEpicSubIssues,

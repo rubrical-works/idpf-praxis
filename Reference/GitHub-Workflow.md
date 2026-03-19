@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.65.0
+**Version:** v0.66.0
 
 **MUST READ:** This file must be read at session startup and after any compaction.
 

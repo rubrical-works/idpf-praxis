@@ -1,6 +1,12 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
+ * @framework-script 0.66.0
+ * @description Load and resolve review extension domains for /review-issue and /code-review. Exports loadCodeReviewExtensions(), resolveAutoInclusion(), filterDomainsByCharter(), suggestDomains(), and AVAILABLE_EXTENSIONS. Used by review-preamble.js and code-review-preamble.js.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
  * Extension loading error messages and utilities for /review-issue and /code-review
  * Referenced by .claude/commands/review-issue.md Step 2b
  * Referenced by .claude/commands/code-review.md Step 5c (#1767)

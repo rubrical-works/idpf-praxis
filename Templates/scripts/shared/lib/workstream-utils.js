@@ -1,10 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * workstream-utils.js — Shared Workstream Utility Library
+ * @framework-script 0.66.0
+ * @description Shared workstream metadata operations for branch lifecycle management. Exports loadWorkstreams(), saveWorkstreams(), validateTransition(), and status constants. Used by /merge-branch, /destroy-branch, and /plan-workstreams.
+ * @checksum sha256:placeholder
  *
- * Provides consistent metadata operations for workstream-aware commands:
- * /merge-branch, /destroy-branch, and /plan-workstreams.
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ *
+ * workstream-utils.js — Shared Workstream Utility Library
  *
  * @see https://github.com/rubrical-works/idpf-praxis-dev/issues/1461
  */

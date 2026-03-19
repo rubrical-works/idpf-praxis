@@ -1,32 +1,12 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.65.0
- * cleanup-artifacts.js - Clean up old GitHub Actions artifacts
- *
- * Deletes expired GitHub Actions artifacts with throttled API calls
- * to avoid hitting GitHub's secondary rate limits (~90 mutations/min).
- *
- * Usage:
- *   node cleanup-artifacts.js
- *   node cleanup-artifacts.js --days 14
- *   node cleanup-artifacts.js --dry-run
- *   node cleanup-artifacts.js --threshold 50
- *
- * Options:
- *   --days <n>            Age cutoff in days (default: 7)
- *   --threshold <n>       Skip cleanup if total count <= threshold (default: 100)
- *   --delay <ms>          Delay between deletes in ms (default: 1000)
- *   --dry-run             Show what would be deleted without making changes
- *   --quiet               Suppress non-JSON output
- *   --help                Show this help message
- *
- * Exit codes:
- *   0 - Success (or skipped due to threshold)
- *   1 - Error
+ * @framework-script 0.66.0
+ * @description Delete expired GitHub Actions artifacts with throttled API calls to avoid rate limits. Supports age-based filtering (default 30 days) and --dry-run mode. Used by /prepare-release cleanup phase.
+ * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
- * To customize: copy to .claude/scripts/shared/ and modify.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 const gh = require('./lib/gh');

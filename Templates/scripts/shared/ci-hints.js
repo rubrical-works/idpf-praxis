@@ -2,14 +2,12 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.65.0
- * CI Contextual Hints
+ * @framework-script 0.66.0
+ * @description Generate state-aware contextual hints that guide users toward logical next actions after each /ci subcommand invocation. Returns one hint per call with related feature mapping. Prevents repeated hints within a session.
+ * @checksum sha256:placeholder
  *
- * Generates state-aware hints that guide users toward logical next actions
- * after each /ci subcommand. One hint per invocation, no urgency language.
- *
- * Proposal reference: Proposal/Implemented/CI-Workflow-Management-Command.md
- * (10 hint mappings in the "Contextual Hints" section)
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
  */
 
 /**

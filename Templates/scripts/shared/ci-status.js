@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
+/**
+ * @framework-script 0.66.0
+ * @description View workflow status — lists all GitHub Actions workflows. Parses all .yml/.yaml files in .github/workflows/ and reports their trigger events and enabled state. Part of the /ci status subcommand.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
 
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 
 /**
- * @framework-script 0.65.0
  * View workflow status - lists all GitHub Actions workflows
  * @param {string} projectDir - Path to project root
  * @returns {string} Formatted output
