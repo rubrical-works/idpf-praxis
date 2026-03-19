@@ -1,5 +1,5 @@
 # IDPF-Accessibility Framework
-**Version:** v0.66.1
+**Version:** v0.66.2
 **Type:** Domain
 ## Overview
 Framework for accessibility testing: WCAG compliance, automated a11y scanning, manual audits, assistive technology testing. Validates applications are usable by people with disabilities and comply with ADA, Section 508, EAA.

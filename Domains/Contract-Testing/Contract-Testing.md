@@ -1,5 +1,5 @@
 # IDPF-Contract-Testing Framework
-**Version:** v0.66.1
+**Version:** v0.66.2
 **Type:** Domain
 ## Overview
 Domain for API contract testing: consumer-driven contracts, provider verification, and contract management using Pact, Spring Cloud Contract, and Specmatic.

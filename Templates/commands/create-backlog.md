@@ -1,5 +1,5 @@
 ---
-version: "v0.66.1"
+version: "v0.66.2"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -89,14 +89,16 @@ Read `PRD/{name}/Test-Plan-{name}.md`. Match test cases to stories by title and 
 ---
 ## Phase 5: Create Epic Issues
 ```bash
-gh pmu create --title "Epic: {Epic Name}" --label "epic" --status backlog -F .tmp-epic-body.md
+gh pmu create --title "Epic: {Epic Name}" --label "epic" --status backlog --priority {highest_story_priority} -F .tmp-epic-body.md
 ```
+**Priority rule:** Epic priority = highest priority among child stories. If none specified, use PRD-level default.
 Epic body: PRD reference, tracker, test plan, description, success criteria. Clean up temp file.
 ---
 ## Phase 6: Create Story Issues with Test Cases
 ```bash
-gh pmu create --title "Story: {Story Title}" --label "story" --status backlog -F .tmp-story-body.md
+gh pmu create --title "Story: {Story Title}" --label "story" --status backlog --priority {prd_priority} -F .tmp-story-body.md
 ```
+**Priority rule:** Story priority = PRD-specified priority. Use PRD-level default if none per-story.
 Link: `gh pmu sub add {epic_number} {story_number} || true`
 ### Story Body Template
 **DEPENDENCY:** Uses `/add-story` Phase 3 template (atomic).

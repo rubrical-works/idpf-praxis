@@ -1,5 +1,5 @@
 ---
-version: "v0.66.1"
+version: "v0.66.2"
 description: Evaluate tests for charter alignment and functional authenticity (project)
 argument-hint: "[--full] [--status]"
 copyright: "Rubrical Works (c) 2026"

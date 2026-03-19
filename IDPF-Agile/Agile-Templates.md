@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Templates
-**Version:** v0.66.1
+**Version:** v0.66.2
 **Module:** Templates (loaded on-demand)
 ## GitHub-Native Backlog
 **Note:** IDPF-Agile uses GitHub issues for backlog management. Use `Create-Backlog` to create epics and stories directly in GitHub. The templates below are reference formats for issue content.

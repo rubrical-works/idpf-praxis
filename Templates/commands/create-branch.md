@@ -1,5 +1,5 @@
 ---
-version: "v0.66.1"
+version: "v0.66.2"
 description: Create a branch with tracker issue (project)
 argument-hint: "<branch-name> (e.g., release/v0.16.0, my-feature, bugfix-123)"
 copyright: "Rubrical Works (c) 2026"

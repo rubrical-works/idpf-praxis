@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.1
+ * @framework-script 0.66.2
  * @description Filter review criteria based on project reviewMode configuration (solo, team, enterprise). Exports getReviewMode(), filterCriteria(), getEnabledCriteria(), and shouldEvaluate(). Used by review-preamble.js and code-review-preamble.js.
  * @checksum sha256:placeholder
  *

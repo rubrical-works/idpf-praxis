@@ -1,5 +1,5 @@
 ---
-version: "v0.66.1"
+version: "v0.66.2"
 description: Start working on issues with validation and auto-TODO (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -68,6 +68,13 @@ Re-read `.claude/scripts/shared/lib/qa-config.json`. Match ACs against keywords.
 
 <!-- USER-EXTENSION-START: post-ac-verification -->
 <!-- USER-EXTENSION-END: post-ac-verification -->
+
+#### Step 4c: Log Changed Files to Issue Body
+Compute files changed during this issue's work:
+```bash
+git log --name-status --grep="Refs #$ISSUE" --pretty=format:"" | sort -u | grep -v "^$"
+```
+Categorize: `A` = Added, `M` = Modified, `D` = Deleted. Append "Files Changed" section to issue body (non-destructively). Omit empty categories. Skip if no commits found.
 
 ### Step 5: Move to in_review
 ```bash

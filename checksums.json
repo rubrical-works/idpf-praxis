@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.66.1",
-  "generatedAt": "2026-03-19T17:30:49.520Z",
+  "frameworkVersion": "0.66.2",
+  "generatedAt": "2026-03-19T20:53:19.667Z",
   "fileCount": 64,
   "files": [
     {
@@ -261,7 +261,7 @@
     },
     {
       "relativePath": "Templates/scripts/shared/reset-issue-preamble.js",
-      "sha256": "bd893392288868cc6a6efd54218767ee08dab93d41dddfa3a8fe5ba3e2ef925d",
+      "sha256": "ca8521fe49b171cc815b1ba3aa44c925b2b3597a1d972fd48922e7766e905874",
       "sizeBytes": 5916
     },
     {

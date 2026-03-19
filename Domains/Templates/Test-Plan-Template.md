@@ -1,5 +1,5 @@
 # Test Plan: [Test Suite Name]
-**Version:** v0.66.1
+**Version:** v0.66.2
 
 **Date:** YYYY-MM-DD
 **Author:** [Name]

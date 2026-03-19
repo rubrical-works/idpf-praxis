@@ -1,5 +1,5 @@
 # Framework Testing Reference
-**Version:** v0.66.1
+**Version:** v0.66.2
 
 **Purpose:** Detailed reference for IDPF testing domains
 

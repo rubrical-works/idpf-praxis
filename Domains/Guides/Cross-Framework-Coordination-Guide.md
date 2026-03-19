@@ -1,5 +1,5 @@
 # Cross-Framework Coordination Guide
-**Version:** v0.66.1
+**Version:** v0.66.2
 
 **Source:** Domains
 
