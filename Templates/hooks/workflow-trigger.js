@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.0
+ * @framework-script 0.67.1
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:

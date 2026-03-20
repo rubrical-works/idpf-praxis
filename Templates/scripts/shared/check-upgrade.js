@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.0
+ * @framework-script 0.67.1
  * @description Post-upgrade verification for IDPF user projects. Exports five check functions: extension block preservation, command version drift detection, stale config reference detection, symlink health validation, and overall upgrade integrity report. Used by /check-upgrade command.
  * @checksum sha256:placeholder
  *

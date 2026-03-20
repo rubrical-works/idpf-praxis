@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.0
+ * @framework-script 0.67.1
  * @description Generate a test plan skeleton markdown file from the issues assigned to the current git branch. Auto-detects version from branch name or accepts version parameter. Outputs to Construction/Test-Plans/ directory. Used by /prepare-release test plan generation.
  * @checksum sha256:placeholder
  *
