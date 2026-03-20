@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.66.4
+**Version:** v0.67.0
 
 **Purpose:** Standard initialization procedure for AI assistant sessions
 
@@ -77,6 +77,19 @@ Detect whether a Claude Code status line is configured and set up a default if m
    - If `configured: false` → spawn `statusline-setup` agent to configure a default status line showing model name and context usage percentage
    - If script fails or output is not JSON → warn and continue (non-blocking)
 3. This step never blocks session startup
+
+### 3d. Load Domain Specialist (Non-Blocking)
+
+Load the domain specialist expertise profile into context so it shapes responses for the session.
+
+1. Read `domainSpecialist` from `framework-config.json` (already read in Step 1)
+2. If `domainSpecialist` is set:
+   - Resolve file path: check `{frameworkPath}/System-Instructions/Domain/Base/{specialist}.md` using the Read tool
+   - If not found: check `{frameworkPath}/System-Instructions/Domain/Pack/{specialist}.md`
+   - If found: Read the file (it is now in context and will shape responses)
+   - If not found in either location: Warn "Specialist file not found for {specialist}" and continue
+3. If `domainSpecialist` is not set: Skip silently
+4. This step never blocks session startup
 
 ### 4. Display Session Initialized Block
 

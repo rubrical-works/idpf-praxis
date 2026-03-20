@@ -1,5 +1,5 @@
 ---
-version: "v0.66.4"
+version: "v0.67.0"
 description: Plan concurrent workstreams for parallel epic development
 argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--cancel]"
 copyright: "Rubrical Works (c) 2026"

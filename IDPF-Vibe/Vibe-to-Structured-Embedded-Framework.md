@@ -1,5 +1,5 @@
 # Vibe-to-Structured Development Framework (Embedded)
-**Version:** v0.66.4
+**Version:** v0.67.0
 **Type:** Embedded Systems Specialization
 **Extends:** Vibe-to-Structured-Core-Framework.md (Rev 2)
 ## Purpose

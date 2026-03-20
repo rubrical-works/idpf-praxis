@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.4
+ * @framework-script 0.67.0
  * @description Git command utilities for tag retrieval, commit analysis, and repository state queries. Exports exec(), getLatestTag(), getCommitsSince(), and related helpers. Used by prepare-release, analyze-commits, and validation scripts.
  * @checksum sha256:placeholder
  *
