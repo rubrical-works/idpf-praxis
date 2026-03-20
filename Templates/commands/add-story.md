@@ -1,5 +1,5 @@
 ---
-version: "v0.66.3"
+version: "v0.66.4"
 description: Add story to epic with charter compliance (project)
 argument-hint: "[epic-number] (e.g., 42 or #42)"
 copyright: "Rubrical Works (c) 2026"
@@ -339,7 +339,7 @@ Skip to Phase 5.
 **From `Inception/Test-Strategy.md`:** Test framework, test organization structure
 **From `Inception/Tech-Stack.md`:** Language (for test syntax style)
 
-**Fallback:** If Test-Strategy.md missing, use `IDPF-Agile/Agile-Core.md` TDD defaults and warn user.
+**Fallback:** If Test-Strategy.md missing, use `{frameworkPath}/IDPF-Agile/Agile-Core.md` TDD defaults and warn user.
 
 **Step 3: Generate test cases from acceptance criteria**
 

@@ -1,5 +1,5 @@
 # System Instructions: API & Integration Specialist
-**Version:** v0.66.3
+**Version:** v0.66.4
 Extends: Core-Developer-Instructions.md
 
 **Purpose:** Specialized expertise in API design, microservices, system integrations, and ensuring seamless communication between systems.

@@ -1,5 +1,5 @@
 ---
-version: "v0.66.3"
+version: "v0.66.4"
 description: Transform proposal into Agile PRD
 argument-hint: "<issue-number> | extract [<directory>]"
 copyright: "Rubrical Works (c) 2026"
@@ -115,7 +115,7 @@ const mode = getReviewMode(process.cwd(), null);
 <!-- USER-EXTENSION-END: pre-diagram -->
 
 ### Phase 5.5: Diagram Generation
-**Load:** `Skills/drawio-generation/SKILL.md`
+**Load:** `{frameworkPath}/Skills/drawio-generation/SKILL.md`
 **MUST:** Generate `.drawio.svg` diagrams:
 | Type | Default | When |
 |------|---------|------|
@@ -137,7 +137,7 @@ const mode = getReviewMode(process.cwd(), null);
 
 ### Phase 6: Generate PRD
 Create in `PRD/{PRD-Name}/PRD-{PRD-Name}.md` with `Diagrams/` subdirectory. Existing flat PRDs grandfathered.
-**Load template from `Templates/artifacts/prd-template.md`.** Graceful degradation if missing.
+**Load template from `{frameworkPath}/Templates/artifacts/prd-template.md`.** Graceful degradation if missing.
 
 <!-- USER-EXTENSION-START: post-generation -->
 <!-- USER-EXTENSION-END: post-generation -->
@@ -147,7 +147,7 @@ Create in `PRD/{PRD-Name}/PRD-{PRD-Name}.md` with `Diagrams/` subdirectory. Exis
 
 ### Phase 6.5: Generate TDD Test Plan
 Load test config from `Inception/Test-Strategy.md` and `Inception/Tech-Stack.md`. Fallback: framework defaults.
-Generate `PRD/{name}/Test-Plan-{name}.md`. Load template from `Templates/artifacts/test-plan-template.md`.
+Generate `PRD/{name}/Test-Plan-{name}.md`. Load template from `{frameworkPath}/Templates/artifacts/test-plan-template.md`.
 Derivation: parse ACs, generate 2-3 test cases per criterion, identify integration points, extract E2E scenarios.
 ### Phase 6.6: Create Test Plan Approval Issue
 ```bash
@@ -162,7 +162,7 @@ Update test plan frontmatter with issue number.
 No arguments: prompt for mode (proposal issue or code extraction).
 ---
 ## Workflow (Extract Mode)
-1. Check `Skills/codebase-analysis/SKILL.md` exists. If not: STOP.
+1. Check `{frameworkPath}/Skills/codebase-analysis/SKILL.md` exists. If not: STOP.
 2. Load skill.
 3. Run codebase analysis.
 4. Bridge to Phase 6. Present features with confidence levels.

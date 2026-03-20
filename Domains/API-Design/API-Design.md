@@ -1,5 +1,5 @@
 # API Design Domain
-**Version:** v0.66.3
+**Version:** v0.66.4
 **Type:** Domain
 **Companion Skill:** api-versioning
 ## Overview

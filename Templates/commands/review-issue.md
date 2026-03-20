@@ -1,5 +1,5 @@
 ---
-version: "v0.66.3"
+version: "v0.66.4"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...] [--with ...] [--mode ...] [--force]"
 copyright: "Rubrical Works (c) 2026"
@@ -32,7 +32,7 @@ Multiple issues: reviews sequentially.
 node ./.claude/scripts/shared/review-preamble.js $ISSUE [--with extensions] [--mode mode] [--force]
 ```
 - `ok: false`: report error -> **STOP**
-- `context.redirect`: invoke corresponding skill -> **STOP**
+- `context.redirect`: invoke corresponding skill with all original args (`#$ISSUE [--with extensions] [--mode mode] [--force]`) -> **STOP**
 - Closed: ask user
 - `earlyExit: true` (issue has `reviewed` label, no `--force`): report count, early exit -> **STOP**
 Extract: `context`, `criteria`, `extensions`, `warnings`.

@@ -1,5 +1,5 @@
 ---
-version: "v0.66.3"
+version: "v0.66.4"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -76,7 +76,7 @@ Read `PRD/{name}/Test-Plan-{name}.md`. Match test cases to stories by title and 
 | Go | testing | `func Test*(t *testing.T)` |
 | Rust | cargo test | `#[test] fn test_*()` |
 | Unknown | Unknown | Pseudocode |
-**Fallback:** Check `IDPF-Agile/Agile-Core.md` defaults, warn.
+**Fallback:** Check `{frameworkPath}/IDPF-Agile/Agile-Core.md` defaults, warn.
 ---
 ## Phase 5: Create Epic Issues
 ```bash

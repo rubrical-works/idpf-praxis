@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Skill Creation
-**Version:** v0.66.3
+**Version:** v0.66.4
 
 ## Core Principle
 

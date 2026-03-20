@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.3
+ * @framework-script 0.66.4
  * @description Shared workstream metadata operations for branch lifecycle management. Exports loadWorkstreams(), saveWorkstreams(), validateTransition(), and status constants. Used by /merge-branch, /destroy-branch, and /plan-workstreams.
  * @checksum sha256:placeholder
  *

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.3
+ * @framework-script 0.66.4
  * @description Generate a Keep a Changelog formatted entry from categorized commits. Accepts piped input from analyze-commits.js or reads commits directly. Groups changes by type (Added, Changed, Fixed, Removed) with issue references. Used by /prepare-release.
  * @checksum sha256:placeholder
  *

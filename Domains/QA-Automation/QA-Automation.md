@@ -1,5 +1,5 @@
 # IDPF-QA-Automation Framework
-**Version:** v0.66.3
+**Version:** v0.66.4
 **Type:** Domain
 ## Overview
 Domain for automated UI and E2E test suites using Selenium, Playwright, Cypress, and Appium.

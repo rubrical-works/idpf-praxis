@@ -1,5 +1,5 @@
 # Framework Summary
-**Version:** v0.66.3
+**Version:** v0.66.4
 
 **Purpose:** Compact startup reference for framework developers
 

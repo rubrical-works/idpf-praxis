@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.66.3
+ * @framework-script 0.66.4
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
@@ -416,7 +416,7 @@ async function main() {
   try { fs.unlinkSync(findingsFile); } catch (_e) { /* ignore */ }
 
   // Build closing notification
-  const closingNotification = `---\nReview complete: #${issue} — ${findings.title}\n---`;
+  const closingNotification = `---\nReview complete: #${issue} — ${findings.title}\nSay "done" or run /done #${issue} to close this issue.\n---`;
 
   const result = buildSuccessResult({
     bodyUpdated,

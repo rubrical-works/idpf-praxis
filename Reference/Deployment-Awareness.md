@@ -1,5 +1,5 @@
 # Deployment Awareness
-**Version:** v0.66.3
+**Version:** v0.66.4
 
 **Purpose:** Document the deployment chain from development to distribution
 
@@ -208,5 +208,8 @@ Defined in `.claude/scripts/framework/minimize-config.json`:
 | `.claude/scripts/minimize-config.json` | Minimization scope |
 | `.claude/commands/minimize-files.md` | Minimization command |
 | `.claude/commands/prepare-release.md` | Release preparation |
+
+## Framework Path Convention
+All framework file references in commands must use `{frameworkPath}/` prefix (from `framework-config.json`). Self-hosted: `.`, user projects: hub root. Applies to: `Templates/`, `Overview/`, `Reference/`, `System-Instructions/`, `Assistant/`, `IDPF-*/`, `Domains/`, `Skills/`. Does NOT apply to `.claude/scripts/`, `.claude/metadata/`, `.claude/rules/`, `.claude/commands/` (symlinked).
 
 **End of Deployment Awareness**

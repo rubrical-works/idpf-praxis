@@ -1,5 +1,5 @@
 ---
-version: "v0.66.3"
+version: "v0.66.4"
 description: Audit command spec formatting for LLM processing reliability (project)
 argument-hint: "[all|<command-name>|<group description>]"
 copyright: "Rubrical Works (c) 2026"

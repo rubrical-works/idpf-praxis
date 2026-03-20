@@ -1,5 +1,5 @@
 # System Instructions: Performance Engineer
-**Version:** v0.66.3
+**Version:** v0.66.4
 Extends: Core-Developer-Instructions.md
 
 **Purpose:** Specialized expertise in application performance, optimization, profiling, load testing, and ensuring systems meet performance requirements.
