@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.1
+ * @framework-script 0.67.2
  * @description Match skill keywords against content text for skill suggestion phases. Exports loadSkillKeywords() and matchSkills(). Used by /create-prd, /create-backlog, and /add-story for automated skill discovery.
  * @checksum sha256:placeholder
  *

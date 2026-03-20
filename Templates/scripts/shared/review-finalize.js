@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.1
+ * @framework-script 0.67.2
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
@@ -318,6 +318,23 @@ async function execSafe(cmd) {
   }
 }
 
+/**
+ * Build context-aware closing notification based on issue status.
+ * @param {number} issue - Issue number
+ * @param {string} title - Issue title
+ * @param {string} status - Normalized status (e.g., 'in_progress', 'backlog')
+ * @returns {string} Closing notification text
+ */
+function buildClosingNotification(issue, title, status) {
+  const header = `---\nReview complete: #${issue} — ${title}`;
+  const footer = '---';
+
+  if (status === 'in_progress' || status === 'in_review') {
+    return `${header}\nSay "done" or run /done #${issue} to close this issue.\n${footer}`;
+  }
+  return `${header}\nSay "work #${issue}" to start working on this issue.\n${footer}`;
+}
+
 // ─── Main ───
 
 async function main() {
@@ -415,8 +432,18 @@ async function main() {
   // Clean up findings file
   try { fs.unlinkSync(findingsFile); } catch (_e) { /* ignore */ }
 
+  // Query issue status for context-aware closing notification
+  let issueStatus = '';
+  const statusResult = await execSafe(`gh pmu view ${issue} --json=status`);
+  if (statusResult.ok) {
+    try {
+      const parsed = JSON.parse(statusResult.output);
+      issueStatus = (parsed.status || '').toLowerCase().replace(/\s+/g, '_');
+    } catch (_e) { /* fall through to default */ }
+  }
+
   // Build closing notification
-  const closingNotification = `---\nReview complete: #${issue} — ${findings.title}\nSay "done" or run /done #${issue} to close this issue.\n---`;
+  const closingNotification = buildClosingNotification(issue, findings.title, issueStatus);
 
   const result = buildSuccessResult({
     bodyUpdated,
@@ -450,6 +477,7 @@ module.exports = {
   updateBodyReviewCount,
   formatReviewComment,
   determineLabel,
+  buildClosingNotification,
   buildSuccessResult,
   buildErrorResult,
   EMOJI,

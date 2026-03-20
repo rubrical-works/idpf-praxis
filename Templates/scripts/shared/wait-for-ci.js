@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.1
+ * @framework-script 0.67.2
  * @description Poll GitHub Actions workflow status with timeout. Monitors workflow runs by commit SHA with 60-second polling intervals and 5-minute default timeout. Returns structured JSON with run status, conclusion, and URL. Used by /prepare-release CI gate.
  * @checksum sha256:placeholder
  *

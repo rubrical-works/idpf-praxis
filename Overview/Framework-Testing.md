@@ -1,5 +1,5 @@
 **Framework Testing Reference**
-**Version:** v0.67.1
+**Version:** v0.67.2
 **Testing Domain (Foundation)**
 **Location:** `Domains/Testing/` | **Type:** Foundational Testing Domain
 **Core Principle:** "Test automation is software development. It uses the same tools, requires the same skills and same practices."

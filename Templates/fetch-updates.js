@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.1
+ * @framework-script 0.67.2
  * IDPF Framework Update Fetcher
  *
  * Updates the framework installation from the distribution repository.
