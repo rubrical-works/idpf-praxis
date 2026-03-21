@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.67.2",
+  "version": "0.68.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -48,8 +48,10 @@
     "electron-development",
     "error-handling-patterns",
     "flask-setup",
+    "i18n-setup",
     "migration-patterns",
     "mutation-testing",
+    "observability-setup",
     "playwright-explorer",
     "playwright-setup",
     "postgresql-integration",
@@ -111,8 +113,7 @@
         "review-issue.md",
         "review-prd.md",
         "review-proposal.md",
-        "review-test-plan.md",
-        "check-upgrade.md"
+        "review-test-plan.md"
       ]
     },
     "scripts": {
@@ -122,7 +123,6 @@
         "files": [
           "analyze-commits.js",
           "assign-branch.js",
-          "check-upgrade.js",
           "ci-add.js",
           "ci-analyze.js",
           "ci-apply.js",
@@ -288,7 +288,6 @@
   "managedCommands": [
     "assign-branch",
     "bad-test-review",
-    "check-upgrade",
     "code-review",
     "switch-branch",
     "transfer-issue",

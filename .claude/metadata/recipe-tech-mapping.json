@@ -120,7 +120,7 @@
     "ci": {
       "description": "CI/CD integration recipes",
       "indicators": [".github/workflows/", ".gitlab-ci.yml", ".circleci/", "azure-pipelines.yml", "Jenkinsfile"],
-      "recipes": ["ci-gate-before-merge"]
+      "recipes": ["ci-gate-before-merge", "cross-os-testing"]
     },
     "coverage": {
       "description": "Test coverage recipes",
@@ -131,6 +131,11 @@
       "description": "Hosting platform deployment recipes",
       "indicators": ["vercel.json", ".vercel/", "railway.json", "railway.toml", "render.yaml", ".do/app.yaml", "deploy.template.yaml"],
       "recipes": ["vercel-preview-deploy", "railway-preview-deploy", "render-preview-deploy", "digitalocean-preview-deploy", "staging-deploy-on-merge", "production-deploy-on-tag", "deploy-health-check", "rollback-on-failure"]
+    },
+    "notifications": {
+      "description": "Release notification recipes",
+      "indicators": [".github/workflows/", ".gitlab-ci.yml", ".circleci/", "azure-pipelines.yml"],
+      "recipes": ["slack-release-notification"]
     }
   },
   "_schema": {

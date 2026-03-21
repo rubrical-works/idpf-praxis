@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-20T23:32:05.592Z",
+  "generatedAt": "2026-03-21T19:13:41.516Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -41,7 +41,9 @@
           ],
           "appliesTo": [
             "prepare-release:post-analysis",
-            "prepare-beta:post-analysis"
+            "prepare-beta:post-analysis",
+            "prepare-release:post-prepare",
+            "prepare-beta:post-prepare"
           ]
         },
         {
@@ -100,7 +102,9 @@
           ],
           "appliesTo": [
             "prepare-release:post-validation",
-            "prepare-beta:post-validation"
+            "prepare-beta:post-validation",
+            "prepare-release:post-prepare",
+            "prepare-beta:post-prepare"
           ]
         }
       ]
@@ -261,7 +265,9 @@
           ],
           "appliesTo": [
             "prepare-release:pre-commit",
-            "prepare-beta:pre-commit"
+            "prepare-beta:pre-commit",
+            "prepare-release:post-analysis",
+            "prepare-beta:post-analysis"
           ]
         }
       ]

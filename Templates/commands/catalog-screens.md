@@ -1,5 +1,5 @@
 ---
-version: "v0.67.2"
+version: "v0.68.0"
 description: Discover and catalog screen elements from source code (project)
 argument-hint: "[screen-name...] [--scope <path>] [--update]"
 copyright: "Rubrical Works (c) 2026"
@@ -86,6 +86,8 @@ Scan project source files to identify the UI framework(s) in use.
 
 **Deeply nested components:** Traverse component trees up to 10+ levels deep. For deeply nested element hierarchies, flatten into a single element table with parent component noted in the Notes field.
 
+**Abstraction-layer tracing (CRITICAL):** When a component delegates rendering to another layer (e.g., a Svelte bridge calling a vanilla JS method like `addEditOps()`), follow the delegation chain to the actual DOM-producing code. Classify elements based on the rendering implementation, not the wrapper API. A bridge that exposes 3 methods may render a single `<select>` dropdown with 12+ options — the dropdown is the element, not the 3 methods. When wrapper and implementation disagree on element type or count, trust the implementation.
+
 **Circular element dependencies:** If element A depends on element B and B depends on A, document both dependencies with a `(circular)` warning in the Dependencies field. Do not fail — report the cycle and continue.
 
 **If no UI framework detected:**
@@ -116,6 +118,11 @@ Based on the detected framework, scan source code to identify screens and their 
 - Screen name (from component name, route, or file name)
 - All interactive elements (inputs, buttons, selects, checkboxes, etc.)
 - Element properties discoverable from source (type, label, default values, validation)
+
+**Delegation chain verification:** When a component delegates to another layer (bridge pattern, imperative rendering, vanilla JS methods called from framework components), trace the delegation to the actual rendering code before classifying elements. The wrapper API shape (e.g., 3 exported methods) may not match the rendered UI (e.g., 1 dropdown with 12 options). Read the delegated method's implementation to determine:
+- What DOM elements are actually created (`<select>`, `<input>`, `<button>`)
+- How many distinct interactive elements are rendered
+- Whether elements are conditional (e.g., button only for image shapes)
 
 **No arguments (full discovery):** Scan all source code within scope. Present all discovered screens to the user:
 ```

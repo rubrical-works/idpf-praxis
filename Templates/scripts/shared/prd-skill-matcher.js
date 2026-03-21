@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.2
+ * @framework-script 0.68.0
  * @description Read a PRD document, extract technical requirements from feature sections, and match against the skill keyword registry (.claude/metadata/skill-keywords.json). Consolidates PRD-to-skill mapping into a single script call. Used by /create-prd technical skills phase.
  * @checksum sha256:placeholder
  *

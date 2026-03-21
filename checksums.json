@@ -1,8 +1,8 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.67.2",
-  "generatedAt": "2026-03-20T23:45:35.252Z",
-  "fileCount": 64,
+  "frameworkVersion": "0.68.0",
+  "generatedAt": "2026-03-21T19:48:34.628Z",
+  "fileCount": 63,
   "files": [
     {
       "relativePath": "audit.js",
@@ -38,11 +38,6 @@
       "relativePath": "Templates/scripts/shared/assign-branch.js",
       "sha256": "10701fcbfd9ef293483524ac85456ed92e7aa10c00696ca8f33fd3a339763eb6",
       "sizeBytes": 25498
-    },
-    {
-      "relativePath": "Templates/scripts/shared/check-upgrade.js",
-      "sha256": "cb38bda918b865496e22d3681e91e62caacbd9cd6c0ab69db04f991fb9d44ed2",
-      "sizeBytes": 23747
     },
     {
       "relativePath": "Templates/scripts/shared/ci-add.js",

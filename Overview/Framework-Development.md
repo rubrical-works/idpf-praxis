@@ -1,5 +1,5 @@
 **Framework Development Reference**
-**Version:** v0.67.2
+**Version:** v0.68.0
 Reference for IDPF development frameworks (2 frameworks: Agile, Vibe)
 **PRD Creation (Pre-Development)**
 > `IDPF-PRD` deprecated in v0.24, replaced by `create-prd` skill.
@@ -158,11 +158,11 @@ Commands specify `model:` in YAML frontmatter for model tier selection. Inline s
 **Sonnet — Analytical (27):**
 | Command | Rationale |
 |---------|-----------|
+| `/add-recipe` | Document parsing, extension point validation, classification logic |
 | `/audit-hallucination` | Verification against anti-hallucination criteria |
 | `/audit-minimization` | Comparison of minimized vs source files |
 | `/bad-test-review` | Evaluate tests against charter and requirements |
 | `/change-domain-expert` | Selection UI, config read/write, role validation |
-| `/check-upgrade` | Hub detection, extension integrity, symlink health |
 | `/ci` | YAML validation + pattern matching to CI features |
 | `/code-review` | Parallel review agents with structured output |
 | `/complete-prd` | Epic discovery, nested story iteration, state aggregation |
@@ -197,7 +197,7 @@ Commands specify `model:` in YAML frontmatter for model tier selection. Inline s
 **Adding a Model Tier:**
 ```yaml
 ---
-version: "v0.67.2"
+version: "v0.68.0"
 description: Command description (project)
 model: sonnet
 ---

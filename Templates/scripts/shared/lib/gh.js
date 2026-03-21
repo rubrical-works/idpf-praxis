@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.2
+ * @framework-script 0.68.0
  * @description GitHub CLI wrapper with retry logic, transient-error detection, and safe exec helpers. Exports ghExec(), ghQuery(), isTransientError(), and related utilities. Used by most preamble and workflow scripts.
  * @checksum sha256:placeholder
  *

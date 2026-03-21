@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.67.2
+ * @framework-script 0.68.0
  * @description Delete binary assets from older GitHub releases, keeping only the N most recent tagged releases (default: 3). Preserves release metadata (notes, tags) while removing downloadable files to reduce storage.
  * @checksum sha256:placeholder
  *
