@@ -1,5 +1,5 @@
 ---
-version: "v0.68.0"
+version: "v0.69.0"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"

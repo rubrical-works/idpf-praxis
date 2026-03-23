@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.68.0
+**Version:** v0.69.0
 
 **Purpose:** Standard initialization procedure for AI assistant sessions
 
@@ -90,6 +90,26 @@ Load the domain specialist expertise profile into context so it shapes responses
    - If not found in either location: Warn "Specialist file not found for {specialist}" and continue
 3. If `domainSpecialist` is not set: Skip silently
 4. This step never blocks session startup
+
+### 3e. Branch Sync Check (Non-Blocking)
+
+Detect whether the current branch is up to date with its upstream tracking branch.
+
+1. Run: `node .claude/scripts/shared/branch-sync-check.js`
+2. Parse JSON output:
+   - If `data.status` is `"up-to-date"` → continue silently
+   - If `data.skipped: true` (no upstream) → continue silently
+   - If `data.status` is `"behind"` → use `AskUserQuestion`:
+     - Question: `"Branch '{branch}' is {behind} commit(s) behind upstream. Pull to update?"`
+     - Options: `"Yes, pull"` (recommended), `"No, continue as-is"`
+     - If yes: run `git pull`
+   - If `data.status` is `"ahead"` → report: `"Branch '{branch}' is {ahead} commit(s) ahead of upstream (unpushed)."`
+   - If `data.status` is `"diverged"` → use `AskUserQuestion`:
+     - Question: `"Branch '{branch}' has diverged from upstream ({ahead} ahead, {behind} behind)."`
+     - Options: `"Pull with rebase"`, `"Pull with merge"`, `"Skip — continue as-is"`
+     - Execute selected option if not skipped
+   - If script fails or output is not JSON → warn and continue (non-blocking)
+3. This step never blocks session startup
 
 ### 4. Display Session Initialized Block
 

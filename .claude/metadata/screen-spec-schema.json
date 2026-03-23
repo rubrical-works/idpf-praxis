@@ -1,0 +1,286 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "screen-spec-schema",
+  "title": "Screen Specification Schema",
+  "description": "Shared schema for screen specifications used by /mockups and /catalog-screens. Defines core element fields, discoverable convention fields, screen-level metadata, library detection categories, and framework-specific discovery patterns. Directory structure: Mockups/{Mockup-Name}/ containing README.md, Specs/, Screens/, and AsciiScreens/ subdirectories.",
+  "type": "object",
+  "properties": {
+    "screenName": {
+      "type": "string",
+      "description": "Human-readable screen name"
+    },
+    "source": {
+      "type": "string",
+      "description": "Source file path(s)"
+    },
+    "framework": {
+      "type": "string",
+      "enum": ["react", "nextjs", "electron", "vue", "vanillaHtml", "reactNative", "other"],
+      "description": "Detected UI framework"
+    },
+    "routeUrl": {
+      "type": "string",
+      "description": "Route path or URL pattern (if applicable)"
+    },
+    "lastUpdated": {
+      "type": "string",
+      "description": "Last modification date (YYYY-MM-DD)"
+    },
+    "elementCount": {
+      "type": "integer",
+      "description": "Total element count"
+    },
+    "parentScreen": {
+      "type": ["string", "null"],
+      "description": "Parent screen for nested/modal screens"
+    },
+    "authentication": {
+      "type": "string",
+      "enum": ["none", "required", "optional"],
+      "description": "Authentication requirement for the screen"
+    },
+    "libraries": {
+      "type": "object",
+      "description": "Detected JS/CSS libraries affecting this screen, grouped by category",
+      "properties": {
+        "component": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Component libraries (MUI, Ant Design, Shadcn/ui, Radix UI, Headless UI, Chakra UI, Mantine). Discovery: package.json dependencies + import statements."
+        },
+        "css": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "CSS frameworks (Tailwind CSS, Bootstrap, CSS Modules, styled-components, Emotion, Sass/SCSS). Discovery: package.json + tailwind.config.*, postcss.config.*, file extensions (.module.css, .styled.ts)."
+        },
+        "form": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Form libraries (Formik, React Hook Form, VeeValidate, Zod, Yup). Discovery: package.json + import statements."
+        },
+        "animation": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Animation libraries (Framer Motion, React Spring, GSAP). Discovery: import statements (affects element state/transitions)."
+        },
+        "icon": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Icon libraries (Lucide, Heroicons, FontAwesome, Material Icons). Discovery: import statements (affects button/link element content)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "elements": {
+      "type": "array",
+      "description": "Interactive elements on this screen",
+      "items": { "$ref": "#/definitions/element" }
+    },
+    "directoryStructure": {
+      "type": "object",
+      "description": "Mockup directory structure conventions: Mockups/{Mockup-Name}/ containing README.md, Specs/ (screen specs), Screens/ (interactive UI mockups), AsciiScreens/ (text/ASCII mockups)",
+      "properties": {
+        "root": {
+          "type": "string",
+          "const": "Mockups",
+          "description": "Root directory for all mockup sets"
+        },
+        "subdirectories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["Specs", "Screens", "AsciiScreens"],
+          "description": "Standard subdirectories within each mockup set"
+        },
+        "indexFile": {
+          "type": "string",
+          "const": "README.md",
+          "description": "Auto-generated index file in each mockup set"
+        }
+      }
+    }
+  },
+  "required": ["screenName", "elements"],
+  "additionalProperties": true,
+  "definitions": {
+    "element": {
+      "type": "object",
+      "description": "A single interactive UI element on a screen",
+      "properties": {
+        "elementId": {
+          "type": "string",
+          "description": "Unique identifier for the element within the screen"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text-input", "password", "dropdown", "checkbox", "radio",
+            "button", "link", "toggle", "slider", "date-picker",
+            "file-upload", "textarea", "custom"
+          ],
+          "description": "Element type"
+        },
+        "label": {
+          "type": "string",
+          "description": "User-facing label text"
+        },
+        "defaultValue": {
+          "type": ["string", "number", "boolean", "null"],
+          "description": "Initial/default value (if any)"
+        },
+        "validInput": {
+          "type": "string",
+          "description": "Description of valid input values or formats"
+        },
+        "inputRange": {
+          "type": "object",
+          "description": "Min/max values, length constraints",
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "minLength": { "type": "integer" },
+            "maxLength": { "type": "integer" }
+          },
+          "additionalProperties": true
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the element is required"
+        },
+        "validationMessage": {
+          "type": "string",
+          "description": "Error message shown on invalid input"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Other elements this element depends on (e.g., 'country=US' for conditional visibility)"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional behavioral constraints, conditional rendering, etc."
+        },
+        "dataTestId": {
+          "type": "string",
+          "description": "Test selector for automated testing (Playwright, Cypress, Testing Library). Discovery: data-testid attribute in source."
+        },
+        "ariaLabel": {
+          "type": "string",
+          "description": "Accessibility label when visual label differs or is absent. Discovery: aria-label or aria-labelledby attribute."
+        },
+        "ariaRole": {
+          "type": "string",
+          "description": "ARIA role (e.g., dialog, alert, navigation, tabpanel). Discovery: role attribute."
+        },
+        "cssSelector": {
+          "type": "string",
+          "description": "Primary CSS selector path for the element. Discovery: className, id, or CSS modules."
+        },
+        "formGroup": {
+          "type": "string",
+          "description": "Logical grouping the element belongs to. Discovery: fieldset, form section, or grouping component."
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Placeholder/hint text shown in empty inputs. Discovery: placeholder attribute."
+        },
+        "autocomplete": {
+          "type": "string",
+          "description": "Browser autocomplete hint (e.g., email, current-password, street-address). Discovery: autocomplete attribute."
+        },
+        "tabIndex": {
+          "type": ["integer", "null"],
+          "description": "Keyboard navigation order (null = natural DOM order). Discovery: tabIndex or DOM order."
+        },
+        "eventHandlers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of event handler names attached to the element. Discovery: onClick, onChange, onSubmit, etc."
+        },
+        "stateBinding": {
+          "type": "string",
+          "description": "State management binding (framework-specific). Discovery: v-model, useState, formik.values, etc."
+        },
+        "conditionalRender": {
+          "type": ["object", "null"],
+          "description": "Conditions under which element is rendered. Discovery: v-if, ternary JSX, {condition && ...}.",
+          "properties": {
+            "condition": { "type": "string" },
+            "type": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "componentRef": {
+          "type": "string",
+          "description": "Source component that renders this element (for tracing delegation chains). Discovery: import path or component name."
+        },
+        "libraryComponent": {
+          "type": ["string", "null"],
+          "description": "Library component wrapping or implementing this element (e.g., MUI/TextField, antd/Select). Null for native HTML elements."
+        }
+      },
+      "required": ["elementId", "type", "label", "required"],
+      "additionalProperties": true
+    },
+    "frameworkDiscoveryPatterns": {
+      "type": "object",
+      "description": "Framework-specific conventions that discovery should look for when scanning source code",
+      "properties": {
+        "react": {
+          "type": "object",
+          "description": "React/Next.js discovery conventions",
+          "properties": {
+            "conventions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["data-testid", "className", "htmlFor", "React Hook Form register() names", "Formik Field names", "ref callbacks"]
+            }
+          }
+        },
+        "electron": {
+          "type": "object",
+          "description": "Electron discovery conventions",
+          "properties": {
+            "conventions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["IPC channel names bound to form elements", "webPreferences security flags", "BrowserWindow IDs"]
+            }
+          }
+        },
+        "vue": {
+          "type": "object",
+          "description": "Vue discovery conventions",
+          "properties": {
+            "conventions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["v-model binding targets", "ref names", "$emit event names", "v-if/v-show conditions"]
+            }
+          }
+        },
+        "vanillaHtml": {
+          "type": "object",
+          "description": "Vanilla HTML discovery conventions",
+          "properties": {
+            "conventions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["name", "id", "for", "pattern", "data-* attributes", "form association"]
+            }
+          }
+        },
+        "reactNative": {
+          "type": "object",
+          "description": "React Native discovery conventions",
+          "properties": {
+            "conventions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["testID", "accessibilityLabel", "accessibilityRole", "nativeID"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

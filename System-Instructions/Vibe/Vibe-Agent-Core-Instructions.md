@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Core)
-**Version:** v0.68.0
+**Version:** v0.69.0
 
 **Revision Date:** 2024-11-13
 **Type:** Core Agent Behaviors (Platform-Agnostic)

@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.68.0",
+  "version": "0.69.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -164,7 +164,8 @@
           "reset-issue-preamble.js",
           "validate-release.js",
           "prd-skill-matcher.js",
-          "statusline-check.js"
+          "statusline-check.js",
+          "branch-sync-check.js"
         ]
       },
       "shared/lib": {
