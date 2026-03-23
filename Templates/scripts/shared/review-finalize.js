@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.69.0
+ * @framework-script 0.70.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
@@ -87,10 +87,13 @@ function parseFindingsFile(filePath) {
 function normalizeFindings(data) {
   if (!data || typeof data !== 'object') return data;
 
-  // Top-level field aliases
-  if (data.issueNumber !== undefined && data.issue === undefined) {
-    data.issue = data.issueNumber;
-    delete data.issueNumber;
+  // Top-level field aliases (from findings-schema.json alternateFields)
+  const alternates = findingsSchema.alternateFields || {};
+  for (const [alt, canonical] of Object.entries(alternates)) {
+    if (data[alt] !== undefined && data[canonical] === undefined) {
+      data[canonical] = data[alt];
+      delete data[alt];
+    }
   }
 
   // criteria → findings structure transformation
@@ -138,19 +141,17 @@ function normalizeFindings(data) {
     delete data.criteria;
   }
 
-  // Normalize finding entry field aliases: name → criterion, result → status
+  // Normalize finding entry field aliases (from findings-schema.json alternateFields)
   if (data.findings && typeof data.findings === 'object') {
     for (const key of ['autoEvaluated', 'userEvaluated']) {
       const arr = data.findings[key];
       if (Array.isArray(arr)) {
         for (const entry of arr) {
-          if (entry.name && !entry.criterion) {
-            entry.criterion = entry.name;
-            delete entry.name;
-          }
-          if (entry.result && !entry.status) {
-            entry.status = entry.result;
-            delete entry.result;
+          for (const [alt, canonical] of Object.entries(alternates)) {
+            if (entry[alt] !== undefined && entry[canonical] === undefined) {
+              entry[canonical] = entry[alt];
+              delete entry[alt];
+            }
           }
         }
       }
@@ -176,7 +177,8 @@ function normalizeFindings(data) {
 
 // ─── Findings Validation (#1825) ───
 
-const REQUIRED_FIELDS = ['issue', 'title', 'reviewNumber', 'type', 'findings', 'recommendation'];
+const findingsSchema = require('./lib/findings-schema.json');
+const REQUIRED_FIELDS = findingsSchema.required;
 
 function validateFindings(findings) {
   if (!findings || typeof findings !== 'object') {

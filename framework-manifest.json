@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.69.0",
+  "version": "0.70.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -113,7 +113,13 @@
         "review-issue.md",
         "review-prd.md",
         "review-proposal.md",
-        "review-test-plan.md"
+        "review-test-plan.md",
+        "catalog-screens.md",
+        "ci.md",
+        "mockups.md",
+        "paths.md",
+        "idpf-stats.md",
+        "issue-reset.md"
       ]
     },
     "scripts": {
@@ -186,7 +192,9 @@
           "debug.js",
           "catalog-errors.js",
           "persist-skill-suggestions.js",
+          "classify-changed-files.js",
           "doc-templates.json",
+          "findings-schema.json",
           "qa-config.json"
         ]
       },
@@ -194,7 +202,8 @@
         "source": "Templates/hooks/",
         "target": ".claude/hooks/",
         "files": [
-          "workflow-trigger.js"
+          "workflow-trigger.js",
+          "pre-push"
         ]
       }
     },
@@ -262,6 +271,51 @@
           "name": "domain-signals",
           "source": ".claude/metadata/domain-signals.json",
           "description": "Domain-to-signal mapping for charter-aware domain filtering"
+        },
+        {
+          "name": "command-boilerplate",
+          "source": ".claude/metadata/command-boilerplate.json",
+          "description": "Command template boilerplate for command generation"
+        },
+        {
+          "name": "epic-complexity-signals",
+          "source": ".claude/metadata/epic-complexity-signals.json",
+          "description": "Signal patterns for /work epic complexity classification"
+        },
+        {
+          "name": "paths-config",
+          "source": ".claude/metadata/paths-config.json",
+          "description": "Path analysis configuration for /paths command"
+        },
+        {
+          "name": "prd-review-criteria",
+          "source": ".claude/metadata/prd-review-criteria.json",
+          "description": "Review criteria for /review-prd command"
+        },
+        {
+          "name": "proposal-review-criteria",
+          "source": ".claude/metadata/proposal-review-criteria.json",
+          "description": "Review criteria for /review-proposal command"
+        },
+        {
+          "name": "review-criteria",
+          "source": ".claude/metadata/review-criteria.json",
+          "description": "Type-specific review criteria for /review-issue command"
+        },
+        {
+          "name": "screen-spec-schema",
+          "source": ".claude/metadata/screen-spec-schema.json",
+          "description": "Screen specification schema for /catalog-screens and /mockups commands"
+        },
+        {
+          "name": "skill-catalog",
+          "source": ".claude/metadata/skill-catalog.json",
+          "description": "Skill catalog for skill discovery and matching"
+        },
+        {
+          "name": "test-plan-review-criteria",
+          "source": ".claude/metadata/test-plan-review-criteria.json",
+          "description": "Review criteria for /review-test-plan command"
         }
       ]
     }
@@ -287,15 +341,32 @@
     "work"
   ],
   "managedCommands": [
+    "add-story",
     "assign-branch",
     "bad-test-review",
-    "code-review",
-    "switch-branch",
-    "transfer-issue",
+    "change-domain-expert",
     "charter",
+    "code-review",
+    "complete-prd",
+    "create-backlog",
     "extensions",
+    "idpf-stats",
+    "issue-reset",
+    "pivot",
     "plan-workstreams",
+    "playwright-check",
     "resolve-review",
-    "review-test-plan"
+    "review-test-plan",
+    "split-story",
+    "switch-branch",
+    "transfer-issue"
+  ],
+  "deprecatedCommands": [
+    { "file": "switch-role.md", "action": "removed", "version": "0.17.0", "reason": "Single specialist model" },
+    { "file": "add-role.md", "action": "removed", "version": "0.17.0", "reason": "Single specialist model" },
+    { "file": "install-skill.md", "action": "retired", "version": "0.54.0", "reason": "Migrated to /manage-skills (#1672)" },
+    { "file": "manage-skills.md", "action": "retired", "version": "0.63.0", "reason": "px-manager owns skill lifecycle (#1918)" },
+    { "file": "reset-issue.md", "action": "renamed", "version": "0.65.0", "renamedTo": "issue-reset.md", "reason": "Clarity (#1960)" },
+    { "file": "check-upgrade.md", "action": "removed", "version": "0.68.0", "reason": "Replaced by upgrade-check.js (#2001)" }
   ]
 }

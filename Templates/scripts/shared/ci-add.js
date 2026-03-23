@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.69.0
+ * @framework-script 0.70.0
  * @description Add selected CI features to a project's GitHub Actions workflows. Applies feature templates with YAML merging, handles confirmation prompts, and provides error recovery. Part of the /ci add subcommand.
  * @checksum sha256:placeholder
  *

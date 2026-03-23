@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.69.0
+ * @framework-script 0.70.0
  * @description Concurrent workstream planning — argument parsing, analysis, and execution. Handles deterministic operations for /plan-workstreams: argument validation, directory scanning, module boundary detection, conflict risk matrix computation, workstream grouping via union-find, and branch creation with .workstreams.json metadata.
  * @checksum sha256:placeholder
  *

@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.70.0] - 2026-03-23
+
+### Added
+
+- **Test/source file separation in `/work` Step 4c** (#2005) — Files Changed section now separates test files from source files within each status category (Added, Modified, Deleted). New `classify-changed-files.js` utility with 20 unit tests for pattern-based classification (`*.test.*`, `*.spec.*`, `__tests__/`, `test/`, `tests/`).
+- **`validate-manifest.js` for deployment chain validation** (#2012) — Comprehensive script validating 6 deployment categories bidirectionally, command classification completeness, marker matching, deprecated command tracking, and `constants.js` cross-referencing. Replaces 114 lines of inline bash loops in Phase 2n with a single script call. Includes 18 unit tests.
+- **`deprecatedCommands` array in `framework-manifest.json`** (#2012) — Tracks 6 known deprecated commands with action type (removed, retired, renamed), version, and reason for px-manager cleanup.
+- **Extension point deprecation and breaking change detection** (#2014) — `build-extension-registry.js` now diffs new scans against previous registry, blocking on unannounced extension point removals. Enforces a two-release deprecation cycle. `deprecatedExtensionPoints` array added to `extension-points.json` schema. Includes 8 unit tests.
+- **`--wait` flag for `/work` command** (#2015) — Blocks on pending CI before starting work. Calls existing `wait-for-ci.js` on CI failure/timeout, stops work. Silently skipped when no CI workflows exist. Includes 4 unit tests.
+
+### Fixed
+
+- **25 manifest deployment gaps** (#2011) — Added 9 missing metadata registries, 1 missing hook (`pre-push`), 6 missing commands to workflow list, 7 missing command classifications, and 2 missing `shared/lib` files to `framework-manifest.json`. Synchronized `constants.js` INSTALLED_FILES_MANIFEST. Fixed `add-recipe.md` marker from `MANAGED` to `FRAMEWORK-ONLY`.
+
+### Changed
+
+- **`review-issue.md` Step 3** (#2010) — Replaced 16 lines of inline JSON example with Read instruction referencing `findings-schema.json` as single source of truth.
+- **`review-finalize.js`** (#2010) — `REQUIRED_FIELDS` now derived from `findings-schema.json` `required` field; `normalizeFindings()` alternate field mappings derived from `alternateFields`.
+- **`review-format.js`** (#2010) — `EMOJI` map now derived from `findings-schema.json` `statusEmoji`. Fixed skip emoji discrepancy (was `⏭️`, now `⊘` matching runtime).
+- **`validate-helpers.js`** — Fixed conditional file extraction regex to handle extensionless files (e.g., `pre-push`).
+
+---
+
 ## [0.69.0] - 2026-03-23
 
 ### Added
@@ -136,7 +159,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.69.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.70.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -429,7 +452,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.69.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.70.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -800,13 +823,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.69.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.69.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.69.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.70.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.70.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.70.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.69.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.70.0` placeholder (#1479)
 
 ---
 
@@ -1504,15 +1527,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.69.0 placeholder after packaging
+- **#1059** - Skills retain v0.70.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.69.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.70.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.69.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.70.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -1672,7 +1695,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.69.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.70.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -1780,7 +1803,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.69.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.70.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -1811,8 +1834,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.69.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.69.0` placeholder
+- **#933** - v0.70.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.70.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -1953,7 +1976,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.69.0` placeholder
+  - Changed hardcoded version to `v0.70.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -1993,7 +2016,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.69.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.70.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -2070,10 +2093,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.69.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.70.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.69.0` placeholder
+- **#821** - README-DIST.md now uses `v0.70.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -2190,7 +2213,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.69.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.70.0 placeholder
 
 ---
 
@@ -2238,7 +2261,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.69.0 placeholders to 209 framework source files
+- Restored v0.70.0 placeholders to 209 framework source files
 
 ---
 
@@ -2306,12 +2329,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.69.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.70.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.69.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.70.0` format for consistent replacement
 
 ---
 
@@ -2380,7 +2403,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.69.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.70.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

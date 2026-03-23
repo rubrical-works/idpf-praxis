@@ -1,8 +1,8 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.69.0",
-  "generatedAt": "2026-03-23T17:21:40.106Z",
-  "fileCount": 64,
+  "frameworkVersion": "0.70.0",
+  "generatedAt": "2026-03-23T23:10:44.947Z",
+  "fileCount": 65,
   "files": [
     {
       "relativePath": "audit.js",
@@ -170,6 +170,11 @@
       "sizeBytes": 4129
     },
     {
+      "relativePath": "Templates/scripts/shared/lib/classify-changed-files.js",
+      "sha256": "eb4b3da1ae19fea675b7cd1ef3430854ec3078fc116648a904427f3021be28c6",
+      "sizeBytes": 2405
+    },
+    {
       "relativePath": "Templates/scripts/shared/lib/debug.js",
       "sha256": "e96731036ba3611d564aa31ad21f82026b9d6b9d52a154c1480a54ab733daf4f",
       "sizeBytes": 1191
@@ -211,8 +216,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/lib/review-format.js",
-      "sha256": "ebffe0a51f193644a2539a0b5ee7891405915425b404d45a012f294b4c3cb454",
-      "sizeBytes": 5308
+      "sha256": "dd803cafa122852cb12236fea7d9dcac9cc5831778999127f2aa05757ede0c3b",
+      "sizeBytes": 5369
     },
     {
       "relativePath": "Templates/scripts/shared/lib/review-mode.js",
@@ -276,8 +281,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/review-finalize.js",
-      "sha256": "6dcdc9c5b9dbf6872f9adb93b13cf2708a108dea26a4c6be61af04d8a74b3336",
-      "sizeBytes": 15055
+      "sha256": "0178b736af4c6bc64f125d5e74f0598db5c19e98d5e56ed5c61aff9b4680cabc",
+      "sizeBytes": 15227
     },
     {
       "relativePath": "Templates/scripts/shared/review-preamble.js",
@@ -321,8 +326,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/work-preamble.js",
-      "sha256": "01c87e8c52ef73b005acffd6866a9fabed487f2b48bf2b8502c45461daed0090",
-      "sizeBytes": 32284
+      "sha256": "ad3a0273a064ad65f8462e39323a32603ea707268644b7fb8740d8a1a9d217da",
+      "sizeBytes": 32527
     }
   ]
 }

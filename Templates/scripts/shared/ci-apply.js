@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * @framework-script 0.69.0
+ * @framework-script 0.70.0
  * @description Orchestrate application of selected CI recommendations with sequential execution, confirmation prompts, error recovery, and summary reporting. Accepts recommendation objects from ci-recommend.js and applies them via ci-add.js. Part of the /ci apply subcommand.
  * @checksum sha256:placeholder
  *

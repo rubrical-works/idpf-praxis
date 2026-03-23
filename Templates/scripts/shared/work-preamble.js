@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.69.0
+ * @framework-script 0.70.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -109,8 +109,9 @@ function parseArgs(args) {
     return { mode: 'schema' };
   }
 
-  // Detect --assign modifier (boolean flag, combinable with any mode)
+  // Detect boolean modifier flags (combinable with any mode)
   const hasAssign = args.includes('--assign');
+  const hasWait = args.includes('--wait');
 
   const flagIndex = args.indexOf('--issue');
   if (flagIndex !== -1) {
@@ -125,6 +126,7 @@ function parseArgs(args) {
     }
     const result = { mode: 'single', issues: [num] };
     if (hasAssign) result.assign = true;
+    if (hasWait) result.wait = true;
     return result;
   }
 
@@ -140,6 +142,7 @@ function parseArgs(args) {
     }
     const result = { mode: 'batch', issues: nums };
     if (hasAssign) result.assign = true;
+    if (hasWait) result.wait = true;
     return result;
   }
 
@@ -151,6 +154,7 @@ function parseArgs(args) {
     }
     const result = { mode: 'status', status };
     if (hasAssign) result.assign = true;
+    if (hasWait) result.wait = true;
     return result;
   }
 
@@ -718,7 +722,8 @@ async function runSingleIssue(issueNum, options) {
     type,
     tracker,
     framework: frameworkConfig.framework,
-    frameworkPath: frameworkConfig.frameworkPath
+    frameworkPath: frameworkConfig.frameworkPath,
+    ...(options && options.wait ? { wait: true } : {})
   };
 
   if (type === 'epic' || type === 'branch') {
@@ -935,7 +940,9 @@ async function main() {
     return;
   }
 
-  const options = parsed.assign ? { assign: true } : undefined;
+  const options = {};
+  if (parsed.assign) options.assign = true;
+  if (parsed.wait) options.wait = true;
 
   if (parsed.mode === 'single') {
     const result = await runSingleIssue(parsed.issues[0], options);

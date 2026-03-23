@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.69.0
+ * @framework-script 0.70.0
  * @description Parse git commits since the last semver tag and categorize by conventional commit type (feat, fix, chore, etc.). Extracts type, scope, breaking change flags, and issue references. Used by /prepare-release and piped into generate-changelog.js.
  * @checksum sha256:placeholder
  *

@@ -1,0 +1,40 @@
+{
+  "_meta": {
+    "description": "Schema for review findings JSON passed to review-finalize.js. Referenced by /review-issue Step 3.",
+    "source": "Extracted from .claude/commands/review-issue.md (#1934)"
+  },
+  "required": ["issue", "title", "reviewNumber", "type", "findings", "recommendation"],
+  "alternateFields": {
+    "issueNumber": "issue",
+    "name": "criterion",
+    "result": "status"
+  },
+  "schema": {
+    "issue": { "type": "number", "description": "Issue number (e.g., 42)" },
+    "title": { "type": "string", "description": "Issue title text" },
+    "reviewNumber": { "type": "number", "description": "Review sequence number (1, 2, ...)" },
+    "type": { "type": "string", "enum": ["bug", "enhancement", "story", "epic", "generic"] },
+    "findings": {
+      "autoEvaluated": [
+        { "id": "string", "criterion": "string", "status": "pass|warn|fail|skip", "evidence": "string" }
+      ],
+      "userEvaluated": [
+        { "id": "string", "criterion": "string", "status": "pass|warn|fail|skip", "evidence": "string" }
+      ]
+    },
+    "recommendation": { "type": "string", "enum": ["Ready for work", "Needs minor revision", "Needs revision", "Needs major rework"] },
+    "recommendationReason": { "type": "string", "optional": true },
+    "suggestions": { "type": "array", "items": "string", "optional": true },
+    "extensions": { "type": "array", "items": "string", "optional": true }
+  },
+  "statusEmoji": {
+    "pass": "✅",
+    "warn": "⚠️",
+    "fail": "❌",
+    "skip": "⊘"
+  },
+  "notes": [
+    "findings.userEvaluated is empty [] in solo review mode",
+    "type must match the issue type from preamble context"
+  ]
+}
