@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.71.0
+**Version:** v0.71.1
 
 **Purpose:** Standard initialization procedure for AI assistant sessions
 

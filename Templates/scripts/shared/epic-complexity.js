@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.71.0
+ * @framework-script 0.71.1
  * @description Epic complexity classifier for /work --nonstop. Scans sub-issue titles for functional vs restyle signals and returns classification with strictTDD flag.
  * @checksum sha256:placeholder
  *

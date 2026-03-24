@@ -1,5 +1,5 @@
 ---
-version: "v0.71.0"
+version: "v0.71.1"
 description: Create text-based or diagrammatic screen mockups (project)
 argument-hint: "[#NN]"
 copyright: "Rubrical Works (c) 2026"

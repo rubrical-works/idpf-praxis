@@ -1,5 +1,5 @@
 # Runtime Artifact Triggers
-**Version:** v0.71.0
+**Version:** v0.71.1
 **Purpose:** Define when to offer artifact creation/update during development and transition phases.
 Runtime artifact population happens **during development**, not at charter creation. Claude offers to document decisions, plans, and procedures when they arise naturally in conversation.
 **Key Principle:** Offer, don't force. Users can decline any artifact creation.
