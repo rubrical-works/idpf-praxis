@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "review-mode-criteria-schema.json",
+  "title": "Review Mode Criteria Schema",
+  "description": "Schema for .claude/metadata/review-mode-criteria.json — mode-aware common criteria for review commands",
+  "type": "object",
+  "required": ["modes", "criteria"],
+  "properties": {
+    "modes": {
+      "type": "object",
+      "description": "Review mode definitions",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "description", "focus"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Mode display name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Mode description"
+          },
+          "focus": {
+            "type": "string",
+            "description": "What this mode emphasizes"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "criteria": {
+      "type": "object",
+      "description": "Common criteria keyed by criterion ID",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "modes", "type", "description"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Criterion display name"
+          },
+          "modes": {
+            "type": "array",
+            "description": "Which review modes include this criterion",
+            "items": {
+              "type": "string",
+              "enum": ["solo", "team", "enterprise"]
+            }
+          },
+          "type": {
+            "type": "string",
+            "enum": ["objective", "subjective"],
+            "description": "Whether this is auto-evaluated or requires user input"
+          },
+          "autoCheck": {
+            "type": "string",
+            "description": "Instructions for automated evaluation (objective criteria)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description"
+          },
+          "header": {
+            "type": "string",
+            "description": "AskUserQuestion header (subjective criteria)"
+          },
+          "question": {
+            "type": "string",
+            "description": "AskUserQuestion prompt (subjective criteria)"
+          },
+          "options": {
+            "type": "array",
+            "description": "AskUserQuestion options (subjective criteria)",
+            "items": {
+              "type": "object",
+              "required": ["label", "description"],
+              "properties": {
+                "label": { "type": "string" },
+                "description": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "_meta": {
+      "type": "object",
+      "description": "Metadata about this criteria file"
+    }
+  },
+  "additionalProperties": false
+}

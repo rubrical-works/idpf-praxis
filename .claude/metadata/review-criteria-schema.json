@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "review-criteria-schema.json",
+  "title": "Review Criteria Schema",
+  "description": "Schema for .claude/metadata/review-criteria.json — type-specific review criteria for /review-issue",
+  "type": "object",
+  "required": ["typeSpecific"],
+  "properties": {
+    "typeSpecific": {
+      "type": "object",
+      "description": "Criteria grouped by issue type",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["label", "criteria"],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Display name for the issue type"
+          },
+          "criteria": {
+            "type": "array",
+            "description": "Evaluation criteria for this issue type",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "autoCheck"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Criterion identifier (kebab-case)"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable criterion name"
+                },
+                "autoCheck": {
+                  "type": "string",
+                  "description": "Instructions for automated evaluation"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "_meta": {
+      "type": "object",
+      "description": "Metadata about this criteria file"
+    }
+  },
+  "additionalProperties": false
+}

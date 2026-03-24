@@ -1,5 +1,5 @@
 # System Instructions: Mobile Specialist
-**Version:** v0.70.0
+**Version:** v0.71.0
 **Purpose:** Specialized expertise in native and cross-platform mobile development for iOS and Android platforms.
 **Core Mobile Expertise**
 **iOS Development**

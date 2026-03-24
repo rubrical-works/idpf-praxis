@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.70.0",
+  "version": "0.71.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -316,6 +316,91 @@
           "name": "test-plan-review-criteria",
           "source": ".claude/metadata/test-plan-review-criteria.json",
           "description": "Review criteria for /review-test-plan command"
+        },
+        {
+          "name": "ci-features-schema",
+          "source": ".claude/metadata/ci-features-schema.json",
+          "description": "JSON Schema for ci-features.json"
+        },
+        {
+          "name": "command-boilerplate-schema",
+          "source": ".claude/metadata/command-boilerplate-schema.json",
+          "description": "JSON Schema for command-boilerplate.json"
+        },
+        {
+          "name": "domain-signals-schema",
+          "source": ".claude/metadata/domain-signals-schema.json",
+          "description": "JSON Schema for domain-signals.json"
+        },
+        {
+          "name": "epic-complexity-signals-schema",
+          "source": ".claude/metadata/epic-complexity-signals-schema.json",
+          "description": "JSON Schema for epic-complexity-signals.json"
+        },
+        {
+          "name": "extension-points-schema",
+          "source": ".claude/metadata/extension-points-schema.json",
+          "description": "JSON Schema for extension-points.json"
+        },
+        {
+          "name": "extension-recipes-schema",
+          "source": ".claude/metadata/extension-recipes-schema.json",
+          "description": "JSON Schema for extension-recipes.json"
+        },
+        {
+          "name": "paths-config-schema",
+          "source": ".claude/metadata/paths-config-schema.json",
+          "description": "JSON Schema for paths-config.json"
+        },
+        {
+          "name": "prd-review-criteria-schema",
+          "source": ".claude/metadata/prd-review-criteria-schema.json",
+          "description": "JSON Schema for prd-review-criteria.json"
+        },
+        {
+          "name": "proposal-review-criteria-schema",
+          "source": ".claude/metadata/proposal-review-criteria-schema.json",
+          "description": "JSON Schema for proposal-review-criteria.json"
+        },
+        {
+          "name": "recipe-tech-mapping-schema",
+          "source": ".claude/metadata/recipe-tech-mapping-schema.json",
+          "description": "JSON Schema for recipe-tech-mapping.json"
+        },
+        {
+          "name": "review-criteria-schema",
+          "source": ".claude/metadata/review-criteria-schema.json",
+          "description": "JSON Schema for review-criteria.json"
+        },
+        {
+          "name": "review-extensions-schema",
+          "source": ".claude/metadata/review-extensions-schema.json",
+          "description": "JSON Schema for review-extensions.json"
+        },
+        {
+          "name": "review-mode-criteria-schema",
+          "source": ".claude/metadata/review-mode-criteria-schema.json",
+          "description": "JSON Schema for review-mode-criteria.json"
+        },
+        {
+          "name": "skill-catalog-schema",
+          "source": ".claude/metadata/skill-catalog-schema.json",
+          "description": "JSON Schema for skill-catalog.json"
+        },
+        {
+          "name": "skill-keywords-schema",
+          "source": ".claude/metadata/skill-keywords-schema.json",
+          "description": "JSON Schema for skill-keywords.json"
+        },
+        {
+          "name": "skill-registry-schema",
+          "source": ".claude/metadata/skill-registry-schema.json",
+          "description": "JSON Schema for skill-registry.json"
+        },
+        {
+          "name": "test-plan-review-criteria-schema",
+          "source": ".claude/metadata/test-plan-review-criteria-schema.json",
+          "description": "JSON Schema for test-plan-review-criteria.json"
         }
       ]
     }

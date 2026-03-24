@@ -1,8 +1,9 @@
 {
-  "generatedAt": "2026-03-23T17:04:42.722Z",
+  "generatedAt": "2026-03-24T04:26:43.614Z",
   "version": "1.0.0",
   "commandCount": 18,
   "extensionPointCount": 79,
+  "deprecatedExtensionPoints": [],
   "commands": {
     "bug": {
       "type": "EXTENSIBLE",

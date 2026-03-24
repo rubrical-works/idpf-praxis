@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "review-extensions-schema.json",
+  "title": "Review Extensions Schema",
+  "description": "Schema for .claude/metadata/review-extensions.json — domain extension criteria mappings for review commands",
+  "type": "object",
+  "required": ["version", "description", "extensions"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Registry version"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of this registry"
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Domain extensions keyed by extension ID",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["source", "domain", "description"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Path to domain review criteria markdown file"
+          },
+          "domain": {
+            "type": "string",
+            "description": "Domain name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this extension evaluates"
+          },
+          "relevantSpecialists": {
+            "type": "array",
+            "description": "Domain specialists that trigger auto-inclusion",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

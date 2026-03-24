@@ -1,7 +1,7 @@
 ---
-version: "v0.70.0"
+version: "v0.71.0"
 description: Discover and catalog screen elements from source code (project)
-argument-hint: ""
+argument-hint: "[#NN]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- EXTENSIBLE -->
@@ -14,10 +14,14 @@ Discovers and catalogs UI screen elements from source code. Fully interactive vi
 - Shared screen spec schema: `.claude/metadata/screen-spec-schema.json`
 ---
 ## Arguments
-Zero arguments. All former arguments (screen names, `--scope`, `--update`) incorporated into interactive question flow.
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `#NN` | No | Issue number for context and writeback of screen spec references |
 ```
-/catalog-screens
+/catalog-screens            # Fully interactive, no issue context
+/catalog-screens #42        # Interactive with issue #42 context (enables writeback)
 ```
+All former arguments (screen names, `--scope`, `--update`) incorporated into interactive question flow.
 ---
 ## Execution Instructions
 **REQUIRED:** Before executing:
@@ -32,8 +36,12 @@ Zero arguments. All former arguments (screen names, `--scope`, `--update`) incor
 <!-- USER-EXTENSION-END: pre-catalog -->
 
 ### Step 1: Discovery and Interactive Setup
-**Step 1a: Load Shared Schema**
+**Step 1a: Load Shared Schema and Issue Context**
 Read `.claude/metadata/screen-spec-schema.json` for element field definitions. Do not define fields inline.
+**If `#NN` provided:**
+1. Read issue via `gh issue view #NN --json body,title,labels`
+2. Extract: issue type (from labels), screen/feature names from title/body
+3. Hold for Q2 name suggestion and Step 7 writeback
 **Step 1b: Discover Existing Content**
 Before asking questions, scan `Mockups/` and subdirectories:
 - List all `Mockups/{Name}/` directories
@@ -54,7 +62,7 @@ Before asking questions, scan `Mockups/` and subdirectories:
 - "Scan a specific directory"
 - "Enter screen details manually"
 **Condition:** Only for "Create new" flow. Update/Re-scan skips to Q6.
-**Q3a** (if specific dir): Free text path. Validate existence.
+**Q3a** (if specific dir): Free text path. Validate existence. Not found: error with suggestions, re-ask.
 **Q4** (after scan): **Which screens?** `AskUserQuestion` `multiSelect: true`:
 - Discovered screens with element counts
 - "All of the above"
@@ -139,9 +147,11 @@ Create `Mockups/{Name}/Specs/` if missing. Write: `Mockups/{Name}/Specs/{Screen-
 <!-- USER-EXTENSION-START: post-catalog -->
 <!-- USER-EXTENSION-END: post-catalog -->
 
-### Step 7: Proposal Writeback (if applicable)
-If triggered from proposal context: append `## Screen Specs` with `Mockups/{Name}/Specs/` references.
-Invalid path → warn, skip writeback, spec still created.
+### Step 7: Issue Writeback (if applicable)
+If `#NN` provided, write screen spec references back to the source:
+**Proposal:** Append/update `## Screen Specs` section with `Mockups/{Name}/Specs/` file references. Invalid path → warn, skip writeback, spec still created.
+**Enhancement or Bug:** Update issue body via `gh pmu view #NN --body-stdout` / `gh pmu edit #NN -F`. Append/update `## Screen Specs` section. Replace if exists.
+**No `#NN`:** Skip writeback.
 ### Step 8: Report
 ```
 Screen Catalog complete.
@@ -161,7 +171,9 @@ Screen Catalog complete.
 | CLI/API project | Report → STOP |
 | Unparseable source | Manual catalog mode |
 | No specs (Update) | Redirect to Create |
-| Proposal path invalid | Warn, skip writeback |
+| `#NN` not found | Continue without issue context |
+| Writeback path invalid | Warn, skip writeback |
+| Writeback update fails | Warn, skip writeback |
 | Dirs missing | Create automatically |
 | File collision | Ask: overwrite, alternative, skip |
 | Schema missing | STOP |

@@ -1,5 +1,5 @@
 ---
-version: "v0.70.0"
+version: "v0.71.0"
 description: Create text-based or diagrammatic screen mockups (project)
 argument-hint: "[#NN]"
 copyright: "Rubrical Works (c) 2026"
@@ -41,7 +41,12 @@ Creates text-based or diagrammatic screen mockups. Fully interactive via `AskUse
 Before asking questions, scan `Mockups/` and subdirectories:
 - List all `Mockups/{Name}/` directories
 - Inventory `Specs/`, `Screens/`, `AsciiScreens/` contents
-**Step 1c: Interactive Question Flow**
+**Step 1c: Pipeline Context Detection**
+**If `#NN` provided**, check for artifacts from other UI design pipeline commands:
+**Screen spec detection:** Check issue body/linked proposal for `## Screen Specs` section. Scan `Mockups/*/Specs/` for matching specs. If found: pre-select in Q4, report.
+**Path analysis detection:** Check proposal file or issue body for `## Path Analysis` section. If found: report path counts. AskUserQuestion: "Use path analysis to scope mockups" / "Ignore — scope by screen". If using paths: generate mockups per distinct screen state, group by scenario category in README.
+**No `#NN` or no artifacts:** Skip silently.
+**Step 1d: Interactive Question Flow**
 **Q1: What would you like to do?** `AskUserQuestion`:
 - "Create new mockups"
 - "Modify existing mockups"
@@ -97,8 +102,11 @@ Update screen spec `## Related Artifacts` with mockup paths. Mockup header refer
 
 ### Step 5: README.md Auto-Generation
 Auto-generate `Mockups/{Name}/README.md` listing all files in Specs/, Screens/, AsciiScreens/. Omit empty sections. Updated after each mockup creation/modification.
-### Step 6: Proposal Writeback (if applicable)
-If from proposal context or `#NN` is proposal: append `## Mockups` section with file references. Invalid path → warn, skip, mockup still created.
+### Step 6: Issue Writeback (if applicable)
+If `#NN` provided, write mockup references back to the source:
+**Proposal:** Append/update `## Mockups` section with file references. Invalid path → warn, skip writeback, mockup still created.
+**Enhancement or Bug:** Update issue body via `gh pmu view #NN --body-stdout` / `gh pmu edit #NN -F`. Append/update `## Mockups` section. Replace if exists.
+**No `#NN`:** Skip writeback.
 ### Step 7: Report
 ```
 Mockup complete.

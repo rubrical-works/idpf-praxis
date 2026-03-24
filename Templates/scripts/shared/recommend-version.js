@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.70.0
+ * @framework-script 0.71.0
  * @description Recommend semver bump based on commit types. Classifies commits via conventional commit prefixes (feat:, fix:) with fallback to issue label lookup via GitHub API. Returns major/minor/patch recommendation with rationale. Used by /prepare-release version determination.
  * @checksum sha256:placeholder
  *

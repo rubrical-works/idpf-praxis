@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "command-boilerplate-schema.json",
+  "title": "Command Boilerplate Schema",
+  "description": "Schema for .claude/metadata/command-boilerplate.json — reusable boilerplate sections for command specs",
+  "type": "object",
+  "required": ["prerequisites", "executionInstructions", "errorHandling"],
+  "properties": {
+    "prerequisites": {
+      "type": "object",
+      "required": ["common"],
+      "properties": {
+        "common": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "descriptions": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "executionInstructions": {
+      "type": "object",
+      "required": ["steps", "todoRules"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "todoRules": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "errorHandling": {
+      "type": "object",
+      "required": ["common"],
+      "properties": {
+        "common": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["situation", "response"],
+            "properties": {
+              "situation": { "type": "string" },
+              "response": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

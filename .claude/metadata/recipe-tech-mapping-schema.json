@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "recipe-tech-mapping-schema.json",
+  "title": "Recipe Tech Mapping Schema",
+  "description": "Schema for .claude/metadata/recipe-tech-mapping.json — tech stack to recipe mappings for /charter suggestions",
+  "type": "object",
+  "required": ["version", "description", "techMappings"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Mapping version"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description"
+    },
+    "techMappings": {
+      "type": "object",
+      "description": "Tech indicator to recipe mapping",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["recipes", "description"],
+        "properties": {
+          "recipes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Recipe names to suggest for this tech indicator"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this tech indicator represents"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "universalRecipes": {
+      "type": "object",
+      "description": "Recipes that apply to any project type",
+      "properties": {
+        "description": { "type": "string" },
+        "recipes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "condition": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "groupMappings": {
+      "type": "object",
+      "description": "Higher-level groupings for related tech indicators",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "indicators": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "recipes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "_schema": {
+      "type": "object",
+      "description": "Schema documentation for the fields in this file"
+    }
+  },
+  "additionalProperties": false
+}

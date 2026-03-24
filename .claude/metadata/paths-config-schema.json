@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "paths-config-schema.json",
+  "title": "Paths Config Schema",
+  "description": "Schema for .claude/metadata/paths-config.json — path analysis categories for /paths command",
+  "type": "object",
+  "required": ["version", "categories"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Config version"
+    },
+    "categories": {
+      "type": "array",
+      "description": "Path analysis categories",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "quickModeCategories": {
+      "type": "array",
+      "description": "Category IDs included in quick mode",
+      "items": { "type": "string" }
+    },
+    "fromCodeHint": {
+      "type": "string",
+      "description": "Hint text for --from-code usage"
+    }
+  },
+  "additionalProperties": false
+}

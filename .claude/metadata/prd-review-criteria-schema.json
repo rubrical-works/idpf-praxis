@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "prd-review-criteria-schema.json",
+  "title": "PRD Review Criteria Schema",
+  "description": "Schema for .claude/metadata/prd-review-criteria.json — criteria for /review-prd",
+  "type": "object",
+  "required": ["version", "criteria"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Criteria version"
+    },
+    "criteria": {
+      "type": "array",
+      "description": "Review criteria for PRDs",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "type", "autoCheckMethod"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "type": { "type": "string", "enum": ["objective", "subjective"] },
+          "autoCheckMethod": { "type": "string" },
+          "requiresTestPlan": { "type": "boolean" },
+          "priority": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "subjective": {
+      "type": "array",
+      "description": "Subjective criteria requiring user input",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "question", "header", "options"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "question": { "type": "string" },
+          "header": { "type": "string" },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "description"],
+              "properties": {
+                "label": { "type": "string" },
+                "description": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "partialReviewNote": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "_meta": {
+      "type": "object",
+      "description": "Metadata about this criteria file"
+    }
+  },
+  "additionalProperties": false
+}
