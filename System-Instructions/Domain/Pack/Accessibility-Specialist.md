@@ -1,5 +1,5 @@
 # System Instructions: Accessibility Specialist
-**Version:** v0.72.0
+**Version:** v0.73.0
 **Purpose:** Specialized expertise in web accessibility, WCAG compliance, assistive technologies, inclusive design patterns, and accessibility remediation.
 ---
 ## WCAG Standards

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.72.0
+ * @framework-script 0.73.0
  * @description View workflow status — lists all GitHub Actions workflows. Parses all .yml/.yaml files in .github/workflows/ and reports their trigger events and enabled state. Part of the /ci status subcommand.
  * @checksum sha256:placeholder
  *
@@ -132,6 +132,8 @@ function extractVersions(workflow) {
       const nodeVersions = job.strategy.matrix['node-version'];
       if (Array.isArray(nodeVersions)) {
         nodeVersions.forEach(v => versions.add(`Node ${v}`));
+      } else {
+        versions.add(`Node ${nodeVersions}`);
       }
     }
 
@@ -140,6 +142,8 @@ function extractVersions(workflow) {
       const pyVersions = job.strategy.matrix['python-version'];
       if (Array.isArray(pyVersions)) {
         pyVersions.forEach(v => versions.add(`Python ${v}`));
+      } else {
+        versions.add(`Python ${pyVersions}`);
       }
     }
 
@@ -156,19 +160,19 @@ function extractVersions(workflow) {
       for (const step of job.steps) {
         if (step.uses?.includes('setup-node')) {
           const nodeVersion = step.with?.['node-version'];
-          if (nodeVersion && !nodeVersion.includes('${{')) {
+          if (nodeVersion && !String(nodeVersion).includes('${{')) {
             versions.add(`Node ${nodeVersion}`);
           }
         }
         if (step.uses?.includes('setup-python')) {
           const pyVersion = step.with?.['python-version'];
-          if (pyVersion && !pyVersion.includes('${{')) {
+          if (pyVersion && !String(pyVersion).includes('${{')) {
             versions.add(`Python ${pyVersion}`);
           }
         }
         if (step.uses?.includes('setup-go')) {
           const goVersion = step.with?.['go-version'];
-          if (goVersion && !goVersion.includes('${{')) {
+          if (goVersion && !String(goVersion).includes('${{')) {
             versions.add(`Go ${goVersion}`);
           }
         }
@@ -225,4 +229,4 @@ if (require.main === module) {
   console.log(result);
 }
 
-module.exports = { viewWorkflowStatus };
+module.exports = { viewWorkflowStatus, extractVersions };

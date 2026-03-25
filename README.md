@@ -1,6 +1,8 @@
 # IDPF — Interactive Development Process Frameworks
 
 [![Version](https://img.shields.io/github/v/release/rubrical-works/idpf-praxis?label=version&color=blue)](https://github.com/rubrical-works/idpf-praxis/releases)
+[![CI](https://github.com/rubrical-works/idpf-praxis/actions/workflows/ci.yml/badge.svg)](https://github.com/rubrical-works/idpf-praxis/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/rubrical-works/idpf-praxis/actions/workflows/codeql.yml/badge.svg)](https://github.com/rubrical-works/idpf-praxis/actions/workflows/codeql.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Claude%20Code-blueviolet)](https://claude.ai/code)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)

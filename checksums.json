@@ -1,8 +1,8 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.72.0",
-  "generatedAt": "2026-03-25T20:25:30.911Z",
-  "fileCount": 67,
+  "frameworkVersion": "0.73.0",
+  "generatedAt": "2026-03-25T23:35:52.584Z",
+  "fileCount": 69,
   "files": [
     {
       "relativePath": "audit.js",
@@ -101,8 +101,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/ci-status.js",
-      "sha256": "461b1a87e01e6e45e6577892127d29a4d2521ca34beb3d483586552ac800c970",
-      "sizeBytes": 6100
+      "sha256": "e32282e6843b3bba4479803f67d459d0b7286dab6b0311be518861d3a802dd21",
+      "sizeBytes": 6263
     },
     {
       "relativePath": "Templates/scripts/shared/ci-validate.js",
@@ -250,6 +250,11 @@
       "sizeBytes": 5232
     },
     {
+      "relativePath": "Templates/scripts/shared/mockup-element-extractor.js",
+      "sha256": "7fd1a86c327e6c5ecb1700dbe895572355d62bb58f38cf1cee04644d746c46d1",
+      "sizeBytes": 5736
+    },
+    {
       "relativePath": "Templates/scripts/shared/paths-preamble.js",
       "sha256": "2993882f6ba3267b1df68957bfe4e9d767d487bb4d6199ea29d6a601caf2d4f7",
       "sizeBytes": 10925
@@ -338,6 +343,11 @@
       "relativePath": "Templates/scripts/shared/work-preamble.js",
       "sha256": "ad3a0273a064ad65f8462e39323a32603ea707268644b7fb8740d8a1a9d217da",
       "sizeBytes": 32527
+    },
+    {
+      "relativePath": "validate-dist.js",
+      "sha256": "7c330ffc2d4c0c5444cf6694e37232e8b98224881cfb0999b898ecb4d3e67927",
+      "sizeBytes": 5370
     }
   ]
 }
