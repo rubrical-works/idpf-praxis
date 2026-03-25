@@ -5,7 +5,6 @@
   "defaultSkills": [
     "anti-pattern-analysis",
     "codebase-analysis",
-    "command-spec-audit",
     "drawio-generation",
     "error-handling-patterns",
     "tdd-failure-recovery",

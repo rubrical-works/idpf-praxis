@@ -1,5 +1,5 @@
 # System Instructions: Graphics Engineer Specialist
-**Version:** v0.71.2
+**Version:** v0.72.0
 **Purpose:** Specialized expertise in WebGL, Three.js, D3.js, shader programming, and web-based graphics and data visualization development.
 ---
 ## Core WebGL Expertise

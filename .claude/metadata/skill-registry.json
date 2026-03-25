@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-25T01:29:01.284Z",
+  "generatedAt": "2026-03-25T19:54:24.078Z",
   "version": "1.0.0",
   "skillCount": 38,
   "skills": [
@@ -173,7 +173,7 @@
       "version": "1.0.0",
       "frameworkCompatibility": ">=0.60.0",
       "lastUpdated": "2026-03-17",
-      "checksum": "94a9b693e1090797b72af8441462d006d16860d848c1e408bef136c0fee3f2e7",
+      "checksum": "7721f5c2139041caaa6d2b6567fdbbba595cdf14ed7146c55765118f69dbb40d",
       "category": "code-quality",
       "invocationMode": "direct-only",
       "copyright": "\"Rubrical Works (c) 2026\""

@@ -1,5 +1,5 @@
 ---
-version: "v0.71.2"
+version: "v0.72.0"
 description: Verify Playwright installation and browser availability
 argument-hint: "[--fix]"
 copyright: "Rubrical Works (c) 2026"

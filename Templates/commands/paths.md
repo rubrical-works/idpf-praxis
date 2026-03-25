@@ -1,5 +1,5 @@
 ---
-version: "v0.71.2"
+version: "v0.72.0"
 description: Collaborative path analysis for proposals and enhancements (project)
 argument-hint: "#issue"
 copyright: "Rubrical Works (c) 2026"

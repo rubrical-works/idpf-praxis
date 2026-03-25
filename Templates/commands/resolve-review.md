@@ -1,5 +1,5 @@
 ---
-version: "v0.71.2"
+version: "v0.72.0"
 description: Resolve review findings for an issue (project)
 argument-hint: "#issue"
 copyright: "Rubrical Works (c) 2026"

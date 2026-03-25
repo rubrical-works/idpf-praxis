@@ -1,8 +1,8 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.71.2",
-  "generatedAt": "2026-03-25T01:40:20.592Z",
-  "fileCount": 66,
+  "frameworkVersion": "0.72.0",
+  "generatedAt": "2026-03-25T20:25:30.911Z",
+  "fileCount": 67,
   "files": [
     {
       "relativePath": "audit.js",
@@ -126,8 +126,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/config-integrity-check.js",
-      "sha256": "011ef64df151b3932ed4fd44b9fc5b13fbe905769770c3832f263279ea6d01d5",
-      "sizeBytes": 3294
+      "sha256": "c3b0fefe0b69d851fb06a890ea1df948edb1426d31dc2c9d8cea4d29f1c09658",
+      "sizeBytes": 4672
     },
     {
       "relativePath": "Templates/scripts/shared/done-preamble.js",
@@ -243,6 +243,11 @@
       "relativePath": "Templates/scripts/shared/manage-skills.js",
       "sha256": "3f85aaa17863773e77848a0644058844c7c4b30adee2b28c0460e46afb68c6a8",
       "sizeBytes": 25496
+    },
+    {
+      "relativePath": "Templates/scripts/shared/mockup-detect-framework.js",
+      "sha256": "3a933bcf3c463d2ec3ef3cea627b59a3d462c641bd30738bdbfddc30a91b60da",
+      "sizeBytes": 5232
     },
     {
       "relativePath": "Templates/scripts/shared/paths-preamble.js",

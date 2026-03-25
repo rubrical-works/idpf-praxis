@@ -1,7 +1,7 @@
 {
   "catalogVersion": "1.0.0",
-  "frameworkVersion": "0.71.2",
-  "generatedAt": "2026-03-25T01:40:20.489Z",
+  "frameworkVersion": "0.72.0",
+  "generatedAt": "2026-03-25T20:25:30.767Z",
   "baseUrl": "https://github.com/rubrical-works/idpf-praxis/releases/download",
   "skillCount": 38,
   "skills": [
@@ -176,8 +176,8 @@
       "description": "Evaluate command specifications for quality, completeness, and extension point coverage",
       "relevantTechStack": [],
       "invocationMode": "direct-only",
-      "checksum": "94a9b693e1090797b72af8441462d006d16860d848c1e408bef136c0fee3f2e7",
-      "size": 4148,
+      "checksum": "7721f5c2139041caaa6d2b6567fdbbba595cdf14ed7146c55765118f69dbb40d",
+      "size": 4585,
       "lastUpdated": "2026-03-17",
       "assetFilename": "command-spec-audit.zip"
     },

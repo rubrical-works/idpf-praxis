@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.71.2
+ * @framework-script 0.72.0
  * @description Check .gh-pmu.json config integrity via gh pmu config verify.
  * Gates on gh-pmu >= 1.3.1 (config verify was introduced in that version).
  * Non-blocking; used during session startup.
@@ -47,7 +47,8 @@ function getPmuVersion() {
 }
 
 /**
- * Run gh pmu config verify and return exit code.
+ * Run gh pmu config verify and return { exitCode, stderr }.
+ * Exit code 2 = critical drift (gh-pmu >= version with #792).
  */
 function runConfigVerify() {
   try {
@@ -56,10 +57,24 @@ function runConfigVerify() {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000
     });
-    return 0;
+    return { exitCode: 0, stderr: '' };
   } catch (err) {
-    return err.status || 1;
+    return { exitCode: err.status || 1, stderr: (err.stderr || '') };
   }
+}
+
+/**
+ * Parse critical field changes from stderr output.
+ * Looks for the structured alert box from gh-pmu#792.
+ */
+function parseCriticalFields(stderr) {
+  const fields = [];
+  const fieldPattern = /^\s+(project\.owner|project\.number|repositories\[0\]):\s+(.+?)\s+→\s+(.+?)\s*$/gm;
+  let match;
+  while ((match = fieldPattern.exec(stderr)) !== null) {
+    fields.push({ field: match[1], from: match[2], to: match[3] });
+  }
+  return fields;
 }
 
 function main() {
@@ -80,6 +95,21 @@ function main() {
       success: true,
       message: 'gh pmu version too old — skipping config integrity check.',
       data: { status: 'skipped', reason: 'gh pmu version < 1.3.1' }
+    }));
+    return;
+  }
+
+  if (args.includes('--simulate-critical-drift')) {
+    console.log(JSON.stringify({
+      success: true,
+      message: 'Critical config drift detected — project identity fields changed.',
+      data: {
+        status: 'critical_drift',
+        fields: [
+          { field: 'project.number', from: '7', to: '42' },
+          { field: 'project.owner', from: 'rubrical-works', to: 'other-owner' }
+        ]
+      }
     }));
     return;
   }
@@ -106,13 +136,21 @@ function main() {
   }
 
   // Run config verify
-  const exitCode = runConfigVerify();
+  const { exitCode, stderr } = runConfigVerify();
 
   if (exitCode === 0) {
     console.log(JSON.stringify({
       success: true,
       message: 'Config integrity verified.',
       data: { status: 'verified', version }
+    }));
+  } else if (exitCode === 2) {
+    // Exit code 2 = critical drift (gh-pmu#792)
+    const fields = parseCriticalFields(stderr);
+    console.log(JSON.stringify({
+      success: true,
+      message: 'Critical config drift detected — project identity fields changed.',
+      data: { status: 'critical_drift', fields, version }
     }));
   } else {
     console.log(JSON.stringify({
