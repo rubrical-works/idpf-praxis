@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.71.1
+**Version:** v0.71.2
 
 **Purpose:** Standard initialization procedure for AI assistant sessions
 
@@ -91,7 +91,20 @@ Load the domain specialist expertise profile into context so it shapes responses
 3. If `domainSpecialist` is not set: Skip silently
 4. This step never blocks session startup
 
-### 3e. Branch Sync Check (Non-Blocking)
+### 3e. Config Integrity Check (Non-Blocking)
+
+Verify `.gh-pmu.json` config integrity at startup using the checksum validation introduced in gh-pmu v1.3.1.
+
+1. Run: `node .claude/scripts/shared/config-integrity-check.js`
+2. Parse JSON output:
+   - If `data.status` is `"verified"` → set Config Integrity field to `✅ Verified`
+   - If `data.status` is `"drift"` → set Config Integrity field to `⚠️ Drift detected — run gh pmu config verify for details`
+   - If `data.status` is `"skipped"` → omit Config Integrity field from Session Initialized block
+   - If script fails or output is not JSON → warn and continue (non-blocking)
+3. This step never blocks session startup
+4. Requires gh-pmu >= 1.3.1; older versions are silently skipped
+
+### 3f. Branch Sync Check (Non-Blocking)
 
 Detect whether the current branch is up to date with its upstream tracking branch.
 
@@ -126,6 +139,7 @@ Session Initialized
 - Active Role: {specialist}
 - Review Mode: {solo|team|enterprise}
 - Charter Status: {Active|Pending}
+- Config Integrity: {✅ Verified|⚠️ Drift detected}
 - GitHub Workflow: Active via gh pmu {version}
 ```
 
@@ -137,6 +151,7 @@ Session Initialized
 - **Active Role:** Domain specialist from config, or "Not configured"
 - **Review Mode:** From `framework-config.json` → `reviewMode`. Omit this line entirely if `reviewMode` is not set in the config.
 - **Charter Status:** `Active` if charter complete, `Pending` if missing/template (blocks startup)
+- **Config Integrity:** From `config-integrity-check.js`. Omit this line if check was skipped (gh-pmu < 1.3.1 or not installed)
 - **GitHub Workflow:** Include gh pmu version if installed
 
 Ask user what they would like to work on.

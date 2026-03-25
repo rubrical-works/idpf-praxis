@@ -1,5 +1,5 @@
 # Deployment Awareness
-**Version:** v0.71.1
+**Version:** v0.71.2
 
 **Purpose:** Document the deployment chain from development to distribution
 

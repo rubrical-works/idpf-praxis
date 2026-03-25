@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.71.1
+**Version:** v0.71.2
 **MUST READ:** This file must be read at session startup and after any compaction.
 This document configures Claude to automatically manage GitHub issues during development sessions.
 ## Project Configuration

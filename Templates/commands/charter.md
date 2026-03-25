@@ -1,5 +1,5 @@
 ---
-version: "v0.71.1"
+version: "v0.71.2"
 description: View, create, or manage project charter
 argument-hint: "[update|refresh|validate]"
 copyright: "Rubrical Works (c) 2026"

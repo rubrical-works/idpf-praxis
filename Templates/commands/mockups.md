@@ -1,5 +1,5 @@
 ---
-version: "v0.71.1"
+version: "v0.71.2"
 description: Create text-based or diagrammatic screen mockups (project)
 argument-hint: "[#NN]"
 copyright: "Rubrical Works (c) 2026"
@@ -41,6 +41,13 @@ Creates text-based or diagrammatic screen mockups. Fully interactive via `AskUse
 Before asking questions, scan `Mockups/` and subdirectories:
 - List all `Mockups/{Name}/` directories
 - Inventory `Specs/`, `Screens/`, `AsciiScreens/` contents
+**Step 1b-ii: ASCII-Only Detection and Conversion Offer**
+After discovering existing content, check if the selected mockup set contains **only** ASCII mockups.
+**Detection:** `AsciiScreens/` has files AND `Screens/` is empty or missing.
+**If ASCII-only detected:** `AskUserQuestion`: "Convert ASCII mockups to interactive mockups and create specs?"
+- **Yes, convert** — Generate `.drawio.svg` from ASCII sources, create specs in `Specs/`
+- **No, continue** — Skip conversion
+**If not ASCII-only:** Skip silently.
 **Step 1c: Pipeline Context Detection**
 **If `#NN` provided**, check for artifacts from other UI design pipeline commands:
 **Screen spec detection:** Check issue body/linked proposal for `## Screen Specs` section. Scan `Mockups/*/Specs/` for matching specs. If found: pre-select in Q4, report.
@@ -117,6 +124,17 @@ Mockup complete.
   Cross-references: {updated | no spec}
   Related: /catalog-screens to create or update screen specs.
 ```
+### Step 8: Commit Offer
+If any files were created or modified, offer to stage and commit.
+`AskUserQuestion`: "Stage and commit mockup changes?" — Yes / No
+**If Yes:**
+```bash
+git add Mockups/{Name}/
+git commit -m "Refs #NN -- Add/update mockups for {Name}"
+```
+- With `#NN`: use `Refs #NN` in commit message
+- Without: descriptive message without issue reference
+**If No:** Skip — do not stage or commit.
 **STOP.** Do not proceed without user instruction.
 ---
 ## Error Handling

@@ -1,5 +1,5 @@
 ---
-version: "v0.71.1"
+version: "v0.71.2"
 description: Discover and catalog screen elements from source code (project)
 argument-hint: "[#NN]"
 copyright: "Rubrical Works (c) 2026"
@@ -160,6 +160,17 @@ Screen Catalog complete.
   Output: Mockups/{Name}/Specs/{names...}.md
   Next: Run /mockups to create visual mockups.
 ```
+### Step 9: Commit Offer
+If any files were created or modified, offer to stage and commit.
+`AskUserQuestion`: "Stage and commit catalog changes?" — Yes / No
+**If Yes:**
+```bash
+git add Mockups/{Name}/Specs/
+git commit -m "Refs #NN -- Catalog screen elements for {Name}"
+```
+- With `#NN`: use `Refs #NN` in commit message
+- Without: descriptive message without issue reference
+**If No:** Skip — do not stage or commit.
 **STOP.** Do not proceed without user instruction.
 ---
 ## Error Handling

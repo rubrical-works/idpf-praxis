@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Commands
-**Version:** v0.71.1
+**Version:** v0.71.2
 **Module:** Commands (loaded on-demand)
 ## Backlog Management Commands
 All backlog commands work against GitHub issues. No local backlog files are created.

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.71.1
+ * @framework-script 0.71.2
  * @description Classifies changed files as test or source for /work Step 4c.
  * Exports isTestFile() for path classification and formatFilesChanged() for
  * generating the markdown "Files Changed" section with test/source separation.
