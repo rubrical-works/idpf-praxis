@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.74.0
+**Version:** v0.75.0
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
 **Always use Unix-style commands and patterns.**

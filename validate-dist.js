@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.74.0
+ * @framework-script 0.75.0
  * validate-dist.js - Distribution integrity validator
  *
  * Validates that the distribution package is complete and consistent.
@@ -114,11 +114,11 @@ if (manifest) {
     }
   }
 
-  // Version should not contain 0.74.0 placeholder
+  // Version should not contain 0.75.0 placeholder
   if (manifest.version && !manifest.version.includes('{{')) {
     pass(`Version resolved: ${manifest.version}`);
   } else if (manifest.version) {
-    fail('Version contains unresolved 0.74.0 placeholder');
+    fail('Version contains unresolved 0.75.0 placeholder');
   }
 }
 
@@ -216,8 +216,8 @@ for (const file of sampleFiles) {
   const fullPath = path.join(ROOT, file);
   if (fs.existsSync(fullPath)) {
     const content = fs.readFileSync(fullPath, 'utf8');
-    if (content.includes('0.74.0')) {
-      fail(`${file} — contains unresolved 0.74.0 placeholder`);
+    if (content.includes('0.75.0')) {
+      fail(`${file} — contains unresolved 0.75.0 placeholder`);
     } else {
       pass(`${file} — no unresolved placeholders`);
     }

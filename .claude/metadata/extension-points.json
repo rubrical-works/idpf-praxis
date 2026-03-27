@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-27T00:54:42.923Z",
+  "generatedAt": "2026-03-27T23:40:58.387Z",
   "version": "1.0.0",
   "commandCount": 19,
   "extensionPointCount": 81,
@@ -11,13 +11,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "",
-          "purpose": ""
+          "location": "Between Step 2b (Detect Version) and Step 3 (Create Issue)",
+          "purpose": "Add custom validation, enrichment, or pre-processing before the bug issue is created"
         },
         {
           "name": "post-create",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Report and STOP), after issue creation",
+          "purpose": "Add post-creation actions such as notifications, linking, or custom labeling"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -28,18 +28,18 @@
       "extensionPoints": [
         {
           "name": "pre-catalog",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Discovery and Interactive Setup), before content loading",
+          "purpose": "Add custom discovery sources or configure catalog parameters before scanning"
         },
         {
           "name": "post-discovery",
-          "location": "",
-          "purpose": ""
+          "location": "Step 3b (Manual Catalog Mode), after automated/manual discovery",
+          "purpose": "Enrich or filter discovered elements before specification"
         },
         {
           "name": "post-catalog",
-          "location": "",
-          "purpose": ""
+          "location": "Step 6b (Screen Spec Format), after screen specs written",
+          "purpose": "Add post-catalog actions such as generating reports or updating cross-references"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -50,28 +50,28 @@
       "extensionPoints": [
         {
           "name": "pre-add",
-          "location": "",
-          "purpose": ""
+          "location": "/ci add subcommand, before feature validation",
+          "purpose": "Add custom validation or transformation before a CI feature is added to the workflow"
         },
         {
           "name": "post-add",
-          "location": "",
-          "purpose": ""
+          "location": "/ci add subcommand, after feature added to workflow",
+          "purpose": "Run post-add actions such as testing the workflow or notifying the team"
         },
         {
           "name": "pre-recommend",
-          "location": "",
-          "purpose": ""
+          "location": "/ci recommend subcommand, before analyzing project stack",
+          "purpose": "Inject custom signals or constraints before CI recommendations are generated"
         },
         {
           "name": "post-recommend",
-          "location": "",
-          "purpose": ""
+          "location": "/ci recommend subcommand, after recommendations presented",
+          "purpose": "Add follow-up actions after recommendations are applied"
         },
         {
           "name": "custom-subcommands",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Execute Handler), subcommand dispatch",
+          "purpose": "Register custom CI subcommands beyond the built-in add/recommend/status"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -82,13 +82,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Validate and Check Working Directory), after config check",
+          "purpose": "Add custom pre-creation checks such as naming conventions or branch limits"
         },
         {
           "name": "post-create",
-          "location": "",
-          "purpose": ""
+          "location": "Step 3 (Configure Branch), after branch pushed and labels set",
+          "purpose": "Add post-creation actions such as setting up branch protections or notifications"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -99,53 +99,53 @@
       "extensionPoints": [
         {
           "name": "pre-analysis",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Fetch Proposal from Issue), after loading proposal",
+          "purpose": "Add custom proposal validation or enrichment before gap analysis"
         },
         {
           "name": "post-analysis",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 3 (Analyze Proposal Gaps), after gap analysis",
+          "purpose": "Inject additional gaps or override gap severity before questions"
         },
         {
           "name": "pre-transform",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4 (Dynamic Question Generation), before story transformation",
+          "purpose": "Customize story transformation rules or add domain-specific story templates"
         },
         {
           "name": "post-transform",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4.5 (Story Transformation), after stories transformed",
+          "purpose": "Validate or adjust transformed stories before epic structuring"
         },
         {
           "name": "pre-diagram",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 5 (Priority Validation), before diagram style selection",
+          "purpose": "Override diagram style or inject custom diagram requirements"
         },
         {
           "name": "diagram-generator",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 5.5b (Diagram Generation), diagram creation",
+          "purpose": "Replace or augment the default diagram generator with a custom implementation"
         },
         {
           "name": "post-diagram",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 5.5b (Diagram Generation), after diagrams generated",
+          "purpose": "Post-process generated diagrams or add supplementary visualizations"
         },
         {
           "name": "pre-generation",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 6 (Generate PRD), before document generation",
+          "purpose": "Customize PRD template or inject additional sections before generation"
         },
         {
           "name": "post-generation",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 6 (Generate PRD), after PRD document written",
+          "purpose": "Add post-generation actions such as review triggers or cross-references"
         },
         {
           "name": "quality-checklist",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 6 (Generate PRD), quality validation",
+          "purpose": "Add project-specific quality checks beyond the default PRD quality criteria"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -156,13 +156,13 @@
       "extensionPoints": [
         {
           "name": "discovery-adapters",
-          "location": "",
-          "purpose": ""
+          "location": "Step 3 (Init Mode), after guided walkthrough",
+          "purpose": "Register custom discovery adapters for extracting tokens from project-specific sources"
         },
         {
           "name": "export-adapters",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Discovery Mode), after discovery completes",
+          "purpose": "Register custom export adapters for outputting tokens in project-specific formats"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -173,18 +173,18 @@
       "extensionPoints": [
         {
           "name": "pre-destroy",
-          "location": "",
-          "purpose": ""
+          "location": "Pre-Checks (Workstream Detection), before confirmation",
+          "purpose": "Add custom pre-destruction checks such as open PR warnings or dependency validation"
         },
         {
           "name": "post-confirm",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Confirmation), after user confirms destruction",
+          "purpose": "Run actions after confirmation but before actual deletion, such as archiving"
         },
         {
           "name": "post-destroy",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4 (Delete Branch), after branch deleted",
+          "purpose": "Add post-deletion cleanup such as updating workstream metadata or notifications"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -195,13 +195,13 @@
       "extensionPoints": [
         {
           "name": "pre-done",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1a (Epic Detection), before post-work summary",
+          "purpose": "Add custom pre-completion checks or final validation before issue is closed"
         },
         {
           "name": "post-done",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1b (Post Work Summary Comment), after summary posted",
+          "purpose": "Add post-completion actions such as metrics collection or team notifications"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -212,13 +212,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "",
-          "purpose": ""
+          "location": "Between Step 2 (Gather Description) and Step 3 (Create Issue)",
+          "purpose": "Add custom validation, enrichment, or pre-processing before the enhancement issue is created"
         },
         {
           "name": "post-create",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Report and STOP), after issue creation",
+          "purpose": "Add post-creation actions such as notifications, linking, or custom labeling"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -229,33 +229,33 @@
       "extensionPoints": [
         {
           "name": "pre-gate",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Gate Checks), before default gates",
+          "purpose": "Add pre-gate setup or early validation before standard gate checks run"
         },
         {
           "name": "gates",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Gate Checks), custom gate injection",
+          "purpose": "Add project-specific merge gates such as security scans, coverage thresholds, or approvals"
         },
         {
           "name": "post-gate",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Gate Checks), after all gates pass",
+          "purpose": "Run actions after gates pass but before PR creation"
         },
         {
           "name": "post-pr-create",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 2 (Create and Merge PR), after PR created",
+          "purpose": "Add actions after PR creation such as requesting reviewers or posting notifications"
         },
         {
           "name": "post-merge",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 2 (Create and Merge PR), after PR merged",
+          "purpose": "Run post-merge actions such as deployment triggers or changelog updates"
         },
         {
           "name": "post-close",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 3 (Cleanup), after branch deleted",
+          "purpose": "Add post-cleanup actions such as announcements or downstream notifications"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -266,13 +266,13 @@
       "extensionPoints": [
         {
           "name": "pre-mockup",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Discovery and Interactive Setup), before context loading",
+          "purpose": "Inject custom design constraints, brand guidelines, or component libraries before mockup creation"
         },
         {
           "name": "post-mockup",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Cross-Reference Updates), after mockup and spec updated",
+          "purpose": "Add post-mockup actions such as generating exports or updating design system references"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -283,18 +283,18 @@
       "extensionPoints": [
         {
           "name": "pre-paths",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Setup), before preamble script execution",
+          "purpose": "Inject custom analysis constraints or domain-specific path categories"
         },
         {
           "name": "post-category",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Turn-Based Discovery), after each category confirmed",
+          "purpose": "Add validation or enrichment after each path category is finalized"
         },
         {
           "name": "post-paths",
-          "location": "",
-          "purpose": ""
+          "location": "Step 6 (Write Path Analysis), after analysis written",
+          "purpose": "Add post-analysis actions such as generating summaries or updating proposal documents"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -305,53 +305,53 @@
       "extensionPoints": [
         {
           "name": "pre-phase-1",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Analysis), before commit analysis",
+          "purpose": "Add pre-analysis checks or inject custom version constraints"
         },
         {
           "name": "post-analysis",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Analysis), after version recommended",
+          "purpose": "Override or validate the recommended version before proceeding"
         },
         {
           "name": "pre-validation",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 2 (Validation), before framework validation",
+          "purpose": "Add project-specific validation checks before standard framework validation"
         },
         {
           "name": "post-validation",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 2 (Validation), after framework validation",
+          "purpose": "Run additional validation or generate validation reports"
         },
         {
           "name": "post-prepare",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 3 (Prepare), after CHANGELOG updated",
+          "purpose": "Add post-preparation actions such as updating additional files or generating release notes"
         },
         {
           "name": "pre-commit",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 3 (Prepare), before release commit",
+          "purpose": "Add final pre-commit checks, test plan generation, or file adjustments"
         },
         {
           "name": "pre-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4 (Tag), before creating beta tag",
+          "purpose": "Add pre-tag validation or inject tag metadata"
         },
         {
           "name": "post-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4 (Tag), after tag created and CI passes",
+          "purpose": "Add post-tag actions such as updating release notes or triggering deployments"
         },
         {
           "name": "checklist-before-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Summary Checklist, before-tag section",
+          "purpose": "Add project-specific checklist items to verify before tagging"
         },
         {
           "name": "checklist-after-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Summary Checklist, after-tag section",
+          "purpose": "Add project-specific checklist items to verify after tagging"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -362,73 +362,73 @@
       "extensionPoints": [
         {
           "name": "pre-phase-1",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Analysis), before commit analysis",
+          "purpose": "Add pre-analysis checks or inject custom version constraints"
         },
         {
           "name": "post-analysis",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 1 (Analysis), after version recommended",
+          "purpose": "Override or validate the recommended version before proceeding"
         },
         {
           "name": "pre-validation",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 2 (Validation), before framework validation",
+          "purpose": "Add project-specific validation checks before standard framework validation"
         },
         {
           "name": "post-validation",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 2 (Validation), after framework validation",
+          "purpose": "Run additional validation or generate validation reports"
         },
         {
           "name": "pre-commit",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 3 (Prepare), before release commit",
+          "purpose": "Add final pre-commit checks, test plan generation, or file adjustments"
         },
         {
           "name": "post-prepare",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 3 (Prepare), after preparation complete",
+          "purpose": "Add post-preparation actions before merge phase begins"
         },
         {
           "name": "post-pr-create",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4 (Git Operations), after PR created",
+          "purpose": "Add actions after PR creation such as requesting reviewers or posting notifications"
         },
         {
           "name": "pre-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4 (Git Operations), before tagging",
+          "purpose": "Add pre-tag validation or inject tag metadata"
         },
         {
           "name": "post-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 4 (Git Operations), after tag created and CI passes",
+          "purpose": "Add post-tag actions such as verifying deployment or updating release notes"
         },
         {
           "name": "checklist-before-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Summary Checklist, before-tag section",
+          "purpose": "Add project-specific checklist items to verify before tagging"
         },
         {
           "name": "checklist-after-tag",
-          "location": "",
-          "purpose": ""
+          "location": "Summary Checklist, after-tag section",
+          "purpose": "Add project-specific checklist items to verify after tagging"
         },
         {
           "name": "pre-close",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 5 (Close & Cleanup), before closing release",
+          "purpose": "Add pre-close checks or archive actions before release is finalized"
         },
         {
           "name": "post-close",
-          "location": "",
-          "purpose": ""
+          "location": "Phase 5 (Close & Cleanup), after release closed",
+          "purpose": "Add post-close actions such as announcements or downstream triggers"
         },
         {
           "name": "checklist-close",
-          "location": "",
-          "purpose": ""
+          "location": "Summary Checklist, close section",
+          "purpose": "Add project-specific checklist items for release closure verification"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -439,13 +439,13 @@
       "extensionPoints": [
         {
           "name": "pre-create",
-          "location": "",
-          "purpose": ""
+          "location": "Between Step 3 (Gather Description) and Step 4 (Create Document)",
+          "purpose": "Add custom validation, template injection, or enrichment before proposal document is created"
         },
         {
           "name": "post-create",
-          "location": "",
-          "purpose": ""
+          "location": "Step 7 (Report and STOP), after tracking issue created",
+          "purpose": "Add post-creation actions such as notifications or linking to related proposals"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -456,18 +456,18 @@
       "extensionPoints": [
         {
           "name": "pre-review",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Setup), after preamble completes",
+          "purpose": "Inject custom context or override review parameters before criteria evaluation"
         },
         {
           "name": "criteria-customize",
-          "location": "",
-          "purpose": ""
+          "location": "Step 2 (Evaluate Criteria), before auto-evaluation",
+          "purpose": "Add, remove, or modify review criteria before evaluation begins"
         },
         {
           "name": "post-review",
-          "location": "",
-          "purpose": ""
+          "location": "Step 3 (Finalize), after review comment posted",
+          "purpose": "Add post-review actions such as triggering workflows or updating dashboards"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -478,18 +478,18 @@
       "extensionPoints": [
         {
           "name": "pre-review",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Setup), after preamble and test plan location",
+          "purpose": "Inject custom context or domain-specific review parameters"
         },
         {
           "name": "criteria-customize",
-          "location": "",
-          "purpose": ""
+          "location": "Step 2 (Evaluate Criteria), before auto-evaluation",
+          "purpose": "Add, remove, or modify PRD review criteria before evaluation begins"
         },
         {
           "name": "post-review",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Finalize), after review comment posted",
+          "purpose": "Add post-review actions such as triggering backlog creation or updating trackers"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -500,18 +500,18 @@
       "extensionPoints": [
         {
           "name": "pre-review",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Setup), after preamble and construction context discovery",
+          "purpose": "Inject custom context or domain-specific review parameters"
         },
         {
           "name": "criteria-customize",
-          "location": "",
-          "purpose": ""
+          "location": "Step 2 (Evaluate Criteria), before auto-evaluation",
+          "purpose": "Add, remove, or modify proposal review criteria before evaluation begins"
         },
         {
           "name": "post-review",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Write Findings), after findings written",
+          "purpose": "Add post-review actions such as triggering PRD creation or updating proposal status"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"
@@ -522,23 +522,23 @@
       "extensionPoints": [
         {
           "name": "pre-work",
-          "location": "",
-          "purpose": ""
+          "location": "Step 0, before context gathering preamble",
+          "purpose": "Add pre-work setup such as environment checks, dependency validation, or workspace preparation"
         },
         {
           "name": "post-work-start",
-          "location": "",
-          "purpose": ""
+          "location": "Step 1 (Context Gathering), after preamble completes",
+          "purpose": "Add actions after issue context is loaded but before implementation begins"
         },
         {
           "name": "post-implementation",
-          "location": "",
-          "purpose": ""
+          "location": "Step 3b (Documentation Judgment), after all ACs implemented",
+          "purpose": "Add post-implementation actions such as linting, formatting, or documentation generation"
         },
         {
           "name": "post-ac-verification",
-          "location": "",
-          "purpose": ""
+          "location": "Step 4 (Verify Acceptance Criteria), after verification and QA extraction",
+          "purpose": "Add final checks or custom reporting after all ACs are verified"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.74.0
+ * @framework-script 0.75.0
  * @description Provide DEBUG-gated diagnostic logging to stderr. Exports debug(), warn(), and DEBUG flag. Used by preamble scripts and library modules for conditional tracing.
  * @checksum sha256:placeholder
  *
