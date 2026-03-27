@@ -1,8 +1,8 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.73.0",
-  "generatedAt": "2026-03-25T23:35:52.584Z",
-  "fileCount": 69,
+  "frameworkVersion": "0.74.0",
+  "generatedAt": "2026-03-27T01:13:02.270Z",
+  "fileCount": 75,
   "files": [
     {
       "relativePath": "audit.js",
@@ -26,8 +26,8 @@
     },
     {
       "relativePath": "Templates/runp_claude.cmd",
-      "sha256": "84b2b581e139c09a0a2a738e24dfb54f118467d4720c22c9baa4b5179b866fa6",
-      "sizeBytes": 184
+      "sha256": "62316d006b0077079e1068b6f15fd27d70eb1f32e372981af293cec7e759e04e",
+      "sizeBytes": 1216
     },
     {
       "relativePath": "Templates/scripts/shared/analyze-commits.js",
@@ -183,6 +183,36 @@
       "relativePath": "Templates/scripts/shared/lib/debug.js",
       "sha256": "e96731036ba3611d564aa31ad21f82026b9d6b9d52a154c1480a54ab733daf4f",
       "sizeBytes": 1191
+    },
+    {
+      "relativePath": "Templates/scripts/shared/lib/dtcg-adapter-loader.js",
+      "sha256": "6d058ba4055fbca55356bb4ba091963b61de34b58394c1a474037e0f3671ba1a",
+      "sizeBytes": 4909
+    },
+    {
+      "relativePath": "Templates/scripts/shared/lib/dtcg-init-builder.js",
+      "sha256": "378226bbf280c595e7055f5c57337eb8887ddf36fcf63750ca8753a2dc7c487e",
+      "sizeBytes": 9616
+    },
+    {
+      "relativePath": "Templates/scripts/shared/lib/dtcg-schema.js",
+      "sha256": "93d1a398e2102795b5289890d2521cd7e415ec956081c62fbdf98da8bb167511",
+      "sizeBytes": 5535
+    },
+    {
+      "relativePath": "Templates/scripts/shared/lib/dtcg-theme-manager.js",
+      "sha256": "fb33d832ca91af69c7a9418fbf895124dcfe243cc40ae7b2566543be83b5e836",
+      "sizeBytes": 5971
+    },
+    {
+      "relativePath": "Templates/scripts/shared/lib/dtcg-token-reader.js",
+      "sha256": "6c8197b09c3652dddc555a3a04a6ed888cb8cf665615ddf04fea79e0b926ce75",
+      "sizeBytes": 7036
+    },
+    {
+      "relativePath": "Templates/scripts/shared/lib/dtcg-tokens.js",
+      "sha256": "af1facd82d885ee5980ad26ff9ada28f40c5e88d27743b2164844b7063383ebd",
+      "sizeBytes": 8813
     },
     {
       "relativePath": "Templates/scripts/shared/lib/gh.js",
@@ -346,8 +376,8 @@
     },
     {
       "relativePath": "validate-dist.js",
-      "sha256": "7c330ffc2d4c0c5444cf6694e37232e8b98224881cfb0999b898ecb4d3e67927",
-      "sizeBytes": 5370
+      "sha256": "eecb63ee1b07a24b0ff40fb843aef8779fb3545015f0e84764658e762b4db019",
+      "sizeBytes": 5552
     }
   ]
 }

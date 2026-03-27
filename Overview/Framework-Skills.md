@@ -1,5 +1,5 @@
 **Framework Skills Reference**
-**Version:** v0.73.0
+**Version:** v0.74.0
 **Location:** `Skills/`
 **Total Skills:** 38 (6 TDD/BDD, 1 PRD, 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps (incl. observability-setup), 2 testing/browser, 2 desktop (incl. electron-cross-build), 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform, 1 i18n, 1 test scaffolding)
 **Skill Characteristics:**

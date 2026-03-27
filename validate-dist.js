@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.73.0
+ * @framework-script 0.74.0
  * validate-dist.js - Distribution integrity validator
  *
  * Validates that the distribution package is complete and consistent.
@@ -105,7 +105,7 @@ try {
 }
 
 if (manifest) {
-  const requiredFields = ['name', 'version', 'frameworks', 'skills', 'specialists'];
+  const requiredFields = ['name', 'version', 'frameworks', 'skills', 'domainSpecialists'];
   for (const field of requiredFields) {
     if (manifest[field] !== undefined) {
       pass(`Field: ${field}`);
@@ -114,11 +114,11 @@ if (manifest) {
     }
   }
 
-  // Version should not contain 0.73.0 placeholder
+  // Version should not contain 0.74.0 placeholder
   if (manifest.version && !manifest.version.includes('{{')) {
     pass(`Version resolved: ${manifest.version}`);
   } else if (manifest.version) {
-    fail('Version contains unresolved 0.73.0 placeholder');
+    fail('Version contains unresolved 0.74.0 placeholder');
   }
 }
 
@@ -141,10 +141,16 @@ if (checksums && checksums.files) {
   let missing = 0;
 
   for (const entry of checksums.files) {
-    const filePath = path.join(ROOT, entry.path);
+    const entryPath = entry.relativePath || entry.path;
+    if (!entryPath) {
+      fail('Checksum entry missing path/relativePath field');
+      missing++;
+      continue;
+    }
+    const filePath = path.join(ROOT, entryPath);
 
     if (!fs.existsSync(filePath)) {
-      fail(`${entry.path} — referenced in checksums but missing`);
+      fail(`${entryPath} — referenced in checksums but missing`);
       missing++;
       continue;
     }
@@ -155,7 +161,7 @@ if (checksums && checksums.files) {
     if (hash === entry.sha256) {
       checked++;
     } else {
-      fail(`${entry.path} — checksum mismatch`);
+      fail(`${entryPath} — checksum mismatch`);
       mismatches++;
     }
   }
@@ -210,8 +216,8 @@ for (const file of sampleFiles) {
   const fullPath = path.join(ROOT, file);
   if (fs.existsSync(fullPath)) {
     const content = fs.readFileSync(fullPath, 'utf8');
-    if (content.includes('0.73.0')) {
-      fail(`${file} — contains unresolved 0.73.0 placeholder`);
+    if (content.includes('0.74.0')) {
+      fail(`${file} — contains unresolved 0.74.0 placeholder`);
     } else {
       pass(`${file} — no unresolved placeholders`);
     }

@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-03-25T23:30:27.190Z",
+  "generatedAt": "2026-03-27T00:54:42.923Z",
   "version": "1.0.0",
-  "commandCount": 18,
-  "extensionPointCount": 79,
+  "commandCount": 19,
+  "extensionPointCount": 81,
   "deprecatedExtensionPoints": [],
   "commands": {
     "bug": {
@@ -144,6 +144,23 @@
         },
         {
           "name": "quality-checklist",
+          "location": "",
+          "purpose": ""
+        }
+      ],
+      "copyright": "Rubrical Works (c) 2026"
+    },
+    "design-system": {
+      "type": "EXTENSIBLE",
+      "description": "Produce DTCG-compliant design tokens with pluggable adapter architecture (project)",
+      "extensionPoints": [
+        {
+          "name": "discovery-adapters",
+          "location": "",
+          "purpose": ""
+        },
+        {
+          "name": "export-adapters",
           "location": "",
           "purpose": ""
         }

@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.73.0",
+  "version": "0.74.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -99,6 +99,7 @@
         "extensions.md",
         "create-prd.md",
         "create-backlog.md",
+        "design-system.md",
         "complete-prd.md",
         "add-story.md",
         "split-story.md",
@@ -196,6 +197,12 @@
           "catalog-errors.js",
           "persist-skill-suggestions.js",
           "classify-changed-files.js",
+          "dtcg-adapter-loader.js",
+          "dtcg-init-builder.js",
+          "dtcg-schema.js",
+          "dtcg-theme-manager.js",
+          "dtcg-token-reader.js",
+          "dtcg-tokens.js",
           "doc-templates.json",
           "findings-schema.json",
           "qa-config.json"
@@ -414,6 +421,7 @@
     "ci",
     "create-branch",
     "create-prd",
+    "design-system",
     "destroy-branch",
     "done",
     "enhancement",
