@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0.0",
-  "frameworkVersion": "0.75.0",
-  "generatedAt": "2026-03-27T23:58:49.715Z",
+  "frameworkVersion": "0.76.0",
+  "generatedAt": "2026-03-28T18:17:53.906Z",
   "fileCount": 75,
   "files": [
     {
@@ -161,8 +161,8 @@
     },
     {
       "relativePath": "Templates/scripts/shared/install-skill.js",
-      "sha256": "bbf1b3380600b85cdd1f2c7f398e40bc4420142634a747e3fe846e421760ecab",
-      "sizeBytes": 10711
+      "sha256": "9bba5b7d1bc7017e6f9d704e592e914dc712cc03342a6d5ef8ff97d459b64a7c",
+      "sizeBytes": 11830
     },
     {
       "relativePath": "Templates/scripts/shared/lib/active-label.js",

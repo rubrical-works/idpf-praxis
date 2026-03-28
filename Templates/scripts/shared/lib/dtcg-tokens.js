@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.75.0
+ * @framework-script 0.76.0
  * @description DTCG token generation, directory scaffolding, and file writing.
  *   Creates default token sets conforming to the DTCG specification,
  *   scaffolds the Design-System directory structure, and writes token/schema files.

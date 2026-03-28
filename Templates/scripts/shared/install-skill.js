@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.75.0
+ * @framework-script 0.76.0
  * @description Deploy skills from framework zip packages to project .claude/skills/ directory via extraction. Handles package discovery, version validation, and file deployment. Used by /charter skill selection and /manage-skills install subcommand.
  * @checksum sha256:placeholder
  *
@@ -66,8 +66,8 @@ function installSkill(frameworkPath, projectDir, skillName) {
     fs.mkdirSync(skillsDir, { recursive: true });
   }
 
-  // Extract
-  if (!extractZip(packagePath, destPath)) {
+  // Extract to skills/ parent — zip contains root folder matching skillName
+  if (!extractZip(packagePath, skillsDir)) {
     return { status: 'failed', reason: 'extraction failed' };
   }
 
@@ -75,6 +75,9 @@ function installSkill(frameworkPath, projectDir, skillName) {
   if (!fs.existsSync(skillMdPath)) {
     return { status: 'failed', reason: 'SKILL.md not found after extraction' };
   }
+
+  // Add per-skill .gitignore entry (consistent with px-manager#713)
+  addToGitignore(projectDir, skillName);
 
   // Count resources (files in the skill directory)
   const resources = countResources(destPath);
@@ -100,6 +103,33 @@ function countResources(dir) {
     // Directory doesn't exist or not readable
   }
   return count;
+}
+
+/**
+ * Add a per-skill .gitignore entry to prevent copied skills from being committed.
+ * Consistent with px-manager#713 behavior.
+ * @param {string} projectDir - Path to the project directory
+ * @param {string} skillName - Skill name to add
+ */
+function addToGitignore(projectDir, skillName) {
+  const gitignorePath = path.join(projectDir, '.gitignore');
+  const entry = `.claude/skills/${skillName}/`;
+
+  try {
+    let content = '';
+    if (fs.existsSync(gitignorePath)) {
+      content = fs.readFileSync(gitignorePath, 'utf-8');
+      // Already present — skip
+      if (content.split('\n').some(line => line.trim() === entry)) {
+        return;
+      }
+    }
+    // Append entry with newline
+    const separator = content && !content.endsWith('\n') ? '\n' : '';
+    fs.writeFileSync(gitignorePath, content + separator + entry + '\n');
+  } catch (_err) {
+    // Non-blocking — gitignore update is best-effort
+  }
 }
 
 /**
@@ -350,6 +380,7 @@ function main() {
 module.exports = {
   installSkill,
   addToProjectSkills,
+  addToGitignore,
   getFrameworkPath,
   listSkills,
   listInstalledSkills,

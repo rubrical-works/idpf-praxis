@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.75.0
+ * @framework-script 0.76.0
  * mockup-element-extractor.js
  *
  * Extracts UI elements from ASCII mockup files and HTML mockup files.
