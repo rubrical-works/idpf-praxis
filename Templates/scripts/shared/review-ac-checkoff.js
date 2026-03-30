@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Check off acceptance criteria on review issues based on findings status. Exports checkOffACs(). Used by /review-prd and /review-test-plan for post-review AC updates with optional status transition.
  * @checksum sha256:placeholder
  *
@@ -20,6 +20,8 @@
 
 const { execSync } = require('child_process');
 const fs = require('fs');
+const { validateIssueNumber } = require('./lib/input-validation.js');
+const { sanitizeShellArg } = require('./lib/shell-safe.js');
 
 const EXEC_OPTS = { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] };
 
@@ -104,6 +106,8 @@ if (require.main === module) {
     console.error('Usage: node review-ac-checkoff.js --issue N --findings FILE [--move-status STATUS]');
     process.exit(1);
   }
+  validateIssueNumber(args.issue);
+  if (args.moveStatus) args.moveStatus = sanitizeShellArg(args.moveStatus, 'status');
 
   let findings;
   try {

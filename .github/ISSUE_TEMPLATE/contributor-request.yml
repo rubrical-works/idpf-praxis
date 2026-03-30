@@ -1,0 +1,60 @@
+name: Request to be a Contributor
+description: Apply to contribute to the IDPF framework
+labels: ["contributor-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for your interest in contributing to IDPF! Please tell us about yourself.
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Background
+      description: Tell us about your development experience and how you use IDPF.
+      placeholder: e.g., "I'm a full-stack developer using IDPF-Agile for a SaaS project..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: areas-of-interest
+    attributes:
+      label: Areas of Interest
+      description: Which areas would you like to contribute to? Select all that apply.
+      options:
+        - label: Framework development (IDPF-Agile, IDPF-Vibe)
+        - label: Skills (creating or improving skill packages)
+        - label: Domain specialists (system instructions)
+        - label: Documentation (guides, tutorials, references)
+        - label: Slash commands (command specs and scripts)
+        - label: Testing and QA
+        - label: Hub manager / tooling
+
+  - type: textarea
+    id: experience
+    attributes:
+      label: Relevant Experience
+      description: Any experience relevant to the areas you selected (open source contributions, frameworks, AI tooling, etc.).
+    validations:
+      required: false
+
+  - type: dropdown
+    id: availability
+    attributes:
+      label: Availability
+      description: How much time can you dedicate?
+      options:
+        - A few hours per week
+        - A few hours per month
+        - Occasional contributions
+        - One-time contribution
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Anything else you'd like us to know (GitHub profile, portfolio, specific ideas).
+    validations:
+      required: false

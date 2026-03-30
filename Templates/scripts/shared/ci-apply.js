@@ -3,9 +3,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const { readFileSafe } = require('./lib/shell-safe.js');
 
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Orchestrate application of selected CI recommendations with sequential execution, confirmation prompts, error recovery, and summary reporting. Accepts recommendation objects from ci-recommend.js and applies them via ci-add.js. Part of the /ci apply subcommand.
  * @checksum sha256:placeholder
  *
@@ -111,15 +112,14 @@ function applyAlter(workflowsDir, rec) {
   }
 
   const filePath = path.join(workflowsDir, rec.file);
-  if (!fs.existsSync(filePath)) {
+  let content = readFileSafe(filePath);
+  if (content === null) {
     return {
       recommendation: rec,
       status: 'failed',
       error: `Workflow file not found: ${rec.file}`
     };
   }
-
-  let content = fs.readFileSync(filePath, 'utf8');
   if (!content.includes(rec.actionRef)) {
     return {
       recommendation: rec,

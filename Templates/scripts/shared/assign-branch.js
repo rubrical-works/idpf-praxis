@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -12,6 +12,7 @@
 const { exec, execSync } = require('child_process');
 const { promisify } = require('util');
 const { getAllOpenTrackers } = require('./lib/active-label.js');
+const { validateIssueNumber } = require('./lib/input-validation.js');
 
 const execAsync = promisify(exec);
 
@@ -348,7 +349,7 @@ async function main() {
 
     // Auto-detect: arguments starting with # are issues, prefix/name patterns are branches
     let branch = args.find(a => !a.startsWith('-') && !a.match(/^#?\d+$/) && a.includes('/'));
-    let issueNumbers = args.filter(a => a.match(/^#?\d+$/)).map(a => parseInt(a.replace('#', ''), 10));
+    let issueNumbers = args.filter(a => a.match(/^#?\d+$/)).map(a => validateIssueNumber(a.replace('#', '')));
     const userInput = args.find(a => !a.startsWith('-') && !a.includes('/') && !a.match(/^#?\d+$/));
 
     // Handle --remove mode
@@ -611,7 +612,7 @@ async function removeFromBranch(issueNumber) {
     const operations = [];
     try {
         // Unlink from branch tracker sub-issues
-        const unlinkResult = await execAsyncSafe(`gh pmu sub remove ${issueNumber} 2>&1`);
+        await execAsyncSafe(`gh pmu sub remove ${issueNumber} 2>&1`);
         operations.push(`unlink #${issueNumber} from tracker`);
 
         // Remove assigned label

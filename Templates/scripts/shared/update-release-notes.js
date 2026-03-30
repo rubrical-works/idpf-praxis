@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { validateVersion } = require('./lib/input-validation.js');
 
 /**
  * Check if a GitHub release exists for the given version
@@ -257,7 +258,7 @@ function transformToReleaseFormat(version, date, rawContent, repoUrl, previousTa
 
 async function main() {
     // Get version from args or try to detect from latest tag
-    let version = process.argv[2];
+    let version = process.argv[2] ? validateVersion(process.argv[2]) : undefined;
 
     if (!version) {
         try {

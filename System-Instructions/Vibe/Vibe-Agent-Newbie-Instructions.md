@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Newbie)
-**Version:** v0.76.0
+**Version:** v0.77.0
 
 **Revision Date:** 2024-11-13
 **Type:** Beginner-Friendly Agent Behaviors

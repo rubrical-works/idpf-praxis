@@ -1,5 +1,5 @@
 # Framework Summary
-**Version:** v0.76.0
+**Version:** v0.77.0
 ## Quick Reference
 | Component | Count | Location |
 |-----------|-------|----------|

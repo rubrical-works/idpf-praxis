@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { sanitizeShellArg } = require('./lib/shell-safe.js');
 
 // --- Argument Parsing ---
 
@@ -298,7 +299,6 @@ function hasPushBranchTrigger(content) {
   let inPush = false;
   let pushIndent = -1;
   let hasBranches = false;
-  let hasTagsOnly = false;
   let pushIsBareLike = true; // becomes false if push has sub-keys
 
   for (const line of lines) {
@@ -339,7 +339,6 @@ function hasPushBranchTrigger(content) {
         pushIsBareLike = false;
       }
       if (/^\s+tags\s*:/.test(line) || /^\s+tags-ignore\s*:/.test(line)) {
-        hasTagsOnly = true;
         pushIsBareLike = false;
       }
       if (/^\s+paths\s*:/.test(line) || /^\s+paths-ignore\s*:/.test(line)) {
@@ -356,9 +355,7 @@ function hasPushBranchTrigger(content) {
   // Has explicit branches: → triggers on push with branches
   if (hasBranches) return true;
 
-  // Has only tags: (no branches:) → tag-only trigger
-  if (hasTagsOnly && !hasBranches) return false;
-
+  // No branches: means tag-only or paths-only → does not trigger on branch push
   return false;
 }
 
@@ -530,6 +527,12 @@ if (require.main === module) {
   if (args.error) {
     console.error(args.error);
     process.exit(1);
+  }
+
+  // Validate user-supplied arguments before shell interpolation
+  args.sha = sanitizeShellArg(args.sha, 'commit SHA');
+  if (args.branch) {
+    args.branch = sanitizeShellArg(args.branch, 'branch name');
   }
 
   watch(args.sha, { timeout: args.timeout, poll: args.poll, maxWait: args.maxWait, branch: args.branch })

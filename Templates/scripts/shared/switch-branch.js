@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Switch between branch contexts with interactive selection or direct branch name. Lists open branch trackers, validates target branch exists, performs git checkout, and updates active label. Used by /switch-branch command.
  * @checksum sha256:placeholder
  *
@@ -11,6 +11,7 @@
 
 const { execSync } = require('child_process');
 const { ensureActiveLabel, getTrackerForBranch } = require('./lib/active-label');
+const { validateBranchName } = require('./lib/input-validation');
 
 function exec(cmd) {
     try {
@@ -59,7 +60,8 @@ function branchExists(branch) {
 function main() {
     const args = process.argv.slice(2);
     // Accept any argument as a branch name (generic {prefix}/{name} detection)
-    const targetBranch = args.find(a => a.includes('/')) || args[0] || null;
+    const rawBranch = args.find(a => a.includes('/')) || args[0] || null;
+    const targetBranch = rawBranch ? validateBranchName(rawBranch) : null;
 
     console.log('=== Switch Branch ===\n');
 

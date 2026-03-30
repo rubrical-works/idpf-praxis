@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Transfer an issue between branches or remove it from branch assignment. Validates source and target branches, updates gh pmu branch field, and reports the transfer. Used by /transfer-issue command.
  * @checksum sha256:placeholder
  *
@@ -10,6 +10,7 @@
  */
 
 const { execSync } = require('child_process');
+const { validateIssueNumber, validateBranchName } = require('./lib/input-validation.js');
 
 function exec(cmd) {
     try {
@@ -63,7 +64,7 @@ function main() {
 
     // Parse arguments
     const issueArg = args.find(a => a.match(/^#?\d+$/));
-    const issueNumber = issueArg ? parseInt(issueArg.replace('#', ''), 10) : null;
+    const issueNumber = issueArg ? validateIssueNumber(issueArg.replace('#', '')) : null;
 
     const newBranch = args.find((a, i) => args[i - 1] === '--branch');
     const removeFromBranch = args.includes('--remove-branch');
@@ -103,6 +104,7 @@ function main() {
 
     if (newBranch) {
         console.log(`Transferring to branch: ${newBranch}...`);
+        validateBranchName(newBranch);
         const branchName = newBranch.startsWith('release/') || newBranch.startsWith('patch/')
             ? newBranch
             : `release/${newBranch}`;

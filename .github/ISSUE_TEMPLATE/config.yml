@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/rubrical-works/idpf-praxis/tree/main/Docs
+    about: Browse the IDPF documentation
+  - name: Discussions
+    url: https://github.com/rubrical-works/idpf-praxis/discussions
+    about: Ask questions and share ideas

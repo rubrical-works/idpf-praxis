@@ -1,0 +1,68 @@
+name: Request Download for Praxis Hub Manager
+description: Request access to the Praxis Hub Manager desktop application
+labels: ["download-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Praxis Hub Manager is the desktop application for installing and managing IDPF. Fill in the details below and we'll get back to you.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which operating system do you need?
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Briefly describe what you plan to use IDPF for.
+      placeholder: e.g., "Building a SaaS app with a small team using Claude Code..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: user-type
+    attributes:
+      label: Organization or Individual
+      description: Are you requesting for personal use or on behalf of an organization?
+      options:
+        - Individual
+        - Organization
+    validations:
+      required: true
+
+  - type: input
+    id: organization-name
+    attributes:
+      label: Organization Name
+      description: If requesting for an organization, provide the name.
+      placeholder: Optional — only if you selected Organization above
+    validations:
+      required: false
+
+  - type: dropdown
+    id: contact-preference
+    attributes:
+      label: Contact Preference
+      description: How would you like us to reach you?
+      options:
+        - GitHub (via this issue)
+        - Email (provide in additional info)
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Anything else (email address if preferred, team size, timeline).
+    validations:
+      required: false

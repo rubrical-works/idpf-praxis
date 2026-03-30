@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Deploy skills from framework zip packages to project .claude/skills/ directory via extraction. Handles package discovery, version validation, and file deployment. Used by /charter skill selection and /manage-skills install subcommand.
  * @checksum sha256:placeholder
  *
@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { sanitizeShellArg, readFileSafe, readJsonSafe } = require('./lib/shell-safe.js');
 
 // ============================================================================
 // ZIP EXTRACTION (reused from install/lib/detection.js)
@@ -19,14 +20,16 @@ const { execSync } = require('child_process');
 
 function extractZip(zipPath, destDir) {
   try {
+    const safeZipPath = sanitizeShellArg(zipPath, 'zipPath');
+    const safeDestDir = sanitizeShellArg(destDir, 'destDir');
     fs.mkdirSync(destDir, { recursive: true });
 
     if (process.platform === 'win32') {
       // PowerShell Expand-Archive
-      execSync(`powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`, { stdio: 'pipe' });
+      execSync(`powershell -Command "Expand-Archive -Path '${safeZipPath}' -DestinationPath '${safeDestDir}' -Force"`, { stdio: 'pipe' });
     } else {
       // Unix unzip
-      execSync(`unzip -q -o "${zipPath}" -d "${destDir}"`, { stdio: 'pipe' });
+      execSync(`unzip -q -o "${safeZipPath}" -d "${safeDestDir}"`, { stdio: 'pipe' });
     }
     return true;
   } catch (_err) {
@@ -51,20 +54,18 @@ function installSkill(frameworkPath, projectDir, skillName) {
   const skillMdPath = path.join(destPath, 'SKILL.md');
 
   // Check if already installed
-  if (fs.existsSync(skillMdPath)) {
+  if (readFileSafe(skillMdPath) !== null) {
     return { status: 'skipped', reason: 'already installed' };
   }
 
   // Check package exists
-  if (!fs.existsSync(packagePath)) {
+  if (readFileSafe(packagePath) === null) {
     return { status: 'failed', reason: 'package not found' };
   }
 
-  // Ensure .claude/skills directory exists
+  // Ensure .claude/skills directory exists (recursive: true handles "already exists")
   const skillsDir = path.join(projectDir, '.claude', 'skills');
-  if (!fs.existsSync(skillsDir)) {
-    fs.mkdirSync(skillsDir, { recursive: true });
-  }
+  fs.mkdirSync(skillsDir, { recursive: true });
 
   // Extract to skills/ parent — zip contains root folder matching skillName
   if (!extractZip(packagePath, skillsDir)) {
@@ -72,7 +73,7 @@ function installSkill(frameworkPath, projectDir, skillName) {
   }
 
   // Verify SKILL.md exists after extraction
-  if (!fs.existsSync(skillMdPath)) {
+  if (readFileSafe(skillMdPath) === null) {
     return { status: 'failed', reason: 'SKILL.md not found after extraction' };
   }
 
@@ -116,13 +117,10 @@ function addToGitignore(projectDir, skillName) {
   const entry = `.claude/skills/${skillName}/`;
 
   try {
-    let content = '';
-    if (fs.existsSync(gitignorePath)) {
-      content = fs.readFileSync(gitignorePath, 'utf-8');
-      // Already present — skip
-      if (content.split('\n').some(line => line.trim() === entry)) {
-        return;
-      }
+    const content = readFileSafe(gitignorePath) || '';
+    // Already present — skip
+    if (content.split('\n').some(line => line.trim() === entry)) {
+      return;
     }
     // Append entry with newline
     const separator = content && !content.endsWith('\n') ? '\n' : '';
@@ -139,15 +137,7 @@ function addToGitignore(projectDir, skillName) {
  */
 function addToProjectSkills(projectDir, skillNames) {
   const configPath = path.join(projectDir, 'framework-config.json');
-  let config = {};
-
-  if (fs.existsSync(configPath)) {
-    try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    } catch (_err) {
-      // Invalid JSON, start fresh
-    }
-  }
+  const config = readJsonSafe(configPath) || {};
 
   // Initialize projectSkills if not present
   if (!Array.isArray(config.projectSkills)) {
@@ -176,16 +166,9 @@ function addToProjectSkills(projectDir, skillNames) {
 function getFrameworkPath(projectDir) {
   const configPath = path.join(projectDir, 'framework-config.json');
 
-  if (!fs.existsSync(configPath)) {
-    return null;
-  }
-
-  try {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    return config.frameworkPath || null;
-  } catch (_err) {
-    return null;
-  }
+  const config = readJsonSafe(configPath);
+  if (!config) return null;
+  return config.frameworkPath || null;
 }
 
 /**
@@ -197,16 +180,14 @@ function listSkills(projectDir) {
   const registryPath = path.join(projectDir, '.claude', 'metadata', 'skill-registry.json');
   const skillsDir = path.join(projectDir, '.claude', 'skills');
 
-  if (!fs.existsSync(registryPath)) {
-    return [];
-  }
+  const registry = readJsonSafe(registryPath);
+  if (!registry || !registry.skills) return [];
 
   try {
-    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
     return registry.skills.map(skill => ({
       name: skill.name,
       description: skill.description,
-      installed: fs.existsSync(path.join(skillsDir, skill.name, 'SKILL.md'))
+      installed: readFileSafe(path.join(skillsDir, skill.name, 'SKILL.md')) !== null
     }));
   } catch (_err) {
     return [];
@@ -221,23 +202,19 @@ function listSkills(projectDir) {
 function listInstalledSkills(projectDir) {
   const skillsDir = path.join(projectDir, '.claude', 'skills');
 
-  if (!fs.existsSync(skillsDir)) {
-    return [];
-  }
-
   const installed = [];
   try {
     const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const skillMd = path.join(skillsDir, entry.name, 'SKILL.md');
-        if (fs.existsSync(skillMd)) {
+        if (readFileSafe(skillMd) !== null) {
           installed.push(entry.name);
         }
       }
     }
   } catch (_err) {
-    // Directory not readable
+    // Directory not readable or doesn't exist
   }
 
   return installed.sort();

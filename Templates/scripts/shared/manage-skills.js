@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Unified skill lifecycle management with subcommands: list (show installed/available), install (deploy from packages), remove (uninstall), info (show skill details). Uses symlink-based per-skill deployment. Successor to install-skill.js with improved architecture.
  * @checksum sha256:placeholder
  *
@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { readFileSafe, readJsonSafe } = require('./lib/shell-safe.js');
 
 /**
  * Load defaultSkills from skill-keywords.json metadata.
@@ -19,15 +20,9 @@ const path = require('path');
  */
 function getDefaultSkills(projectDir) {
   const keywordsPath = path.join(projectDir, '.claude', 'metadata', 'skill-keywords.json');
-  if (!fs.existsSync(keywordsPath)) {
-    return [];
-  }
-  try {
-    const data = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-    return Array.isArray(data.defaultSkills) ? data.defaultSkills : [];
-  } catch (_err) {
-    return [];
-  }
+  const data = readJsonSafe(keywordsPath);
+  if (!data) return [];
+  return Array.isArray(data.defaultSkills) ? data.defaultSkills : [];
 }
 
 /**
@@ -52,26 +47,16 @@ function listSkills(projectDir, options = {}) {
   const configPath = path.join(projectDir, 'framework-config.json');
 
   // Registry is required
-  if (!fs.existsSync(registryPath)) {
-    return { ok: false, error: 'Skill registry not found. Ensure .claude/metadata/skill-registry.json exists.' };
-  }
-
-  let registry;
-  try {
-    registry = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
-  } catch (_err) {
-    return { ok: false, error: 'Skill registry is not valid JSON.' };
+  const registry = readJsonSafe(registryPath);
+  if (!registry) {
+    return { ok: false, error: 'Skill registry not found or not valid JSON. Ensure .claude/metadata/skill-registry.json exists.' };
   }
 
   // Config is optional — missing means no skills installed
   let projectSkills = [];
-  if (fs.existsSync(configPath)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
-    } catch (_err) {
-      // Invalid config — treat as no skills installed
-    }
+  const config = readJsonSafe(configPath);
+  if (config) {
+    projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
   }
 
   const defaults = getDefaultSkills(projectDir);
@@ -111,26 +96,17 @@ function loadContext(projectDir) {
   const registryPath = path.join(projectDir, '.claude', 'metadata', 'skill-registry.json');
   const configPath = path.join(projectDir, 'framework-config.json');
 
-  if (!fs.existsSync(registryPath)) {
-    return { ok: false, error: 'Skill registry not found.' };
-  }
-
-  let registry;
-  try {
-    registry = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
-  } catch (_err) {
-    return { ok: false, error: 'Skill registry is not valid JSON.' };
+  const registry = readJsonSafe(registryPath);
+  if (!registry) {
+    return { ok: false, error: 'Skill registry not found or not valid JSON.' };
   }
 
   let config = {};
   let projectSkills = [];
-  if (fs.existsSync(configPath)) {
-    try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
-    } catch (_err) {
-      // Invalid config — treat as empty
-    }
+  const configData = readJsonSafe(configPath);
+  if (configData) {
+    config = configData;
+    projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
   }
 
   return { ok: true, registry, config, projectSkills, configPath };
@@ -435,26 +411,20 @@ function syncSkillSymlinks(projectDir, hubDir) {
   const symlinkType = getSymlinkType();
 
   let projectSkills = [];
-  if (fs.existsSync(configPath)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
-    } catch (_err) {
-      // Invalid config
-    }
+  const config = readJsonSafe(configPath);
+  if (config) {
+    projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
   }
 
   // Check if .claude/skills is an old directory-level symlink
-  if (fs.existsSync(skillsDir)) {
-    try {
-      const stat = fs.lstatSync(skillsDir);
-      if (stat.isSymbolicLink()) {
-        // Old model — remove directory symlink
-        fs.rmSync(skillsDir, { force: true });
-      }
-    } catch (_err) {
-      // Not a symlink or doesn't exist
+  try {
+    const stat = fs.lstatSync(skillsDir);
+    if (stat.isSymbolicLink()) {
+      // Old model — remove directory symlink
+      fs.rmSync(skillsDir, { force: true });
     }
+  } catch (_err) {
+    // Not a symlink or doesn't exist
   }
 
   // Ensure skills directory exists
@@ -470,16 +440,14 @@ function syncSkillSymlinks(projectDir, hubDir) {
     const target = path.resolve(hubSkillPath);
 
     // Skip if symlink already exists
-    if (fs.existsSync(symlinkPath)) {
-      try {
-        const stat = fs.lstatSync(symlinkPath);
-        if (stat.isSymbolicLink()) {
-          skipped++;
-          continue;
-        }
-      } catch (_err) {
-        // Check failed, try to create anyway
+    try {
+      const stat = fs.lstatSync(symlinkPath);
+      if (stat.isSymbolicLink()) {
+        skipped++;
+        continue;
       }
+    } catch (_err) {
+      // Not found, proceed to create
     }
 
     try {
@@ -507,12 +475,10 @@ function migrateSkillSymlinks(projectDir, hubDir) {
   // Check if .claude/skills is an old directory-level symlink
   let isOldModel = false;
   try {
-    if (fs.existsSync(skillsDir)) {
-      const stat = fs.lstatSync(skillsDir);
-      isOldModel = stat.isSymbolicLink();
-    }
+    const stat = fs.lstatSync(skillsDir);
+    isOldModel = stat.isSymbolicLink();
   } catch (_err) {
-    // Not accessible
+    // Not accessible or doesn't exist
   }
 
   if (!isOldModel) {
@@ -522,13 +488,10 @@ function migrateSkillSymlinks(projectDir, hubDir) {
   // Read projectSkills from config
   let projectSkills = [];
   let config = {};
-  if (fs.existsSync(configPath)) {
-    try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
-    } catch (_err) {
-      // Invalid config
-    }
+  const configData = readJsonSafe(configPath);
+  if (configData) {
+    config = configData;
+    projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
   }
 
   // If projectSkills is empty, discover skills from the old symlinked directory
@@ -648,20 +611,16 @@ function checkUpdates(projectDir) {
   // Try catalog first, fall back to registry
   let source;
   let sourceName;
-  if (fs.existsSync(catalogPath)) {
-    try {
-      source = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
-      sourceName = 'catalog';
-    } catch (_err) {
-      // Fall through to registry
-    }
+  const catalogData = readJsonSafe(catalogPath);
+  if (catalogData) {
+    source = catalogData;
+    sourceName = 'catalog';
   }
-  if (!source && fs.existsSync(registryPath)) {
-    try {
-      source = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+  if (!source) {
+    const registryData = readJsonSafe(registryPath);
+    if (registryData) {
+      source = registryData;
       sourceName = 'registry';
-    } catch (_err) {
-      return { ok: false, error: 'Could not read skill catalog or registry.' };
     }
   }
   if (!source) {
@@ -670,11 +629,9 @@ function checkUpdates(projectDir) {
 
   // Get installed skills and their versions from SKILL.md frontmatter
   let projectSkills = [];
-  if (fs.existsSync(configPath)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      projectSkills = Array.isArray(config.projectSkills) ? config.projectSkills : [];
-    } catch (_err) { /* empty */ }
+  const configData = readJsonSafe(configPath);
+  if (configData) {
+    projectSkills = Array.isArray(configData.projectSkills) ? configData.projectSkills : [];
   }
 
   if (projectSkills.length === 0) {
@@ -689,12 +646,10 @@ function checkUpdates(projectDir) {
     // Get installed version from SKILL.md in the project's skill directory
     const skillMdPath = path.join(projectDir, '.claude', 'skills', skillName, 'SKILL.md');
     let installedVersion = null;
-    if (fs.existsSync(skillMdPath)) {
-      try {
-        const content = fs.readFileSync(skillMdPath, 'utf-8');
-        const match = content.match(/^version:\s*"?([^"\n]+)"?/m);
-        if (match) installedVersion = match[1];
-      } catch (_err) { /* empty */ }
+    const content = readFileSafe(skillMdPath);
+    if (content) {
+      const match = content.match(/^version:\s*"?([^"\n]+)"?/m);
+      if (match) installedVersion = match[1];
     }
 
     if (installedVersion && catalogEntry.version !== installedVersion) {
@@ -758,11 +713,9 @@ if (require.main === module) {
         // hubDir must be resolved by the caller (command spec) — use frameworkPath
         const configPath = path.join(projectDir, 'framework-config.json');
         let hubDir = projectDir;
-        if (fs.existsSync(configPath)) {
-          const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-          if (config.frameworkPath) {
-            hubDir = path.resolve(projectDir, config.frameworkPath);
-          }
+        const cliConfig = readJsonSafe(configPath);
+        if (cliConfig && cliConfig.frameworkPath) {
+          hubDir = path.resolve(projectDir, cliConfig.frameworkPath);
         }
         const result = installSkill(projectDir, hubDir, cmd.skillName);
         console.log(JSON.stringify(result));

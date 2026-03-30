@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * mockup-element-extractor.js
  *
  * Extracts UI elements from ASCII mockup files and HTML mockup files.
@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { readFileSafe } = require('./lib/shell-safe.js');
 
 /**
  * Extract elements from an ASCII mockup file.
@@ -155,34 +156,38 @@ function detectMockupFiles(dirPath) {
   const asciiFiles = [];
   const htmlFiles = [];
 
-  if (!fs.existsSync(dirPath)) {
+  let files;
+  try {
+    files = fs.readdirSync(dirPath, { recursive: true });
+  } catch {
     return { hasMockups: false, asciiFiles, htmlFiles };
   }
 
-  const files = fs.readdirSync(dirPath, { recursive: true });
   for (const file of files) {
     const fullPath = path.join(dirPath, file);
-    if (!fs.statSync(fullPath).isFile()) continue;
+    let stat;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch { continue; }
+    if (!stat.isFile()) continue;
 
     const ext = path.extname(file).toLowerCase();
 
     if (ext === '.md' || ext === '.txt') {
-      try {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        // Check for ASCII art patterns: box-drawing chars or input placeholders
-        if (/[┌┐└┘├┤─│]|[+\-|]{3,}|\[_{2,}\]|\[\s+\w+\s+\]/.test(content)) {
-          asciiFiles.push(fullPath);
-        }
-      } catch { /* skip unreadable */ }
+      const content = readFileSafe(fullPath);
+      if (content === null) continue;
+      // Check for ASCII art patterns: box-drawing chars or input placeholders
+      if (/[┌┐└┘├┤─│]|[+\-|]{3,}|\[_{2,}\]|\[\s+\w+\s+\]/.test(content)) {
+        asciiFiles.push(fullPath);
+      }
     }
 
     if (ext === '.html') {
-      try {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        if (/tailwindcss|<form|<input|<button|<select/i.test(content)) {
-          htmlFiles.push(fullPath);
-        }
-      } catch { /* skip unreadable */ }
+      const content = readFileSafe(fullPath);
+      if (content === null) continue;
+      if (/tailwindcss|<form|<input|<button|<select/i.test(content)) {
+        htmlFiles.push(fullPath);
+      }
     }
   }
 

@@ -1,4 +1,8 @@
-# IDPF — Interactive Development Process Frameworks
+<p align="center">
+  <img src="Assets/github-readme-banner.svg" alt="IDPF Praxis — Interactive Development Process Framework" width="100%">
+</p>
+
+> **This is the distribution repository.** It contains the released framework files that users install via Praxis Hub Manager.
 
 [![Version](https://img.shields.io/github/v/release/rubrical-works/idpf-praxis?label=version&color=blue)](https://github.com/rubrical-works/idpf-praxis/releases)
 [![CI](https://github.com/rubrical-works/idpf-praxis/actions/workflows/ci.yml/badge.svg)](https://github.com/rubrical-works/idpf-praxis/actions/workflows/ci.yml)
@@ -11,18 +15,42 @@ A structured framework for building software with an AI assistant. You define wh
 
 ---
 
+## Prerequisites
+
+| Requirement | Purpose |
+|-------------|---------|
+| [Node.js](https://nodejs.org/) >= 18 | Runtime for framework scripts and utilities |
+| [Git](https://git-scm.com/) | Version control and branch-based workflows |
+| [GitHub CLI (`gh`)](https://cli.github.com/) | Issue management and PR workflows |
+| [gh-pmu](https://github.com/rubrical-works/gh-pmu) | GitHub project board integration (`gh extension install rubrical-works/gh-pmu`) |
+| [Claude Code](https://claude.ai/code) | AI assistant that executes the framework |
+| [Praxis Hub Manager](https://github.com/rubrical-works/px-manager) | Desktop app for hub and project management |
+
+> **Gemini CLI support** is currently in development as an extension package.
+
+---
+
 ## Installation
 
-Install and manage IDPF through **px-manager**, the cross-platform desktop application:
+Install and manage IDPF through **Praxis Hub Manager**, the cross-platform desktop application:
 
-1. **Create a hub** — px-manager downloads the framework and sets up the central hub
+1. **Create a hub** — Praxis Hub Manager downloads the framework and sets up the central hub
 2. **Add projects** — Use the project wizard to create new projects or link existing ones
 
-px-manager handles:
+Praxis Hub Manager handles:
 - Creating a central hub that serves multiple projects
 - Deploying framework files, commands, rules, and scripts
 - Configuring Claude Code integration via symlinks/junctions
 - Preserving your command customizations during hub updates
+
+### Adding IDPF to Existing Projects
+
+To add IDPF to a project that already has code, open **Praxis Hub Manager** and click **Add Existing**. Browse to your repository root and the wizard will detect your project structure. On confirmation, it will:
+
+- Create the `.claude/` directory structure with symlinks to your hub
+- Copy extensible commands that you can customize (preserving any existing extension blocks)
+- Generate a `framework-config.json` tailored to your project (merging existing skills if present)
+- Preserve any existing `.claude/` configuration
 
 ---
 
@@ -31,91 +59,125 @@ px-manager handles:
 | Framework | Use When |
 |-----------|----------|
 | **IDPF-Agile** | Story-based development with TDD |
-| **IDPF-Vibe** | Exploration phase, unclear requirements → evolves to Agile |
+| **IDPF-Vibe** *(coming soon)* | Exploration phase, unclear requirements → evolves to Agile |
+
+## Documentation
+
+The `Docs/` directory contains guides and references for users at all levels:
+
+| Section | Contents |
+|---------|----------|
+| `Docs/01-Getting-Started/` | Quick start, your role, workflow guide, planning approaches, troubleshooting |
+| `Docs/02-Advanced/` | Concurrent sessions, workstreams, customizing commands, epic reviews, hub architecture, skill guides |
+| `Docs/03-Philosophy/` | Context engineering, intentional friction, requirements over execution, Agile vs Vibe |
+| `Docs/04-Suitability/` | Suitability assessments for solo developers, full-stack apps, microservices, N-tier |
+| `Docs/Commands/` | Reference documentation for all slash commands |
+| `Docs/Roadmap.md` | Framework development roadmap |
+
+Additional framework references:
+- `Overview/Framework-Overview.md` — Complete ecosystem reference
+- `Reference/Session-Startup-Instructions.md` — Startup procedure
 
 ### Domains (11)
-- QA-Automation, Performance, Security, Accessibility, Chaos, Contract-Testing
-- API Design, Observability, i18n, SEO, Privacy
+
+Domains are specialized knowledge lenses that activate during reviews (charter, proposal, PRD, issue, and code review). Activate with `--with security,performance` or configure in your project charter.
+
+| Domain | Focus |
+|--------|-------|
+| QA-Automation | UI and E2E test automation |
+| Performance | Load, stress, and capacity testing |
+| Security | OWASP-based security testing |
+| Accessibility | WCAG-based accessibility testing |
+| Chaos | Resilience and failure-mode testing |
+| Contract-Testing | Consumer/provider contract testing |
+| API-Design | REST/GraphQL API design conventions |
+| Observability | Logging, tracing, metrics, alerting |
+| i18n | Internationalization and localization |
+| SEO | Technical SEO and structured data |
+| Privacy | Consent, cookies, GDPR/CCPA compliance |
 
 ### Requirements
-> **Note:** Requirements engineering uses the `create-prd` skill (IDPF-PRD deprecated in v0.24).
+
+Requirements are managed through Product Requirements Documents (PRDs). Use the `/create-prd` command to transform a proposal into a structured PRD with acceptance criteria, then `/create-backlog` to generate epics and stories from it.
 
 ---
 
 ## Skills (38)
 
-**TDD:** tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns
+| Category | Skills |
+|----------|--------|
+| TDD | tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns |
+| Beginner Setup | flask-setup, sinatra-setup |
+| Beginner Support | beginner-testing, common-errors, sqlite-integration |
+| Database | postgresql-integration, migration-patterns |
+| Architecture | api-versioning, error-handling-patterns, resilience-patterns |
+| Advanced Testing | property-based-testing, mutation-testing |
+| Analysis | anti-pattern-analysis, bdd-writing, codebase-analysis, code-path-discovery |
+| Code Quality | command-spec-audit |
+| DevOps | ci-cd-pipeline-design |
+| Diagrams | drawio-generation |
+| Desktop | electron-development, electron-cross-build, playwright-setup |
+| Platform | astro-development, playwright-explorer |
+| Deployment | vercel-project-setup, railway-project-setup, render-project-setup, digitalocean-app-setup |
+| Compliance | seo-optimization, privacy-compliance |
+| Internationalization | i18n-setup, observability-setup |
+| Testing | test-scaffold |
 
-**Beginner Setup:** flask-setup, sinatra-setup
+### In the Pipeline
 
-**Beginner Support:** beginner-testing, common-errors, sqlite-integration
-
-**Database:** postgresql-integration, migration-patterns
-
-**Architecture:** api-versioning, error-handling-patterns, resilience-patterns
-
-**Advanced Testing:** property-based-testing, mutation-testing
-
-**Analysis:** anti-pattern-analysis, bdd-writing, codebase-analysis, code-path-discovery
-
-**Code Quality:** command-spec-audit
-
-**DevOps:** ci-cd-pipeline-design
-
-**Diagrams:** drawio-generation
-
-**Desktop:** electron-development, playwright-setup
-
-**Platform:** astro-development, playwright-explorer
-
-**Deployment Platforms:** vercel-project-setup, railway-project-setup, render-project-setup, digitalocean-app-setup
-
-**Compliance:** seo-optimization, privacy-compliance
-
-**Internationalization:** i18n-setup, observability-setup
+| Proposal | Status |
+|----------|--------|
+| Docker Development Skill | Draft |
+| Docker/Compose Orchestration Skill | Draft |
+| Accessibility Testing Scaffolding Skill | Draft |
+| Graceful Degradation Assessment Skill | Draft |
+| Payment Processing Integration Skill | Draft |
+| Testing Strategies for Other Platforms | Draft |
 
 ---
 
 ## Domain Specialists (22)
 
-Accessibility-Specialist, API-Integration-Specialist, Backend-Specialist, Cloud-Solutions-Architect, Database-Engineer, Data-Engineer, Desktop-Application-Developer, DevOps-Engineer, Embedded-Systems-Engineer, Frontend-Specialist, Full-Stack-Developer, Game-Developer, Graphics-Engineer-Specialist, ML-Engineer, Mobile-Specialist, Performance-Engineer, Platform-Engineer, QA-Test-Engineer, Security-Engineer, SRE-Specialist, Systems-Programmer-Specialist, Technical-Writer-Specialist
+| Specialist | Specialist | Specialist |
+|------------|------------|------------|
+| Accessibility-Specialist | API-Integration-Specialist | Backend-Specialist |
+| Cloud-Solutions-Architect | Database-Engineer | Data-Engineer |
+| Desktop-Application-Developer | DevOps-Engineer | Embedded-Systems-Engineer |
+| Frontend-Specialist | Full-Stack-Developer | Game-Developer |
+| Graphics-Engineer-Specialist | ML-Engineer | Mobile-Specialist |
+| Performance-Engineer | Platform-Engineer | QA-Test-Engineer |
+| Security-Engineer | SRE-Specialist | Systems-Programmer-Specialist |
+| Technical-Writer-Specialist | | |
 
 ---
 
 ## Updating
 
-Open **px-manager** and use the hub update feature to download and apply the latest framework version.
+Open **Praxis Hub Manager** and use the hub update feature to download and apply the latest framework version.
 
 ---
 
-## Rules Auto-Loading (v2.9+)
+## About the Framework Files
 
-Rules in `.claude/rules/` load automatically at session start:
-- No explicit file reads required
-- Rules persist after context compaction
-- ~47% token reduction at startup
+The framework files in this repository (rules, commands, system instructions, and references) have been **minimized** for token efficiency. This means formatting, comments, verbose explanations, and whitespace have been stripped — while all functional content is preserved.
 
-### Adding IDPF to Existing Projects
+**Why?** Claude Code loads these files into its context window at startup and during work. Context windows have a finite token budget, and every token spent on formatting or commentary is a token unavailable for your code and conversation. Minimization reduces framework overhead by ~47%, leaving more room for what matters.
 
-Open **px-manager** and use the project wizard to add IDPF to an existing project.
-
----
-
-## Documentation
-
-- `Overview/Framework-Overview.md` - Complete ecosystem reference
-- `Reference/Session-Startup-Instructions.md` - Startup procedure
+**What this means for you:**
+- The `.md` files in `Overview/`, `Reference/`, `IDPF-Agile/`, etc. will look terse if you read them on GitHub — this is intentional
+- For human-readable documentation, see the `Docs/` directory which contains full guides and references
+- The framework works identically whether minimized or not — only the presentation changes
 
 ---
 
-## Source Repository
+## Contributing
 
-https://github.com/rubrical-works/idpf-praxis-dev
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs, request features, and get involved.
 
 ---
 
 ## License
 
-Copyright 2025-2026 Rubrical Systems
+Copyright 2025-2026 Rubrical Works
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.

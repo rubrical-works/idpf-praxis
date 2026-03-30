@@ -1,12 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Epic complexity classifier for /work --nonstop. Scans sub-issue titles for functional vs restyle signals and returns classification with strictTDD flag.
  * @checksum sha256:placeholder
  *
  * @module .claude/scripts/shared/epic-complexity
  */
 const path = require('path');
+const { validateIssueNumber } = require('./lib/input-validation.js');
 
 const SIGNALS_PATH = path.join(__dirname, '../../metadata/epic-complexity-signals.json');
 
@@ -79,6 +80,7 @@ if (require.main === module) {
     console.log(JSON.stringify({ ok: false, error: 'Usage: epic-complexity.js <issue-number>' }));
     process.exit(1);
   }
+  validateIssueNumber(issueArg);
 
   const { execSync } = require('child_process');
   try {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,7 @@ const { exec: execCb } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
+const { validateIssueNumber } = require('./lib/input-validation.js');
 
 const execAsync = promisify(execCb);
 const SCHEMA_VERSION = 1;
@@ -120,8 +121,10 @@ function parseArgs(args) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--issue requires a value.' } };
     }
     const cleaned = raw.replace(/^#/, '');
-    const num = parseInt(cleaned, 10);
-    if (isNaN(num) || num <= 0 || String(num) !== cleaned) {
+    let num;
+    try {
+      num = validateIssueNumber(cleaned);
+    } catch (_e) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: "${raw}". Must be a positive integer.` } };
     }
     const result = { mode: 'single', issues: [num] };
@@ -136,8 +139,10 @@ function parseArgs(args) {
     if (!raw) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--issues requires a comma-separated list.' } };
     }
-    const nums = raw.split(',').map(s => parseInt(s.trim().replace(/^#/, ''), 10));
-    if (nums.some(n => isNaN(n) || n <= 0)) {
+    let nums;
+    try {
+      nums = raw.split(',').map(s => validateIssueNumber(s.trim().replace(/^#/, '')));
+    } catch (_e) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue numbers in: "${raw}".` } };
     }
     const result = { mode: 'batch', issues: nums };

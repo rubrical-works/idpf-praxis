@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.76.0",
+  "version": "0.77.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -193,6 +193,7 @@
           "skill-keyword-matcher.js",
           "review-format.js",
           "input-validation.js",
+          "shell-safe.js",
           "debug.js",
           "catalog-errors.js",
           "persist-skill-suggestions.js",

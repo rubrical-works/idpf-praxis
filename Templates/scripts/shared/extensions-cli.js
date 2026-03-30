@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Script-driven CLI for extension point operations. Replaces AI-interpreted markdown specs for read-only subcommands (list, view, diff, validate), reducing execution from 3-16+ tool calls to 1 Bash call. Used by /extensions command.
  * @checksum sha256:placeholder
  *
@@ -716,6 +716,7 @@ function runHelp() {
 // ============================================================================
 
 const os = require('os');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 /**
@@ -750,8 +751,8 @@ function shouldOpenInEditor(subcommand, options) {
 function writeAndOpenEditor(content, label, spawnFn, fsModule) {
   const _fs = fsModule || fs;
   const _spawn = spawnFn || spawnSync;
-  const tmpDir = os.tmpdir();
-  const tmpFile = path.join(tmpDir, `extensions-${label}-${Date.now()}.txt`);
+  const tmpDir = _fs.mkdtempSync(path.join(os.tmpdir(), 'extensions-'));
+  const tmpFile = path.join(tmpDir, `${label}-${crypto.randomBytes(6).toString('hex')}.txt`);
   _fs.writeFileSync(tmpFile, content, 'utf-8');
 
   const editor = detectEditor();

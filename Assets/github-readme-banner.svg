@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 200" width="1200" height="200">
+  <defs>
+    <linearGradient id="hb-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#065f46"/>
+      <stop offset="40%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="hb-accent" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5EEAD4"/>
+      <stop offset="100%" stop-color="#6EE7B7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background (no rounded corners for GitHub README) -->
+  <rect width="1200" height="200" fill="url(#hb-grad)"/>
+
+  <!-- Decorative hexagonal grid (left side, shifted up) -->
+  <polygon points="60,30 90,13 120,30 120,64 90,81 60,64" fill="none" stroke="white" stroke-width="1.5" opacity="0.08"/>
+  <polygon points="120,30 150,13 180,30 180,64 150,81 120,64" fill="none" stroke="white" stroke-width="1.5" opacity="0.05"/>
+  <polygon points="30,81 60,64 90,81 90,115 60,132 30,115" fill="none" stroke="white" stroke-width="1.5" opacity="0.05"/>
+  <polygon points="90,81 120,64 150,81 150,115 120,132 90,115" fill="none" stroke="white" stroke-width="1.5" opacity="0.1"/>
+  <polygon points="60,132 90,115 120,132 120,166 90,183 60,166" fill="none" stroke="white" stroke-width="1.5" opacity="0.04"/>
+
+  <!-- Highlighted hexagon with nodes -->
+  <polygon points="90,81 120,64 150,81 150,115 120,132 90,115"
+           fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" opacity="0.6"/>
+  <polygon points="100,86 120,76 140,86 140,110 120,120 100,110"
+           fill="white" opacity="0.06"/>
+  <line x1="120" y1="64" x2="120" y2="132" stroke="white" stroke-width="1" opacity="0.3"/>
+  <line x1="90" y1="81" x2="150" y2="115" stroke="white" stroke-width="1" opacity="0.3"/>
+  <line x1="150" y1="81" x2="90" y2="115" stroke="white" stroke-width="1" opacity="0.3"/>
+  <circle cx="120" cy="64" r="4.5" fill="white"/>
+  <circle cx="150" cy="81" r="4.5" fill="white"/>
+  <circle cx="150" cy="115" r="4.5" fill="white"/>
+  <circle cx="120" cy="132" r="4.5" fill="white"/>
+  <circle cx="90" cy="115" r="4.5" fill="white"/>
+  <circle cx="90" cy="81" r="4.5" fill="white"/>
+  <circle cx="120" cy="98" r="3" fill="white" opacity="0.9"/>
+
+  <!-- Satellite nodes -->
+  <circle cx="120" cy="48" r="2.5" fill="url(#hb-accent)" stroke="white" stroke-width="1.2"/>
+  <line x1="120" y1="50" x2="120" y2="60" stroke="white" stroke-width="1" opacity="0.35"/>
+  <circle cx="168" cy="74" r="2.5" fill="url(#hb-accent)" stroke="white" stroke-width="1.2"/>
+  <line x1="165" y1="76" x2="156" y2="80" stroke="white" stroke-width="1" opacity="0.35"/>
+
+  <!-- Right side decorative hexagons -->
+  <polygon points="1040,30 1070,13 1100,30 1100,64 1070,81 1040,64" fill="none" stroke="white" stroke-width="1.5" opacity="0.05"/>
+  <polygon points="1100,30 1130,13 1160,30 1160,64 1130,81 1100,64" fill="none" stroke="white" stroke-width="1.5" opacity="0.07"/>
+  <polygon points="1070,81 1100,64 1130,81 1130,115 1100,132 1070,115" fill="none" stroke="white" stroke-width="1.5" opacity="0.04"/>
+  <polygon points="1100,132 1130,115 1160,132 1160,166 1130,183 1100,166" fill="none" stroke="white" stroke-width="1.5" opacity="0.03"/>
+
+  <!-- IDPF Praxis (single line, centered) -->
+  <text x="600" y="78" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-size="56" font-weight="800" letter-spacing="8" fill="white">IDPF<tspan font-weight="300" letter-spacing="10" dx="12" opacity="0.85">Praxis</tspan></text>
+
+  <!-- Divider -->
+  <line x1="420" y1="96" x2="780" y2="96" stroke="white" stroke-width="1" opacity="0.2"/>
+
+  <!-- Interactive Development Process Framework -->
+  <text x="600" y="118" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-size="13" font-weight="400" letter-spacing="4.5" fill="white" opacity="0.55">INTERACTIVE DEVELOPMENT PROCESS FRAMEWORK</text>
+
+  <!-- Subtitle (single line) -->
+  <text x="600" y="152" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-size="14" font-weight="300" fill="white" opacity="0.65">AI-assisted software development with structured processes, desktop management, and GitHub workflow automation.</text>
+</svg>

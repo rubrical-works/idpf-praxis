@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
  * Do not modify directly — changes will be overwritten on hub update.
  */
-
-const path = require('path');
 
 const {
   EMOJI,

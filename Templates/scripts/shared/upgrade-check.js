@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.76.0
+ * @framework-script 0.77.0
  * @description Check for third-party framework/dependency upgrades. Reads CHARTER.md or Tech-Stack.md for dependency list, queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
  *
@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { readFileSafe, readJsonSafe } = require('./lib/shell-safe.js');
 
 // ======================================
 //  Constants
@@ -186,7 +187,7 @@ function detectEcosystemsFromFiles(projectDir) {
       if (depFile.includes('*')) continue;
 
       const depPath = path.join(projectDir, depFile);
-      if (fs.existsSync(depPath)) {
+      if (readFileSafe(depPath) !== null) {
         detected.push(eco.name);
         break;
       }
@@ -356,14 +357,8 @@ function queryLatestVersion(registry, packageName) {
  */
 function readCheckConfig(projectDir) {
   const configPath = path.join(projectDir, CONFIG_FILE);
-  try {
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    }
-  } catch {
-    // Corrupted config — treat as empty
-  }
-  return {};
+  const data = readJsonSafe(configPath);
+  return data || {};
 }
 
 /**
@@ -402,12 +397,16 @@ async function main() {
   const charterPath = path.join(projectDir, 'CHARTER.md');
   const techStackPath = path.join(projectDir, 'Inception', 'Tech-Stack.md');
 
-  if (fs.existsSync(techStackPath)) {
-    techContent = fs.readFileSync(techStackPath, 'utf8');
+  const techStackContent = readFileSafe(techStackPath);
+  if (techStackContent !== null) {
+    techContent = techStackContent;
     techStackSource = 'Inception/Tech-Stack.md';
-  } else if (fs.existsSync(charterPath)) {
-    techContent = fs.readFileSync(charterPath, 'utf8');
-    techStackSource = 'CHARTER.md';
+  } else {
+    const charterContent = readFileSafe(charterPath);
+    if (charterContent !== null) {
+      techContent = charterContent;
+      techStackSource = 'CHARTER.md';
+    }
   }
 
   let ecosystems = detectEcosystems(techContent);
@@ -418,7 +417,7 @@ async function main() {
   }
 
   // If Tech-Stack.md is absent but we detected ecosystems, generate it
-  if (!fs.existsSync(techStackPath) && ecosystems.length > 0) {
+  if (techStackContent === null && ecosystems.length > 0) {
     const inceptionDir = path.join(projectDir, 'Inception');
     fs.mkdirSync(inceptionDir, { recursive: true });
     fs.writeFileSync(techStackPath, generateTechStackContent(ecosystems));
@@ -445,14 +444,8 @@ async function main() {
 
     for (const depFile of depFiles) {
       const depPath = path.join(projectDir, depFile);
-      if (!fs.existsSync(depPath)) continue;
-
-      let content;
-      try {
-        content = fs.readFileSync(depPath, 'utf8');
-      } catch {
-        continue;
-      }
+      const content = readFileSafe(depPath);
+      if (content === null) continue;
 
       const deps = parseDependencyVersions(depFile, content);
       for (const dep of deps) {
