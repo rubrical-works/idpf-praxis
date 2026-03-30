@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description DTCG init mode builder for interactive token creation.
  *   Defines token categories with sensible defaults, supports optional
  *   categories (skip), and produces valid DTCG-compliant token output.
@@ -216,7 +216,7 @@ function buildBorderRadiusTokens(category, custom) {
   };
 }
 
-function buildShadowTokens(category, custom) {
+function buildShadowTokens(_category, _custom) {
   return {
     sm: createToken('shadow',
       { offsetX: '0px', offsetY: '1px', blur: '2px', spread: '0px', color: '#0000001a' },
@@ -233,7 +233,7 @@ function buildShadowTokens(category, custom) {
   };
 }
 
-function buildTransitionTokens(category, custom) {
+function buildTransitionTokens(_category, _custom) {
   return {
     default: createToken('transition',
       { duration: '200ms', delay: '0ms', timingFunction: [0.4, 0, 0.2, 1] },

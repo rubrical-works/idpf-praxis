@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Check off acceptance criteria on review issues based on findings status. Exports checkOffACs(). Used by /review-prd and /review-test-plan for post-review AC updates with optional status transition.
  * @checksum sha256:placeholder
  *
@@ -18,7 +18,7 @@
 
 'use strict';
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const { sanitizeShellArg } = require('./lib/shell-safe.js');
@@ -52,7 +52,7 @@ function parseArgs(argv) {
 function checkOffACs(issue, findings, moveStatus) {
   let body;
   try {
-    body = execSync(`gh pmu view ${issue} --body-stdout`, EXEC_OPTS).trim();
+    body = execFileSync('gh', ['pmu', 'view', String(issue), '--body-stdout'], EXEC_OPTS).trim();
   } catch (e) {
     return { ok: false, checkedOff: 0, total: 0, moved: false, error: `Failed to read issue body: ${e.message}` };
   }
@@ -79,7 +79,7 @@ function checkOffACs(issue, findings, moveStatus) {
   const tmpFile = `.tmp-ac-checkoff-${issue}.md`;
   try {
     fs.writeFileSync(tmpFile, lines.join('\n'));
-    execSync(`gh pmu edit ${issue} -F ${tmpFile}`, EXEC_OPTS);
+    execFileSync('gh', ['pmu', 'edit', String(issue), '-F', tmpFile], EXEC_OPTS);
   } catch (e) {
     try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
     return { ok: false, checkedOff, total, moved: false, error: `Failed to update issue body: ${e.message}` };
@@ -89,7 +89,7 @@ function checkOffACs(issue, findings, moveStatus) {
   let moved = false;
   if (moveStatus) {
     try {
-      execSync(`gh pmu move ${issue} --status ${moveStatus} --force --yes`, EXEC_OPTS);
+      execFileSync('gh', ['pmu', 'move', String(issue), '--status', moveStatus, '--force', '--yes'], EXEC_OPTS);
       moved = true;
     } catch (e) {
       return { ok: true, checkedOff, total, moved: false, error: `AC check-off succeeded but status move failed: ${e.message}` };

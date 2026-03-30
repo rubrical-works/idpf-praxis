@@ -1,5 +1,5 @@
 # System Instructions: Technical Writer Specialist
-**Version:** v0.77.1
+**Version:** v0.77.2
 **Purpose:** Specialized expertise in technical documentation, docs-as-code workflows, API documentation, and documentation engineering.
 ---
 ## Docs-as-Code Expertise

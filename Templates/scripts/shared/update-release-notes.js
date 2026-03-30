@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { validateVersion } = require('./lib/input-validation.js');
 
 /**
@@ -21,7 +21,7 @@ const { validateVersion } = require('./lib/input-validation.js');
  */
 function releaseExists(version) {
     try {
-        execSync(`gh release view ${version} --json tagName`, {
+        execFileSync('gh', ['release', 'view', version, '--json', 'tagName'], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe']
         });
@@ -52,14 +52,14 @@ async function updateOrCreateRelease(version, notesFile, maxRetries = 3, retryDe
         try {
             if (releaseExists(version)) {
                 // Release exists - update it
-                execSync(`gh release edit ${version} --notes-file "${notesFile}"`, {
+                execFileSync('gh', ['release', 'edit', version, '--notes-file', notesFile], {
                     encoding: 'utf8',
                     stdio: ['pipe', 'pipe', 'pipe']
                 });
                 return { action: 'updated' };
             } else {
                 // Release doesn't exist - create it
-                execSync(`gh release create ${version} --title "Release ${version}" --notes-file "${notesFile}"`, {
+                execFileSync('gh', ['release', 'create', version, '--title', `Release ${version}`, '--notes-file', notesFile], {
                     encoding: 'utf8',
                     stdio: ['pipe', 'pipe', 'pipe']
                 });

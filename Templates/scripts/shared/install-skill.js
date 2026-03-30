@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Deploy skills from framework zip packages to project .claude/skills/ directory via extraction. Handles package discovery, version validation, and file deployment. Used by /charter skill selection and /manage-skills install subcommand.
  * @checksum sha256:placeholder
  *
@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { sanitizeShellArg, readFileSafe, readJsonSafe } = require('./lib/shell-safe.js');
 
 // ============================================================================
@@ -26,10 +26,10 @@ function extractZip(zipPath, destDir) {
 
     if (process.platform === 'win32') {
       // PowerShell Expand-Archive
-      execSync(`powershell -Command "Expand-Archive -Path '${safeZipPath}' -DestinationPath '${safeDestDir}' -Force"`, { stdio: 'pipe' });
+      execFileSync('powershell', ['-Command', `Expand-Archive -Path '${safeZipPath}' -DestinationPath '${safeDestDir}' -Force`], { stdio: 'pipe' });
     } else {
       // Unix unzip
-      execSync(`unzip -q -o "${safeZipPath}" -d "${safeDestDir}"`, { stdio: 'pipe' });
+      execFileSync('unzip', ['-q', '-o', safeZipPath, '-d', safeDestDir], { stdio: 'pipe' });
     }
     return true;
   } catch (_err) {

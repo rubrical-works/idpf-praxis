@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description DTCG theme management: generation, validation, merge resolution,
  *   type mismatch detection, and circular alias detection across base+theme tokens.
  * @checksum sha256:placeholder
@@ -23,7 +23,7 @@ const ALIAS_PATTERN = /^\{([^}]+)\}$/;
  * @param {string} designSystemDir - Path to Design-System directory
  * @param {object} baseTokens - Base DTCG token object
  */
-function generateThemeFiles(designSystemDir, baseTokens) {
+function generateThemeFiles(designSystemDir, _baseTokens) {
   const themesDir = path.join(designSystemDir, 'themes');
   fs.mkdirSync(themesDir, { recursive: true });
 

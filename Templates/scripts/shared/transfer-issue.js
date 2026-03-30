@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Transfer an issue between branches or remove it from branch assignment. Validates source and target branches, updates gh pmu branch field, and reports the transfer. Used by /transfer-issue command.
  * @checksum sha256:placeholder
  *
@@ -9,12 +9,13 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { validateIssueNumber, validateBranchName } = require('./lib/input-validation.js');
 
 function exec(cmd) {
     try {
-        return execSync(cmd, { encoding: 'utf-8' }).trim();
+        const parts = cmd.split(/\s+/);
+        return execFileSync(parts[0], parts.slice(1), { encoding: 'utf-8' }).trim();
     } catch (_e) {
         return null;
     }
@@ -108,7 +109,7 @@ function main() {
         const branchName = newBranch.startsWith('release/') || newBranch.startsWith('patch/')
             ? newBranch
             : `release/${newBranch}`;
-        const result = exec(`gh pmu move ${issueNumber} --branch "${branchName}"`);
+        const result = exec(`gh pmu move ${issueNumber} --branch ${branchName}`);
         if (result !== null) {
             console.log(`✓ Issue #${issueNumber} transferred to ${branchName}`);
         } else {

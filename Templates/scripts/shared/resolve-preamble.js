@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -147,7 +147,7 @@ function classifyFindings(findings) {
 
 // ─── Envelope Builders ───
 
-function buildSuccessEnvelope(reviewInfo, classified, findings) {
+function buildSuccessEnvelope(reviewInfo, classified, _findings) {
   return {
     ok: true,
     version: 1,

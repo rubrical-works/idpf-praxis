@@ -1,6 +1,21 @@
 # Agile-Driven Development Framework - Commands
-**Version:** v0.77.1
+**Version:** v0.77.2
 **Module:** Commands (loaded on-demand)
+## Complete Command Reference (49 commands)
+Authoritative source: `.claude/commands/`. Use `/self-diag` for a live audit.
+| Category | Commands |
+|----------|----------|
+| **Issue Creation** | `/bug`, `/enhancement`, `/proposal` |
+| **Planning** | `/charter`, `/create-prd`, `/complete-prd`, `/create-backlog`, `/add-story`, `/split-story`, `/plan-workstreams` |
+| **Workflow** | `/work`, `/done`, `/pivot`, `/assign-branch`, `/transfer-issue`, `/issue-reset` |
+| **Branch & Release** | `/create-branch`, `/switch-branch`, `/merge-branch`, `/destroy-branch`, `/prepare-release`, `/prepare-beta` |
+| **Review** | `/review-issue`, `/review-proposal`, `/review-prd`, `/review-test-plan`, `/resolve-review`, `/code-review`, `/bad-test-review` |
+| **Auditing** | `/audit-commands`, `/audit-core-docs`, `/audit-extensions`, `/audit-hallucination`, `/audit-minimization`, `/gap-analysis`, `/self-diag` |
+| **Design & Mockups** | `/mockups`, `/catalog-screens`, `/design-system`, `/paths` |
+| **Skills & Extensions** | `/skill-validate`, `/extensions`, `/add-recipe`, `/change-domain-expert` |
+| **CI/CD** | `/ci`, `/playwright-check` |
+| **Documentation** | `/minimize-files`, `/idpf-stats` |
+| **Gemini** | `/transform-gemini` |
 ## Backlog Management Commands
 All backlog commands work against GitHub issues. No local backlog files are created.
 **Prerequisites:** `.gh-pmu.json` configured in repository root, `gh pmu` extension installed
@@ -56,9 +71,9 @@ See `/split-story` command for full workflow details.
 |---------|-------------|
 | `Run-Tests` | Execute full test suite |
 | `Show-Coverage` | Display test coverage report |
-**TDD Execution Model:** TDD phases (RED → GREEN → REFACTOR) execute **autonomously**. The only checkpoints are:
-- **In Review** — After story implementation complete
-- **Done** — User approval to close
+**TDD Execution Model:** TDD phases (RED -> GREEN -> REFACTOR) execute **autonomously**. The only checkpoints are:
+- **In Review** -- After story implementation complete
+- **Done** -- User approval to close
 **TDD Skills:** `tdd-red-phase`, `tdd-green-phase`, `tdd-refactor-phase`, `tdd-failure-recovery`, `test-writing-patterns`
 ## Release Lifecycle Commands
 | Command | Description | Slash Command |
@@ -82,7 +97,7 @@ See `/split-story` command for full workflow details.
     ├── Phase 0: Commit analysis
     ├── Phase 1: Version updates
     ├── Phase 2: Validation
-    ├── Phase 3: PR → merge → tag main
+    ├── Phase 3: PR -> merge -> tag main
     ├── Phase 4: Verify deployment
     └── Phase 5: Close (notes, GitHub Release, tracker, branch cleanup)
 ```

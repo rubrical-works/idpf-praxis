@@ -1,17 +1,23 @@
 **Framework Testing Reference**
-**Version:** v0.77.1
+**Version:** v0.77.2
 **Testing Domain (Foundation)**
 **Location:** `Domains/Testing/` | **Type:** Foundational Testing Domain
 **Core Principle:** "Test automation is software development. It uses the same tools, requires the same skills and same practices."
-**Architecture:**
+**Architecture (11 domains):**
 ```
-Domains/Testing/ (foundation)
+Testing-Focused Domains (6):
     ├── Domains/QA-Automation/      (Selenium, Playwright, Cypress, Appium)
     ├── Domains/Performance/        (k6, JMeter, Gatling, Locust)
     ├── Domains/Security/           (OWASP ZAP, Burp Suite, SAST/DAST)
     ├── Domains/Accessibility/      (axe, Lighthouse, Pa11y)
     ├── Domains/Chaos/              (Chaos Monkey, Gremlin, LitmusChaos)
     └── Domains/Contract-Testing/   (Pact, Spring Cloud Contract)
+Broader Concern Domains (5):
+    ├── Domains/API-Design/         (REST/GraphQL API design conventions)
+    ├── Domains/Observability/      (Logging, tracing, metrics, alerting)
+    ├── Domains/Privacy/            (Consent, cookies, GDPR/CCPA compliance)
+    ├── Domains/SEO/                (Technical SEO and structured data)
+    └── Domains/i18n/               (Internationalization and localization)
 ```
 **Embedded Testing (No separate domain):** TDD, ATDD, BDD - Application repo with IDPF-Agile
 **Separate Repository (Uses testing domains):**

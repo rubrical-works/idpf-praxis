@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.77.1
+**Version:** v0.77.2
 Comprehensive reference for AI assistants and framework development.
 **Core Principle:** System Instructions define WHO; Frameworks define WHAT process; Skills provide reusable capabilities; Assistant Guidelines ensure quality.
 ---
@@ -100,12 +100,17 @@ Domains/
 **Domain Frameworks:**
 | Domain | Framework Directory | Scope |
 |--------|-------------------|-------|
-| QA Automation | `Domains/QA-Automation/` | Selenium, Playwright, Cypress, Appium |
-| Performance | `Domains/Performance/` | k6, JMeter, Gatling, Locust |
-| Security | `Domains/Security/` | OWASP ZAP, Burp Suite, SAST/DAST |
 | Accessibility | `Domains/Accessibility/` | axe, Lighthouse, Pa11y |
+| API-Design | `Domains/API-Design/` | REST/GraphQL API design conventions |
 | Chaos | `Domains/Chaos/` | Chaos Monkey, Gremlin, LitmusChaos |
 | Contract Testing | `Domains/Contract-Testing/` | Pact, Spring Cloud Contract |
+| i18n | `Domains/i18n/` | Internationalization and localization |
+| Observability | `Domains/Observability/` | Logging, tracing, metrics, alerting |
+| Performance | `Domains/Performance/` | k6, JMeter, Gatling, Locust |
+| Privacy | `Domains/Privacy/` | Consent, cookies, GDPR/CCPA compliance |
+| QA Automation | `Domains/QA-Automation/` | Selenium, Playwright, Cypress, Appium |
+| Security | `Domains/Security/` | OWASP ZAP, Burp Suite, SAST/DAST |
+| SEO | `Domains/SEO/` | Technical SEO and structured data |
 **Embedded vs Separate Repository:**
 - **Embedded** (application repo with IDPF-Agile): TDD, ATDD, BDD
 - **Separate** (dedicated repo with domain frameworks): QA Automation, Performance, Security, Chaos, Contract Testing
@@ -278,7 +283,7 @@ System Instructions are **REQUIRED** for all framework operation. Frameworks def
 - Core + platform-specific must be loaded together
 ---
 **Skills**
-**Location:** `Skills/` | **Total:** 34
+**Location:** `Skills/` | **Total:** 38
 **TDD Skills (Experienced):**
 - **tdd-red-phase**: RED phase - writing failing tests, verifying failures
 - **tdd-green-phase**: GREEN phase - minimal implementation to pass tests
@@ -369,7 +374,7 @@ Assistant Guidelines (HOW WELL - quality)
 ---
 **Framework Ecosystem Summary**
 - **2 Process Frameworks**: IDPF-Agile, IDPF-Vibe (7 variants)
-- **11 Domain Libraries**: QA-Automation, Performance, Security, Accessibility, Chaos, Contract-Testing, API-Design, Observability, Privacy, SEO, i18n
+- **11 Domain Libraries**: Accessibility, API-Design, Chaos, Contract-Testing, i18n, Observability, Performance, Privacy, QA-Automation, Security, SEO
 - **System Instructions**: 1 Core + 22 Domain Specialists + 1 Domain Selection Guide + 1 Legacy + Vibe Agent (Core + 6 platforms)
 - **38 Skills**: 6 TDD/BDD, 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps, 2 testing/browser, 2 desktop, 1 diagrams, 4 deployment, 1 SEO, 1 privacy, 2 platform, 1 i18n, 1 test scaffolding
 - **2 Assistant Guidelines**: Software dev (with file operations), Skill creation

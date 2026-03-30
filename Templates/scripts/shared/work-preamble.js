@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -9,13 +9,14 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec: execCb } = require('child_process');
+const { exec: execCb, execFile: execFileCb } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 
 const execAsync = promisify(execCb);
+const execFileAsync = promisify(execFileCb);
 const SCHEMA_VERSION = 1;
 const EXEC_OPTS = { encoding: 'utf-8' };
 
@@ -50,13 +51,14 @@ function classifyError(errorMessage, defaultCode) {
 // ─── Execution Safety ───
 
 /**
- * Safe async exec wrapper — never throws
- * @param {string} cmd
+ * Safe async exec wrapper — never throws. Bypasses shell via execFileAsync.
+ * @param {string} cmd - Command string (split on whitespace)
  * @returns {Promise<string|null>} Trimmed output or null on failure
  */
 async function execSafe(cmd) {
   try {
-    const { stdout } = await execAsync(cmd, EXEC_OPTS);
+    const parts = cmd.split(/\s+/);
+    const { stdout } = await execFileAsync(parts[0], parts.slice(1), EXEC_OPTS);
     return stdout.trim();
   } catch (_e) {
     return null;
@@ -65,16 +67,17 @@ async function execSafe(cmd) {
 
 /**
  * Async exec wrapper that returns parsed JSON or an error object.
- * Classifies errors using stderr patterns (TIMEOUT, RATE_LIMIT, AUTH_FAILED, PMU_MISSING).
- * @param {string} cmd
+ * Bypasses shell via execFileAsync. Classifies errors using stderr patterns.
+ * @param {string} command - Executable name
+ * @param {string[]} args - Argument array
  * @param {string} errorCode - Default error code to use on failure
  * @param {string} errorMsg - Error message prefix
  * @returns {Promise<{ data: object } | { error: { code: string, message: string } }>}
  */
-async function execJSON(cmd, errorCode, errorMsg) {
+async function execJSON(command, args, errorCode, errorMsg) {
   let output;
   try {
-    const { stdout } = await execAsync(cmd, EXEC_OPTS);
+    const { stdout } = await execFileAsync(command, args, EXEC_OPTS);
     output = stdout.trim();
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -176,7 +179,7 @@ function parseArgs(args) {
  */
 async function gatherAllData(issueNum) {
   const result = await execJSON(
-    `gh pmu view ${issueNum} --json=number,title,labels,body,state,status,branch`,
+    'gh', ['pmu', 'view', String(issueNum), '--json=number,title,labels,body,state,status,branch'],
     'NOT_FOUND',
     `Issue #${issueNum} not found`
   );
@@ -214,7 +217,7 @@ async function gatherAllData(issueNum) {
  */
 async function gatherIssueOnly(issueNum) {
   const result = await execJSON(
-    `gh pmu view ${issueNum} --json=number,title,labels,body,state`,
+    'gh', ['pmu', 'view', String(issueNum), '--json=number,title,labels,body,state'],
     'NOT_FOUND',
     `Issue #${issueNum} not found`
   );
@@ -235,7 +238,7 @@ async function gatherIssueOnly(issueNum) {
  */
 async function gatherBranchData(issueNum) {
   const result = await execJSON(
-    `gh pmu view ${issueNum} --json=status,branch`,
+    'gh', ['pmu', 'view', String(issueNum), '--json=status,branch'],
     'NO_BRANCH',
     `Failed to get branch data for #${issueNum}`
   );
@@ -291,7 +294,7 @@ function parseAcceptanceCriteria(body) {
  */
 async function loadSubIssues(issueNum) {
   const result = await execJSON(
-    `gh pmu sub list ${issueNum} --json`,
+    'gh', ['pmu', 'sub', 'list', String(issueNum), '--json'],
     'SUB_ISSUE_LOAD_FAILED',
     `Failed to load sub-issues for #${issueNum}`
   );
@@ -327,7 +330,7 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
     Promise.all(
       subIssues.map(async (sub) => {
         try {
-          const { stdout } = await execAsync(`gh pmu view ${sub.number} --json=status`, EXEC_OPTS);
+          const { stdout } = await execFileAsync('gh', ['pmu', 'view', String(sub.number), '--json=status'], EXEC_OPTS);
           const data = JSON.parse(stdout.trim());
           return { sub, status: data.status };
         } catch (_e) {
@@ -406,7 +409,7 @@ function buildEpicAutoTodo(activeSubIssues, processingOrder) {
  */
 async function moveToInProgress(issueNum) {
   try {
-    await execAsync(`gh pmu move ${issueNum} --status in_progress`, EXEC_OPTS);
+    await execFileAsync('gh', ['pmu', 'move', String(issueNum), '--status', 'in_progress'], EXEC_OPTS);
     return { moved: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -436,7 +439,7 @@ function parsePrdTracker(body) {
 async function movePrdTracker(trackerNum) {
   // Check current status
   const statusResult = await execJSON(
-    `gh pmu view ${trackerNum} --json=status`,
+    'gh', ['pmu', 'view', String(trackerNum), '--json=status'],
     'PRD_TRACKER_ERROR',
     `Failed to check PRD tracker #${trackerNum}`
   );
@@ -453,7 +456,7 @@ async function movePrdTracker(trackerNum) {
   }
 
   try {
-    await execAsync(`gh pmu move ${trackerNum} --status in_progress`, EXEC_OPTS);
+    await execFileAsync('gh', ['pmu', 'move', String(trackerNum), '--status', 'in_progress'], EXEC_OPTS);
     return { moved: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -566,7 +569,7 @@ async function checkAssignability(issueNum, targetBranch, workstreams) {
 async function performAssignment(issueNum) {
   const scriptPath = path.join(__dirname, 'assign-branch.js');
   try {
-    await execAsync(`node "${scriptPath}" "#${issueNum}"`, EXEC_OPTS);
+    await execFileAsync('node', [scriptPath, `#${issueNum}`], EXEC_OPTS);
     return { assigned: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -788,7 +791,7 @@ async function runSingleIssue(issueNum, options) {
  */
 async function resolveStatusIssues(status) {
   const result = await execJSON(
-    `gh pmu list --status ${status} --json=number,title`,
+    'gh', ['pmu', 'list', '--status', status, '--json=number,title'],
     'STATUS_QUERY_FAILED',
     `Failed to query issues in "${status}" status`
   );

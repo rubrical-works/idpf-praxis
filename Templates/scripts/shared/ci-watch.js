@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -10,7 +10,7 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { sanitizeShellArg } = require('./lib/shell-safe.js');
@@ -60,7 +60,8 @@ function parseArgs(argv) {
  * @returns {string} stdout
  */
 function defaultExecCmd(cmd) {
-  return execSync(cmd, { encoding: 'utf-8', timeout: 5000 });
+  const parts = cmd.split(/\s+/);
+  return execFileSync(parts[0], parts.slice(1), { encoding: 'utf-8', timeout: 5000 });
 }
 
 /**
@@ -99,7 +100,7 @@ function getCurrentBranch(execCmd = defaultExecCmd) {
  * @returns {string} stdout
  */
 function defaultRunGh(args) {
-  return execSync(`gh ${args}`, { encoding: 'utf-8', timeout: 30000 });
+  return execFileSync('gh', args.split(/\s+/), { encoding: 'utf-8', timeout: 30000 });
 }
 
 /**

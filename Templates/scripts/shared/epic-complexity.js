@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.1
+ * @framework-script 0.77.2
  * @description Epic complexity classifier for /work --nonstop. Scans sub-issue titles for functional vs restyle signals and returns classification with strictTDD flag.
  * @checksum sha256:placeholder
  *
@@ -82,9 +82,9 @@ if (require.main === module) {
   }
   validateIssueNumber(issueArg);
 
-  const { execSync } = require('child_process');
+  const { execFileSync } = require('child_process');
   try {
-    const output = execSync(`gh pmu sub list ${issueArg} --json`, { encoding: 'utf8' });
+    const output = execFileSync('gh', ['pmu', 'sub', 'list', issueArg, '--json'], { encoding: 'utf8' });
     const data = JSON.parse(output);
     const subIssues = (data.children || []).map((c) => ({ title: c.title || '', body: '' }));
     const result = classifyEpic(subIssues);
