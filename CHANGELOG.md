@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.77.1] - 2026-03-29
+
+### Fixed
+
+- **validate-dist.js** — Placeholder check string was being replaced by version injection, corrupting the validation logic. Constructed search string via concatenation to survive sed replacement.
+
+---
+
 ## [0.77.0] - 2026-03-29
 
 ### Added
