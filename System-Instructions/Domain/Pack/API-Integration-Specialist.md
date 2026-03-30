@@ -1,5 +1,5 @@
 # System Instructions: API & Integration Specialist
-**Version:** v0.77.0
+**Version:** v0.77.1
 **Purpose:** Specialized expertise in API design, microservices, system integrations, and ensuring seamless communication between systems.
 ---
 **API Design Principles**

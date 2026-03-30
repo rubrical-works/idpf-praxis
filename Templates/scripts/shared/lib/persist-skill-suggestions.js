@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.0
+ * @framework-script 0.77.1
  * @description Persist skill suggestions from keyword matching to framework-config.json. Exports persistSuggestions(). Used by /create-prd and /create-backlog to bridge skill discovery with px-manager installation.
  * @checksum sha256:placeholder
  *
