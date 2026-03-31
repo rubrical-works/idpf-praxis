@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * @description Deploy skills from framework zip packages to project .claude/skills/ directory via extraction. Handles package discovery, version validation, and file deployment. Used by /charter skill selection and /manage-skills install subcommand.
  * @checksum sha256:placeholder
  *

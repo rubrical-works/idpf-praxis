@@ -1,5 +1,5 @@
 # System Instructions: DevOps Engineer
-**Version:** v0.77.3
+**Version:** v0.77.4
 **Purpose:** Specialized expertise in deployment pipelines, infrastructure, automation, CI/CD, and bridging development and operations.
 ---
 **CI/CD Pipelines**

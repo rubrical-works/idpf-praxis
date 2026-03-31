@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * @description Map CI features to appropriate workflow file categories and suggest workflow file names based on feature type classification (test, deploy, lint, security, etc.). Used by ci-add.js when creating new workflow files.
  * @checksum sha256:placeholder
  *

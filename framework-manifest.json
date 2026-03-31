@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.77.3",
+  "version": "0.77.4",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -76,6 +76,14 @@
     "Assistant",
     "System-Instructions",
     "Skills"
+  ],
+  "excludedFromDeployment": [
+    ".gitkeep",
+    "clear-hook.js",
+    "compact-hook.js",
+    "precompact-hook.js",
+    "resume-hook.js",
+    "test-on-change.js"
   ],
   "deploymentFiles": {
     "commands": {
@@ -175,7 +183,9 @@
           "branch-sync-check.js",
           "config-integrity-check.js",
           "mockup-detect-framework.js",
-          "mockup-element-extractor.js"
+          "mockup-element-extractor.js",
+          "mockup-ac-generator.js",
+          "mockup-token-styles.js"
         ]
       },
       "shared/lib": {

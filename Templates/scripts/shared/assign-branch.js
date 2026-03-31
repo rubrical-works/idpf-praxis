@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -9,12 +9,9 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec, execFileSync } = require('child_process');
-const { promisify } = require('util');
+const { execFile, execFileSync } = require('child_process');
 const { getAllOpenTrackers } = require('./lib/active-label.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');
-
-const execAsync = promisify(exec);
 
 // Timing helper
 let showTiming = false;
@@ -45,12 +42,13 @@ function execSyncSafe(cmd) {
 }
 
 async function execAsyncSafe(cmd) {
-    try {
-        const { stdout } = await execAsync(cmd, { encoding: 'utf-8' });
-        return stdout.trim();
-    } catch {
-        return null;
-    }
+    const parts = cmd.split(/\s+/);
+    return new Promise((resolve) => {
+        execFile(parts[0], parts.slice(1), { encoding: 'utf-8' }, (err, stdout) => {
+            if (err) return resolve(null);
+            resolve((stdout || '').trim());
+        });
+    });
 }
 
 /**
@@ -280,7 +278,7 @@ async function assignToBranch(issueNumber, branch, useCurrent = false) {
         const branchArg = useCurrent ? 'current' : `"${branch}"`;
         const displayBranch = useCurrent ? `${branch} (current)` : branch;
         console.log(`  → Assigning #${issueNumber} to ${displayBranch}`);
-        const moveResult = await execAsyncSafe(`gh pmu move ${issueNumber} --branch ${branchArg} 2>&1`);
+        const moveResult = await execAsyncSafe(`gh pmu move ${issueNumber} --branch ${branchArg}`);
         if (moveResult && moveResult.includes('unknown flag')) {
             console.log(`    (Note: gh pmu --branch not supported, manual assignment needed)`);
             return false;
@@ -298,23 +296,23 @@ async function assignToBranch(issueNumber, branch, useCurrent = false) {
  * @returns {boolean} true if linked, false if failed or skipped
  */
 async function linkToTracker(issueNumber, tracker) {
-    try {
-        const { stdout } = await execAsync(
-            `gh pmu sub add ${tracker} ${issueNumber} 2>&1`,
-            { encoding: 'utf-8' }
-        );
-        const output = (stdout || '').trim();
-        if (output.includes('already') && (output.includes('parent') || output.includes('sub-issue'))) {
-            console.log(`    ⚠ #${issueNumber} already has a parent — skipped`);
-            return false;
-        }
-        console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
-        return true;
-    } catch (err) {
-        const errMsg = err.stderr || err.message || 'unknown error';
-        console.log(`    ⚠ Failed to link #${issueNumber} to tracker #${tracker}: ${errMsg}`);
-        return false;
-    }
+    return new Promise((resolve) => {
+        execFile('gh', ['pmu', 'sub', 'add', String(tracker), String(issueNumber)],
+            { encoding: 'utf-8' }, (err, stdout, stderr) => {
+                if (err) {
+                    const errMsg = stderr || err.message || 'unknown error';
+                    console.log(`    ⚠ Failed to link #${issueNumber} to tracker #${tracker}: ${errMsg}`);
+                    return resolve(false);
+                }
+                const output = (stdout || '').trim();
+                if (output.includes('already') && (output.includes('parent') || output.includes('sub-issue'))) {
+                    console.log(`    ⚠ #${issueNumber} already has a parent — skipped`);
+                    return resolve(false);
+                }
+                console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
+                resolve(true);
+            });
+    });
 }
 
 /**
@@ -613,15 +611,15 @@ async function removeFromBranch(issueNumber) {
     const operations = [];
     try {
         // Unlink from branch tracker sub-issues
-        await execAsyncSafe(`gh pmu sub remove ${issueNumber} 2>&1`);
+        await execAsyncSafe(`gh pmu sub remove ${issueNumber}`);
         operations.push(`unlink #${issueNumber} from tracker`);
 
         // Remove assigned label
-        await execAsyncSafe(`gh issue edit ${issueNumber} --remove-label assigned 2>&1`);
+        await execAsyncSafe(`gh issue edit ${issueNumber} --remove-label assigned`);
         operations.push(`remove assigned label from #${issueNumber}`);
 
         // Clear branch field and set status to backlog
-        await execAsyncSafe(`gh pmu move ${issueNumber} --backlog 2>&1`);
+        await execAsyncSafe(`gh pmu move ${issueNumber} --backlog`);
         operations.push(`set #${issueNumber} to backlog`);
 
         return { ok: true, operations };

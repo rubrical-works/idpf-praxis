@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * mockup-element-extractor.js
  *
  * Extracts UI elements from ASCII mockup files and HTML mockup files.
@@ -107,7 +107,14 @@ function extractFromHtml(content, filePath) {
   // Button elements
   const buttonRegex = /<button\b[^>]*>([\s\S]*?)<\/button>/gi;
   while ((match = buttonRegex.exec(content)) !== null) {
-    const innerText = match[1].replace(/<[^>]+>/g, '').trim();
+    let innerText = match[1];
+    const MAX_STRIP_PASSES = 10;
+    for (let i = 0; i < MAX_STRIP_PASSES; i++) {
+      const next = innerText.replace(/<[^>]+>/g, '');
+      if (next === innerText) break;
+      innerText = next;
+    }
+    innerText = innerText.trim();
     if (innerText) {
       elements.push({
         type: 'button',

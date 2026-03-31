@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * @description Script-driven CLI for extension point operations. Replaces AI-interpreted markdown specs for read-only subcommands (list, view, diff, validate), reducing execution from 3-16+ tool calls to 1 Bash call. Used by /extensions command.
  * @checksum sha256:placeholder
  *
@@ -81,10 +81,14 @@ function scanExtensionBlocks(content) {
 
     if (endMatch) {
       const between = cleaned.slice(startIdx, startIdx + endMatch.index).trim();
-      const stripped = between
-        .replace(/<!--[\s\S]*?-->/g, '')
-        .trim();
-      result.set(name, stripped.length > 0);
+      let stripped = between;
+      const MAX_STRIP_PASSES = 10;
+      for (let i = 0; i < MAX_STRIP_PASSES; i++) {
+        const next = stripped.replace(/<!--[\s\S]*?-->/g, '');
+        if (next === stripped) break;
+        stripped = next;
+      }
+      result.set(name, stripped.trim().length > 0);
     }
   }
 
@@ -241,8 +245,14 @@ function extractPointContent(content, pointName) {
   }
 
   const between = cleaned.slice(startIdx, startIdx + endMatch.index).trim();
-  const stripped = between.replace(/<!--[\s\S]*?-->/g, '').trim();
-  return { found: true, content: stripped };
+  let stripped = between;
+  const MAX_STRIP_PASSES = 10;
+  for (let i = 0; i < MAX_STRIP_PASSES; i++) {
+    const next = stripped.replace(/<!--[\s\S]*?-->/g, '');
+    if (next === stripped) break;
+    stripped = next;
+  }
+  return { found: true, content: stripped.trim() };
 }
 
 /**

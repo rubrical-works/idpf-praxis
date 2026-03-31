@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -222,7 +222,7 @@ function shouldSkipMonitoring(changedFiles, pathsIgnore) {
 function matchesGlob(filePath, pattern) {
   // Convert glob to regex using placeholders to avoid re-matching
   let regexStr = pattern
-    .replace(/\./g, '\\.')
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')  // Escape all regex-special chars (except *)
     .replace(/\*\*\//g, '\x01')     // **/ → placeholder 1
     .replace(/\*\*/g, '\x02')       // ** → placeholder 2
     .replace(/\*/g, '[^/]*')        // * matches within a single segment
@@ -565,5 +565,6 @@ module.exports = {
   waitForRuns,
   waitForCompletion,
   collectResults,
+  matchesGlob,
   watch
 };

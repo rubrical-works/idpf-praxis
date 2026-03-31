@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * @description Delete expired GitHub Actions artifacts with throttled API calls to avoid rate limits. Supports age-based filtering (default 30 days) and --dry-run mode. Used by /prepare-release cleanup phase.
  * @checksum sha256:placeholder
  *

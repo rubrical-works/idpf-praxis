@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -469,16 +469,12 @@ function getFromCache(key, forceRefresh = false) {
 function saveToCache(key, value) {
     try {
         let cache = {};
-        if (fs.existsSync(CACHE_FILE)) {
-            cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-        }
+        try { cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); } catch { /* ENOENT or parse error — start fresh */ }
         cache.framework = detectFramework();
         cache[key] = value;
         cache.timestamp = Date.now();
         fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
-    } catch (_e) {
-        // Intentionally ignored
-    }
+    } catch { /* write failure — silently ignored */ }
 }
 
 /**

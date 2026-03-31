@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.3
+ * @framework-script 0.77.4
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,16 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
 const { validateVersion } = require('./lib/input-validation.js');
+
+/**
+ * Escape special regex characters in a string so it can be safely
+ * interpolated into a RegExp pattern as a literal match.
+ * @param {string} str - The string to escape
+ * @returns {string} - The escaped string
+ */
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
  * Check if a GitHub release exists for the given version
@@ -292,10 +302,11 @@ async function main() {
 
         const changelog = fs.readFileSync(changelogPath, 'utf8');
         const versionNum = version.replace('v', '');
+        const escapedVersion = escapeRegex(versionNum);
 
         // Extract section for this version including the header (for date)
         const versionPattern = new RegExp(
-            `## \\[${versionNum}\\]\\s*-\\s*(\\d{4}-\\d{2}-\\d{2})\\r?\\n([\\s\\S]*?)(?=## \\[|$)`
+            `## \\[${escapedVersion}\\]\\s*-\\s*(\\d{4}-\\d{2}-\\d{2})\\r?\\n([\\s\\S]*?)(?=## \\[|$)`
         );
         const match = changelog.match(versionPattern);
 
@@ -367,6 +378,7 @@ module.exports = {
     transformToReleaseFormat,
     updateOrCreateRelease,
     getRepoUrl,
+    escapeRegex,
     main
 };
 
