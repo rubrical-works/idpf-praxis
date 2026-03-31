@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.2
+ * @framework-script 0.77.3
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *

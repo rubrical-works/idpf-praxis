@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.2
+ * @framework-script 0.77.3
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -9,13 +9,12 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec: execCb, execFile: execFileCb } = require('child_process');
+const { execFile: execFileCb } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 
-const execAsync = promisify(execCb);
 const execFileAsync = promisify(execFileCb);
 const SCHEMA_VERSION = 1;
 const EXEC_OPTS = { encoding: 'utf-8' };

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.2
+ * @framework-script 0.77.3
  * @description Detect project programming languages by scanning for language-specific manifest files (package.json, requirements.txt, go.mod, Cargo.toml, etc.). Returns an array of detected language identifiers. Used by ci-analyze.js during project analysis.
  * @checksum sha256:placeholder
  *

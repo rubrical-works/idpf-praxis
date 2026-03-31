@@ -1,5 +1,5 @@
 # Deployment Awareness
-**Version:** v0.77.2
+**Version:** v0.77.3
 **Purpose:** Document the deployment chain from development to distribution
 ## Overview
 This repository (`idpf-praxis-dev`) is the **development environment**. Changes made here must be evaluated for deployment impact to the **distribution repository** (`idpf-praxis`) which users install from.

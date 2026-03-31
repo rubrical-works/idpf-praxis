@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.2
+ * @framework-script 0.77.3
  * @description DTCG theme management: generation, validation, merge resolution,
  *   type mismatch detection, and circular alias detection across base+theme tokens.
  * @checksum sha256:placeholder

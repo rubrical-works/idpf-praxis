@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.77.2
+ * @framework-script 0.77.3
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -9,7 +9,7 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec, execSync, execFileSync } = require('child_process');
+const { exec, execFileSync } = require('child_process');
 const { promisify } = require('util');
 const { getAllOpenTrackers } = require('./lib/active-label.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');

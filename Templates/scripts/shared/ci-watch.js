@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.77.2
+ * @framework-script 0.77.3
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -10,7 +10,7 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { sanitizeShellArg } = require('./lib/shell-safe.js');
