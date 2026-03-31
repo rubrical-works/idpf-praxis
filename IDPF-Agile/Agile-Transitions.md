@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Transitions
-**Version:** v0.77.4
+**Version:** v0.78.0
 **Module:** Transitions (loaded on-demand)
 ## When to Use Agile Framework
 **Use Agile-Driven Framework when:**

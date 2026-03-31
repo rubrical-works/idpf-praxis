@@ -3,7 +3,7 @@
   "description": "Maps tech stack indicators to relevant extension recipes for /charter suggestions",
   "techMappings": {
     "package.json": {
-      "recipes": ["nodejs-tests", "dependency-audit"],
+      "recipes": ["nodejs-tests", "dependency-audit", "eslint-security"],
       "description": "Node.js project"
     },
     "go.mod": {
@@ -51,7 +51,7 @@
       "description": ".NET solution"
     },
     ".github/workflows/": {
-      "recipes": ["ci-gate-before-merge", "ci-status-check"],
+      "recipes": ["ci-gate-before-merge", "ci-status-check", "semgrep-sast"],
       "description": "GitHub Actions CI"
     },
     ".gitlab-ci.yml": {

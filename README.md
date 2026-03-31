@@ -102,37 +102,9 @@ Requirements are managed through Product Requirements Documents (PRDs). Use the 
 
 ---
 
-## Skills (38)
+## Skills
 
-| Category | Skills |
-|----------|--------|
-| TDD | tdd-red-phase, tdd-green-phase, tdd-refactor-phase, tdd-failure-recovery, test-writing-patterns |
-| Beginner Setup | flask-setup, sinatra-setup |
-| Beginner Support | beginner-testing, common-errors, sqlite-integration |
-| Database | postgresql-integration, migration-patterns |
-| Architecture | api-versioning, error-handling-patterns, resilience-patterns |
-| Advanced Testing | property-based-testing, mutation-testing |
-| Analysis | anti-pattern-analysis, bdd-writing, codebase-analysis, code-path-discovery |
-| Code Quality | command-spec-audit |
-| DevOps | ci-cd-pipeline-design |
-| Diagrams | drawio-generation |
-| Desktop | electron-development, electron-cross-build, playwright-setup |
-| Platform | astro-development, playwright-explorer |
-| Deployment | vercel-project-setup, railway-project-setup, render-project-setup, digitalocean-app-setup |
-| Compliance | seo-optimization, privacy-compliance |
-| Internationalization | i18n-setup, observability-setup |
-| Testing | test-scaffold |
-
-### In the Pipeline
-
-| Proposal | Status |
-|----------|--------|
-| Docker Development Skill | Draft |
-| Docker/Compose Orchestration Skill | Draft |
-| Accessibility Testing Scaffolding Skill | Draft |
-| Graceful Degradation Assessment Skill | Draft |
-| Payment Processing Integration Skill | Draft |
-| Testing Strategies for Other Platforms | Draft |
+Skills have been migrated to the [idpf-praxis-skills](https://github.com/rubrical-works/idpf-praxis-skills) repository. Use the `/fw-import-skills` command to import skills into a framework development environment, or install skills to user projects via Praxis Hub Manager.
 
 ---
 

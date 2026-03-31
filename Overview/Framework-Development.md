@@ -1,5 +1,5 @@
 **Framework Development Reference**
-**Version:** v0.77.4
+**Version:** v0.78.0
 Reference for IDPF development frameworks (2 frameworks: Agile, Vibe)
 **PRD Creation (Pre-Development)**
 > `IDPF-PRD` deprecated in v0.24, replaced by `create-prd` skill.
@@ -197,7 +197,7 @@ Commands specify `model:` in YAML frontmatter for model tier selection. Inline s
 **Adding a Model Tier:**
 ```yaml
 ---
-version: "v0.77.4"
+version: "v0.78.0"
 description: Command description (project)
 model: sonnet
 ---

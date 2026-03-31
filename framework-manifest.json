@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.77.4",
+  "version": "0.78.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -31,51 +31,10 @@
     "Systems-Programmer-Specialist",
     "Technical-Writer-Specialist"
   ],
-  "skills": [
-    "anti-pattern-analysis",
-    "api-versioning",
-    "astro-development",
-    "bdd-writing",
-    "beginner-testing",
-    "ci-cd-pipeline-design",
-    "code-path-discovery",
-    "codebase-analysis",
-    "command-spec-audit",
-    "common-errors",
-    "digitalocean-app-setup",
-    "drawio-generation",
-    "electron-cross-build",
-    "electron-development",
-    "error-handling-patterns",
-    "flask-setup",
-    "i18n-setup",
-    "migration-patterns",
-    "mutation-testing",
-    "observability-setup",
-    "playwright-explorer",
-    "playwright-setup",
-    "postgresql-integration",
-    "privacy-compliance",
-    "property-based-testing",
-    "railway-project-setup",
-    "render-project-setup",
-    "resilience-patterns",
-    "seo-optimization",
-    "sinatra-setup",
-    "sqlite-integration",
-    "tdd-failure-recovery",
-    "tdd-green-phase",
-    "tdd-red-phase",
-    "tdd-refactor-phase",
-    "test-scaffold",
-    "test-writing-patterns",
-    "vercel-project-setup"
-  ],
   "requiredDirectories": [
     "Overview",
     "Assistant",
-    "System-Instructions",
-    "Skills"
+    "System-Instructions"
   ],
   "excludedFromDeployment": [
     ".gitkeep",
@@ -156,8 +115,6 @@
           "done-verify.js",
           "extensions-cli.js",
           "generate-changelog.js",
-          "install-skill.js",
-          "manage-skills.js",
           "generate-test-plan.js",
           "plan-workstreams.js",
           "recommend-version.js",
@@ -178,7 +135,6 @@
           "resolve-preamble.js",
           "reset-issue-preamble.js",
           "validate-release.js",
-          "prd-skill-matcher.js",
           "statusline-check.js",
           "branch-sync-check.js",
           "config-integrity-check.js",
@@ -200,13 +156,10 @@
           "active-label.js",
           "issue-type.js",
           "workstream-utils.js",
-          "skill-keyword-matcher.js",
           "review-format.js",
           "input-validation.js",
           "shell-safe.js",
           "debug.js",
-          "catalog-errors.js",
-          "persist-skill-suggestions.js",
           "classify-changed-files.js",
           "dtcg-adapter-loader.js",
           "dtcg-init-builder.js",
@@ -263,11 +216,6 @@
       "target": ".claude/metadata/",
       "registries": [
         {
-          "name": "skill-registry",
-          "source": ".claude/metadata/skill-registry.json",
-          "description": "Skill registry for /install-skill command"
-        },
-        {
           "name": "extension-recipes",
           "source": ".claude/metadata/extension-recipes.json",
           "description": "Extension recipes for /extensions recipes command"
@@ -281,11 +229,6 @@
           "name": "review-extensions",
           "source": ".claude/metadata/review-extensions.json",
           "description": "Review command domain extension criteria registry"
-        },
-        {
-          "name": "skill-keywords",
-          "source": ".claude/metadata/skill-keywords.json",
-          "description": "Keyword-to-skill mappings for /create-backlog and /add-story"
         },
         {
           "name": "recipe-tech-mapping",
@@ -341,11 +284,6 @@
           "name": "screen-spec-schema",
           "source": ".claude/metadata/screen-spec-schema.json",
           "description": "Screen specification schema for /catalog-screens and /mockups commands"
-        },
-        {
-          "name": "skill-catalog",
-          "source": ".claude/metadata/skill-catalog.json",
-          "description": "Skill catalog for skill discovery and matching"
         },
         {
           "name": "test-plan-review-criteria",
@@ -418,21 +356,6 @@
           "description": "JSON Schema for review-mode-criteria.json"
         },
         {
-          "name": "skill-catalog-schema",
-          "source": ".claude/metadata/skill-catalog-schema.json",
-          "description": "JSON Schema for skill-catalog.json"
-        },
-        {
-          "name": "skill-keywords-schema",
-          "source": ".claude/metadata/skill-keywords-schema.json",
-          "description": "JSON Schema for skill-keywords.json"
-        },
-        {
-          "name": "skill-registry-schema",
-          "source": ".claude/metadata/skill-registry-schema.json",
-          "description": "JSON Schema for skill-registry.json"
-        },
-        {
           "name": "test-plan-review-criteria-schema",
           "source": ".claude/metadata/test-plan-review-criteria-schema.json",
           "description": "JSON Schema for test-plan-review-criteria.json"
@@ -450,6 +373,7 @@
     "destroy-branch",
     "done",
     "enhancement",
+    "fw-minimize-files",
     "merge-branch",
     "mockups",
     "paths",

@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Skill Creation
-**Version:** v0.77.4
+**Version:** v0.78.0
 **Core Principle:** Accuracy over helpfulness. Precision over assumption. Verification over invention.
 When creating Skills from System Instructions or Frameworks, preserve the original intent and structure -- never "improve" with invented additions.
 ---

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-31T17:28:13.684Z",
+  "generatedAt": "2026-03-31T22:26:00.140Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -298,7 +298,7 @@
     },
     "security": {
       "name": "Security",
-      "description": "Dependency audit, secret scanning",
+      "description": "Dependency audit, SAST scanning, secret scanning",
       "recipes": [
         {
           "name": "dependency-audit",
@@ -314,6 +314,48 @@
           "appliesTo": [
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation"
+          ]
+        },
+        {
+          "name": "eslint-security",
+          "description": "JS vulnerability detection via eslint-plugin-security (eval, unsafe regex, timing attacks)",
+          "extensionPoints": [
+            "post-recommend",
+            "pre-validation",
+            "pre-gate",
+            "post-implementation"
+          ],
+          "template": "### ESLint Security Plugin\n\nInstall and configure `eslint-plugin-security` for JS-specific vulnerability detection:\n\n```bash\nnpm install --save-dev eslint-plugin-security\n```\n\nAdd to `eslint.config.js` (flat config):\n\n```javascript\nimport security from \"eslint-plugin-security\";\n\n// In your config's plugins:\nplugins: { security },\n\n// In your config's rules:\nrules: {\n  \"security/detect-buffer-noassert\": \"error\",\n  \"security/detect-child-process\": \"warn\",\n  \"security/detect-disable-mustache-escape\": \"error\",\n  \"security/detect-eval-with-expression\": \"error\",\n  \"security/detect-new-buffer\": \"error\",\n  \"security/detect-no-csrf-before-method-override\": \"error\",\n  \"security/detect-non-literal-fs-filename\": \"off\",\n  \"security/detect-non-literal-regexp\": \"off\",\n  \"security/detect-non-literal-require\": \"off\",\n  \"security/detect-object-injection\": \"off\",\n  \"security/detect-possible-timing-attacks\": \"warn\",\n  \"security/detect-pseudoRandomBytes\": \"warn\",\n  \"security/detect-unsafe-regex\": \"error\"\n}\n```\n\n**Note:** Four rules are `off` to avoid false positives in Node.js codebases (non-literal fs, require, regexp, object injection). Enable selectively if your codebase can tolerate the noise.\n\n**If security errors are reported, fix before proceeding.**",
+          "prerequisites": [
+            "\"npm install --save-dev eslint-plugin-security\"",
+            "\"ESLint flat config (eslint.config.js)\""
+          ],
+          "appliesTo": [
+            "ci:post-recommend",
+            "prepare-release:pre-validation",
+            "merge-branch:pre-gate",
+            "work:post-implementation"
+          ]
+        },
+        {
+          "name": "semgrep-sast",
+          "description": "SAST scanning via Semgrep (OWASP, injection, regex issues) — free for private repos",
+          "extensionPoints": [
+            "pre-validation",
+            "post-recommend",
+            "pre-gate",
+            "checklist-before-tag"
+          ],
+          "template": "### Semgrep SAST Scan\n\nAdd a Semgrep GitHub Action for static analysis security testing:\n\n```yaml\n# .github/workflows/semgrep.yml\nname: Semgrep\n\non:\n  push:\n    branches: ['**']\n    paths-ignore: ['**/*.md', 'Docs/**', 'Releases/**']\n  pull_request:\n    branches: [main]\n    paths-ignore: ['**/*.md', 'Docs/**', 'Releases/**']\n\njobs:\n  semgrep:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v6\n      - uses: semgrep/semgrep-action@v1\n        with:\n          config: >-\n            p/javascript\n            p/nodejs\n            p/owasp-top-ten\n            p/security-audit\n```\n\n**Available rulesets:** `p/javascript`, `p/nodejs`, `p/typescript`, `p/python`, `p/golang`, `p/owasp-top-ten`, `p/security-audit`\n\n**If Semgrep findings are reported, review before proceeding.** Critical/high findings should block the release.",
+          "prerequisites": [
+            "\"GitHub Actions workflow: .github/workflows/semgrep.yml\"",
+            "\"No account required for basic rulesets\""
+          ],
+          "appliesTo": [
+            "prepare-release:pre-validation",
+            "ci:post-recommend",
+            "merge-branch:pre-gate",
+            "prepare-release:checklist-before-tag"
           ]
         }
       ]

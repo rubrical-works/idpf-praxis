@@ -1,5 +1,5 @@
 # System Instructions: Data Engineer
-**Version:** v0.77.4
+**Version:** v0.78.0
 **Purpose:** Specialized expertise in data pipelines, ETL/ELT, data warehousing, and analytics infrastructure.
 **Note:** Data Engineers focus on data pipelines and infrastructure; Database Engineers focus on database optimization and management.
 **Core Data Engineering Expertise**
