@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.78.0
+ * @framework-script 0.79.0
  * @description Git command utilities for tag retrieval, commit analysis, and repository state queries. Exports exec(), getLatestTag(), getCommitsSince(), and related helpers. Used by prepare-release, analyze-commits, and validation scripts.
  * @checksum sha256:placeholder
  *
@@ -77,8 +77,20 @@ function getCommitsSince(tag) {
  * @returns {{type: string, scope: string|null, message: string, breaking: boolean}}
  */
 function parseConventionalCommit(message) {
-    // Match: type(scope)!: message or type!: message or type(scope): message or type: message
-    const match = message.match(/^(\w+)(?:\(([^)]+)\))?(!)?\s*:\s*(.+)$/);
+    // Split into two patterns to avoid nested quantifiers flagged by safe-regex
+    // Match: type(scope)!: message or type(scope): message
+    const withScope = message.match(/^(\w+)\(([^)]+)\)(!)? *: *(.+)/);
+    if (withScope) {
+        const [, type, scope, bang, msg] = withScope;
+        return {
+            type: type.toLowerCase(),
+            scope: scope || null,
+            message: msg,
+            breaking: !!bang || message.includes('BREAKING CHANGE')
+        };
+    }
+    // Match: type!: message or type: message
+    const match = message.match(/^(\w+)(!)? *: *(.+)/);
 
     if (!match) {
         return {
@@ -89,7 +101,8 @@ function parseConventionalCommit(message) {
         };
     }
 
-    const [, type, scope, bang, msg] = match;
+    const [, type, bang, msg] = match;
+    const scope = null;
     const breaking = !!bang || message.includes('BREAKING CHANGE');
 
     return {

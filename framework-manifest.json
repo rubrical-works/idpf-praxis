@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.78.0",
+  "version": "0.79.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -373,7 +373,6 @@
     "destroy-branch",
     "done",
     "enhancement",
-    "fw-minimize-files",
     "merge-branch",
     "mockups",
     "paths",

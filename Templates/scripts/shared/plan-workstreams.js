@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.78.0
+ * @framework-script 0.79.0
  * @description Concurrent workstream planning — argument parsing, analysis, and execution. Handles deterministic operations for /plan-workstreams: argument validation, directory scanning, module boundary detection, conflict risk matrix computation, workstream grouping via union-find, and branch creation with .workstreams.json metadata.
  * @checksum sha256:placeholder
  *
@@ -170,7 +170,7 @@ function extractModuleHints(text) {
   }
 
   // Match bare directory paths in text (word/word/ pattern)
-  const barePaths = text.match(/(?:^|\s)(\.?[a-zA-Z][\w.-]*(?:\/[\w.-]+)+\/?)/gm);
+  const barePaths = text.match(/(?:^| )(\.?[a-zA-Z][a-zA-Z0-9_.-]*\/[a-zA-Z0-9_./-]+)/gm);
   if (barePaths) {
     for (const match of barePaths) {
       const path = match.trim();

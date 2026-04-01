@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.78.0
+ * @framework-script 0.79.0
  * @description Input validation utilities to prevent command injection, path traversal, and ReDoS from externally-sourced inputs. Exports validateIssueNumber(), validateBranchName(), validatePath(), and related guards. Used by all preamble scripts accepting user input.
  * @checksum sha256:placeholder
  *

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.78.0
+ * @framework-script 0.79.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -63,7 +63,7 @@ process.stdin.on('end', () => {
         // review is a tracked action (not passive analysis like evaluate/assess/etc.)
         // Require "review" at or near start of prompt to avoid triggering on assistant output
         // that mentions review commands (e.g., "Say /review-issue #N to start")
-        const reviewAtStart = /^(?:please\s+)?review\b/i.test(prompt);
+        const reviewAtStart = /^(?:please )?review\b/i.test(prompt);
         const hasStrictIssueRef = prompt.match(/#\d+|\bissue\s+\d+/i);
         const reviewTrigger = reviewAtStart && hasStrictIssueRef && !workTrigger;
         // Analysis trigger - detect analysis keywords with issue references
@@ -112,7 +112,7 @@ process.stdin.on('end', () => {
             // 1. Explicit #N reference anywhere: "work on #123", "work #123 now"
             // 2. Number after work [on] [issue]: "work 123", "work on 45", "work issue 789"
             const explicitIssue = prompt.match(/#(\d+)/);
-            const implicitIssue = prompt.match(/^work\s+(?:on\s+)?(?:issue\s+)?(\d+)/i);
+            const implicitIssue = prompt.match(/^work (?:on )?(?:issue )?(\d+)/i);
             const issueNumber = explicitIssue ? explicitIssue[1] : (implicitIssue ? implicitIssue[1] : null);
 
             // Try to extract batch status: "work all in Ready", "work the issues in backlog"

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.78.0
+ * @framework-script 0.79.0
  * @description Parse git commits since the last semver tag and categorize by conventional commit type (feat, fix, chore, etc.). Extracts type, scope, breaking change flags, and issue references. Used by /prepare-release and piped into generate-changelog.js.
  * @checksum sha256:placeholder
  *
@@ -12,14 +12,19 @@
 const { execSync } = require('child_process');
 
 function parseConventionalCommit(message) {
-    const match = message.match(/^(\w+)(\([\w-]+\))?(!)?: (.+)$/);
-    if (!match) {
+    // Split into two patterns to avoid nested quantifiers flagged by safe-regex
+    const withScope = message.match(/^(\w+)\(([\w-]+)\)(!)?: (.+)/);
+    if (withScope) {
+        const [, type, scope, bang, msg] = withScope;
+        return { type, scope, message: msg, breaking: !!bang || message.includes('BREAKING CHANGE') };
+    }
+    const withoutScope = message.match(/^(\w+)(!)?: (.+)/);
+    if (!withoutScope) {
         return { type: 'other', scope: null, message, breaking: false };
     }
-    const [, type, scopeWithParens, bang, msg] = match;
-    const scope = scopeWithParens ? scopeWithParens.slice(1, -1) : null;
+    const [, type, bang, msg] = withoutScope;
     const breaking = !!bang || message.includes('BREAKING CHANGE');
-    return { type, scope, message: msg, breaking };
+    return { type, scope: null, message: msg, breaking };
 }
 
 async function main() {

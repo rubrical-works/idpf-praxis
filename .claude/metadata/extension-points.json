@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-03-31T22:34:55.555Z",
+  "generatedAt": "2026-04-01T21:23:04.353Z",
   "version": "1.0.0",
-  "commandCount": 20,
+  "commandCount": 19,
   "extensionPointCount": 81,
   "deprecatedExtensionPoints": [],
   "commands": {
@@ -221,12 +221,6 @@
           "purpose": "Add post-creation actions such as notifications, linking, or custom labeling"
         }
       ],
-      "copyright": "Rubrical Works (c) 2026"
-    },
-    "fw-minimize-files": {
-      "type": "EXTENSIBLE",
-      "description": "Minimize markdown files for token optimization (project)",
-      "extensionPoints": [],
       "copyright": "Rubrical Works (c) 2026"
     },
     "merge-branch": {
