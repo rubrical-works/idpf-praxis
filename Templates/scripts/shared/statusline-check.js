@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.79.0
+ * @framework-script 0.80.0
  * @description Detect whether a Claude Code status line is configured in user-level or project-level settings.json. Returns JSON with configuration status and source path. Read-only utility used during session startup to determine if statusline-setup agent should run.
  * @checksum sha256:placeholder
  *

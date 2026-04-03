@@ -26,6 +26,7 @@
         {
           "id": "test-coverage-bug",
           "name": "Test coverage proportionate (bug)",
+          "overrides": "test-coverage-proportionate",
           "autoCheck": "Single-path fix: 'existing tests pass' may suffice, but regression test AC preferred. Multi-path refactor: ACs MUST require tests for new pattern (flag if only 'existing tests pass' for changes touching multiple functions/modules)"
         },
         {
@@ -66,6 +67,7 @@
         {
           "id": "test-coverage-story",
           "name": "Test coverage proportionate (story)",
+          "overrides": "test-coverage-proportionate",
           "autoCheck": "Infer scope from ACs and description. If story adds or modifies code paths, ACs should include test requirements proportionate to scope"
         },
         {
@@ -126,16 +128,19 @@
         {
           "id": "scope-boundaries",
           "name": "Scope boundaries defined",
+          "overrides": "scope-boundaries",
           "autoCheck": "Check for in-scope / out-of-scope sections or boundary statements"
         },
         {
           "id": "success-measurable",
           "name": "Success criteria measurable",
+          "overrides": "success-criteria-measurable",
           "autoCheck": "Check for quantitative language, thresholds, or verifiable outcomes in AC"
         },
         {
           "id": "test-coverage-enhancement",
           "name": "Test coverage proportionate (enhancement)",
+          "overrides": "test-coverage-proportionate",
           "autoCheck": "New feature: ACs MUST require unit tests for new functionality. Behavior change: ACs MUST require updated tests reflecting changed behavior. Infer scope from keywords ('refactor', 'replace', 'rewrite', 'across N files') and count of affected components"
         }
       ]
@@ -151,6 +156,7 @@
         {
           "id": "actionable",
           "name": "Issue is actionable",
+          "overrides": "actionable",
           "autoCheck": "Check for concrete next steps, clear requirements, or defined acceptance criteria"
         }
       ]

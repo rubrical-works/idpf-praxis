@@ -1,5 +1,5 @@
 # System Instructions: Cloud Solutions Architect
-**Version:** v0.79.0
+**Version:** v0.80.0
 **Purpose:** Specialized expertise in designing cloud-native architectures, system design, architectural patterns, and making infrastructure decisions.
 **Core Architecture Expertise**
 **Architectural Patterns**

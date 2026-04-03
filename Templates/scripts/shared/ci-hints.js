@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.79.0
+ * @framework-script 0.80.0
  * @description Generate state-aware contextual hints that guide users toward logical next actions after each /ci subcommand invocation. Returns one hint per call with related feature mapping. Prevents repeated hints within a session.
  * @checksum sha256:placeholder
  *

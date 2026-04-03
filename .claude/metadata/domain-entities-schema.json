@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "domain-entities-schema.json",
+  "title": "Domain Entities Schema",
+  "description": "Schema for domain-entities.json — machine-readable companion to CHARTER.md capturing bounded context, entities, relationships, scope boundaries, and drift signals",
+  "type": "object",
+  "required": ["boundedContext", "entities", "scopeBoundaries", "driftSignals"],
+  "properties": {
+    "generatedFrom": {
+      "type": "string",
+      "description": "Source file this was derived from (typically CHARTER.md)"
+    },
+    "generatedAt": {
+      "type": "string",
+      "description": "ISO date when this file was last generated or updated"
+    },
+    "projectVersion": {
+      "type": "string",
+      "description": "Project version at time of generation"
+    },
+    "boundedContext": {
+      "type": "object",
+      "required": ["name", "purpose", "boundary"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the bounded context (typically project name)"
+        },
+        "purpose": {
+          "type": "string",
+          "description": "Brief statement of what this project does"
+        },
+        "boundary": {
+          "type": "string",
+          "description": "What distinguishes in-scope from out-of-scope work"
+        }
+      },
+      "additionalProperties": false
+    },
+    "entities": {
+      "type": "object",
+      "description": "Entity definitions keyed by entity identifier (kebab-case)",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["description"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "What this entity represents in the domain"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Current known count of instances"
+          },
+          "countSource": {
+            "type": "object",
+            "description": "How to verify the count programmatically",
+            "properties": {
+              "glob": {
+                "type": "string",
+                "description": "Glob pattern to count matching files/directories"
+              },
+              "command": {
+                "type": "string",
+                "description": "Shell command that outputs the count"
+              },
+              "exclude": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Patterns to exclude from count"
+              }
+            },
+            "additionalProperties": false
+          },
+          "instances": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Named instances when count is small and stable"
+          },
+          "subtypes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Classification subtypes for multi-tier entities"
+          },
+          "locations": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "File paths or directories where instances live"
+          },
+          "managedIn": {
+            "type": "string",
+            "description": "External repository that owns this entity's source"
+          },
+          "managedBy": {
+            "type": "string",
+            "description": "Tool or application that manages this entity"
+          },
+          "relationships": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "target"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Relationship type (e.g., has-many, belongs-to, consumed-by, delegates-to)"
+                },
+                "target": {
+                  "type": "string",
+                  "description": "Target entity key (must exist as a key in entities)"
+                },
+                "repository": {
+                  "type": "string",
+                  "description": "Target repository if relationship crosses project boundaries"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "Typed relationships to other entities"
+          },
+          "addedInVersion": {
+            "type": "string",
+            "description": "Version when this entity was added to the model"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "scopeBoundaries": {
+      "type": "object",
+      "required": ["inScope", "outOfScope"],
+      "properties": {
+        "inScope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What is in scope for this project"
+        },
+        "outOfScope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What is explicitly out of scope"
+        }
+      },
+      "additionalProperties": false
+    },
+    "driftSignals": {
+      "type": "object",
+      "required": ["entityOutOfBounds", "scopeExpansion"],
+      "properties": {
+        "entityOutOfBounds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["signal", "severity"],
+            "properties": {
+              "signal": {
+                "type": "string",
+                "description": "Description of the drift signal"
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning"],
+                "description": "Severity: error for out-of-bounds, warning for scope expansion"
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Signals indicating work has crossed project boundaries"
+        },
+        "scopeExpansion": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["signal", "severity"],
+            "properties": {
+              "signal": {
+                "type": "string",
+                "description": "Description of the scope expansion signal"
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning"],
+                "description": "Severity: typically warning for scope expansion"
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Signals indicating scope is expanding beyond charter boundaries"
+        }
+      },
+      "additionalProperties": false
+    },
+    "validationRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "description"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["count-range", "location-exists", "relationship-target-valid"],
+            "description": "Type of runtime validation check"
+          },
+          "entity": {
+            "type": "string",
+            "description": "Entity key this rule applies to"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what this rule checks"
+          },
+          "min": {
+            "type": "integer",
+            "description": "Minimum expected count (for count-range rules)"
+          },
+          "max": {
+            "type": "integer",
+            "description": "Maximum expected count (for count-range rules)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Runtime validation checks for entity integrity"
+    }
+  },
+  "additionalProperties": false
+}

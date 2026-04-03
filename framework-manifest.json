@@ -1,6 +1,6 @@
 {
   "name": "IDPF Framework",
-  "version": "0.79.0",
+  "version": "0.80.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -42,7 +42,8 @@
     "compact-hook.js",
     "precompact-hook.js",
     "resume-hook.js",
-    "test-on-change.js"
+    "test-on-change.js",
+    "imported-skills.json"
   ],
   "deploymentFiles": {
     "commands": {
@@ -86,6 +87,7 @@
         "ci.md",
         "mockups.md",
         "paths.md",
+        "audit-commands.md",
         "idpf-stats.md",
         "issue-reset.md"
       ]
@@ -126,6 +128,7 @@
           "ci-watch.js",
           "upgrade-check.js",
           "epic-complexity.js",
+          "generate-domain-entities.js",
           "work-preamble.js",
           "done-preamble.js",
           "review-preamble.js",
@@ -244,6 +247,16 @@
           "name": "ci-features",
           "source": ".claude/metadata/ci-features.json",
           "description": "CI feature registry for /ci list and /ci add commands"
+        },
+        {
+          "name": "domain-entities-schema",
+          "source": ".claude/metadata/domain-entities-schema.json",
+          "description": "Schema for domain-entities.json charter companion file"
+        },
+        {
+          "name": "imported-skills",
+          "source": ".claude/metadata/imported-skills.json",
+          "description": "Registry of skills imported from idpf-praxis-skills"
         },
         {
           "name": "domain-signals",
@@ -387,6 +400,7 @@
   "managedCommands": [
     "add-story",
     "assign-branch",
+    "audit-commands",
     "bad-test-review",
     "change-domain-expert",
     "charter",

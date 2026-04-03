@@ -35,6 +35,10 @@
                 "autoCheck": {
                   "type": "string",
                   "description": "Instructions for automated evaluation"
+                },
+                "overrides": {
+                  "type": "string",
+                  "description": "Common criterion ID that this type-specific criterion supersedes"
                 }
               },
               "additionalProperties": false

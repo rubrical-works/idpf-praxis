@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.79.0
+ * @framework-script 0.80.0
  * @description Extracts acceptance criteria from issue bodies, generates structured
  *   AC JSON files for mockup sets, and handles merge behavior on re-runs.
  *   Used by /mockups command when an issue reference (#NN) is provided.

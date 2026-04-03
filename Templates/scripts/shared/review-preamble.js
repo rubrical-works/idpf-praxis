@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.79.0
+ * @framework-script 0.80.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -190,6 +190,17 @@ function loadCriteria(issueType, projectDir, modeOverride) {
     }
   } catch (_e) {
     // Non-blocking: return empty type-specific criteria
+  }
+
+  // Deduplicate: if a type-specific criterion declares `overrides`, remove the corresponding common criterion
+  const overriddenIds = new Set();
+  for (const criterion of typeSpecific) {
+    if (criterion.overrides) {
+      overriddenIds.add(criterion.overrides);
+    }
+  }
+  for (const id of overriddenIds) {
+    delete common[id];
   }
 
   return { common, typeSpecific };
