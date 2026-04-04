@@ -1,0 +1,60 @@
+{
+  "$schema": "review-interdependence-schema.json",
+  "version": "1.0.0",
+  "description": "Configuration for multi-issue interdependence analysis in /review-issue",
+  "dimensions": {
+    "overlap": {
+      "enabled": true,
+      "description": "Detect scope overlap between issues (shared files, components, or domains)",
+      "signals": [
+        "Same file or module mentioned in description or proposed solution",
+        "Same directory or component area referenced",
+        "Overlapping scope boundary items"
+      ],
+      "severity": "warning"
+    },
+    "ordering": {
+      "enabled": true,
+      "description": "Detect ordering dependencies (issue A should precede issue B)",
+      "signals": [
+        "Refactor/restructure before feature addition",
+        "Schema/model changes before dependent features",
+        "Bug fix before enhancement to same component",
+        "Creation before deletion of related resources"
+      ],
+      "severity": "info",
+      "orderingPatterns": {
+        "refactorFirst": ["refactor", "restructure", "rewrite", "reorganize", "extract"],
+        "schemaFirst": ["schema", "model", "migration", "database", "config"],
+        "fixFirst": ["fix", "bug", "broken", "crash", "error"],
+        "removeAfter": ["remove", "delete", "deprecate", "retire", "drop"]
+      }
+    },
+    "conflicts": {
+      "enabled": true,
+      "description": "Detect contradictory requirements between issues",
+      "signals": [
+        "One issue adds what another removes",
+        "Contradictory scope boundaries",
+        "Incompatible proposed solutions"
+      ],
+      "severity": "error",
+      "conflictPatterns": {
+        "addRemove": {
+          "add": ["add", "create", "implement", "introduce", "new"],
+          "remove": ["remove", "delete", "drop", "retire", "deprecate"]
+        }
+      }
+    },
+    "sharedCriteria": {
+      "enabled": true,
+      "description": "Detect acceptance criteria that appear in multiple issues",
+      "signals": [
+        "Similar or identical AC text across issues",
+        "AC referencing same test files or modules"
+      ],
+      "severity": "info",
+      "similarityThreshold": 0.6
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QA Config",
+  "description": "Configuration for automatic QA sub-issue extraction from unverifiable acceptance criteria",
+  "type": "object",
+  "required": ["keywords", "bodyTemplate", "subIssueCommand", "annotationFormat", "closurePath"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Case-insensitive keywords that indicate an AC requires manual QA"
+    },
+    "bodyTemplate": { "type": "string" },
+    "subIssueCommand": { "type": "string" },
+    "annotationFormat": { "type": "string" },
+    "closurePath": { "type": "string" }
+  }
+}

@@ -1,4 +1,5 @@
 {
+  "$schema": "./command-boilerplate-schema.json",
   "prerequisites": {
     "common": [
       "`gh pmu` extension installed",

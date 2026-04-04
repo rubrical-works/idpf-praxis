@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.80.0
+ * @framework-script 0.81.0
  * @description Centralize label-based issue type detection and review command routing. Exports getIssueType(). Used by review-preamble.js and work-preamble.js for type dispatch.
  * @checksum sha256:placeholder
  *

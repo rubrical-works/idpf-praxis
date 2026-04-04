@@ -1,4 +1,5 @@
 {
+  "$schema": "./domain-signals-schema.json",
   "version": "1.0.0",
   "description": "Domain-to-signal mapping for charter-aware domain filtering. Maps each review domain to keywords that indicate applicability based on charter Tech Stack, In Scope, and codebase signals.",
   "domains": {

@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "epic-complexity-signals-schema.json",
   "title": "Epic Complexity Signals Schema",
   "description": "Schema for .claude/metadata/epic-complexity-signals.json — keyword signals for classifying epic sub-issues",
   "type": "object",
   "required": ["functional", "restyle"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "functional": {
       "type": "array",
       "description": "Keywords indicating functional (TDD-requiring) sub-issues",

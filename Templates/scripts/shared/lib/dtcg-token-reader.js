@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.80.0
+ * @framework-script 0.81.0
  * @description DTCG token reader for integration with /mockups and /catalog-screens.
  *   Loads design tokens from Design-System/, supports theme merging,
  *   provides token value extraction by path, and returns structured palettes.

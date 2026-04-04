@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "domain-entities-schema.json",
   "title": "Domain Entities Schema",
   "description": "Schema for domain-entities.json — machine-readable companion to CHARTER.md capturing bounded context, entities, relationships, scope boundaries, and drift signals",
   "type": "object",
   "required": ["boundedContext", "entities", "scopeBoundaries", "driftSignals"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "generatedFrom": {
       "type": "string",
       "description": "Source file this was derived from (typically CHARTER.md)"
@@ -47,6 +50,10 @@
           "description": {
             "type": "string",
             "description": "What this entity represents in the domain"
+          },
+          "external": {
+            "type": "boolean",
+            "description": "True if this entity is managed in an external repository"
           },
           "count": {
             "type": "integer",
@@ -112,11 +119,29 @@
                 "repository": {
                   "type": "string",
                   "description": "Target repository if relationship crosses project boundaries"
+                },
+                "evidence": {
+                  "type": "string",
+                  "description": "Source text or reasoning that supports this relationship"
                 }
               },
               "additionalProperties": false
             },
             "description": "Typed relationships to other entities"
+          },
+          "lastVerified": {
+            "type": "string",
+            "description": "ISO date when this entity's count was last verified against the filesystem"
+          },
+          "validationOverride": {
+            "type": "object",
+            "description": "Explicit min/max range override for count validation",
+            "properties": {
+              "min": { "type": "integer", "description": "Minimum expected count" },
+              "max": { "type": "integer", "description": "Maximum expected count" }
+            },
+            "required": ["min", "max"],
+            "additionalProperties": false
           },
           "addedInVersion": {
             "type": "string",
@@ -125,6 +150,15 @@
         },
         "additionalProperties": false
       }
+    },
+    "architecture": {
+      "type": "string",
+      "description": "Architecture section content from charter (distribution model, deployment pipeline)"
+    },
+    "currentFocus": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Current focus areas from charter, used for scope alignment checks"
     },
     "scopeBoundaries": {
       "type": "object",
@@ -216,6 +250,10 @@
           "max": {
             "type": "integer",
             "description": "Maximum expected count (for count-range rules)"
+          },
+          "lastVerified": {
+            "type": "string",
+            "description": "ISO date when count was last verified (propagated from entity)"
           }
         },
         "additionalProperties": false

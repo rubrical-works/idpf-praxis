@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "review-extensions-schema.json",
   "title": "Review Extensions Schema",
   "description": "Schema for .claude/metadata/review-extensions.json — domain extension criteria mappings for review commands",
   "type": "object",
   "required": ["version", "description", "extensions"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",

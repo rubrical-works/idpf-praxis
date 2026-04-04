@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stats Config",
+  "description": "Configuration for /idpf-stats metric collection, label categories, test patterns, and report sections",
+  "type": "object",
+  "required": ["metrics", "labelCategories", "testFilePatterns", "testCasePatterns", "reportSections"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "category"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "category": { "type": "string", "enum": ["volume", "testing", "throughput"] },
+          "command": { "type": "string" },
+          "aggregation": { "type": "string", "enum": ["count", "sum", "delta", "rate"] },
+          "field": { "type": "string" },
+          "source": { "type": "string" },
+          "sources": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "labelCategories": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "testFilePatterns": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "testCasePatterns": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "reportSections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "metrics": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

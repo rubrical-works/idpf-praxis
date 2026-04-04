@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-interdependence-schema.json",
+  "title": "Review Interdependence Configuration",
+  "description": "Schema for review-interdependence.json — configures multi-issue interdependence analysis dimensions",
+  "type": "object",
+  "required": ["dimensions"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "dimensions": {
+      "type": "object",
+      "required": ["overlap", "ordering", "conflicts", "sharedCriteria"],
+      "properties": {
+        "overlap": { "$ref": "#/$defs/dimension" },
+        "ordering": { "$ref": "#/$defs/dimension" },
+        "conflicts": { "$ref": "#/$defs/dimension" },
+        "sharedCriteria": { "$ref": "#/$defs/dimension" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/dimension" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "required": ["enabled", "description"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "description": { "type": "string" },
+        "signals": { "type": "array", "items": { "type": "string" } },
+        "severity": { "type": "string", "enum": ["info", "warning", "error"] }
+      },
+      "additionalProperties": true
+    }
+  }
+}

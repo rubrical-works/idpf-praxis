@@ -1,8 +1,9 @@
 {
-  "generatedAt": "2026-04-03T02:05:01.985Z",
+  "$schema": "./extension-points-schema.json",
+  "generatedAt": "2026-04-04T15:50:16.037Z",
   "version": "1.0.0",
-  "commandCount": 19,
-  "extensionPointCount": 81,
+  "commandCount": 20,
+  "extensionPointCount": 83,
   "deprecatedExtensionPoints": [],
   "commands": {
     "bug": {
@@ -512,6 +513,23 @@
           "name": "post-review",
           "location": "Step 4 (Write Findings), after findings written",
           "purpose": "Add post-review actions such as triggering PRD creation or updating proposal status"
+        }
+      ],
+      "copyright": "Rubrical Works (c) 2026"
+    },
+    "review-test-plan": {
+      "type": "EXTENSIBLE",
+      "description": "Review a test plan against its PRD (project)",
+      "extensionPoints": [
+        {
+          "name": "pre-review",
+          "location": "",
+          "purpose": ""
+        },
+        {
+          "name": "post-review",
+          "location": "",
+          "purpose": ""
         }
       ],
       "copyright": "Rubrical Works (c) 2026"

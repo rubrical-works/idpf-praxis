@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "_meta": {
     "description": "Schema for review findings JSON passed to review-finalize.js. Referenced by /review-issue Step 3.",
     "source": "Extracted from .claude/commands/review-issue.md (#1934)"

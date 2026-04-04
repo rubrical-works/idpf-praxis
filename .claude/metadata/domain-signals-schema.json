@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "domain-signals-schema.json",
   "title": "Domain Signals Schema",
   "description": "Schema for .claude/metadata/domain-signals.json — domain-to-signal mapping for charter-aware domain filtering",
   "type": "object",
   "required": ["version", "description", "domains"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "version": {
       "type": "string",
       "description": "Schema version"

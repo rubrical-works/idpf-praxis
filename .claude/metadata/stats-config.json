@@ -1,0 +1,54 @@
+{
+  "$schema": "./stats-config-schema.json",
+  "metrics": [
+    { "id": "commits", "name": "Commits", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --oneline | wc -l", "aggregation": "count" },
+    { "id": "files-changed", "name": "Files changed", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --name-only | sort -u | grep -v '^$' | wc -l", "aggregation": "count" },
+    { "id": "lines-added", "name": "Lines added", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --numstat", "aggregation": "sum", "field": "added" },
+    { "id": "lines-removed", "name": "Lines removed", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --numstat", "aggregation": "sum", "field": "removed" },
+    { "id": "net-lines", "name": "Net lines", "category": "volume", "aggregation": "delta", "sources": ["lines-added", "lines-removed"] },
+    { "id": "issue-references", "name": "Issues closed/worked", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format:\"%s %b\" | grep -oE '#[0-9]+' | sort -u", "aggregation": "count" },
+    { "id": "test-files", "name": "Test files", "category": "testing", "aggregation": "count" },
+    { "id": "test-cases", "name": "Test cases", "category": "testing", "aggregation": "count" },
+    { "id": "commits-per-hour", "name": "Commits/hour", "category": "throughput", "aggregation": "rate", "source": "commits" },
+    { "id": "lines-per-hour", "name": "Lines added/hour", "category": "throughput", "aggregation": "rate", "source": "lines-added" },
+    { "id": "issues-per-hour", "name": "Issues/hour", "category": "throughput", "aggregation": "rate", "source": "issue-references" }
+  ],
+  "labelCategories": {
+    "bug": "Bug fixes",
+    "enhancement": "Enhancements",
+    "security": "Security hardening",
+    "code-review": "Code review findings",
+    "reviewed": "Code review findings",
+    "infrastructure": "Infrastructure",
+    "ci": "Infrastructure",
+    "devops": "Infrastructure",
+    "documentation": "Documentation",
+    "docs": "Documentation"
+  },
+  "testFilePatterns": [
+    "*.test.*",
+    "*.spec.*",
+    "test_*.py",
+    "*_test.go"
+  ],
+  "testCasePatterns": {
+    "javascript": "^\\s*(it|test)\\(",
+    "python": "^\\s*def test_"
+  },
+  "reportSections": [
+    { "id": "volume", "title": "Volume", "metrics": ["commits", "issue-references", "files-changed", "lines-added", "lines-removed", "net-lines"] },
+    { "id": "testing", "title": "Testing", "metrics": ["test-files", "test-cases"] },
+    { "id": "throughput", "title": "Throughput", "metrics": ["commits-per-hour", "lines-per-hour", "issues-per-hour"] },
+    { "id": "issue-breakdown", "title": "Issue Breakdown by Category" }
+  ],
+  "extensionCategories": {
+    "Code": [".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx", ".svelte", ".vue", ".py", ".go", ".rs", ".java", ".rb", ".php", ".sh", ".bash", ".zsh", ".ps1", ".css", ".scss", ".less", ".html", ".htm"],
+    "Documentation": [".md", ".mdx", ".txt", ".rst", ".adoc"],
+    "Config": [".json", ".yaml", ".yml", ".toml", ".ini", ".env", ".cfg", ".conf", ".xml"]
+  },
+  "velocityBenchmarks": {
+    "commitsPerHour": { "low": 1, "high": 3, "median": 1.5 },
+    "linesPerHour": { "low": 50, "high": 200, "median": 75 },
+    "issuesPerHour": { "low": 0.5, "high": 2, "median": 0.75 }
+  }
+}

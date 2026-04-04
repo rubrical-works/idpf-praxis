@@ -1,4 +1,5 @@
 {
+  "$schema": "./review-mode-criteria-schema.json",
   "modes": {
     "solo": {
       "name": "Solo Developer",

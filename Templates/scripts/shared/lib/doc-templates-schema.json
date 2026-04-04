@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Doc Templates Config",
+  "description": "Configuration for runtime artifact triggers — design decisions and tech debt documentation",
+  "type": "object",
+  "required": ["categories", "commitFormat"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "categories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "warranted", "targetPath", "namingRules"],
+        "properties": {
+          "name": { "type": "string" },
+          "warranted": { "type": "string" },
+          "targetPath": { "type": "string" },
+          "namingRules": { "type": "string" }
+        }
+      }
+    },
+    "commitFormat": { "type": "string" },
+    "warrantedCheckbox": { "type": "string" },
+    "notWarrantedCheckbox": { "type": "string" }
+  }
+}

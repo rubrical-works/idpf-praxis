@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "command-boilerplate-schema.json",
   "title": "Command Boilerplate Schema",
   "description": "Schema for .claude/metadata/command-boilerplate.json — reusable boilerplate sections for command specs",
   "type": "object",
   "required": ["prerequisites", "executionInstructions", "errorHandling"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "prerequisites": {
       "type": "object",
       "required": ["common"],

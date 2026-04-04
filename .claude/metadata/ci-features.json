@@ -1,4 +1,5 @@
 {
+  "$schema": "./ci-features-schema.json",
   "cross-os-testing": {
     "id": "cross-os-testing",
     "name": "Cross-OS Testing",

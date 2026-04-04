@@ -1,4 +1,5 @@
 {
+  "$schema": "./recipe-tech-mapping-schema.json",
   "version": "1.0.0",
   "description": "Maps tech stack indicators to relevant extension recipes for /charter suggestions",
   "techMappings": {

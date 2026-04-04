@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.80.0
+ * @framework-script 0.81.0
  * @description List available CI features with enabled/disabled status. Detects active features by scanning workflow YAML files and formats output with status indicators. Part of the /ci list subcommand.
  * @checksum sha256:placeholder
  *
@@ -42,7 +42,8 @@ function loadFeatureRegistry(overridePath) {
   }
 
   const content = fs.readFileSync(registryPath, 'utf8');
-  return JSON.parse(content);
+  const { $schema, ...registry } = JSON.parse(content);
+  return registry;
 }
 
 /**

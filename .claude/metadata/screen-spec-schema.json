@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "screen-spec-schema",
   "title": "Screen Specification Schema",
   "description": "Shared schema for screen specifications used by /mockups and /catalog-screens. Defines core element fields, discoverable convention fields, screen-level metadata, library detection categories, and framework-specific discovery patterns. Directory structure: Mockups/{Mockup-Name}/ containing README.md, Specs/, Screens/, and AsciiScreens/ subdirectories.",

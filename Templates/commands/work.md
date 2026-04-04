@@ -1,5 +1,5 @@
 ---
-version: "v0.80.0"
+version: "v0.81.0"
 description: Start working on issues with validation and auto-TODO (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -10,8 +10,7 @@ Start working on one or more issues. Validates existence, branch assignment, and
 **Extension Points:** See `.claude/metadata/extension-points.json` or run `/extensions list --command work`
 ---
 ## Prerequisites
-- `gh pmu` extension installed
-- `.gh-pmu.json` configured
+- `gh pmu` installed and `.gh-pmu.json` configured
 - Issue assigned to a branch (use `/assign-branch` or `--assign`)
 ---
 ## Arguments
@@ -22,16 +21,16 @@ Start working on one or more issues. Validates existence, branch assignment, and
 | `all in <status>` | | All issues in given status |
 | `--assign` | No | Auto-assign to current branch |
 | `--nonstop` | No | Epic/branch: skip per-sub-issue STOP |
-| `--wait` | No | Wait for pending CI to pass before starting work |
+| `--wait` | No | Wait for pending CI before starting |
 ---
 ## Execution Instructions
-**REQUIRED:** This is a routed command -- use two-phase task creation:
-1. **Phase 1 -- Preamble task only:** Create a single task for the preamble/setup step using `TaskCreate`. Do NOT create tasks for subsequent workflow steps yet.
-2. **Phase 2 -- Bulk create after routing:** After the preamble confirms the workflow path (no redirect, no early exit), bulk-create tasks for all remaining workflow steps using `TaskCreate`.
-3. **On redirect or early exit:** Mark the preamble task as completed and stop. Do NOT create tasks for the original command's remaining steps.
-4. **Include Extensions:** For each non-empty `USER-EXTENSION` block, add a task in Phase 2.
-5. **Track Progress:** Mark tasks `in_progress` -> `completed` as you work.
-6. **Post-Compaction:** Re-read this spec. Resume from the first incomplete task -- no re-routing needed.
+**REQUIRED:** Routed command -- two-phase task creation:
+1. **Phase 1:** Create preamble task only via `TaskCreate`.
+2. **Phase 2:** After preamble confirms path, bulk-create all remaining tasks.
+3. **On redirect/early exit:** Complete preamble task, stop.
+4. **Extensions:** Add task for each non-empty `USER-EXTENSION` block in Phase 2.
+5. **Track:** Mark tasks `in_progress` -> `completed`.
+6. **Post-Compaction:** Re-read spec, resume from first incomplete task.
 ---
 ## Workflow
 ### Step 0: Clear Todo List
@@ -53,27 +52,29 @@ Parse JSON: `ok: false` -> report errors, STOP. Extract `context`, `gates`, `aut
 ```bash
 node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 300
 ```
-- Exit 0 (pass): continue
-- Exit 1 (fail): STOP
-- Exit 2 (timeout): STOP
-- Exit 3 (no runs): continue silently
-If `context.wait` not set, skip.
+- Exit 0: continue. Exit 1 (fail): STOP. Exit 2 (timeout): STOP. Exit 3 (no runs): continue.
+If not set, skip.
 ### Step 1b: Epic Complexity Assessment
 **Trigger:** `context.type` is `"epic"` and `--nonstop` set.
 Run `node .claude/scripts/shared/epic-complexity.js $ISSUE`. `"functional"` -> `strictTDD = true`. Signals: `.claude/metadata/epic-complexity-signals.json`.
 ### Step 2: Framework Methodology Dispatch
 Load core file from `framework-config.json`. Missing: warn, continue.
 ### Step 2a: Load TDD Checklist
-Read `.claude/skills/tdd-process/tdd-checklist.json`. If valid JSON with `red`, `green`, `refactor` objects (each with `required[]` and `gate` string) and `failure-recovery` (with `triggers[]` and `steps[]`):
-- Set `tddChecklist` = loaded JSON. Each phase may have `deepReference: { skill, when }` for gate-failure skill loading.
-If load fails: warn "TDD checklist not found -- using inline TDD behavior", set `tddChecklist = null`.
+Read `.claude/skills/tdd-process/tdd-checklist.json`. Valid JSON with `red`, `green`, `refactor` (each: `required[]`, `gate`) and `failure-recovery` (`triggers[]`, `steps[]`):
+- Set `tddChecklist` = loaded JSON. Each phase may have `deepReference: { skill, when }`.
+Fail: warn, set `tddChecklist = null`.
 ### Step 3: Work the Issue
+**Pre-Agent Status Gate:** Before spawning Agent for implementation, verify `in_progress`:
+```bash
+gh pmu view $ISSUE --json=status --jq='.status'
+```
+Not in progress -> `gh pmu move $ISSUE --status in_progress`. Only for implementation agents (not research/review).
 Per AC: mark in_progress, TDD cycle (RED->GREEN->REFACTOR), run tests, mark completed, commit (`Refs #$ISSUE`).
 **GATE: Do NOT start next AC until commit made.**
 **Sub-Agent Review Gate:** After Agent tool, `git diff --name-only`. Read changed files, verify match. Mandatory when `strictTDD`. Not satisfied by summaries/tests alone.
-**TDD Execution (checklist-driven):** When `tddChecklist` loaded: execute `required[]` items per phase, enforce `gate` before proceeding. On failure-recovery trigger, execute recovery steps. On gate failure, check `deepReference` -- load `.claude/skills/{skill-name}/SKILL.md` for guidance, retry. Missing skill: warn, continue.
-**TDD Fallback (inline):** When `tddChecklist` null: RED (failing test), GREEN (minimal pass), REFACTOR (analyze, report decision).
-If no auto-TODO: single unit. Post-compaction: resume from first incomplete AC.
+**TDD (checklist-driven):** Execute `required[]` per phase, enforce `gate`. On failure-recovery trigger, execute recovery steps. On gate failure, check `deepReference` -- load `.claude/skills/{skill-name}/SKILL.md`, retry. Missing skill: warn, continue.
+**TDD (inline fallback):** RED (failing test), GREEN (minimal pass), REFACTOR (analyze, report).
+No auto-TODO: single unit. Post-compaction: resume from first incomplete AC.
 ### Step 3b: Documentation Judgment
 Re-read `.claude/scripts/shared/lib/doc-templates.json` from disk. Create if warranted.
 
@@ -85,11 +86,10 @@ Re-read `.claude/scripts/shared/lib/doc-templates.json` from disk. Create if war
 Can verify -> `[x]`. Cannot verify -> QA extraction (4a).
 Update issue body via `gh pmu view/edit` with temp file.
 #### Step 4a: QA Extraction -- Automatic Sub-Issue Creation
-Re-read `.claude/scripts/shared/lib/qa-config.json`. Match unverifiable ACs against keywords. For each match, **automatically** (no user confirmation):
+Re-read `.claude/scripts/shared/lib/qa-config.json`. Match unverifiable ACs against keywords. For each, **automatically**:
 1. `gh pmu sub create --parent $ISSUE --title "QA: [AC description]" --label qa-required -F .tmp-qa-body.md`
-2. Sub-issue body: AC text, parent reference, QA context
-3. Annotate parent AC as `[x] AC text -> QA: #NNN`
-Silent, automatic flow. Works in standard and `--nonstop` mode.
+2. Annotate parent AC as `[x] AC text -> QA: #NNN`
+Silent, automatic. Works in standard and `--nonstop` mode.
 #### Step 4b: Force-Move Prohibition
 **NEVER** use `--force` to bypass unchecked ACs on issues you implemented. Legitimate: epic parents, external, branch trackers, test-plan approvals.
 
@@ -97,11 +97,10 @@ Silent, automatic flow. Works in standard and `--nonstop` mode.
 <!-- USER-EXTENSION-END: post-ac-verification -->
 
 #### Step 4c: Log Changed Files to Issue Body
-Compute files changed during this issue's work:
 ```bash
 git log --name-status --grep="Refs #$ISSUE" --pretty=format:"" | sort -u | grep -v "^$"
 ```
-Categorize: `A` = Added, `M` = Modified, `D` = Deleted. Separate test files from source files using `.claude/scripts/shared/lib/classify-changed-files.js`. Append "Files Changed" section to issue body (non-destructively). Omit empty categories/sub-categories. Skip if no commits found.
+Categorize: `A`=Added, `M`=Modified, `D`=Deleted. Separate test/source via `.claude/scripts/shared/lib/classify-changed-files.js`. Append "Files Changed" section to issue body. Omit empty categories. Skip if no commits.
 ### Step 5: Move to in_review
 ```bash
 gh pmu move $ISSUE --status in_review
@@ -112,7 +111,7 @@ Issue #$ISSUE: $TITLE -- In Review
 Say "done" or run /done #$ISSUE to close.
 ```
 **STOP.** Do NOT close.
-**CRITICAL -- Autonomous Epic/Branch processing:** Ascending numeric order (or custom Processing Order). Skip done/in_review.
+**Autonomous Epic/Branch processing:** Ascending numeric order (or custom Processing Order). Skip done/in_review.
 **Default:** Per-sub-issue STOP.
 **`--nonstop`:** No STOP between sub-issues. One commit per AC. Commits local. Failure halts with resume instructions.
 **Post-compaction:** Check `gh pmu sub list`, resume from first incomplete.

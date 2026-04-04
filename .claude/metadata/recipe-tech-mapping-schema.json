@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "recipe-tech-mapping-schema.json",
   "title": "Recipe Tech Mapping Schema",
   "description": "Schema for .claude/metadata/recipe-tech-mapping.json — tech stack to recipe mappings for /charter suggestions",
   "type": "object",
   "required": ["version", "description", "techMappings"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "version": {
       "type": "string",
       "description": "Mapping version"

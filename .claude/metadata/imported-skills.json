@@ -1,22 +1,24 @@
 {
-  "lastUpdated": "2026-04-02T22:13:30.551Z",
+  "$schema": "./imported-skills-schema.json",
+  "lastUpdated": "2026-04-04T14:52:33.827Z",
   "count": 1,
   "skills": [
-    "code-path-discovery"
+    "hal-2026"
   ],
   "shas": {
-    "tdd-process": "aad7e16f8a6c37b370bc0ac0aa1c41b89731fac7",
-    "ci-cd-pipeline-design": "149e90a230a56bf48e5b768cd49a87ce6656f918",
-    "command-spec-audit": "9a93f7467ae773370fabb427f511be18ce0ba84b",
-    "common-errors": "ae817d863cda235633f47ba6ee750b35a788ed8f",
-    "drawio-generation": "4e0c5276b20f7c8ca69e05cbbc78a7b0c10bcadb",
-    "electron-development": "e9405ee4ab1ae430b23589112d4f974a9d9d571e",
-    "error-handling-patterns": "60a469f74aa91e5ebb0a0474462c6eae2b291661",
-    "test-writing-patterns": "16e7e82ff0d58203c8b7a208705485df39b238e9",
-    "tdd-failure-recovery": "1d34df9a1250041e5427fbbd8bfb81777fd8d9f7",
-    "tdd-green-phase": "78e557adecdfe351d297fd7efb8b58cf9f973d11",
-    "tdd-red-phase": "fa662a5ce93b285898b28095a49bb0a550ca7d00",
-    "tdd-refactor-phase": "5dfe58e528cce38d6c91ca74afcb3e20d0a63489",
-    "code-path-discovery": "6f298d705e3dd4131412e587261cd461bfe8fca4"
+    "tdd-process": "f39ffbf30858b0a9d781c6569de1011dad6b7bfa",
+    "ci-cd-pipeline-design": "5f56f86e5597e3bfaba7114ef3b673705d2409bd",
+    "command-spec-audit": "e4a185a4ec7d5e040435177b90a3258aa1f9dee2",
+    "common-errors": "4fa2a0066eab773787f18241f259438f22acf6e0",
+    "drawio-generation": "93c96a2a693e578cd7e70f2bb98ba27d9863b6bb",
+    "electron-development": "28755b9ee23681b3ac7e2f737ada682249865028",
+    "error-handling-patterns": "5111acff0a42e90e29d07b437d0dabc88026189c",
+    "test-writing-patterns": "e837da12e1a090a52ae3234e33d036e737a94540",
+    "tdd-failure-recovery": "f6f3433b1f27de058da44a1ce4b5eaa82d826e13",
+    "tdd-green-phase": "e66cfc71414e4974caf64776215178ff96a743fe",
+    "tdd-red-phase": "ee9e3e19cd274ca5f4f413093dd81a3ee17291a1",
+    "tdd-refactor-phase": "0b9ecea921e929279343cf71bb328447b8bf6ba8",
+    "code-path-discovery": "31b5eb63517f4d594413e39d5bfbac77228a1e26",
+    "hal-2026": "dc1ec97d8157a1db792fb7f7924855077c017059"
   }
 }

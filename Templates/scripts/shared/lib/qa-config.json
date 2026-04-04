@@ -1,4 +1,5 @@
 {
+  "$schema": "./qa-config-schema.json",
   "keywords": [
     "manually verify",
     "visually confirm",

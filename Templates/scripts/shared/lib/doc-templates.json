@@ -1,4 +1,5 @@
 {
+  "$schema": "./doc-templates-schema.json",
   "categories": [
     {
       "name": "Design Decision",

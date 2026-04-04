@@ -1,4 +1,5 @@
 {
+  "$schema": "./review-criteria-schema.json",
   "typeSpecific": {
     "bug": {
       "label": "Bug",

@@ -1,6 +1,7 @@
 {
+  "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.80.0",
+  "version": "0.81.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -133,6 +134,7 @@
           "done-preamble.js",
           "review-preamble.js",
           "review-finalize.js",
+          "review-interdependence.js",
           "review-ac-checkoff.js",
           "paths-preamble.js",
           "resolve-preamble.js",
@@ -144,7 +146,8 @@
           "mockup-detect-framework.js",
           "mockup-element-extractor.js",
           "mockup-ac-generator.js",
-          "mockup-token-styles.js"
+          "mockup-token-styles.js",
+          "stats-collect.js"
         ]
       },
       "shared/lib": {
@@ -172,7 +175,9 @@
           "dtcg-tokens.js",
           "doc-templates.json",
           "findings-schema.json",
-          "qa-config.json"
+          "qa-config.json",
+          "doc-templates-schema.json",
+          "qa-config-schema.json"
         ]
       },
       "hooks": {
@@ -372,6 +377,31 @@
           "name": "test-plan-review-criteria-schema",
           "source": ".claude/metadata/test-plan-review-criteria-schema.json",
           "description": "JSON Schema for test-plan-review-criteria.json"
+        },
+        {
+          "name": "imported-skills-schema",
+          "source": ".claude/metadata/imported-skills-schema.json",
+          "description": "JSON Schema for imported-skills.json"
+        },
+        {
+          "name": "review-interdependence",
+          "source": ".claude/metadata/review-interdependence.json",
+          "description": "Interdependence analysis configuration for /review-issue Step 3a"
+        },
+        {
+          "name": "review-interdependence-schema",
+          "source": ".claude/metadata/review-interdependence-schema.json",
+          "description": "JSON Schema for review-interdependence.json"
+        },
+        {
+          "name": "stats-config",
+          "source": ".claude/metadata/stats-config.json",
+          "description": "Metric definitions and report configuration for /idpf-stats"
+        },
+        {
+          "name": "stats-config-schema",
+          "source": ".claude/metadata/stats-config-schema.json",
+          "description": "JSON Schema for stats-config.json"
         }
       ]
     }
@@ -395,6 +425,7 @@
     "review-issue",
     "review-prd",
     "review-proposal",
+    "review-test-plan",
     "work"
   ],
   "managedCommands": [
@@ -414,7 +445,6 @@
     "plan-workstreams",
     "playwright-check",
     "resolve-review",
-    "review-test-plan",
     "split-story",
     "switch-branch",
     "transfer-issue"

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.80.0
+ * @framework-script 0.81.0
  * @description DTCG adapter loader with auto-discovery and fault isolation.
  *   Loads discovery and export adapters from Design-System/adapters/ directories.
  *   Discovery adapters implement detect()/extract(); export adapters implement translate().

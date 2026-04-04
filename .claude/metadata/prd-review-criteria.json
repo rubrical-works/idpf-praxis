@@ -1,4 +1,5 @@
 {
+  "$schema": "./prd-review-criteria-schema.json",
   "version": "1.0",
   "criteria": [
     {

@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.80.0
+**Version:** v0.81.0
 **Source:** Reference/GitHub-Workflow.md
 **MUST READ:** This file must be read at session startup and after any compaction.
 This document configures Claude to automatically manage GitHub issues during development sessions.
@@ -151,6 +151,11 @@ When these keywords appear with an issue reference (#N):
 **Examples:**
 - OK: `gh pmu view 123`, `gh issue view 123 --json body`
 - Forbidden: `gh pmu move 123 --status in_progress`, `node .claude/scripts/shared/assign-branch.js --add-ready`
+**Pre-Agent Status Verification Gate:** Before spawning any Agent tool for **implementation work**, verify issue is `in_progress`:
+```bash
+gh pmu view $ISSUE --json=status --jq='.status'
+```
+If not "In progress", run `gh pmu move $ISSUE --status in_progress` before spawning. Does NOT apply to research/review/exploration agents.
 **Commit Message Issue References:**
 | Phase | Allowed Keywords | Forbidden Keywords |
 |-------|------------------|-------------------|
@@ -204,11 +209,10 @@ Report: "Reopened branch tracker for [branch-name]. You can now add issues with 
 **Allowed:** Push to release/patch/hotfix branches, create PRs to main, merge PRs after approval.
 ## gh pmu Error Recovery
 **"terms not accepted" Error:**
-1. Run `gh pmu accept` (without `--yes`) to display terms
-2. Show terms to user for review
-3. Ask for consent
-4. Run `gh pmu accept --yes` only after user confirms
-**Never run `gh pmu accept --yes` without user consent.**
+1. The error output contains the full terms text — display it to the user
+2. Ask for consent
+3. Run `gh pmu accept --yes` only after user confirms
+**Never run `gh pmu accept --yes` without user consent.** Do not run `gh pmu accept` without `--yes` — it requires interactive stdin unavailable in Claude Code.
 ## Manual Overrides
 - **Skip issue creation:** User says "don't create an issue for this"
 - **Different label:** User specifies "label this as [label]"

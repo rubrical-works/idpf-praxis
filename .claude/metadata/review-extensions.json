@@ -1,4 +1,5 @@
 {
+  "$schema": "./review-extensions-schema.json",
   "version": "2.0.0",
   "description": "Review command domain extensions — maps extension IDs to criteria file paths and auto-inclusion rules",
   "extensions": {

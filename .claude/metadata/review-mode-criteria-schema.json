@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "review-mode-criteria-schema.json",
   "title": "Review Mode Criteria Schema",
   "description": "Schema for .claude/metadata/review-mode-criteria.json — mode-aware common criteria for review commands",
   "type": "object",
   "required": ["modes", "criteria"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "modes": {
       "type": "object",
       "description": "Review mode definitions",

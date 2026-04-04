@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "paths-config-schema.json",
   "title": "Paths Config Schema",
   "description": "Schema for .claude/metadata/paths-config.json — path analysis categories for /paths command",
   "type": "object",
   "required": ["version", "categories"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "version": {
       "type": "string",
       "description": "Config version"

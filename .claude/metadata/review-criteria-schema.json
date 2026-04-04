@@ -1,11 +1,12 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "review-criteria-schema.json",
   "title": "Review Criteria Schema",
   "description": "Schema for .claude/metadata/review-criteria.json — type-specific review criteria for /review-issue",
   "type": "object",
   "required": ["typeSpecific"],
   "properties": {
+    "$schema": { "type": "string" },
     "typeSpecific": {
       "type": "object",
       "description": "Criteria grouped by issue type",

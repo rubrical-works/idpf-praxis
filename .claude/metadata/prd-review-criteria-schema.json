@@ -1,11 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "prd-review-criteria-schema.json",
   "title": "PRD Review Criteria Schema",
   "description": "Schema for .claude/metadata/prd-review-criteria.json — criteria for /review-prd",
   "type": "object",
   "required": ["version", "criteria"],
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "version": {
       "type": "string",
       "description": "Criteria version"

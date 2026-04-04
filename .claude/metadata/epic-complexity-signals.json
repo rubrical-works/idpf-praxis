@@ -1,4 +1,5 @@
 {
+  "$schema": "./epic-complexity-signals-schema.json",
   "functional": [
     "service",
     "handler",
