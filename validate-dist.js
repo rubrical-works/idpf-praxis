@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.81.0
+ * @framework-script 0.81.1
  * validate-dist.js - Distribution integrity validator
  *
  * Validates that the distribution package is complete and consistent.
@@ -12,7 +12,7 @@
  * - Required root files exist
  * - framework-manifest.json is valid and has expected fields
  * - checksums.json entries match actual files
- * - Skill packages are valid zip files
+ * - Skills are distributed separately via idpf-praxis-skills repo
  *
  * Exit code 0 = all checks pass, 1 = failures found
  *
@@ -52,7 +52,6 @@ const requiredDirs = [
   'Reference',
   'System-Instructions',
   'Assistant',
-  'Skills/Packaged',
   'Templates',
   'Domains',
   '.claude/metadata',
@@ -105,7 +104,7 @@ try {
 }
 
 if (manifest) {
-  const requiredFields = ['name', 'version', 'frameworks', 'skills', 'domainSpecialists'];
+  const requiredFields = ['name', 'version', 'frameworks', 'domainSpecialists'];
   for (const field of requiredFields) {
     if (manifest[field] !== undefined) {
       pass(`Field: ${field}`);
@@ -174,36 +173,7 @@ if (checksums && checksums.files) {
   fail('checksums.json missing "files" array');
 }
 
-// 5. Skill packages
-section('Skill Packages');
-
-const packagedDir = path.join(ROOT, 'Skills', 'Packaged');
-if (fs.existsSync(packagedDir)) {
-  const zips = fs.readdirSync(packagedDir).filter(f => f.endsWith('.zip'));
-
-  if (zips.length > 0) {
-    pass(`${zips.length} skill package(s) found`);
-  } else {
-    fail('No .zip files in Skills/Packaged/');
-  }
-
-  // Validate zip magic bytes (PK\x03\x04)
-  for (const zip of zips) {
-    const zipPath = path.join(packagedDir, zip);
-    const header = Buffer.alloc(4);
-    const fd = fs.openSync(zipPath, 'r');
-    fs.readSync(fd, header, 0, 4, 0);
-    fs.closeSync(fd);
-
-    if (header[0] === 0x50 && header[1] === 0x4B && header[2] === 0x03 && header[3] === 0x04) {
-      pass(`${zip} — valid zip`);
-    } else {
-      fail(`${zip} — invalid zip header`);
-    }
-  }
-} else {
-  fail('Skills/Packaged/ directory missing');
-}
+// 5. Skills — distributed separately via idpf-praxis-skills repo (no local validation)
 
 // 6. Version placeholder check
 section('Version Injection');

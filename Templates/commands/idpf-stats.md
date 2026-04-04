@@ -1,5 +1,5 @@
 ---
-version: "v0.81.0"
+version: "v0.81.1"
 description: Generate session statistics report with development velocity metrics
 argument-hint: "[--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save]"
 copyright: "Rubrical Works (c) 2026"

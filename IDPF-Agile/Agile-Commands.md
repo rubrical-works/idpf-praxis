@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Commands
-**Version:** v0.81.0
+**Version:** v0.81.1
 **Module:** Commands (loaded on-demand)
 ## Complete Command Reference (49 commands)
 Authoritative source: `.claude/commands/`. Use `/self-diag` for a live audit.

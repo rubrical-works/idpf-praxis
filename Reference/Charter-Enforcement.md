@@ -1,5 +1,5 @@
 # Charter Enforcement
-**Version:** v0.81.0
+**Version:** v0.81.1
 **Purpose:** Define checkpoints where charter validation should occur and how to handle scope conflicts.
 Charter enforcement validates that work items align with the project's defined scope. Validation is **conversational, not blocking** -- users can choose to expand scope, proceed anyway, or revise work.
 ## Checkpoint Detection
