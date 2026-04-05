@@ -10,6 +10,8 @@ appliesTo:
   - merge-branch:pre-gate
 prerequisites:
   - pom.xml
+technology:
+  - java
 ---
 
 ### Run Tests

@@ -1,11 +1,11 @@
 # Framework Summary
-**Version:** v0.81.1
+**Version:** v0.82.0
 ## Quick Reference
 | Component | Count | Location |
 |-----------|-------|----------|
 | Process Frameworks | 2 | IDPF-Agile, IDPF-Vibe (7 variants) |
 | Domains | 11 | Domains/ (testing criteria, guides, templates) |
-| Domain Specialists | 22 | 12 Base + 10 Pack |
+| Domain Specialists | 25 | 12 Base + 13 Pack |
 | Core Instructions | 0 | Removed -- Core redundant with training; Domain-Selection-Guide is reference only |
 | Skills | 38 | Skills/ |
 | Assistant Guidelines | 4 | Assistant/ |
@@ -113,7 +113,7 @@ Load on-demand:
 |------|---------|
 | Framework-Development.md | IDPF-Agile, Vibe details, create-prd skill |
 | Framework-Testing.md | Domains/ -- testing criteria library + 6 specialized domains |
-| Framework-System-Instructions.md | Core + 22 Domain Specialists (12 Base, 10 Pack) |
+| Framework-System-Instructions.md | Core + 25 Domain Specialists (12 Base, 13 Pack) |
 | Framework-Skills.md | All 38 skills with descriptions |
 | Framework-Transitions.md | Transition matrix, diagrams, hybrid usage |
 | Framework-Overview.md | Complete reference (all sections) |

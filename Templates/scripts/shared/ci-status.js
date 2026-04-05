@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.81.1
+ * @framework-script 0.82.0
  * @description View workflow status — lists all GitHub Actions workflows. Parses all .yml/.yaml files in .github/workflows/ and reports their trigger events and enabled state. Part of the /ci status subcommand.
  * @checksum sha256:placeholder
  *

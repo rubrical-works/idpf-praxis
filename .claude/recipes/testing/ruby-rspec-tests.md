@@ -10,6 +10,8 @@ appliesTo:
   - merge-branch:pre-gate
 prerequisites:
   - Gemfile with rspec
+technology:
+  - ruby
 ---
 
 ### Run Tests

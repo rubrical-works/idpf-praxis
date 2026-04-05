@@ -14,6 +14,8 @@ appliesTo:
 prerequisites:
   - "npm install --save-dev eslint-plugin-security"
   - "ESLint flat config (eslint.config.js)"
+technology:
+  - node
 ---
 
 ### ESLint Security Plugin

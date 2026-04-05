@@ -1,0 +1,558 @@
+{
+  "generatedFrom": "CHARTER.md",
+  "generatedAt": "2026-04-04",
+  "projectVersion": "0.81.1",
+  "boundedContext": {
+    "name": "IDPF Framework Ecosystem",
+    "purpose": "A comprehensive ecosystem of AI-assisted software development frameworks, providing structured processes (Agile, Vibe), domain knowledge libraries (11 domains), domain expertise (22 specialists), and quality guidelines for Claude Code-powered development workflows. Distributed via a central hub architecture managed by Praxis Hub Manager. Skills are maintained separately in idpf-praxis-skills.",
+    "boundary": "IDPF Framework Ecosystem: Process framework development and maintenance; Domain knowledge libraries; Domain specialist system instructions (+11 more)"
+  },
+  "entities": {
+    "process-frameworks": {
+      "description": "Process Frameworks",
+      "count": 2,
+      "locations": [
+        "IDPF-Agile/",
+        "IDPF-Vibe/"
+      ],
+      "relationships": []
+    },
+    "slash-commands": {
+      "description": "Slash Commands",
+      "count": 50,
+      "locations": [
+        ".claude/commands/ (19 extensible, 19 managed, 10 framework-only, 2 other)"
+      ],
+      "relationships": []
+    },
+    "extension-points": {
+      "description": "Extension Points",
+      "count": 94,
+      "locations": [
+        "Across extensible commands (USER-EXTENSION markers)"
+      ],
+      "relationships": [
+        {
+          "type": "distributed-across",
+          "target": "slash-commands",
+          "evidence": "Location/context references Slash Commands"
+        },
+        {
+          "type": "distributed-across",
+          "target": "extension-recipes",
+          "evidence": "Location/context references Extension Recipes"
+        },
+        {
+          "type": "distributed-across",
+          "target": "gh-pmu",
+          "evidence": "Location/context references gh-pmu — GitHub CLI extension"
+        }
+      ]
+    },
+    "extension-recipes": {
+      "description": "Extension Recipes",
+      "count": 28,
+      "locations": [
+        ".claude/metadata/extension-recipes.json"
+      ],
+      "relationships": [
+        {
+          "type": "references",
+          "target": "extension-points",
+          "evidence": "Location/context references Extension Points"
+        },
+        {
+          "type": "references",
+          "target": "metadata-registries",
+          "evidence": "Location/context references Metadata Registries"
+        },
+        {
+          "type": "references",
+          "target": "gh-pmu",
+          "evidence": "Location/context references gh-pmu — GitHub CLI extension"
+        }
+      ]
+    },
+    "domain-knowledge-libraries": {
+      "description": "Domain Knowledge Libraries",
+      "count": 11,
+      "locations": [
+        "Domains/"
+      ],
+      "countSource": {
+        "exclude": [
+          "Guides/",
+          "Templates/ infrastructure dirs"
+        ]
+      },
+      "relationships": [
+        {
+          "type": "references",
+          "target": "domain-specialists",
+          "evidence": "Location/context references Domain Specialists"
+        }
+      ]
+    },
+    "domain-specialists": {
+      "description": "Domain Specialists",
+      "count": 22,
+      "locations": [
+        "System-Instructions/Domain/Base/ (12)",
+        "Pack/ (10)"
+      ],
+      "relationships": [
+        {
+          "type": "references",
+          "target": "domain-knowledge-libraries",
+          "evidence": "Location/context references Domain Knowledge Libraries"
+        }
+      ]
+    },
+    "metadata-registries": {
+      "description": "Metadata Registries",
+      "count": 30,
+      "locations": [
+        ".claude/metadata/ (JSON schema/data pairs)"
+      ],
+      "relationships": [
+        {
+          "type": "contains",
+          "target": "extension-recipes",
+          "evidence": ".claude/metadata/ is parent of .claude/metadata/extension-recipes.json"
+        }
+      ]
+    },
+    "scripts": {
+      "description": "Scripts",
+      "count": 90,
+      "locations": [
+        ".claude/scripts/shared/",
+        "lib/",
+        "hooks/",
+        "framework/"
+      ],
+      "relationships": []
+    },
+    "auto-loaded-rules": {
+      "description": "Auto-loaded Rules",
+      "count": 7,
+      "locations": [
+        ".claude/rules/"
+      ],
+      "relationships": []
+    },
+    "skills": {
+      "description": "Skills",
+      "locations": [
+        ".claude/skills/ (imported from idpf-praxis-skills)"
+      ],
+      "relationships": [
+        {
+          "type": "imports-from",
+          "target": "idpf-praxis",
+          "evidence": "Location/context references idpf-praxis — Distribution repo"
+        },
+        {
+          "type": "imports-from",
+          "target": "idpf-praxis-skills",
+          "evidence": "Location/context references idpf-praxis-skills — Skill source development"
+        }
+      ]
+    },
+    "idpf-praxis": {
+      "description": "idpf-praxis — Distribution repo",
+      "external": true,
+      "locations": [
+        "idpf-praxis"
+      ],
+      "relationships": []
+    },
+    "idpf-praxis-skills": {
+      "description": "idpf-praxis-skills — Skill source development",
+      "external": true,
+      "locations": [
+        "idpf-praxis-skills"
+      ],
+      "relationships": [
+        {
+          "type": "interacts-with",
+          "target": "skills",
+          "evidence": "Skills imported via /fw-import-skills"
+        },
+        {
+          "type": "references",
+          "target": "idpf-praxis",
+          "evidence": "Location/context references idpf-praxis — Distribution repo"
+        }
+      ]
+    },
+    "px-manager": {
+      "description": "px-manager — Hub manager application (Electron)",
+      "external": true,
+      "locations": [
+        "px-manager"
+      ],
+      "relationships": []
+    },
+    "gh-pmu": {
+      "description": "gh-pmu — GitHub CLI extension",
+      "external": true,
+      "locations": [
+        "gh-pmu"
+      ],
+      "relationships": []
+    },
+    "praxis-diagram": {
+      "description": "praxis-diagram — Diagram editor (Electron)",
+      "external": true,
+      "locations": [
+        "praxis-diagram"
+      ],
+      "relationships": []
+    },
+    "idpf-marketing": {
+      "description": "idpf-marketing — Marketing site",
+      "external": true,
+      "locations": [
+        "idpf-marketing"
+      ],
+      "relationships": []
+    }
+  },
+  "techStack": [
+    {
+      "layer": "Content",
+      "technology": "Markdown (frameworks, docs, system instructions)"
+    },
+    {
+      "layer": "Scripts",
+      "technology": "JavaScript / Node.js (shared utilities, hooks, framework scripts)"
+    },
+    {
+      "layer": "CLI Extension",
+      "technology": "gh-pmu (GitHub project management)"
+    },
+    {
+      "layer": "CI/CD",
+      "technology": "GitHub Actions (deploy-dist, test)"
+    },
+    {
+      "layer": "Distribution",
+      "technology": "Hub architecture (symlinks + copied commands) via Praxis Hub Manager"
+    },
+    {
+      "layer": "Config",
+      "technology": "JSON (framework-manifest, framework-config, metadata registries), YAML (.gh-pmu)"
+    },
+    {
+      "layer": "Testing",
+      "technology": "Jest (unit, structural, schema validation)"
+    }
+  ],
+  "architecture": {
+    "subsections": [
+      {
+        "heading": "Distribution Model",
+        "description": "idpf-praxis-dev (this repo)     idpf-praxis (distribution)     User Projects",
+        "diagram": "idpf-praxis-dev (this repo)     idpf-praxis (distribution)     User Projects\n─────────────────────────────   ──────────────────────────────  ─────────────\nSource files                    Minimized artifacts             Hub symlinks\n  ↓ /fw-minimize-files            ↓ deploy-dist.yml              ↓ Praxis Hub Manager\n.min-mirror/                    GitHub Release                  .claude/ (symlinked)\n                                                                + commands/ (copied)"
+      },
+      {
+        "heading": "Companion Repositories"
+      }
+    ],
+    "tables": [
+      {
+        "parentHeading": "Companion Repositories",
+        "columns": [
+          "Repository",
+          "Responsibility",
+          "Relationship"
+        ],
+        "rows": [
+          {
+            "Repository": "idpf-praxis",
+            "Responsibility": "Distribution repo",
+            "Relationship": "Receives minimized artifacts via CI"
+          },
+          {
+            "Repository": "idpf-praxis-skills",
+            "Responsibility": "Skill source development",
+            "Relationship": "Skills imported via /fw-import-skills"
+          },
+          {
+            "Repository": "px-manager",
+            "Responsibility": "Hub manager application (Electron)",
+            "Relationship": "Manages hub creation, project setup, skill installation"
+          },
+          {
+            "Repository": "gh-pmu",
+            "Responsibility": "GitHub CLI extension",
+            "Relationship": "Provides project board, issue, and branch management"
+          },
+          {
+            "Repository": "praxis-diagram",
+            "Responsibility": "Diagram editor (Electron)",
+            "Relationship": "Consumes flowbite design tokens"
+          },
+          {
+            "Repository": "idpf-marketing",
+            "Responsibility": "Marketing site",
+            "Relationship": "Documents ecosystem for users"
+          }
+        ]
+      }
+    ],
+    "components": [
+      {
+        "name": "idpf-praxis",
+        "role": "Distribution repo",
+        "inferredFrom": "Companion Repositories"
+      },
+      {
+        "name": "idpf-praxis-skills",
+        "role": "Skill source development",
+        "inferredFrom": "Companion Repositories"
+      },
+      {
+        "name": "px-manager",
+        "role": "Hub manager application (Electron)",
+        "inferredFrom": "Companion Repositories"
+      },
+      {
+        "name": "gh-pmu",
+        "role": "GitHub CLI extension",
+        "inferredFrom": "Companion Repositories"
+      },
+      {
+        "name": "praxis-diagram",
+        "role": "Diagram editor (Electron)",
+        "inferredFrom": "Companion Repositories"
+      },
+      {
+        "name": "idpf-marketing",
+        "role": "Marketing site",
+        "inferredFrom": "Companion Repositories"
+      }
+    ]
+  },
+  "currentFocus": [
+    "Extension point ecosystem maturation (recipes, auditing, user customization)",
+    "Domain entity modeling for automated scope-drift detection",
+    "Schema/data pair validation and integrity",
+    "Cross-project deployment pipeline reliability"
+  ],
+  "scopeBoundaries": {
+    "inScope": [
+      "Process framework development and maintenance (2 IDPF frameworks: Agile, Vibe)",
+      "Domain knowledge libraries (11 domains in `Domains/`)",
+      "Domain specialist system instructions (22 specialists in `System-Instructions/Domain/`)",
+      "Slash command development (50 commands: extensible, managed, framework-only)",
+      "Extension point architecture (94 points across 19 extensible commands)",
+      "Extension recipes (28 pre-built extensions)",
+      "Metadata registry system (30 JSON schema/data pairs in `.claude/metadata/`)",
+      "Script infrastructure (90 scripts: shared utilities, hooks, framework tools)",
+      "Anti-hallucination rules and quality guidelines (7 auto-loaded rules)",
+      "Skills imported from idpf-praxis-skills (via `/fw-import-skills`)",
+      "Minimization pipeline (`.min-mirror/`) for token optimization",
+      "GitHub Workflow integration via gh-pmu",
+      "Release and deployment pipeline to idpf-praxis (distribution repo)",
+      "Multi-CLI runtime support (Claude Code primary, Gemini CLI via build-time transformation)"
+    ],
+    "outOfScope": [
+      "End-user application development (this is a framework/tooling repo)",
+      "Runtime hosting or SaaS deployment",
+      "Skill source development (lives in idpf-praxis-skills)",
+      "Hub manager application development (lives in px-manager)",
+      "gh-pmu CLI development (lives in gh-pmu)",
+      "Diagram editor development (lives in praxis-diagram)"
+    ]
+  },
+  "driftSignals": {
+    "entityOutOfBounds": [
+      {
+        "signal": "Story involves: End-user application development (this is a framework/tooling repo)",
+        "severity": "error"
+      },
+      {
+        "signal": "Story involves: Runtime hosting or SaaS deployment",
+        "severity": "error"
+      },
+      {
+        "signal": "Story involves: Skill source development (lives in idpf-praxis-skills)",
+        "severity": "error"
+      },
+      {
+        "signal": "Story involves: Hub manager application development (lives in px-manager)",
+        "severity": "error"
+      },
+      {
+        "signal": "Story involves: gh-pmu CLI development (lives in gh-pmu)",
+        "severity": "error"
+      },
+      {
+        "signal": "Story involves: Diagram editor development (lives in praxis-diagram)",
+        "severity": "error"
+      }
+    ],
+    "scopeExpansion": [
+      {
+        "signal": "Entity count exceeds validation max range",
+        "severity": "warning"
+      },
+      {
+        "signal": "New directory or file location not in known entity locations",
+        "severity": "warning"
+      },
+      {
+        "signal": "Entity introduced that is not in charter Key Entities table",
+        "severity": "warning"
+      }
+    ]
+  },
+  "validationRules": [
+    {
+      "type": "count-range",
+      "entity": "process-frameworks",
+      "description": "Expected count for process-frameworks",
+      "min": 1,
+      "max": 3
+    },
+    {
+      "type": "location-exists",
+      "entity": "process-frameworks",
+      "description": "Location must exist for process-frameworks"
+    },
+    {
+      "type": "count-range",
+      "entity": "slash-commands",
+      "description": "Expected count for slash-commands",
+      "min": 40,
+      "max": 60
+    },
+    {
+      "type": "location-exists",
+      "entity": "slash-commands",
+      "description": "Location must exist for slash-commands"
+    },
+    {
+      "type": "count-range",
+      "entity": "extension-points",
+      "description": "Expected count for extension-points",
+      "min": 75,
+      "max": 113
+    },
+    {
+      "type": "location-exists",
+      "entity": "extension-points",
+      "description": "Location must exist for extension-points"
+    },
+    {
+      "type": "count-range",
+      "entity": "extension-recipes",
+      "description": "Expected count for extension-recipes",
+      "min": 22,
+      "max": 34
+    },
+    {
+      "type": "location-exists",
+      "entity": "extension-recipes",
+      "description": "Location must exist for extension-recipes"
+    },
+    {
+      "type": "count-range",
+      "entity": "domain-knowledge-libraries",
+      "description": "Expected count for domain-knowledge-libraries",
+      "min": 8,
+      "max": 14
+    },
+    {
+      "type": "location-exists",
+      "entity": "domain-knowledge-libraries",
+      "description": "Location must exist for domain-knowledge-libraries"
+    },
+    {
+      "type": "count-range",
+      "entity": "domain-specialists",
+      "description": "Expected count for domain-specialists",
+      "min": 17,
+      "max": 27
+    },
+    {
+      "type": "location-exists",
+      "entity": "domain-specialists",
+      "description": "Location must exist for domain-specialists"
+    },
+    {
+      "type": "count-range",
+      "entity": "metadata-registries",
+      "description": "Expected count for metadata-registries",
+      "min": 24,
+      "max": 36
+    },
+    {
+      "type": "location-exists",
+      "entity": "metadata-registries",
+      "description": "Location must exist for metadata-registries"
+    },
+    {
+      "type": "count-range",
+      "entity": "scripts",
+      "description": "Expected count for scripts",
+      "min": 72,
+      "max": 108
+    },
+    {
+      "type": "location-exists",
+      "entity": "scripts",
+      "description": "Location must exist for scripts"
+    },
+    {
+      "type": "count-range",
+      "entity": "auto-loaded-rules",
+      "description": "Expected count for auto-loaded-rules",
+      "min": 5,
+      "max": 9
+    },
+    {
+      "type": "location-exists",
+      "entity": "auto-loaded-rules",
+      "description": "Location must exist for auto-loaded-rules"
+    },
+    {
+      "type": "location-exists",
+      "entity": "skills",
+      "description": "Location must exist for skills"
+    },
+    {
+      "type": "location-exists",
+      "entity": "idpf-praxis",
+      "description": "Location must exist for idpf-praxis"
+    },
+    {
+      "type": "location-exists",
+      "entity": "idpf-praxis-skills",
+      "description": "Location must exist for idpf-praxis-skills"
+    },
+    {
+      "type": "location-exists",
+      "entity": "px-manager",
+      "description": "Location must exist for px-manager"
+    },
+    {
+      "type": "location-exists",
+      "entity": "gh-pmu",
+      "description": "Location must exist for gh-pmu"
+    },
+    {
+      "type": "location-exists",
+      "entity": "praxis-diagram",
+      "description": "Location must exist for praxis-diagram"
+    },
+    {
+      "type": "location-exists",
+      "entity": "idpf-marketing",
+      "description": "Location must exist for idpf-marketing"
+    }
+  ],
+  "$schema": "./domain-entities-schema.json"
+}

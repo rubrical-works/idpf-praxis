@@ -10,6 +10,8 @@ appliesTo:
   - merge-branch:pre-gate
 prerequisites:
   - Cargo.toml
+technology:
+  - rust
 ---
 
 ### Run Tests

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.81.1
+ * @framework-script 0.82.0
  * @description Script-driven CLI for extension point operations. Replaces AI-interpreted markdown specs for read-only subcommands (list, view, diff, validate), reducing execution from 3-16+ tool calls to 1 Bash call. Used by /extensions command.
  * @checksum sha256:placeholder
  *
@@ -637,7 +637,7 @@ const RECIPES_PATH = path.join(METADATA_DIR, 'extension-recipes.json');
 
 /**
  * Run the recipes subcommand.
- * @param {{ category: string|null }} opts - Options
+ * @param {{ category: string|null, stack: string|null }} opts - Options
  * @returns {{ exitCode: number, output: string }}
  */
 function runRecipes(opts) {
@@ -656,18 +656,55 @@ function runRecipes(opts) {
   const categories = recipes.categories || {};
   const categoryKeys = Object.keys(categories);
 
+  // Resolve stack filter: explicit --stack, auto-detect, or null (show all)
+  let stackFilter = null;
+  if (opts.stack && opts.stack !== 'all') {
+    stackFilter = [opts.stack];
+  } else if (!opts.stack) {
+    // Auto-detect from project root
+    try {
+      const { detectTechStack } = require('./lib/detect-tech-stack.js');
+      const detected = detectTechStack(process.cwd());
+      if (detected.length > 0) stackFilter = detected;
+    } catch (_e) {
+      // detect-tech-stack not available — show all
+    }
+  }
+  // opts.stack === 'all' → stackFilter stays null → show everything
+
+  /**
+   * Check if a recipe matches the stack filter.
+   * Recipes without a technology field are stack-agnostic (always shown).
+   */
+  function matchesStack(recipe) {
+    if (!stackFilter) return true;
+    if (!recipe.technology || recipe.technology.length === 0) return true;
+    return recipe.technology.some(t => stackFilter.includes(t));
+  }
+
+  function techTag(recipe) {
+    if (recipe.technology && recipe.technology.length > 0) {
+      return ` [${recipe.technology.join(', ')}]`;
+    }
+    return '';
+  }
+
   // Filter by category if specified
   if (opts.category) {
     if (!categories[opts.category]) {
       return { exitCode: 0, output: `No recipes found for category '${opts.category}'.` };
     }
     const cat = categories[opts.category];
+    const filtered = (cat.recipes || []).filter(matchesStack);
     const lines = [`${cat.name} — ${cat.description}`, ''];
-    for (const recipe of cat.recipes || []) {
-      lines.push(`  ${recipe.name} — ${recipe.description}`);
+    for (const recipe of filtered) {
+      lines.push(`  ${recipe.name}${techTag(recipe)} — ${recipe.description}`);
       if (recipe.extensionPoints && recipe.extensionPoints.length > 0) {
         lines.push(`    Points: ${recipe.extensionPoints.join(', ')}`);
       }
+    }
+    if (filtered.length === 0) {
+      lines.push('  (no recipes match current stack filter)');
     }
     return { exitCode: 0, output: lines.join('\n') };
   }
@@ -677,12 +714,15 @@ function runRecipes(opts) {
     return { exitCode: 0, output: 'No recipe categories found.' };
   }
 
-  const lines = ['Extension Recipes', ''];
+  const stackLabel = stackFilter ? ` (stack: ${stackFilter.join(', ')})` : '';
+  const lines = [`Extension Recipes${stackLabel}`, ''];
   for (const key of categoryKeys) {
     const cat = categories[key];
+    const filtered = (cat.recipes || []).filter(matchesStack);
+    if (filtered.length === 0) continue;
     lines.push(`${cat.name} — ${cat.description}`);
-    for (const recipe of cat.recipes || []) {
-      lines.push(`  ${recipe.name} — ${recipe.description}`);
+    for (const recipe of filtered) {
+      lines.push(`  ${recipe.name}${techTag(recipe)} — ${recipe.description}`);
     }
     lines.push('');
   }
@@ -796,6 +836,9 @@ function parseArgs(args) {
       options.stdout = true;
     } else if (rest[i] === '--status') {
       options.status = true;
+    } else if (rest[i] === '--stack' && i + 1 < rest.length) {
+      options.stack = rest[i + 1];
+      i++;
     } else if (rest[i] === '--help') {
       options.help = true;
     } else if (!rest[i].startsWith('--')) {
@@ -831,7 +874,7 @@ function main() {
       result = runMatrix();
       break;
     case 'recipes':
-      result = runRecipes({ category: posArgs[0] || null });
+      result = runRecipes({ category: posArgs[0] || null, stack: options.stack || null });
       break;
     case 'help':
       result = runHelp();

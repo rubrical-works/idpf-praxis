@@ -1,11 +1,11 @@
 # Framework System Instructions Reference
-**Version:** v0.81.1
+**Version:** v0.82.0
 **Location:** `System-Instructions/`
 **Purpose:** Define assistant identity, expertise, and behavioral patterns
 **Critical Requirement:** System Instructions are **REQUIRED** for all framework operation. Frameworks define process; System Instructions define identity and expertise.
 ## Domain Specialization Architecture
 **Architecture Pattern:** Domain Specialist loaded at session startup
-- **22 Domain Specialists**: Specialized expertise profiles loaded based on `domainSpecialist` in `framework-config.json`
+- **25 Domain Specialists**: Specialized expertise profiles loaded based on `domainSpecialist` in `framework-config.json`
 - **Domain-Selection-Guide.md**: Guide for choosing appropriate specialist (reference only, not distributed)
 **Loading Pattern:**
 1. Session startup reads `domainSpecialist` from `framework-config.json`
@@ -137,6 +137,21 @@
 - API documentation (OpenAPI, AsyncAPI)
 - Documentation generators (Docusaurus, MkDocs, Sphinx)
 - Technical writing best practices and style guides
+### 23. Content-Strategist.md
+- Messaging frameworks, audience segmentation, editorial workflows
+- Content calendars, governance, and lifecycle management
+- Voice and tone guidelines, writing standards
+- SEO content strategy, measurement and analytics
+### 24. UX-Designer.md
+- Layout principles, grid systems, visual hierarchy
+- Color theory, typography, responsive design patterns
+- Interaction design, micro-interactions, user flows
+- Design systems, tokens, component libraries, developer handoff
+### 25. Brand-Strategist.md
+- Brand architecture, positioning, values and purpose
+- Visual identity systems (logo, color, typography, iconography)
+- Brand voice and tone, verbal identity, naming conventions
+- Brand guidelines, governance, consistency auditing, asset management
 ## Domain Selection Guide
 | Use Case | Recommended Domains |
 |----------|---------------------|

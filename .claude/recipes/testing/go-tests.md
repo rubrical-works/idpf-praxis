@@ -10,6 +10,8 @@ appliesTo:
   - merge-branch:pre-gate
 prerequisites:
   - go.mod
+technology:
+  - go
 ---
 
 ### Run Tests

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.81.1
+ * @framework-script 0.82.0
  * @description Check off acceptance criteria on review issues based on findings status. Exports checkOffACs(). Used by /review-prd and /review-test-plan for post-review AC updates with optional status transition.
  * @checksum sha256:placeholder
  *

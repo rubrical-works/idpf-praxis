@@ -10,6 +10,8 @@ appliesTo:
   - merge-branch:pre-gate
 prerequisites:
   - build.gradle
+technology:
+  - java
 ---
 
 ### Run Tests

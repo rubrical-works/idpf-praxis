@@ -79,6 +79,27 @@
       "packageSignals": ["express", "fastify", "koa", "@apollo/server", "graphql", "@grpc/grpc-js"],
       "alwaysApplicable": false,
       "reason": "REST/GraphQL API design, resource naming, error contracts"
+    },
+    "content-strategy": {
+      "charterKeywords": ["content", "blog", "editorial", "messaging", "copywriting", "content calendar", "seo", "marketing", "landing page", "campaign", "newsletter", "email marketing", "audience"],
+      "fileSignals": [],
+      "packageSignals": [],
+      "alwaysApplicable": false,
+      "reason": "Content strategy, messaging frameworks, editorial workflows, marketing copy"
+    },
+    "ux-design": {
+      "charterKeywords": ["ui", "ux", "design", "layout", "responsive", "mobile-first", "wireframe", "prototype", "figma", "design system", "typography", "color", "visual", "landing page", "marketing page"],
+      "fileSignals": ["*.css", "*.scss", "*.less", "*.svg", "*.figma"],
+      "packageSignals": ["tailwindcss", "styled-components", "@emotion/react", "sass", "postcss", "storybook"],
+      "alwaysApplicable": false,
+      "reason": "UX/UI design, layout principles, visual hierarchy, responsive design"
+    },
+    "brand-strategy": {
+      "charterKeywords": ["brand", "branding", "logo", "identity", "style guide", "brand voice", "brand guidelines", "visual identity", "brand consistency", "marketing"],
+      "fileSignals": [],
+      "packageSignals": [],
+      "alwaysApplicable": false,
+      "reason": "Brand identity, visual consistency, style guides, brand governance"
     }
   }
 }

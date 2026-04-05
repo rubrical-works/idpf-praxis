@@ -1,12 +1,12 @@
 ---
-version: "v0.81.1"
-description: Start working on issues with validation and auto-TODO (project)
+version: "v0.82.0"
+description: Start working on issues with validation and auto-task extraction (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- EXTENSIBLE -->
 # /work
-Start working on one or more issues. Validates existence, branch assignment, and type, then moves to `in_progress`, extracts auto-TODO, and dispatches to framework methodology.
+Start working on one or more issues. Validates existence, branch assignment, and type, then moves to `in_progress`, extracts auto-tasks, and dispatches to framework methodology.
 **Extension Points:** See `.claude/metadata/extension-points.json` or run `/extensions list --command work`
 ---
 ## Prerequisites
@@ -33,8 +33,8 @@ Start working on one or more issues. Validates existence, branch assignment, and
 6. **Post-Compaction:** Re-read spec, resume from first incomplete task.
 ---
 ## Workflow
-### Step 0: Clear Todo List
-If not epic or branch tracker, clear todos.
+### Step 0: Clear Task List
+If not epic or branch tracker, clear tasks.
 
 <!-- USER-EXTENSION-START: pre-work -->
 <!-- USER-EXTENSION-END: pre-work -->
@@ -43,6 +43,7 @@ If not epic or branch tracker, clear todos.
 Run `node .claude/scripts/shared/work-preamble.js` with `--issue N`, `--issues "N,N,N"`, or `--status <status>`. Append `--assign` for auto-assign.
 Parse JSON: `ok: false` -> report errors, STOP. Extract `context`, `gates`, `autoTodo`, `warnings`.
 **--assign errors:** `ALREADY_ASSIGNED`, `WORKSTREAM_CONFLICT`.
+Run `--schema` for envelope field reference.
 
 <!-- USER-EXTENSION-START: post-work-start -->
 <!-- USER-EXTENSION-END: post-work-start -->
@@ -74,7 +75,7 @@ Per AC: mark in_progress, TDD cycle (RED->GREEN->REFACTOR), run tests, mark comp
 **Sub-Agent Review Gate:** After Agent tool, `git diff --name-only`. Read changed files, verify match. Mandatory when `strictTDD`. Not satisfied by summaries/tests alone.
 **TDD (checklist-driven):** Execute `required[]` per phase, enforce `gate`. On failure-recovery trigger, execute recovery steps. On gate failure, check `deepReference` -- load `.claude/skills/{skill-name}/SKILL.md`, retry. Missing skill: warn, continue.
 **TDD (inline fallback):** RED (failing test), GREEN (minimal pass), REFACTOR (analyze, report).
-No auto-TODO: single unit. Post-compaction: resume from first incomplete AC.
+No auto-tasks: single unit. Post-compaction: resume from first incomplete AC.
 ### Step 3b: Documentation Judgment
 Re-read `.claude/scripts/shared/lib/doc-templates.json` from disk. Create if warranted.
 
@@ -92,6 +93,7 @@ Re-read `.claude/scripts/shared/lib/qa-config.json`. Match unverifiable ACs agai
 Silent, automatic. Works in standard and `--nonstop` mode.
 #### Step 4b: Force-Move Prohibition
 **NEVER** use `--force` to bypass unchecked ACs on issues you implemented. Legitimate: epic parents, external, branch trackers, test-plan approvals.
+Detection: if issue has `story`/`enhancement` label AND was moved to `in_progress` this session -> **HALT**, report unchecked count, verify via Step 4.
 
 <!-- USER-EXTENSION-START: post-ac-verification -->
 <!-- USER-EXTENSION-END: post-ac-verification -->
@@ -114,7 +116,9 @@ Say "done" or run /done #$ISSUE to close.
 **Autonomous Epic/Branch processing:** Ascending numeric order (or custom Processing Order). Skip done/in_review.
 **Default:** Per-sub-issue STOP.
 **`--nonstop`:** No STOP between sub-issues. One commit per AC. Commits local. Failure halts with resume instructions.
+**`--nonstop` rules:** `Refs #N` commits. No push (deferred to `/done`). Test/AC/QA/pmu failure halts immediately with sub-issue count and resume instructions.
 **Post-compaction:** Check `gh pmu sub list`, resume from first incomplete.
+**`--nonstop` summary:** Report processed/skipped/failed counts.
 #### Step 6a: Post-Nonstop Audit
 (1) Commit density warning. (2) AC checkbox audit. (3) Test coverage audit.
 **After all sub-issues done:**
@@ -124,6 +128,7 @@ Say "done" or run /done #$ISSUE to close.
 All sub-issues on branch {branch-name} are in review or done.
 Next: /merge-branch or /prepare-release
 ```
+**Default mode:** Never skip per-sub-issue STOP. **Continuous:** Sub-issues only to `in_review` -- user runs `/done` after review.
 ---
 ## Error Handling
 **STOP:** Not found, no branch, pmu failure, ALREADY_ASSIGNED, WORKSTREAM_CONFLICT.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.81.1
+ * @framework-script 0.82.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
@@ -56,6 +56,9 @@ function generateFromCharter(charterContent, projectVersion) {
   // Extract architecture description
   const architecture = extractArchitecture(charterContent);
 
+  // Extract tech stack table
+  const techStack = extractTechStack(charterContent);
+
   // Extract current focus items
   const currentFocus = extractListItems(charterContent, 'Current Focus');
 
@@ -71,6 +74,7 @@ function generateFromCharter(charterContent, projectVersion) {
       boundary: buildBoundary(projectName, inScope)
     },
     entities,
+    techStack,
     architecture,
     currentFocus,
     scopeBoundaries: {
@@ -226,15 +230,110 @@ function extractCompanionRepos(content, entities) {
 }
 
 /**
- * Extract the Architecture section content (code blocks and text).
+ * Extract tech stack from a Tech Stack markdown table.
+ * @param {string} content - Charter markdown content
+ * @returns {Array<{layer: string, technology: string}>}
+ */
+function extractTechStack(content) {
+  let sectionMatch = content.match(/##\s+Tech Stack[^\n]*\n([\s\S]*?)(?=\n##\s)/);
+  if (!sectionMatch) {
+    sectionMatch = content.match(/##\s+Tech Stack[^\n]*\n([\s\S]*)/);
+  }
+  if (!sectionMatch) return [];
+
+  const tableLines = sectionMatch[1].split('\n').filter(l => l.startsWith('|'));
+  if (tableLines.length < 3) return []; // Need header + separator + at least one data row
+
+  const result = [];
+  for (let i = 2; i < tableLines.length; i++) {
+    const cells = tableLines[i].split('|').map(c => c.trim()).filter(c => c);
+    if (cells.length >= 2) {
+      result.push({ layer: cells[0], technology: cells[1] });
+    }
+  }
+  return result;
+}
+
+/**
+ * Extract the Architecture section into a structured object.
+ * Parses subsections (### headings), tables, diagrams (code blocks),
+ * and infers components from table rows and subsection content.
+ * @param {string} content - Charter markdown content
+ * @returns {{subsections: Array, tables: Array, components: Array}}
  */
 function extractArchitecture(content) {
-  let match = content.match(/##\s+Architecture[^\n]*\n([\s\S]*?)(?=\n##\s)/);
+  const empty = { subsections: [], tables: [], components: [] };
+
+  let match = content.match(/^##\s+Architecture[^\n]*\n([\s\S]*?)(?=\n##\s[^#])/m);
   if (!match) {
-    match = content.match(/##\s+Architecture[^\n]*\n([\s\S]*)/);
+    match = content.match(/^##\s+Architecture[^\n]*\n([\s\S]*)$/m);
   }
-  if (!match) return '';
-  return match[1].trim();
+  if (!match || !match[1].trim()) return empty;
+
+  const sectionContent = match[1];
+  const subsections = [];
+  const tables = [];
+  const components = [];
+
+  // Split into ### subsections
+  const subParts = sectionContent.split(/^###\s+/m);
+  // First part is content before any ### (skip if empty)
+  for (let i = 1; i < subParts.length; i++) {
+    const part = subParts[i];
+    const headingEnd = part.indexOf('\n');
+    if (headingEnd === -1) continue;
+
+    const heading = part.slice(0, headingEnd).trim();
+    const body = part.slice(headingEnd + 1);
+
+    const subsection = { heading };
+
+    // Extract first non-empty, non-table, non-code-fence line as description
+    const descLines = body.split('\n')
+      .filter(l => l.trim() && !l.startsWith('|') && !l.startsWith('```') && !l.startsWith('-'));
+    if (descLines.length > 0) {
+      subsection.description = descLines[0].trim();
+    }
+
+    // Extract code block as diagram
+    const codeMatch = body.match(/```[^\n]*\n([\s\S]*?)```/);
+    if (codeMatch) {
+      subsection.diagram = codeMatch[1].trimEnd();
+    }
+
+    subsections.push(subsection);
+
+    // Extract tables under this subsection
+    const tableLines = body.split('\n').filter(l => l.startsWith('|'));
+    if (tableLines.length >= 3) {
+      const headerCells = tableLines[0].split('|').map(c => c.trim()).filter(c => c);
+      const rows = [];
+      for (let r = 2; r < tableLines.length; r++) {
+        const cells = tableLines[r].split('|').map(c => c.trim()).filter(c => c);
+        const row = {};
+        for (let c = 0; c < headerCells.length; c++) {
+          row[headerCells[c]] = cells[c] || '';
+        }
+        rows.push(row);
+
+        // Infer component from first column of table rows
+        if (cells[0]) {
+          components.push({
+            name: cells[0].replace(/`/g, ''),
+            role: cells[1] || '',
+            inferredFrom: heading
+          });
+        }
+      }
+      tables.push({
+        parentHeading: heading,
+        columns: headerCells,
+        rows
+      });
+    }
+  }
+
+  return { subsections, tables, components };
 }
 
 /**

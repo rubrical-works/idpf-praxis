@@ -1,5 +1,5 @@
 # System Instructions: Desktop Application Developer
-**Version:** v0.81.1
+**Version:** v0.82.0
 **Purpose:** Specialized expertise in desktop application development using Electron, Tauri, and native frameworks for Windows, macOS, and Linux.
 **Core Desktop Expertise**
 **Electron Development**

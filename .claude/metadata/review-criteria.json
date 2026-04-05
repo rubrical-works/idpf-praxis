@@ -34,6 +34,11 @@
           "id": "proposed-fix-described",
           "name": "Proposed fix described",
           "autoCheck": "Check for 'Proposed Fix', 'Root Cause Analysis', 'Fix Approach', or solution description section. Treat as missing if section body is under 20 characters or contains placeholder text ('To be documented', 'TBD', '...')"
+        },
+        {
+          "id": "deployment-impact-assessed",
+          "name": "Deployment impact assessed",
+          "autoCheck": "Check for 'Deployment Impact' section or 'Impact: dev-only' / 'Impact: deployed' in the body. If files or directories are mentioned, cross-reference against minimize-config.json includedDirectories to validate the classification."
         }
       ]
     },
@@ -75,6 +80,11 @@
           "id": "proposed-solution",
           "name": "Proposed solution described",
           "autoCheck": "Check for 'Proposed Solution' or solution description section. Treat as missing if section body is under 20 characters or contains placeholder text ('To be documented', 'TBD', '...'). Standalone stories (not from PRD decomposition) benefit from auto-generated solutions."
+        },
+        {
+          "id": "deployment-impact-assessed",
+          "name": "Deployment impact assessed",
+          "autoCheck": "Check for 'Deployment Impact' section or 'Impact: dev-only' / 'Impact: deployed' in the body. If files or directories are mentioned, cross-reference against minimize-config.json includedDirectories to validate the classification."
         }
       ]
     },
@@ -143,6 +153,11 @@
           "name": "Test coverage proportionate (enhancement)",
           "overrides": "test-coverage-proportionate",
           "autoCheck": "New feature: ACs MUST require unit tests for new functionality. Behavior change: ACs MUST require updated tests reflecting changed behavior. Infer scope from keywords ('refactor', 'replace', 'rewrite', 'across N files') and count of affected components"
+        },
+        {
+          "id": "deployment-impact-assessed",
+          "name": "Deployment impact assessed",
+          "autoCheck": "Check for 'Deployment Impact' section or 'Impact: dev-only' / 'Impact: deployed' in the body. If files or directories are mentioned, cross-reference against minimize-config.json includedDirectories to validate the classification."
         }
       ]
     },

@@ -108,7 +108,7 @@ Skills have been migrated to the [idpf-praxis-skills](https://github.com/rubrica
 
 ---
 
-## Domain Specialists (22)
+## Domain Specialists (25)
 
 | Specialist | Specialist | Specialist |
 |------------|------------|------------|

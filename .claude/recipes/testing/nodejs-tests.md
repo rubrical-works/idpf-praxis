@@ -10,6 +10,8 @@ appliesTo:
   - merge-branch:pre-gate
 prerequisites:
   - package.json with test script
+technology:
+  - node
 ---
 
 ### Run Tests

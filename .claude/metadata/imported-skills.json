@@ -1,9 +1,22 @@
 {
   "$schema": "./imported-skills-schema.json",
-  "lastUpdated": "2026-04-04T14:52:33.827Z",
-  "count": 1,
+  "lastUpdated": "2026-04-05T15:51:22.954Z",
+  "count": 14,
   "skills": [
-    "hal-2026"
+    "ci-cd-pipeline-design",
+    "code-path-discovery",
+    "command-spec-audit",
+    "common-errors",
+    "drawio-generation",
+    "electron-development",
+    "engage-exocortex",
+    "error-handling-patterns",
+    "tdd-failure-recovery",
+    "tdd-green-phase",
+    "tdd-process",
+    "tdd-red-phase",
+    "tdd-refactor-phase",
+    "test-writing-patterns"
   ],
   "shas": {
     "tdd-process": "f39ffbf30858b0a9d781c6569de1011dad6b7bfa",
@@ -19,6 +32,7 @@
     "tdd-red-phase": "ee9e3e19cd274ca5f4f413093dd81a3ee17291a1",
     "tdd-refactor-phase": "0b9ecea921e929279343cf71bb328447b8bf6ba8",
     "code-path-discovery": "31b5eb63517f4d594413e39d5bfbac77228a1e26",
-    "hal-2026": "dc1ec97d8157a1db792fb7f7924855077c017059"
+    "hal-2026": "dc1ec97d8157a1db792fb7f7924855077c017059",
+    "engage-exocortex": "e6f9560f4b671d08931d5d2b1a946c0a6ed3207e"
   }
 }

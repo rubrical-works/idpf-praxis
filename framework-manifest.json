@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.81.1",
+  "version": "0.82.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -12,7 +12,9 @@
     "Accessibility-Specialist",
     "API-Integration-Specialist",
     "Backend-Specialist",
+    "Brand-Strategist",
     "Cloud-Solutions-Architect",
+    "Content-Strategist",
     "Database-Engineer",
     "Data-Engineer",
     "Desktop-Application-Developer",
@@ -30,7 +32,8 @@
     "Security-Engineer",
     "SRE-Specialist",
     "Systems-Programmer-Specialist",
-    "Technical-Writer-Specialist"
+    "Technical-Writer-Specialist",
+    "UX-Designer"
   ],
   "requiredDirectories": [
     "Overview",
@@ -167,6 +170,8 @@
           "shell-safe.js",
           "debug.js",
           "classify-changed-files.js",
+          "detect-tech-stack.js",
+          "paths-ac-generator.js",
           "dtcg-adapter-loader.js",
           "dtcg-init-builder.js",
           "dtcg-schema.js",
@@ -252,6 +257,11 @@
           "name": "ci-features",
           "source": ".claude/metadata/ci-features.json",
           "description": "CI feature registry for /ci list and /ci add commands"
+        },
+        {
+          "name": "domain-entities",
+          "source": ".claude/metadata/domain-entities.json",
+          "description": "Generated domain entities from charter for tech stack awareness"
         },
         {
           "name": "domain-entities-schema",

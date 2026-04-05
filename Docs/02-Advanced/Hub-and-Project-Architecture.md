@@ -31,7 +31,7 @@ Project A and Project B both point to the same hub. When the hub is updated, the
 The alternative is installing the full framework into every project. That works, but:
 
 1. **Updates are per-project.** Updating rules across 5 projects means running the installer 5 times and verifying 5 copies.
-2. **Disk usage multiplies.** The framework includes 22 domain specialists, 38 skills, and hundreds of files. Duplicating this per project wastes space.
+2. **Disk usage multiplies.** The framework includes 25 domain specialists, 38 skills, and hundreds of files. Duplicating this per project wastes space.
 3. **Drift is inevitable.** Project A gets the latest rules, Project B doesn't. Three weeks later you wonder why Project B's assistant behaves differently.
 
 The hub solves all three. Update once, all projects get the new rules, hooks, and scripts immediately through their symlinks.

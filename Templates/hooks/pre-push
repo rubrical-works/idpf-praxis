@@ -1,5 +1,5 @@
 #!/bin/bash
-# **Version:** v0.81.1
+# **Version:** v0.82.0
 #
 # Pre-push hook: Prevents unauthorized version tag pushes
 #

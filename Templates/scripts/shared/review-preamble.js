@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.81.1
+ * @framework-script 0.82.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *

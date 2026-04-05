@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.81.1
+**Version:** v0.82.0
 Comprehensive reference for AI assistants and framework development.
 **Core Principle:** System Instructions define WHO; Frameworks define WHAT process; Skills provide reusable capabilities; Assistant Guidelines ensure quality.
 ---
@@ -243,9 +243,9 @@ src/
 **Location:** `System-Instructions/`
 System Instructions are **REQUIRED** for all framework operation. Frameworks define process; System Instructions define identity and expertise.
 **Domain Specialization Architecture:**
-- 22 Domain Specialists loaded at session startup via `domainSpecialist` in `framework-config.json`
+- 25 Domain Specialists loaded at session startup via `domainSpecialist` in `framework-config.json`
 - Resolves in `System-Instructions/Domain/Base/` or `Domain/Pack/`
-**Domain Specialists (22):**
+**Domain Specialists (25):**
 | # | Specialist | Key Technologies/Focus |
 |---|-----------|----------------------|
 | 1 | Backend | Django, Flask, FastAPI, Express, NestJS, Rails, Spring, Go |
@@ -270,6 +270,9 @@ System Instructions are **REQUIRED** for all framework operation. Frameworks def
 | 20 | Graphics-Engineer | Vulkan, DirectX, OpenGL, Metal, WebGPU; rendering |
 | 21 | Systems-Programmer | Low-level systems, OS internals, compilers, perf-critical code |
 | 22 | Technical-Writer | Docs-as-code, API docs, documentation generators |
+| 23 | Content-Strategist | Messaging frameworks, audience segmentation, editorial workflows, voice/tone |
+| 24 | UX-Designer | Layout, visual hierarchy, color theory, typography, responsive design, interaction |
+| 25 | Brand-Strategist | Brand identity, visual consistency, style guides, brand architecture, governance |
 **Domain Selection Quick Reference:**
 - Full-Stack Web: Backend + Frontend + Database
 - Cloud-Native Microservices: API-Integration + DevOps + Cloud-Architect
@@ -375,12 +378,12 @@ Assistant Guidelines (HOW WELL - quality)
 **Framework Ecosystem Summary**
 - **2 Process Frameworks**: IDPF-Agile, IDPF-Vibe (7 variants)
 - **11 Domain Libraries**: Accessibility, API-Design, Chaos, Contract-Testing, i18n, Observability, Performance, Privacy, QA-Automation, Security, SEO
-- **System Instructions**: 1 Core + 22 Domain Specialists + 1 Domain Selection Guide + 1 Legacy + Vibe Agent (Core + 6 platforms)
+- **System Instructions**: 1 Core + 25 Domain Specialists + 1 Domain Selection Guide + 1 Legacy + Vibe Agent (Core + 6 platforms)
 - **38 Skills**: 6 TDD/BDD, 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps, 2 testing/browser, 2 desktop, 1 diagrams, 4 deployment, 1 SEO, 1 privacy, 2 platform, 1 i18n, 1 test scaffolding
 - **2 Assistant Guidelines**: Software dev (with file operations), Skill creation
 > IDPF-PRD deprecated v0.24; requirements engineering uses `create-prd` skill.
 **Integration Model:**
-- **System Instructions** = WHO + DOMAIN (22 specialists, loaded from `framework-config.json`)
+- **System Instructions** = WHO + DOMAIN (25 specialists, loaded from `framework-config.json`)
 - **Frameworks** = WHAT (Agile: stories/TDD/backlog; Vibe: exploratory > Agile; Domains: review knowledge)
 - **Skills** = TOOLS (`/create-prd`, TDD phases, beginner setup/support)
 - **Assistant Guidelines** = HOW WELL (anti-hallucination, accuracy, verification)

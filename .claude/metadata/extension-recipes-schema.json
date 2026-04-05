@@ -75,6 +75,14 @@
                     "type": "string",
                     "pattern": "^[a-z-]+:[a-z-]+$"
                   }
+                },
+                "technology": {
+                  "type": "array",
+                  "description": "Technology stack identifiers for filtering. Omit for stack-agnostic recipes.",
+                  "items": {
+                    "type": "string",
+                    "enum": ["node", "python", "go", "rust", "java", "ruby"]
+                  }
                 }
               },
               "additionalProperties": false

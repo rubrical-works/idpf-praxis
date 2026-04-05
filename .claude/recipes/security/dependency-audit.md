@@ -9,6 +9,8 @@ appliesTo:
 prerequisites:
   - Audit tool for your language (npm audit, nancy, pip-audit, etc.)
   - "CI integration: /ci add dependency-audit"
+technology:
+  - node
 ---
 
 ### Dependency Audit

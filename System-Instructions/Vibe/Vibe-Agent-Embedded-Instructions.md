@@ -1,5 +1,5 @@
 # Vibe Agent System Instructions (Embedded)
-**Version:** v0.81.1
+**Version:** v0.82.0
 
 **Revision Date:** 2024-11-13
 **Type:** Embedded Systems Agent Behaviors

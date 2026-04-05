@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.81.1
+ * @framework-script 0.82.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -250,10 +250,8 @@ function transformToReleaseFormat(version, date, rawContent, repoUrl, previousTa
     const counts = countCategoryItems(rawContent);
     const summary = generateSummary(counts);
 
-    // Build formatted release notes
-    const titleName = projectName || 'Release';
-    let notes = `# ${titleName} ${version}\n\n`;
-    notes += `**Release Date:** ${date}\n\n`;
+    // Build formatted release notes (no # heading — GitHub displays release title)
+    let notes = `**Release Date:** ${date}\n\n`;
     notes += `## Summary\n\n${summary}\n\n`;
     notes += content.trim();
 

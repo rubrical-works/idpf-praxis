@@ -1,6 +1,6 @@
 {
   "$schema": "./extension-recipes-schema.json",
-  "generatedAt": "2026-04-04T16:08:30.993Z",
+  "generatedAt": "2026-04-05T18:13:27.303Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -86,6 +86,9 @@
             "prepare-release:pre-validation",
             "prepare-release:post-validation",
             "prepare-beta:pre-validation"
+          ],
+          "technology": [
+            "node"
           ]
         },
         {
@@ -106,6 +109,9 @@
             "prepare-beta:post-validation",
             "prepare-release:post-prepare",
             "prepare-beta:post-prepare"
+          ],
+          "technology": [
+            "node"
           ]
         }
       ]
@@ -315,6 +321,9 @@
           "appliesTo": [
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation"
+          ],
+          "technology": [
+            "node"
           ]
         },
         {
@@ -336,6 +345,9 @@
             "prepare-release:pre-validation",
             "merge-branch:pre-gate",
             "work:post-implementation"
+          ],
+          "technology": [
+            "node"
           ]
         },
         {
@@ -397,6 +409,9 @@
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation",
             "merge-branch:pre-gate"
+          ],
+          "technology": [
+            "go"
           ]
         },
         {
@@ -414,6 +429,9 @@
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation",
             "merge-branch:pre-gate"
+          ],
+          "technology": [
+            "java"
           ]
         },
         {
@@ -431,6 +449,9 @@
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation",
             "merge-branch:pre-gate"
+          ],
+          "technology": [
+            "java"
           ]
         },
         {
@@ -448,6 +469,9 @@
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation",
             "merge-branch:pre-gate"
+          ],
+          "technology": [
+            "node"
           ]
         },
         {
@@ -482,6 +506,9 @@
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation",
             "merge-branch:pre-gate"
+          ],
+          "technology": [
+            "python"
           ]
         },
         {
@@ -499,6 +526,9 @@
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation",
             "merge-branch:pre-gate"
+          ],
+          "technology": [
+            "ruby"
           ]
         },
         {
@@ -516,6 +546,9 @@
             "prepare-release:pre-validation",
             "prepare-beta:pre-validation",
             "merge-branch:pre-gate"
+          ],
+          "technology": [
+            "rust"
           ]
         },
         {

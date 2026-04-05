@@ -151,9 +151,73 @@
         "additionalProperties": false
       }
     },
+    "techStack": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["layer", "technology"],
+        "properties": {
+          "layer": {
+            "type": "string",
+            "description": "Architecture layer (e.g., Content, Scripts, CI/CD, Testing)"
+          },
+          "technology": {
+            "type": "string",
+            "description": "Technology used at this layer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Technology stack from charter Tech Stack table"
+    },
     "architecture": {
-      "type": "string",
-      "description": "Architecture section content from charter (distribution model, deployment pipeline)"
+      "type": "object",
+      "properties": {
+        "subsections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["heading"],
+            "properties": {
+              "heading": { "type": "string", "description": "Subsection heading" },
+              "description": { "type": "string", "description": "Brief summary of subsection content" },
+              "diagram": { "type": "string", "description": "ASCII diagram from code block, if present" }
+            },
+            "additionalProperties": false
+          },
+          "description": "### headings under ## Architecture with optional diagrams"
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["parentHeading", "columns", "rows"],
+            "properties": {
+              "parentHeading": { "type": "string", "description": "Subsection heading this table appeared under" },
+              "columns": { "type": "array", "items": { "type": "string" }, "description": "Column headers" },
+              "rows": { "type": "array", "items": { "type": "object" }, "description": "Table rows as objects keyed by column name" }
+            },
+            "additionalProperties": false
+          },
+          "description": "Markdown tables extracted into column/row objects"
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "description": "Component name" },
+              "role": { "type": "string", "description": "Component role" },
+              "inferredFrom": { "type": "string", "description": "Source subsection" }
+            },
+            "additionalProperties": false
+          },
+          "description": "Named components inferred from architecture content"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Structured architecture from charter Architecture section"
     },
     "currentFocus": {
       "type": "array",

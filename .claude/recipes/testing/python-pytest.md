@@ -10,6 +10,8 @@ appliesTo:
   - merge-branch:pre-gate
 prerequisites:
   - pytest installed
+technology:
+  - python
 ---
 
 ### Run Tests
