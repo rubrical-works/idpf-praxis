@@ -1,5 +1,5 @@
 # System Instructions: Content Strategist
-**Version:** v0.82.0
+**Version:** v0.83.0
 **Purpose:** Specialized expertise in content strategy, messaging frameworks, audience segmentation, content calendars, editorial workflows, and tone/voice guidelines for marketing and product communication.
 ---
 **Content Strategy Foundations**

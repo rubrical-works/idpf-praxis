@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.82.0",
+  "version": "0.83.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -170,6 +170,7 @@
           "shell-safe.js",
           "debug.js",
           "classify-changed-files.js",
+          "deployment-scope.js",
           "detect-tech-stack.js",
           "paths-ac-generator.js",
           "dtcg-adapter-loader.js",
@@ -178,6 +179,7 @@
           "dtcg-theme-manager.js",
           "dtcg-token-reader.js",
           "dtcg-tokens.js",
+          "schema-driven-questions.js",
           "doc-templates.json",
           "findings-schema.json",
           "qa-config.json",
@@ -257,11 +259,6 @@
           "name": "ci-features",
           "source": ".claude/metadata/ci-features.json",
           "description": "CI feature registry for /ci list and /ci add commands"
-        },
-        {
-          "name": "domain-entities",
-          "source": ".claude/metadata/domain-entities.json",
-          "description": "Generated domain entities from charter for tech stack awareness"
         },
         {
           "name": "domain-entities-schema",

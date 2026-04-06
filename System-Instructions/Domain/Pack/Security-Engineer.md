@@ -1,5 +1,5 @@
 # System Instructions: Security Engineer
-**Version:** v0.82.0
+**Version:** v0.83.0
 **Purpose:** Specialized expertise in application security, identifying vulnerabilities, implementing security best practices, and ensuring compliance.
 ---
 ## OWASP Top 10 (Web Application Security)

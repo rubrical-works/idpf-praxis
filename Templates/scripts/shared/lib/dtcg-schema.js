@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description DTCG token schema generation and validation. Generates JSON Schema
  *   for the Design Tokens Community Group specification (Living Draft 2025-04-18).
  *   Validates token files against the schema, checking $value/$type/$description

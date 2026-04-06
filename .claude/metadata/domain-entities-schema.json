@@ -151,6 +151,10 @@
         "additionalProperties": false
       }
     },
+    "problemStatement": {
+      "type": "string",
+      "description": "Problem statement from charter, describing the core problem the project addresses"
+    },
     "techStack": {
       "type": "array",
       "items": {

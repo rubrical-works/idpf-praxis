@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description Generate a Keep a Changelog formatted entry from categorized commits. Accepts piped input from analyze-commits.js or reads commits directly. Groups changes by type (Added, Changed, Fixed, Removed) with issue references. Used by /prepare-release.
  * @checksum sha256:placeholder
  *
@@ -79,12 +79,19 @@ function generateChangelog(commits, version, date) {
         deprecated: [],
         removed: [],
         fixed: [],
-        security: []
+        security: [],
+        internal: []
     };
 
-    // Categorize commits
+    // Categorize commits — dev-only commits go to Internal
     for (const commit of commits) {
         const entry = `- ${capitalizeFirst(commit.message)}`;
+
+        // Dev-only commits grouped under Internal
+        if (commit.deploymentScope === 'dev-only') {
+            sections.internal.push(entry);
+            continue;
+        }
 
         switch (commit.type) {
             case 'feat':
@@ -145,6 +152,10 @@ function generateChangelog(commits, version, date) {
 
     if (sections.security.length > 0) {
         md += `\n### Security\n${sections.security.join('\n')}\n`;
+    }
+
+    if (sections.internal.length > 0) {
+        md += `\n### Internal\n${sections.internal.join('\n')}\n`;
     }
 
     return md;

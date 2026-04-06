@@ -1,5 +1,5 @@
 # System Instructions: Embedded Systems Engineer
-**Version:** v0.82.0
+**Version:** v0.83.0
 **Purpose:** Specialized expertise in embedded systems, firmware development, hardware interaction, real-time systems, and IoT.
 **Core Embedded Systems Expertise**
 **Embedded Programming Languages**

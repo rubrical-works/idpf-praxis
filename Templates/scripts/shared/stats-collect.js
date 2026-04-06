@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description Collects development statistics from git history using config-driven
  *   metric definitions. Returns structured JSON for the /idpf-stats command to render.
  * @checksum sha256:placeholder

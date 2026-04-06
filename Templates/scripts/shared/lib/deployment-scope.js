@@ -1,0 +1,113 @@
+// Rubrical Works (c) 2026
+/**
+ * @framework-script 0.83.0
+ * @description Classify files and commits by deployment scope (deployed vs dev-only).
+ * Uses minimize-config.json rules, deployment chain awareness, and known path patterns.
+ * Used by generate-changelog.js to separate user-facing from internal changes.
+ * @checksum sha256:placeholder
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// --- Load minimize-config.json ---
+
+let _config = null;
+
+function loadConfig() {
+    if (_config) return _config;
+    try {
+        const configPath = path.resolve(__dirname, '../../framework/minimize-config.json');
+        _config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch {
+        _config = { excludedCommands: [], excludedDirectories: [], includedDirectories: [] };
+    }
+    return _config;
+}
+
+// --- Dev-only path patterns (not in minimize-config but known dev-only) ---
+
+const DEV_ONLY_PATTERNS = [
+    /^tests\//,
+    /^\.claude\/rules\//,           // Generated from Reference/ sources
+    /^\.github\//,                  // CI workflows
+    /^CLAUDE\.md$/,
+    /^\.gh-pmu\.json$/,
+    /^framework-config\.json$/,
+    /^CHARTER\.md$/,
+    /^Skills\/(?!Packaged\/)/,      // Skill source dirs (Packaged/ is deployed)
+    /^Inception\//,
+    /^Construction\//,
+    /^Transition\//,
+];
+
+// --- Deployed path patterns (known deployed regardless of minimize-config) ---
+
+const DEPLOYED_PATTERNS = [
+    /^\.claude\/scripts\//,         // Symlinked to user projects
+    /^\.claude\/hooks\//,           // Symlinked to user projects
+    /^\.claude\/metadata\//,        // Symlinked to user projects
+    /^Skills\/Packaged\//,          // Skill zip files deployed
+    /^framework-manifest\.json$/,   // Deployed as-is
+    /^CHANGELOG\.md$/,              // Deployed as-is
+    /^LICENSE$/,                    // Deployed as-is
+];
+
+/**
+ * Classify a single file path as 'deployed' or 'dev-only'.
+ * @param {string} filePath - Relative file path from repo root
+ * @returns {'deployed'|'dev-only'}
+ */
+function classifyFile(filePath) {
+    const config = loadConfig();
+    const normalized = filePath.replace(/\\/g, '/');
+
+    // Check excluded commands first (most specific)
+    if (config.excludedCommands && config.excludedCommands.includes(normalized)) {
+        return 'dev-only';
+    }
+
+    // Check dev-only patterns
+    for (const pattern of DEV_ONLY_PATTERNS) {
+        if (pattern.test(normalized)) return 'dev-only';
+    }
+
+    // Check excluded directories
+    if (config.excludedDirectories) {
+        for (const dir of config.excludedDirectories) {
+            if (normalized.startsWith(dir + '/') || normalized === dir) {
+                return 'dev-only';
+            }
+        }
+    }
+
+    // Check deployed patterns
+    for (const pattern of DEPLOYED_PATTERNS) {
+        if (pattern.test(normalized)) return 'deployed';
+    }
+
+    // Check included directories (deployed via .min-mirror/)
+    if (config.includedDirectories) {
+        for (const dir of config.includedDirectories) {
+            if (normalized.startsWith(dir + '/') || normalized === dir) {
+                return 'deployed';
+            }
+        }
+    }
+
+    // Default: dev-only (unknown files are assumed internal)
+    return 'dev-only';
+}
+
+/**
+ * Classify a commit based on its changed files.
+ * A commit is 'deployed' if ANY of its files are deployed.
+ * @param {string[]} files - Array of file paths changed in the commit
+ * @returns {'deployed'|'dev-only'}
+ */
+function classifyCommit(files) {
+    if (!files || files.length === 0) return 'dev-only';
+    return files.some(f => classifyFile(f) === 'deployed') ? 'deployed' : 'dev-only';
+}
+
+module.exports = { classifyFile, classifyCommit };

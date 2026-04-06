@@ -1,5 +1,5 @@
 # Framework Transitions Reference
-**Version:** v0.82.0
+**Version:** v0.83.0
 **Purpose:** Framework transition rules, diagrams, and hybrid usage patterns
 ## Framework Transition Matrix
 ### Workflow Diagram

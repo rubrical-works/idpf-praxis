@@ -9,6 +9,23 @@
     "$schema": { "type": "string" },
     "version": { "type": "string" },
     "description": { "type": "string" },
+    "typeFilter": {
+      "type": "object",
+      "description": "Controls which issue types are eligible for interdependence analysis",
+      "properties": {
+        "eligible": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Issue types that trigger interdependence analysis"
+        },
+        "excluded": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Issue types always excluded from interdependence analysis"
+        }
+      },
+      "required": ["eligible", "excluded"]
+    },
     "dimensions": {
       "type": "object",
       "required": ["overlap", "ordering", "conflicts", "sharedCriteria"],

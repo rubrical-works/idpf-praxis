@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description Analyze interdependence between multiple issues.
  * Detects overlap, ordering dependencies, conflicts, and shared criteria
  * using config-driven evaluation dimensions.
@@ -289,6 +289,22 @@ function computeSuggestedOrder(issues, orderingFindings) {
 }
 
 /**
+ * Check whether an issue's labels make it eligible for interdependence analysis.
+ * Reads typeFilter from config. Excluded labels take precedence over eligible.
+ * @param {string[]} labels - Array of label names from the issue
+ * @returns {boolean} true if the issue is eligible
+ */
+function isEligibleForInterdependence(labels) {
+  if (!labels || labels.length === 0) return false;
+  const config = loadConfig();
+  const typeFilter = config.typeFilter || { eligible: ['bug', 'enhancement', 'prd', 'test-plan'], excluded: ['proposal', 'epic'] };
+  // Excluded takes precedence
+  if (labels.some(l => typeFilter.excluded.includes(l))) return false;
+  // Must have at least one eligible label
+  return labels.some(l => typeFilter.eligible.includes(l));
+}
+
+/**
  * Analyze interdependence between multiple issues.
  * @param {Array<{number, title, type, labels, body}>} issues
  * @returns {{ issues: number[], findings: Array, suggestedOrder: number[] }}
@@ -339,4 +355,4 @@ function analyzeInterdependence(issues) {
   };
 }
 
-module.exports = { analyzeInterdependence };
+module.exports = { analyzeInterdependence, isEligibleForInterdependence };

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description Generate acceptance criteria from behavioral paths discovered by /paths.
  * Only applies to enhancement issues. Produces ACs with inline path references.
  * @checksum sha256:placeholder

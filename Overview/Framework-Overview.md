@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.82.0
+**Version:** v0.83.0
 Comprehensive reference for AI assistants and framework development.
 **Core Principle:** System Instructions define WHO; Frameworks define WHAT process; Skills provide reusable capabilities; Assistant Guidelines ensure quality.
 ---

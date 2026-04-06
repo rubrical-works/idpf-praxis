@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description Parse git commits since the last semver tag and categorize by conventional commit type (feat, fix, chore, etc.). Extracts type, scope, breaking change flags, and issue references. Used by /prepare-release and piped into generate-changelog.js.
  * @checksum sha256:placeholder
  *
@@ -10,6 +10,7 @@
  */
 
 const { execSync } = require('child_process');
+const { classifyCommit } = require('./lib/deployment-scope');
 
 function parseConventionalCommit(message) {
     // Split into two patterns to avoid nested quantifiers flagged by safe-regex
@@ -65,7 +66,16 @@ async function main() {
             const [hash, ...rest] = line.split('|');
             const message = rest.join('|');
             const parsed = parseConventionalCommit(message);
-            return { hash: hash.substring(0, 7), ...parsed };
+            // Get changed files for deployment scope classification
+            let files = [];
+            try {
+                const filesRaw = execSync(`git diff-tree --no-commit-id --name-only -r ${hash}`, {
+                    encoding: 'utf8'
+                }).trim();
+                files = filesRaw ? filesRaw.split('\n') : [];
+            } catch { /* ignore — scope defaults to dev-only */ }
+            const deploymentScope = classifyCommit(files);
+            return { hash: hash.substring(0, 7), ...parsed, files, deploymentScope };
         });
 
         const summary = {

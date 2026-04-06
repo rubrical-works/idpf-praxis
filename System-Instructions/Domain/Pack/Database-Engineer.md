@@ -1,5 +1,5 @@
 # System Instructions: Database Engineer
-**Version:** v0.82.0
+**Version:** v0.83.0
 **Purpose:** Specialized expertise in database design, optimization, management, and ensuring data integrity and performance at scale.
 ---
 **Relational Databases**

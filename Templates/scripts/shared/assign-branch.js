@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -97,13 +97,21 @@ function getLastVersion() {
  * Get issue labels for a given issue number
  */
 async function getIssueLabels(issueNumber) {
+    // First attempt
     try {
         const result = await execAsyncSafe(`gh issue view ${issueNumber} --json labels -q ".labels[].name"`);
-        return result ? result.split('\n').filter(l => l.trim()) : [];
+        if (result) return { labels: result.split('\n').filter(l => l.trim()), loaded: true };
     } catch (err) {
-        if (showTiming) console.log(`  ⚠ getIssueLabels(${issueNumber}) failed: ${err.message}`);
+        console.log(`  ⚠ getIssueLabels(#${issueNumber}): first attempt failed (${err.message}), retrying...`);
     }
-    return [];
+    // Retry once
+    try {
+        const result = await execAsyncSafe(`gh issue view ${issueNumber} --json labels -q ".labels[].name"`);
+        if (result) return { labels: result.split('\n').filter(l => l.trim()), loaded: true };
+    } catch (err) {
+        console.log(`  ⚠ getIssueLabels(#${issueNumber}): retry failed — epic label detection unavailable`);
+    }
+    return { labels: [], loaded: false };
 }
 
 /**
@@ -121,7 +129,13 @@ async function expandEpicSubIssues(issueNumbers) {
 
     for (const num of issueNumbers) {
         expanded.push(num);
-        const labels = await getIssueLabels(num);
+        const { labels, loaded } = await getIssueLabels(num);
+
+        if (!loaded) {
+            console.log(`  ⚠ Epic #${num}: label detection failed — assign sub-issues manually`);
+            continue;
+        }
+
         if (!labels.some(l => l.toLowerCase() === 'epic')) continue;
 
         // Fetch sub-issues for this epic
@@ -130,15 +144,51 @@ async function expandEpicSubIssues(issueNumbers) {
         const children = data && data.children ? data.children : [];
 
         if (children.length > 0) {
-            console.log(`  ↳ Epic #${num}: expanding ${children.length} sub-issues`);
+            const childNums = children.map(c => `#${c.number}`).join(', ');
+            console.log(`  ↳ Epic #${num}: expanded ${children.length} sub-issues (${childNums})`);
             for (const child of children) {
                 expanded.push(child.number);
                 epicSubIssues.add(child.number);
             }
+        } else {
+            console.log(`  ⚠ Epic #${num}: has no sub-issues to expand`);
         }
     }
 
     return { expanded, epicSubIssues };
+}
+
+/**
+ * Classify an expansion result for reporting purposes.
+ * @param {object} opts
+ * @param {number} opts.issueNumber
+ * @param {boolean} opts.isEpic - Whether the issue has the epic label
+ * @param {boolean} opts.labelsLoaded - Whether labels were successfully fetched
+ * @param {Array} opts.children - Sub-issues found
+ * @returns {{ status: string, count: number, warning: string|null }}
+ */
+function classifyExpansionResult({ issueNumber, isEpic, labelsLoaded, children }) {
+    if (!labelsLoaded) {
+        return {
+            status: 'label_failed',
+            count: 0,
+            warning: `Epic #${issueNumber}: label detection failed — assign sub-issues manually`
+        };
+    }
+
+    if (!isEpic) {
+        return { status: 'not_epic', count: 0, warning: null };
+    }
+
+    if (children.length === 0) {
+        return {
+            status: 'no_children',
+            count: 0,
+            warning: `Epic #${issueNumber}: has no sub-issues to expand`
+        };
+    }
+
+    return { status: 'expanded', count: children.length, warning: null };
 }
 
 /**
@@ -389,7 +439,8 @@ async function main() {
         console.log('');
 
         const lastVersion = getLastVersion();
-        const labels = issueNumbers.length > 0 ? await getIssueLabels(issueNumbers[0]) : [];
+        const labelsResult = issueNumbers.length > 0 ? await getIssueLabels(issueNumbers[0]) : { labels: [], loaded: false };
+        const labels = labelsResult.labels;
 
         console.log(`CONTEXT:`);
         console.log(`  Last version: ${lastVersion ? lastVersion.raw : '(none)'}`);
@@ -673,6 +724,7 @@ module.exports = {
     linkToTracker,
     linkAllToTracker,
     expandEpicSubIssues,
+    classifyExpansionResult,
     hasBranchAssigned,
     main,
     // Export helpers for testing

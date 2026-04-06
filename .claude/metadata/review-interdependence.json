@@ -2,6 +2,10 @@
   "$schema": "review-interdependence-schema.json",
   "version": "1.0.0",
   "description": "Configuration for multi-issue interdependence analysis in /review-issue",
+  "typeFilter": {
+    "eligible": ["bug", "enhancement", "prd", "test-plan"],
+    "excluded": ["proposal", "epic"]
+  },
   "dimensions": {
     "overlap": {
       "enabled": true,

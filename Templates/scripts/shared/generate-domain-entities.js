@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.82.0
+ * @framework-script 0.83.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
@@ -62,6 +62,9 @@ function generateFromCharter(charterContent, projectVersion) {
   // Extract current focus items
   const currentFocus = extractListItems(charterContent, 'Current Focus');
 
+  // Extract problem statement
+  const problemStatement = extractSection(charterContent, 'Problem Statement');
+
   const today = new Date().toISOString().slice(0, 10);
 
   return {
@@ -74,6 +77,7 @@ function generateFromCharter(charterContent, projectVersion) {
       boundary: buildBoundary(projectName, inScope)
     },
     entities,
+    problemStatement,
     techStack,
     architecture,
     currentFocus,
