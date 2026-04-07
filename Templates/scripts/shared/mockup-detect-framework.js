@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.83.0
+ * @framework-script 0.84.0
  * @description Detect UI framework for mockup generation.
  * Used by /mockups to decide between framework-native components and .drawio.svg fallback.
  * @checksum sha256:placeholder

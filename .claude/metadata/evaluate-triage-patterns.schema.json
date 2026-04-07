@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://idpf-praxis/.claude/metadata/evaluate-triage-patterns.schema.json",
+  "title": "Evaluate Triage Patterns",
+  "description": "Schema for evaluate-triage-patterns.json (#2289). Drift between this schema and the data file must fail CI. The promotes_to enum is deliberately closed — adding a new value requires a schema bump and a helper-script update.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "description", "source", "patterns"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "patterns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": { "$ref": "#/definitions/pattern" }
+    }
+  },
+  "definitions": {
+    "pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "match", "suggestion", "promotes_to"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$",
+          "description": "Stable kebab-case identifier. Logged in the run log when a triage promotion fires."
+        },
+        "match": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Regex pattern (JavaScript flavor) matched against a Not-Verified bullet's text."
+        },
+        "suggestion": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Read-only command template the evaluator should run. May contain {placeholders} the evaluator substitutes from the claim text."
+        },
+        "promotes_to": {
+          "type": "string",
+          "enum": [
+            "verified_if_nonempty",
+            "verified_if_empty",
+            "verified_if_confirmed",
+            "verified_if_ordered",
+            "keep_not_verified"
+          ],
+          "description": "Closed enum declaring what the triage result means. Adding a new value requires bumping this schema AND updating triage-not-verified.js AND mark-evaluate-task.js. This closure is intentional — it prevents typos like 'veryfied_if_nonempty' from slipping through."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional human-readable explanation of when the pattern fires and how the evaluator should interpret the suggestion output."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "description": "Triage patterns for /evaluate Not-Verified items (#2289). Each pattern matches a common Not-Verified phrasing against a regex and suggests a cheap read-only command the evaluator can run to promote the item to Verified. Patterns are hand-authored; new patterns require a schema bump if they introduce new promotes_to values.",
+  "source": "2026-04-07 /evaluate run on #2282 surfaced 8 Not-Verified items, 5 of which were trivially verifiable with existing tools.",
+  "patterns": [
+    {
+      "id": "was-file-modified-in-issue",
+      "match": "Whether `.*` was actually modified|Whether `.*` was changed",
+      "suggestion": "git log --name-only --grep=\"Refs #{issue}\" | grep {file}",
+      "promotes_to": "verified_if_nonempty",
+      "notes": "Matches claims like 'Whether `validate-manifest-completeness.js` was actually modified in #2282'. Evaluator runs the command; non-empty output means the file appears in at least one commit."
+    },
+    {
+      "id": "ac-files-changed-check",
+      "match": "Whether AC[0-9]+ .* holds|no changes to .*\\.md",
+      "suggestion": "git log --name-only --grep=\"Refs #{issue}\" | grep {pattern}",
+      "promotes_to": "verified_if_empty",
+      "notes": "Matches AC-style claims about absence (e.g., 'no changes to .claude/rules/*.md'). Promotes when the grep returns EMPTY — proving the absence claim."
+    },
+    {
+      "id": "grep-for-consumer",
+      "match": "Whether `.*` is (actually )?consumed by (any )?code",
+      "suggestion": "grep -rn \"{symbol}\" .claude/ tests/",
+      "promotes_to": "verified_if_nonempty",
+      "notes": "Matches 'is X consumed by any code' — proves consumption when a grep returns non-empty results."
+    },
+    {
+      "id": "inspect-validator-source",
+      "match": "Whether .* check reads live .* or .* fixture",
+      "suggestion": "Read {validator-path} and look for fixture references",
+      "promotes_to": "verified_if_confirmed",
+      "notes": "Matches claims about whether a check reads live data vs a fixture. Requires manual confirmation from the Read result."
+    },
+    {
+      "id": "git-timestamp-ordering",
+      "match": "Whether .* was resolved chronologically before|Whether .* landed before",
+      "suggestion": "git log --format=\"%ad %s\" --grep=\"Refs #{issue}\"",
+      "promotes_to": "verified_if_ordered",
+      "notes": "Matches chronological ordering claims. Evaluator compares timestamps from the command output."
+    },
+    {
+      "id": "external-repo",
+      "match": "Whether .* in px-manager|external repo|outside this repo",
+      "suggestion": "cannot verify — external repo",
+      "promotes_to": "keep_not_verified",
+      "notes": "Pattern that deliberately does NOT promote. External-repo claims stay under Not Verified with an explanatory reason."
+    }
+  ]
+}

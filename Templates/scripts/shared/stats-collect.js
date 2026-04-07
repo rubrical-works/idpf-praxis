@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.83.0
+ * @framework-script 0.84.0
  * @description Collects development statistics from git history using config-driven
  *   metric definitions. Returns structured JSON for the /idpf-stats command to render.
  * @checksum sha256:placeholder
@@ -27,6 +27,8 @@ const CACHE_PATH = path.join(STATS_DIR, 'repos.json');
 function parseArgs(args) {
   let since = null;
   let until = null;
+  let today = false;
+  let date = null;
   let repos;
   let useCache;
   let reposEdit = false;
@@ -36,6 +38,10 @@ function parseArgs(args) {
       since = args[++i];
     } else if (args[i] === '--until' && args[i + 1]) {
       until = args[++i];
+    } else if (args[i] === '--today') {
+      today = true;
+    } else if (args[i] === '--date' && args[i + 1]) {
+      date = args[++i];
     } else if (args[i] === '--repos') {
       if (args[i + 1] && !args[i + 1].startsWith('--')) {
         repos = args[++i].split(',').map(s => s.trim()).filter(Boolean);
@@ -47,6 +53,25 @@ function parseArgs(args) {
       reposEdit = true;
     }
   }
+
+  // Mutual-exclusion validation for --today and --date
+  if (today && (since || until || date)) {
+    throw new Error('--today cannot be combined with --since/--until/--date');
+  }
+  if (date && (since || until || today)) {
+    throw new Error('--date cannot be combined with --since/--until/--today');
+  }
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error('Invalid date format. Use YYYY-MM-DD.');
+  }
+
+  // --date is a shortcut for --since DATE --until DATE
+  if (date) {
+    since = date;
+    until = date;
+  }
+  // --today is a shortcut for the no-flag default; leaves since/until null
+  // so the existing default block computes midnight..now.
 
   const tzOffset = getTzOffset();
 

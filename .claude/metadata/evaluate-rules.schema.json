@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://idpf-praxis/.claude/metadata/evaluate-rules.schema.json",
+  "title": "Evaluate Rules",
+  "description": "Schema for hand-authored anti-hallucination rules consumed by /evaluate. Drift between this schema and evaluate-rules.json must fail CI.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "description", "source", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version of this rules file. Bump on breaking shape changes."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to the prose ruleset this file derives from."
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": { "$ref": "#/definitions/rule" }
+    }
+  },
+  "definitions": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "summary",
+        "source_section",
+        "trigger",
+        "verification",
+        "exit_condition",
+        "fallback",
+        "evidence_patterns",
+        "fallback_action"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$",
+          "description": "Stable kebab-case identifier. Used by mark-evaluate-task.js to reference rules."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-paragraph plain-language statement of the rule."
+        },
+        "source_section": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Section heading in the prose source file this rule derives from."
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-language condition under which the rule fires during an evaluation run."
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method", "allowed_tools", "must_produce"],
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["tool_call", "comparison", "enumeration"],
+              "description": "Mechanical category of verification. tool_call = single artifact lookup; comparison = two-source diff; enumeration = list-every-item."
+            },
+            "allowed_tools": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": ["Read", "Glob", "Grep", "Bash:read-only"]
+              },
+              "description": "Read-only tools the helper script will accept as evidence sources. Mutating tools are deliberately excluded."
+            },
+            "must_produce": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Concrete artifact that must exist in the run transcript for the rule to be marked satisfied. This is the contract mark-evaluate-task.js checks."
+            }
+          }
+        },
+        "exit_condition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Mechanical predicate that, when true, means the rule has been satisfied for the current evaluation target."
+        },
+        "fallback": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the evaluator must do when verification cannot be produced. Must be a non-mutating action (label, omit, halt)."
+        },
+        "evidence_patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requires_claim", "evidence_must_contain_claim"],
+          "properties": {
+            "requires_claim": {
+              "type": "boolean",
+              "description": "If true, mark-evaluate-task.js requires an additional --claim <text> argument beyond --evidence. The claim is the specific assertion being made; the helper uses it for content binding and run-log entries."
+            },
+            "evidence_must_contain_claim": {
+              "type": "boolean",
+              "description": "If true, the --evidence file's contents must contain the --claim text verbatim (case-sensitive substring match). Forces the evidence file to actually support the specific claim, not just exist."
+            }
+          },
+          "description": "Per-rule evidence contract (#2288). Binds the --evidence path to the specific claim via the --claim flag. Closes the 'file exists but doesn't support the claim' hole exposed by the 2026-04-06 /evaluate meta-run."
+        },
+        "fallback_action": {
+          "type": "string",
+          "enum": [
+            "label_unverifiable",
+            "halt_and_report",
+            "omit_claim",
+            "conflict_unresolved"
+          ],
+          "description": "Mechanically enforced fallback when the rule cannot be satisfied (#2288). label_unverifiable = move the claim to the ## Unverifiable section. halt_and_report = evaluation must halt; no final verdict allowed (enforced by --finalize). omit_claim = remove the claim from output entirely. conflict_unresolved = report both conflicting values without picking one."
+        }
+      }
+    }
+  }
+}

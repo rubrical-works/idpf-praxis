@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.83.0",
+  "version": "0.84.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -42,10 +42,7 @@
   ],
   "excludedFromDeployment": [
     ".gitkeep",
-    "clear-hook.js",
-    "compact-hook.js",
     "precompact-hook.js",
-    "resume-hook.js",
     "test-on-change.js",
     "imported-skills.json"
   ],
@@ -169,6 +166,7 @@
           "input-validation.js",
           "shell-safe.js",
           "debug.js",
+          "framework-config.js",
           "classify-changed-files.js",
           "deployment-scope.js",
           "detect-tech-stack.js",
@@ -193,7 +191,11 @@
         "files": [
           "workflow-trigger.js",
           "pre-push",
-          "block-cd.js"
+          "block-cd.js",
+          "startup-hook.js",
+          "clear-hook.js",
+          "resume-hook.js",
+          "compact-hook.js"
         ]
       }
     },
@@ -208,24 +210,90 @@
         "matcher": "Bash",
         "file": "block-cd.js",
         "timeout": 5
+      },
+      {
+        "event": "SessionStart",
+        "matcher": "startup",
+        "file": "startup-hook.js",
+        "timeout": 60
+      },
+      {
+        "event": "SessionStart",
+        "matcher": "clear",
+        "file": "clear-hook.js",
+        "timeout": 5
+      },
+      {
+        "event": "SessionStart",
+        "matcher": "resume",
+        "file": "resume-hook.js",
+        "timeout": 5
+      },
+      {
+        "event": "SessionStart",
+        "matcher": "compact",
+        "file": "compact-hook.js",
+        "timeout": 5
       }
     ],
-    "rules": {
-      "always": [
-        "01-anti-hallucination.md",
-        "03-startup.md",
-        "04-charter-enforcement.md",
-        "06-runtime-triggers.md"
-      ],
-      "conditional": {
-        "enableGitHubWorkflow": [
-          "02-github-workflow.md"
-        ],
-        "windows": [
-          "05-windows-shell.md"
-        ]
+    "rules": [
+      {
+        "id": "anti-hallucination-framework",
+        "src": "Assistant/Anti-Hallucination-Rules-for-Framework-Development.md",
+        "dest": "01-anti-hallucination.md",
+        "env": "dev"
+      },
+      {
+        "id": "anti-hallucination-software",
+        "src": "Assistant/Anti-Hallucination-Rules-for-Software-Development.md",
+        "dest": "01-anti-hallucination.md",
+        "env": "deployed"
+      },
+      {
+        "id": "github-workflow",
+        "src": "Reference/GitHub-Workflow.md",
+        "dest": "02-github-workflow.md",
+        "env": "both"
+      },
+      {
+        "id": "session-startup",
+        "src": "Reference/Session-Startup-Instructions.md",
+        "dest": "03-startup.md",
+        "env": "both",
+        "framework_only_strip": true
+      },
+      {
+        "id": "deployment-awareness",
+        "src": "Reference/Deployment-Awareness.md",
+        "dest": "04-deployment-awareness.md",
+        "env": "dev"
+      },
+      {
+        "id": "charter-enforcement",
+        "src": "Reference/Charter-Enforcement.md",
+        "dest": "04-charter-enforcement.md",
+        "env": "deployed"
+      },
+      {
+        "id": "windows-shell",
+        "src": "Reference/Windows-Shell-Safety.md",
+        "dest": "05-windows-shell.md",
+        "env": "both",
+        "platformOnly": "win32"
+      },
+      {
+        "id": "runtime-triggers",
+        "src": "Reference/Runtime-Artifact-Triggers.md",
+        "dest": "06-runtime-triggers.md",
+        "env": "both"
+      },
+      {
+        "id": "task-creation-timing",
+        "src": "Reference/Task-Creation-Timing.md",
+        "dest": "07-task-creation-timing.md",
+        "env": "dev"
       }
-    },
+    ],
     "metadata": {
       "source": ".claude/metadata/",
       "target": ".claude/metadata/",
@@ -234,6 +302,31 @@
           "name": "extension-recipes",
           "source": ".claude/metadata/extension-recipes.json",
           "description": "Extension recipes for /extensions recipes command"
+        },
+        {
+          "name": "evaluate-rules",
+          "source": ".claude/metadata/evaluate-rules.json",
+          "description": "Hand-authored anti-hallucination rules enforced by /evaluate (#2286)"
+        },
+        {
+          "name": "evaluate-rules-schema",
+          "source": ".claude/metadata/evaluate-rules.schema.json",
+          "description": "JSON schema for evaluate-rules.json; drift fails CI (#2286)"
+        },
+        {
+          "name": "evaluate-triage-patterns",
+          "source": ".claude/metadata/evaluate-triage-patterns.json",
+          "description": "Triage patterns for promoting recurring NOT VERIFIED outputs to evaluate-rules (#2289)"
+        },
+        {
+          "name": "evaluate-triage-patterns-schema",
+          "source": ".claude/metadata/evaluate-triage-patterns.schema.json",
+          "description": "JSON schema for evaluate-triage-patterns.json (#2289)"
+        },
+        {
+          "name": "framework-config-schema",
+          "source": ".claude/metadata/framework-config.schema.json",
+          "description": "JSON schema for framework-config.json; validated at write time by framework-config.js helper (#2292)"
         },
         {
           "name": "extension-points",

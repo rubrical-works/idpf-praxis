@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for PRD Work
-**Version:** v0.83.0
+**Version:** v0.84.0
 **Core Principle:** Stakeholder truth over helpful invention. Traceability over assumption. Validation over completion.
 Every requirement must trace to a stakeholder statement, existing code, or documented source -- never to the assistant's imagination.
 ---

@@ -64,7 +64,7 @@ If Claude Code stops recognizing `.claude/` as a special directory, or renames a
 |------|---------|
 | `01-anti-hallucination.md` | Prevents the assistant from inventing versions, counts, or file paths |
 | `02-github-workflow.md` | GitHub issue/project board integration (gh pmu commands) |
-| `03-session-startup.md` | Session initialization procedure |
+| `03-startup.md` | Session initialization procedure |
 | `04-deployment-awareness.md` | Dev → distribution deployment chain |
 | `05-windows-shell.md` | Windows Git Bash safety patterns |
 

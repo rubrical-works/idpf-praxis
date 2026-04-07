@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": ".claude/metadata/framework-config.schema.json",
+  "title": "Framework Config Schema",
+  "description": "Schema for framework-config.json — IDPF framework project configuration. Validates both self-hosted dev repos and PHM-deployed user projects via the optional selfHosted field.",
+  "type": "object",
+  "required": ["processFramework", "frameworkVersion", "frameworkPath", "platform"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference (relative path to this schema file)"
+    },
+    "processFramework": {
+      "type": "string",
+      "enum": ["IDPF-Structured", "IDPF-Agile", "IDPF-Vibe", "IDPF-LTS"],
+      "description": "Active process framework methodology"
+    },
+    "domainSpecialist": {
+      "type": "string",
+      "description": "Active domain specialist role (top-level — written by /change-domain-expert and PHM)"
+    },
+    "reviewMode": {
+      "type": "string",
+      "enum": ["solo", "team", "enterprise"],
+      "description": "Review mode configuration"
+    },
+    "activeDomains": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Active domain extensions for review criteria (lowercase domain IDs)"
+    },
+    "projectSkills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Skills installed in this project (sourced from .claude/skills/*/SKILL.md, sorted alphabetically)"
+    },
+    "suggestedSkills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Confirmed skill suggestions persisted by /create-prd for px-manager discovery"
+    },
+    "deploymentTarget": {
+      "type": ["string", "null"],
+      "enum": ["vercel", "railway", "digitalocean", "render", "other", null],
+      "description": "Deployment platform selected during /charter (null when self-hosted or no platform chosen)"
+    },
+    "frameworkVersion": {
+      "type": "string",
+      "description": "Installed framework version (semver string)"
+    },
+    "installedDate": {
+      "type": "string",
+      "description": "Date framework was installed (ISO date or YYYY-MM-DD)"
+    },
+    "frameworkPath": {
+      "type": "string",
+      "description": "Absolute path to the framework root (or '.' for self-hosted)"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["win32", "darwin", "linux"],
+      "description": "Operating system platform"
+    },
+    "selfHosted": {
+      "type": "boolean",
+      "description": "Whether this project self-hosts the framework (true only for idpf-praxis-dev itself)"
+    }
+  }
+}

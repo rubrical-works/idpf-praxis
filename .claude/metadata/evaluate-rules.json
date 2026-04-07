@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "description": "Hand-authored anti-hallucination rules enforced by /evaluate. Each rule has a trigger (when it fires), a verification step (the action that produces evidence), an exit condition (what counts as satisfied), and a fallback (what to do when verification fails). Rules are intentionally generic — they govern reasoning discipline that cannot be baked into any single command.",
+  "source": "Assistant/Anti-Hallucination-Rules-for-Framework-Development.md",
+  "rules": [
+    {
+      "id": "no-invention",
+      "title": "Never name an artifact without verifying it exists",
+      "summary": "Any file path, CLI flag, command name, npm package, URL, function, or symbol mentioned in output must be verified against the filesystem, a registry, or a live tool before being stated.",
+      "source_section": "Absolute \"Never Do\" Rules / When Communicating with Users",
+      "trigger": "About to mention a file path, CLI flag, command, package, URL, function, or symbol in evaluation output.",
+      "verification": {
+        "method": "tool_call",
+        "allowed_tools": ["Read", "Glob", "Grep", "Bash:read-only"],
+        "must_produce": "A tool result that contains the named artifact verbatim, OR a non-empty match for it."
+      },
+      "exit_condition": "The artifact appears verbatim in a tool result captured during this evaluation run.",
+      "fallback": "Do not name the artifact. Either omit it or label the claim 'unverifiable' with the reason.",
+      "evidence_patterns": {
+        "requires_claim": true,
+        "evidence_must_contain_claim": true
+      },
+      "fallback_action": "label_unverifiable"
+    },
+    {
+      "id": "count-verification",
+      "title": "Never state a count from memory",
+      "summary": "Any numeric count of files, items, commits, entries, or matches must come from a tool result captured in this run — never from prior knowledge or paraphrase.",
+      "source_section": "File Operation Rules / Common Mistakes (Mistake 3)",
+      "trigger": "About to write a number that quantifies files, directories, commits, registry entries, or any countable set.",
+      "verification": {
+        "method": "tool_call",
+        "allowed_tools": ["Glob", "Grep", "Bash:read-only"],
+        "must_produce": "A tool result whose output the count is derived from (e.g., a Glob result, a wc -l output, a Grep count)."
+      },
+      "exit_condition": "The number in the output equals the number of items in the captured tool result.",
+      "fallback": "Replace the number with 'unverified count' or omit the claim.",
+      "evidence_patterns": {
+        "requires_claim": true,
+        "evidence_must_contain_claim": true
+      },
+      "fallback_action": "omit_claim"
+    },
+    {
+      "id": "reread-after-compaction",
+      "title": "Re-read externalized files before using their contents",
+      "summary": "Configuration, criteria, schema, and template files referenced by an evaluation must be loaded with the Read tool during this run. Paraphrasing remembered contents is forbidden, even if the file was loaded earlier in the session.",
+      "source_section": "Externalized File References",
+      "trigger": "About to reference, quote, or apply rules from a JSON/YAML/MD config, schema, criteria file, or template.",
+      "verification": {
+        "method": "tool_call",
+        "allowed_tools": ["Read"],
+        "must_produce": "A Read tool result for the file, captured during this evaluation run."
+      },
+      "exit_condition": "Every externalized file cited in the output has a corresponding Read result in this run.",
+      "fallback": "Refuse to cite the file. Report 'file not re-read this run' as an unverifiable claim.",
+      "evidence_patterns": {
+        "requires_claim": false,
+        "evidence_must_contain_claim": false
+      },
+      "fallback_action": "label_unverifiable"
+    },
+    {
+      "id": "source-hierarchy",
+      "title": "Trust git history over registries over docs",
+      "summary": "When two sources disagree, defer to the higher-authority source: (1) git history and tags, (2) registry/manifest files, (3) issue tracker, (4) prose documentation. Do not silently average or pick the more convenient source.",
+      "source_section": "Information Source Hierarchy",
+      "trigger": "Two or more sources observed during this run report conflicting facts (versions, counts, names, statuses).",
+      "verification": {
+        "method": "comparison",
+        "allowed_tools": ["Bash:read-only", "Read", "Grep"],
+        "must_produce": "Both conflicting values, captured from their respective sources, plus the chosen source's tier."
+      },
+      "exit_condition": "Output reports both values, names the source tier of each, and uses the higher-tier value as the verified claim.",
+      "fallback": "Label the claim 'conflict-unresolved' and report both values without picking one.",
+      "evidence_patterns": {
+        "requires_claim": true,
+        "evidence_must_contain_claim": true
+      },
+      "fallback_action": "conflict_unresolved"
+    },
+    {
+      "id": "scope-discipline",
+      "title": "Never silently skip, defer, or downgrade a requirement",
+      "summary": "When evaluating against a checklist (acceptance criteria, schema, ruleset), every item must be addressed with a verified, unverifiable, or explicit-skip status. Quietly omitting an item is forbidden.",
+      "source_section": "Absolute \"Never Do\" Rules / NEVER Defer or Reduce Scope Without Confirmation",
+      "trigger": "Evaluation target includes a checklist of items (acceptance criteria, schema fields, rule entries).",
+      "verification": {
+        "method": "enumeration",
+        "allowed_tools": ["Read", "Grep"],
+        "must_produce": "A list of every checklist item paired with a status: verified | unverifiable | skipped-with-reason."
+      },
+      "exit_condition": "Output contains exactly one status entry per checklist item, with no item omitted.",
+      "fallback": "Halt evaluation and report which items have no status. Do not emit a final verdict.",
+      "evidence_patterns": {
+        "requires_claim": false,
+        "evidence_must_contain_claim": false
+      },
+      "fallback_action": "halt_and_report"
+    }
+  ]
+}

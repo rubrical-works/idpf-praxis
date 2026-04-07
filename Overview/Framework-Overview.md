@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.83.0
+**Version:** v0.84.0
 Comprehensive reference for AI assistants and framework development.
 **Core Principle:** System Instructions define WHO; Frameworks define WHAT process; Skills provide reusable capabilities; Assistant Guidelines ensure quality.
 ---
@@ -335,7 +335,7 @@ Claude Code auto-loads all `.md` files from `.claude/rules/` at session start. P
 |------|---------|--------|
 | `01-anti-hallucination.md` | Framework dev quality | `Assistant/Anti-Hallucination-Rules-for-Framework-Development.md` |
 | `02-github-workflow.md` | GitHub issue management | `Reference/GitHub-Workflow.md` |
-| `03-session-startup.md` | Startup procedure | Generated |
+| `03-startup.md` | Startup procedure | `Reference/Session-Startup-Instructions.md` |
 **Source of Truth:** `Assistant/` and `Reference/` are authoritative; rules built at release time. Naming: `01-`, `02-`, `03-` for load order.
 ---
 **Framework Transition Matrix**

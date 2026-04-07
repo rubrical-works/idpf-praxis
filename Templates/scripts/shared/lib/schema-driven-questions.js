@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.83.0
+ * @framework-script 0.84.0
  * @description Generate charter questions from domain-entities-schema.json.
  * Maps required schema fields to contextual follow-up questions.
  * Used by /charter inception and update flows.

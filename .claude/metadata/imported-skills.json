@@ -1,25 +1,12 @@
 {
   "$schema": "./imported-skills-schema.json",
-  "lastUpdated": "2026-04-05T15:51:22.954Z",
-  "count": 14,
+  "lastUpdated": "2026-04-07T02:27:34.324Z",
+  "count": 1,
   "skills": [
-    "ci-cd-pipeline-design",
-    "code-path-discovery",
-    "command-spec-audit",
-    "common-errors",
-    "drawio-generation",
-    "electron-development",
-    "engage-exocortex",
-    "error-handling-patterns",
-    "tdd-failure-recovery",
-    "tdd-green-phase",
-    "tdd-process",
-    "tdd-red-phase",
-    "tdd-refactor-phase",
-    "test-writing-patterns"
+    "tdd-refactor-coverage-audit"
   ],
   "shas": {
-    "tdd-process": "f39ffbf30858b0a9d781c6569de1011dad6b7bfa",
+    "tdd-process": "69ac37405855d36afaa33a7c6a6d95ddadc0a00c",
     "ci-cd-pipeline-design": "5f56f86e5597e3bfaba7114ef3b673705d2409bd",
     "command-spec-audit": "e4a185a4ec7d5e040435177b90a3258aa1f9dee2",
     "common-errors": "4fa2a0066eab773787f18241f259438f22acf6e0",
@@ -30,9 +17,10 @@
     "tdd-failure-recovery": "f6f3433b1f27de058da44a1ce4b5eaa82d826e13",
     "tdd-green-phase": "e66cfc71414e4974caf64776215178ff96a743fe",
     "tdd-red-phase": "ee9e3e19cd274ca5f4f413093dd81a3ee17291a1",
-    "tdd-refactor-phase": "0b9ecea921e929279343cf71bb328447b8bf6ba8",
+    "tdd-refactor-phase": "f564ef806eae0501e213de62197076937830e1a5",
     "code-path-discovery": "31b5eb63517f4d594413e39d5bfbac77228a1e26",
     "hal-2026": "dc1ec97d8157a1db792fb7f7924855077c017059",
-    "engage-exocortex": "e6f9560f4b671d08931d5d2b1a946c0a6ed3207e"
+    "engage-exocortex": "1310590c70b15c6063c4d5f2246c2034ee59a01b",
+    "tdd-refactor-coverage-audit": "6e724baa4ffec6a2c10de9affdcf5d9b5903758a"
   }
 }

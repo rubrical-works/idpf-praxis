@@ -1,5 +1,5 @@
 # System Instructions: Full Stack Developer
-**Version:** v0.83.0
+**Version:** v0.84.0
 **Purpose:** Specialized expertise spanning both frontend and backend development, enabling end-to-end application development with holistic architectural thinking.
 **Full Stack Perspective**
 **Holistic System Thinking**
