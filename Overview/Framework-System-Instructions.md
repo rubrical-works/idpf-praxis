@@ -1,5 +1,5 @@
 # Framework System Instructions Reference
-**Version:** v0.84.0
+**Version:** v0.85.0
 **Location:** `System-Instructions/`
 **Purpose:** Define assistant identity, expertise, and behavioral patterns
 **Critical Requirement:** System Instructions are **REQUIRED** for all framework operation. Frameworks define process; System Instructions define identity and expertise.

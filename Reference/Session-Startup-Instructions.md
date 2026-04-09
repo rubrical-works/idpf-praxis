@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.84.0
+**Version:** v0.85.0
 
 **Purpose:** AI-facing reference material for session work after startup.
 
@@ -34,7 +34,6 @@ After startup, load detailed documentation only when needed. Paths use `framewor
 | Skills (creating, updating, reviewing) | `{frameworkPath}/Overview/Framework-Skills.md` |
 | Framework transitions or hybrid usage | `{frameworkPath}/Overview/Framework-Transitions.md` |
 | Complete reference (all details) | `{frameworkPath}/Overview/Framework-Overview.md` |
-| Skill creation rules | `{frameworkPath}/Assistant/Anti-Hallucination-Rules-for-Skill-Creation.md` |
 | PRD work | `{frameworkPath}/Assistant/Anti-Hallucination-Rules-for-PRD-Work.md` |
 
 ---

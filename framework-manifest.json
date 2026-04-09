@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.84.0",
+  "version": "0.85.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -44,7 +44,8 @@
     ".gitkeep",
     "precompact-hook.js",
     "test-on-change.js",
-    "imported-skills.json"
+    "imported-skills.json",
+    "GENERATED.md"
   ],
   "deploymentFiles": {
     "commands": {

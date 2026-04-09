@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.84.0
+**Version:** v0.85.0
 Comprehensive reference for AI assistants and framework development.
 **Core Principle:** System Instructions define WHO; Frameworks define WHAT process; Skills provide reusable capabilities; Assistant Guidelines ensure quality.
 ---
@@ -322,11 +322,7 @@ System Instructions are **REQUIRED** for all framework operation. Frameworks def
 - **Confidence levels:** High/Medium/Low/No confidence
 - **Auto-trigger web search:** "current/latest" anything, recent releases, uncertain syntax
 - **File operations:** Always READ before editing, verify paths, enumerate before bulk ops
-**Anti-Hallucination Rules for Skill Creation:**
-- Never invent content not in source material
-- Preserve exact wording/terminology from source
-- Only create resource files for content in source
-- Map source sections directly to Skill format
+**Anti-Hallucination Rules for Skill Creation:** Moved to `idpf-praxis-skills` repo (removed from `idpf-praxis-dev` in #2296; skill source development is out of scope per charter).
 ---
 **Rules Auto-Loading (v2.9+)**
 **Location:** `.claude/rules/`

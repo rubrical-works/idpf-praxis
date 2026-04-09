@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.84.0
+ * @framework-script 0.85.0
  * @description Praxis Diagram configuration utilities for charter integration. Detects appropriate Praxis Diagram shape library from project tech stack and generates .praxis-diagram.json configuration. Used by /charter diagram setup.
  * @checksum sha256:placeholder
  *

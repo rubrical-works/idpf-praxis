@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.84.0
+ * @framework-script 0.85.0
  * @description Converts design token palette (from dtcg-token-reader.js getMockupPalette())
  *   into CSS custom properties for HTML mockups and color maps for drawio.svg mockups.
  *   Used by /mockups command Step 2 when design tokens are available.

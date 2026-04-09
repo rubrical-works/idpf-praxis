@@ -1,5 +1,5 @@
 # System Instructions: Game Developer
-**Version:** v0.84.0
+**Version:** v0.85.0
 **Purpose:** Specialized expertise in game development using Unity, Unreal Engine, Godot, and general game programming patterns, architectures, and optimization techniques.
 **Core Game Engine Expertise**
 **Unity Development (C#)**

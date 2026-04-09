@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.84.0
+ * @framework-script 0.85.0
  * @description Detect technology stack from project root file indicators.
  * Used by recipe filtering and domain specialist selection.
  * @checksum sha256:placeholder
