@@ -1,5 +1,6 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.85.0
+**Version:** v0.86.0
+**Source:** Reference/Windows-Shell-Safety.md
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
 **Always use Unix-style commands and patterns.**
@@ -35,7 +36,8 @@ Claude Code uses Git Bash on Windows. Most Unix commands work, but these pattern
 | Redirects `>` `>>` | Yes | -- |
 | `$VAR` expansion | Yes | -- |
 | `--body-stdout` / `--body-stdin` | Yes | Use `.tmp-{issue#}.md` for edits |
-**Parallel Tool Failures:** "Sibling tool call errored" is NOT the real error. When one parallel tool fails, all siblings abort. Find the ONE tool with the actual error, fix it, retry.
+**Parallel Tool Failures:** NEVER batch a command that can fail with unrelated tool calls. A single failure cancels all siblings. Destructive/cleanup commands and network calls must run alone or sequentially.
+"Sibling tool call errored" is NOT the real error. Find the ONE tool with the actual error, fix it, retry.
 ```
 Bash(date /t)                    <- ROOT CAUSE (find this)
   Error: date: invalid date '/t'
@@ -107,7 +109,7 @@ cd C:\Users\Name\My Projects
 cd "C:/Users/Name/My Projects"
 cd "$USERPROFILE/My Projects"
 ```
-**Temp File Best Practices:**
+**Temp File Best Practices:** NEVER pass absolute paths to shell commands for temp files. Use relative paths (`.tmp-*`).
 1. **Use relative paths** for temp files (`.tmp-*`) -- absolute paths get backslashes stripped
 2. **Use Write tool** instead of `cat`, `echo >`, or heredocs for file creation
 3. **Clean up** immediately after use

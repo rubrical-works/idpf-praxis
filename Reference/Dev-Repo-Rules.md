@@ -1,5 +1,5 @@
 **Dev Repo Symlink Protection Rules**
-**Version:** v0.85.0
+**Version:** v0.86.0
 **Scope:** Dev framework repos connected to a Praxis hub via symlinks. Does NOT apply to `idpf-praxis-dev` (framework source) or user project repos.
 **Symlinked Directories (Read-Only)**
 | Directory | Purpose | Managed By |

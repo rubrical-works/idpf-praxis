@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.85.0
+ * @framework-script 0.86.0
  * @description DTCG init mode builder for interactive token creation.
  *   Defines token categories with sensible defaults, supports optional
  *   categories (skip), and produces valid DTCG-compliant token output.

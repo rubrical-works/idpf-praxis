@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.85.0
+ * @framework-script 0.86.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -30,6 +30,19 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+
+// Diagnostic crash handler (#2314): captures full stack traces for intermittent
+// require() failures that Claude Code truncates to just the innermost Node frame.
+// Remove once the underlying failure is identified and fixed.
+process.on('uncaughtException', (e) => {
+  try {
+    fs.appendFileSync(
+      path.join(process.cwd(), '.claude', 'hooks', 'crash.log'),
+      `[${new Date().toISOString()}] ${e.stack}\n\n`
+    );
+  } catch (_) { /* swallow logging failure so handler never crashes the hook */ }
+  process.exit(1);
+});
 
 // Cache file location
 const CACHE_FILE = path.join(process.cwd(), '.claude', 'hooks', '.command-cache.json');

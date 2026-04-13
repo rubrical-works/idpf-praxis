@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.85.0
+ * @framework-script 0.86.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -41,10 +41,9 @@ function execSyncSafe(cmd) {
     }
 }
 
-async function execAsyncSafe(cmd) {
-    const parts = cmd.split(/\s+/);
+async function execAsyncSafe(cmd, args) {
     return new Promise((resolve) => {
-        execFile(parts[0], parts.slice(1), { encoding: 'utf-8' }, (err, stdout) => {
+        execFile(cmd, args, { encoding: 'utf-8' }, (err, stdout) => {
             if (err) return resolve(null);
             resolve((stdout || '').trim());
         });
@@ -97,20 +96,22 @@ function getLastVersion() {
  * Get issue labels for a given issue number
  */
 async function getIssueLabels(issueNumber) {
-    // First attempt
-    try {
-        const result = await execAsyncSafe(`gh issue view ${issueNumber} --json labels -q ".labels[].name"`);
-        if (result) return { labels: result.split('\n').filter(l => l.trim()), loaded: true };
-    } catch (err) {
-        console.log(`  ⚠ getIssueLabels(#${issueNumber}): first attempt failed (${err.message}), retrying...`);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await execAsyncSafe('gh', ['issue', 'view', String(issueNumber), '--json', 'labels']);
+        if (result) {
+            try {
+                const data = JSON.parse(result);
+                const labels = (data.labels || []).map(l => l.name).filter(Boolean);
+                return { labels, loaded: true };
+            } catch {
+                // fall through to retry
+            }
+        }
+        if (attempt === 0) {
+            console.log(`  ⚠ getIssueLabels(#${issueNumber}): first attempt failed, retrying...`);
+        }
     }
-    // Retry once
-    try {
-        const result = await execAsyncSafe(`gh issue view ${issueNumber} --json labels -q ".labels[].name"`);
-        if (result) return { labels: result.split('\n').filter(l => l.trim()), loaded: true };
-    } catch (err) {
-        console.log(`  ⚠ getIssueLabels(#${issueNumber}): retry failed — epic label detection unavailable`);
-    }
+    console.log(`  ⚠ getIssueLabels(#${issueNumber}): retry failed — epic label detection unavailable`);
     return { labels: [], loaded: false };
 }
 
@@ -136,10 +137,17 @@ async function expandEpicSubIssues(issueNumbers) {
             continue;
         }
 
+        // Canary: detect malformed label entries (e.g., from corrupted jq output)
+        const validLabelPattern = /^[a-z0-9][a-z0-9 _-]*$/i;
+        const malformed = labels.filter(l => !validLabelPattern.test(l));
+        if (malformed.length > 0) {
+            console.log(`  ⚠ Epic #${num}: malformed labels detected: ${malformed.join(', ')} — label data may be corrupted`);
+        }
+
         if (!labels.some(l => l.toLowerCase() === 'epic')) continue;
 
         // Fetch sub-issues for this epic
-        const result = await execAsyncSafe(`gh pmu sub list ${num} --json`);
+        const result = await execAsyncSafe('gh', ['pmu', 'sub', 'list', String(num), '--json']);
         const data = safeJsonParse(result);
         const children = data && data.children ? data.children : [];
 
@@ -246,7 +254,7 @@ function generateBranchSuggestions(lastVersion, userInput, labels) {
  */
 async function getSubIssueCountAsync(issueNumber) {
     // Note: gh pmu sub list uses --json as boolean flag, not field selector
-    const result = await execAsyncSafe(`gh pmu sub list ${issueNumber} --json`);
+    const result = await execAsyncSafe('gh', ['pmu', 'sub', 'list', String(issueNumber), '--json']);
     const data = safeJsonParse(result);
     if (!data) return 0;
     if (data.children) return data.children.length;
@@ -287,7 +295,7 @@ function hasBranchAssigned(issue) {
 async function getIssuesByStatus(status = 'backlog') {
     startTimer(`getIssuesByStatus(${status})`);
     const cmd = `gh pmu list --status ${status} --json=number,title,fieldValues`;
-    const result = await execAsyncSafe(cmd);
+    const result = await execAsyncSafe('gh', ['pmu', 'list', '--status', status, '--json=number,title,fieldValues']);
 
     if (showTiming) {
         console.log(`  📋 Command: ${cmd}`);
@@ -325,10 +333,10 @@ async function getIssuesByStatus(status = 'backlog') {
 
 async function assignToBranch(issueNumber, branch, useCurrent = false) {
     try {
-        const branchArg = useCurrent ? 'current' : `"${branch}"`;
+        const branchArg = useCurrent ? 'current' : branch;
         const displayBranch = useCurrent ? `${branch} (current)` : branch;
         console.log(`  → Assigning #${issueNumber} to ${displayBranch}`);
-        const moveResult = await execAsyncSafe(`gh pmu move ${issueNumber} --branch ${branchArg}`);
+        const moveResult = await execAsyncSafe('gh', ['pmu', 'move', String(issueNumber), '--branch', branchArg]);
         if (moveResult && moveResult.includes('unknown flag')) {
             console.log(`    (Note: gh pmu --branch not supported, manual assignment needed)`);
             return false;
@@ -662,15 +670,15 @@ async function removeFromBranch(issueNumber) {
     const operations = [];
     try {
         // Unlink from branch tracker sub-issues
-        await execAsyncSafe(`gh pmu sub remove ${issueNumber}`);
+        await execAsyncSafe('gh', ['pmu', 'sub', 'remove', String(issueNumber)]);
         operations.push(`unlink #${issueNumber} from tracker`);
 
         // Remove assigned label
-        await execAsyncSafe(`gh issue edit ${issueNumber} --remove-label assigned`);
+        await execAsyncSafe('gh', ['issue', 'edit', String(issueNumber), '--remove-label', 'assigned']);
         operations.push(`remove assigned label from #${issueNumber}`);
 
         // Clear branch field and set status to backlog
-        await execAsyncSafe(`gh pmu move ${issueNumber} --backlog`);
+        await execAsyncSafe('gh', ['pmu', 'move', String(issueNumber), '--backlog']);
         operations.push(`set #${issueNumber} to backlog`);
 
         return { ok: true, operations };

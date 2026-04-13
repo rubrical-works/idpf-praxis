@@ -12,16 +12,16 @@
   },
   "executionInstructions": {
     "steps": [
-      "**Generate Todo List:** Parse the phases and extension points in this spec, then use `TodoWrite` to create todos",
-      "**Include Extensions:** For each non-empty `USER-EXTENSION` block, add a todo item",
-      "**Track Progress:** Mark todos `in_progress` → `completed` as you work",
-      "**Post-Compaction:** If resuming after context compaction, re-read this spec and regenerate todos"
+      "**Create Task List:** Parse the phases and extension points in this spec, then use `TaskCreate` to create tasks",
+      "**Include Extensions:** For each non-empty `USER-EXTENSION` block, add a task",
+      "**Track Progress:** Mark tasks `in_progress` → `completed` as you work",
+      "**Post-Compaction:** If resuming after context compaction, re-read this spec and call `TaskList` to resume from first incomplete task"
     ],
-    "todoRules": [
-      "One todo per numbered phase/step",
-      "One todo per active extension point (non-empty `USER-EXTENSION` blocks)",
+    "taskRules": [
+      "One task per numbered phase/step",
+      "One task per active extension point (non-empty `USER-EXTENSION` blocks)",
       "Skip commented-out extensions",
-      "Use the phase/step name as the todo content"
+      "Use the phase/step name as the task subject"
     ]
   },
   "errorHandling": {
