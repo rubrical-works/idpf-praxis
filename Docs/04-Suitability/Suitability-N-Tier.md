@@ -73,7 +73,7 @@ Epic: "Data Tier"              Epic: "API Tier"           Epic: "UI Tier"
 
 Each story gets:
 - Branch assignment (`/assign-branch`)
-- Acceptance criteria extraction (auto-TODO)
+- Acceptance criteria extraction (auto-TASK)
 - TDD methodology enforcement (IDPF-Agile)
 - STOP boundaries preventing scope creep
 - Structured review (`/review-issue`)

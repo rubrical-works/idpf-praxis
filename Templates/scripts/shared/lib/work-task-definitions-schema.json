@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "description": "Schema for work-task-definitions.json — Phase 2 task definitions for /work command. Referenced by CommandsSrc/work.md Phase 2 section.",
+    "source": "Extracted from CommandsSrc/work.md (#2318)"
+  },
+  "required": ["version", "tasks"],
+  "properties": {
+    "version": { "type": "number", "description": "Schema version. Currently 1." },
+    "tasks": {
+      "type": "array",
+      "description": "Ordered list of Phase 2 tasks. Consumers create one TaskCreate per entry, in this order. Conditional entries (those with a non-'always' condition) are created OR explicitly skipped with a one-line note — never silently omitted.",
+      "items": {
+        "type": "object",
+        "required": ["order", "subject", "condition", "description"],
+        "properties": {
+          "order": { "type": "number", "description": "Display order (1..N). Must match array index + 1." },
+          "subject": { "type": "string", "description": "Task subject. Becomes the TaskCreate subject verbatim." },
+          "condition": { "type": "string", "description": "Creation condition. 'always' means unconditional; other values are JS-like predicates evaluated against the preamble envelope context/flags." },
+          "description": { "type": "string", "description": "Rationale for the task. Becomes the TaskCreate description — captures WHY this task exists." }
+        }
+      }
+    }
+  }
+}

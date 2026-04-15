@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.86.0",
+  "version": "0.87.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -76,6 +76,7 @@
         "pivot.md",
         "plan-workstreams.md",
         "work.md",
+        "workit.md",
         "done.md",
         "bug.md",
         "enhancement.md",
@@ -148,7 +149,10 @@
           "mockup-element-extractor.js",
           "mockup-ac-generator.js",
           "mockup-token-styles.js",
-          "stats-collect.js"
+          "stats-collect.js",
+          "qa-extract.js",
+          "log-changed-files.js",
+          "nonstop-audit.js"
         ]
       },
       "shared/lib": {
@@ -183,7 +187,10 @@
           "findings-schema.json",
           "qa-config.json",
           "doc-templates-schema.json",
-          "qa-config-schema.json"
+          "qa-config-schema.json",
+          "code-review-manifest-schema.json",
+          "work-task-definitions.json",
+          "work-task-definitions-schema.json"
         ]
       },
       "hooks": {
@@ -293,6 +300,12 @@
         "src": "Reference/Task-Creation-Timing.md",
         "dest": "07-task-creation-timing.md",
         "env": "dev"
+      },
+      {
+        "id": "workit-execution",
+        "src": "Reference/workit-execution.md",
+        "dest": "08-workit-execution.md",
+        "env": "both"
       }
     ],
     "metadata": {
@@ -548,7 +561,8 @@
     "resolve-review",
     "split-story",
     "switch-branch",
-    "transfer-issue"
+    "transfer-issue",
+    "workit"
   ],
   "deprecatedCommands": [
     { "file": "switch-role.md", "action": "removed", "version": "0.17.0", "reason": "Single specialist model" },

@@ -1,5 +1,5 @@
 **Agile-Driven Development Framework - Core**
-**Version:** v0.86.0
+**Version:** v0.87.0
 **Module:** Core (loaded at session startup)
 **Terminology**
 1. **User Story**: Feature described from user's perspective with acceptance criteria
@@ -16,7 +16,7 @@ Product Backlog Creation → Story Selection (from Ready) → Story Development 
 * **"Add-Story"** - Create new story issue with epic auto-detection
 * **"Prioritize-Backlog"** - Update Priority field (P0/P1/P2) for issues
 **Story Workflow (via Commands)**
-* **`/work #N`** - Begin development on a story (validates branch, extracts auto-TODO, dispatches TDD)
+* **`/work #N`** - Begin development on a story (validates branch, extracts auto-TASK, dispatches TDD)
 * **`/done`** - Close story (in_review → done only; `/work` handles in_progress → in_review)
 **Development Commands**
 * **"Run-Tests"** - Execute full test suite
@@ -52,7 +52,7 @@ Each task follows **RED-GREEN-REFACTOR** autonomously:
 **Story Development Flow**
 When User says **`work #N`** (or `/work #N`):
 1. `/work` command validates issue, branch assignment, and issue type
-2. Moves to in_progress, extracts auto-TODO from acceptance criteria
+2. Moves to in_progress, extracts auto-TASK from acceptance criteria
 3. Dispatches to TDD methodology (this file)
 4. Break down into testable behaviors
 5. Begin TDD cycles

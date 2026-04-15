@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.86.0
+ * @framework-script 0.87.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -384,12 +384,12 @@ function parseProcessingOrder(body, subIssueNums) {
 }
 
 /**
- * Build autoTodo for epic issues
+ * Build autoTask for epic issues
  * @param {Array<{ number: number, title: string }>} activeSubIssues
  * @param {number[]} processingOrder
  * @returns {{ source: string, items: Array<{ number: number, title: string }> }}
  */
-function buildEpicAutoTodo(activeSubIssues, processingOrder) {
+function buildEpicAutoTask(activeSubIssues, processingOrder) {
   const ordered = processingOrder
     .map(num => activeSubIssues.find(s => s.number === num))
     .filter(Boolean);
@@ -585,17 +585,17 @@ async function performAssignment(issueNum) {
  * Build a success envelope
  * @param {object} context
  * @param {object} gates
- * @param {object} autoTodo
+ * @param {object} autoTask
  * @param {Array} warnings
  * @returns {object}
  */
-function buildSuccessEnvelope(context, gates, autoTodo, warnings) {
+function buildSuccessEnvelope(context, gates, autoTask, warnings) {
   return {
     ok: true,
     version: SCHEMA_VERSION,
     context: context || {},
     gates: gates || {},
-    autoTodo: autoTodo || {},
+    autoTask: autoTask || {},
     errors: [],
     warnings: warnings || [],
     roundTrips: 0
@@ -613,7 +613,7 @@ function buildErrorEnvelope(errors) {
     version: SCHEMA_VERSION,
     context: {},
     gates: {},
-    autoTodo: {},
+    autoTask: {},
     errors,
     warnings: [],
     roundTrips: 0
@@ -722,7 +722,7 @@ async function runSingleIssue(issueNum, options) {
   }
 
   // 6. Type-specific data gathering
-  let autoTodo;
+  let autoTask;
   const context = {
     issue: dataResult.issue,
     branch: dataResult.branch,
@@ -762,7 +762,7 @@ async function runSingleIssue(issueNum, options) {
       : parseProcessingOrder(dataResult.issue.body, subNums);
     context.processingOrder = processingOrder;
 
-    autoTodo = buildEpicAutoTodo(statusResult.active, processingOrder);
+    autoTask = buildEpicAutoTask(statusResult.active, processingOrder);
 
     // Branch tracker with all sub-issues complete: suggest next step
     if (type === 'branch' && subNums.length > 0 && statusResult.active.length === 0) {
@@ -773,10 +773,10 @@ async function runSingleIssue(issueNum, options) {
     }
   } else {
     // Standard flow: parse acceptance criteria
-    autoTodo = parseAcceptanceCriteria(dataResult.issue.body);
+    autoTask = parseAcceptanceCriteria(dataResult.issue.body);
   }
 
-  const envelope = buildSuccessEnvelope(context, gates, autoTodo, warnings);
+  const envelope = buildSuccessEnvelope(context, gates, autoTask, warnings);
   envelope.roundTrips = roundTrips;
   return envelope;
 }
@@ -850,7 +850,7 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
   }
 
   const type = detectIssueType(issueResult.issue);
-  const autoTodo = parseAcceptanceCriteria(issueResult.issue.body);
+  const autoTask = parseAcceptanceCriteria(issueResult.issue.body);
 
   const context = {
     issue: issueResult.issue,
@@ -868,7 +868,7 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
     issueNum,
     context,
     gates,
-    autoTodo,
+    autoTask,
     errors: [],
     warnings,
     roundTrips
@@ -931,10 +931,10 @@ async function main() {
         type: 'object',
         description: 'Boolean gate results: assigned, movedToInProgress, prdTrackerMoved.'
       },
-      autoTodo: {
-        name: 'autoTodo',
+      autoTask: {
+        name: 'autoTask',
         type: 'object',
-        description: 'Auto-generated TODO list. Standard: { source: "acceptance_criteria", items: [{ text, checked }] }. Epic/Branch: { source: "sub_issues", items: [{ number, title }] }.'
+        description: 'Auto-generated task list. Standard: { source: "acceptance_criteria", items: [{ text, checked }] }. Epic/Branch: { source: "sub_issues", items: [{ number, title }] }.'
       },
       warnings: {
         name: 'warnings',
@@ -1015,7 +1015,7 @@ module.exports = {
   loadSubIssues,
   checkSubIssueStatuses,
   parseProcessingOrder,
-  buildEpicAutoTodo,
+  buildEpicAutoTask,
   resolveStatusIssues,
   runBatch,
   execSafe,

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.86.0
+ * @framework-script 0.87.0
  * Clear Hook — SessionStart:clear
  * Fires when the user runs /clear in Claude Code.
  */

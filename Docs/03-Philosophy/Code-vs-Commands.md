@@ -88,7 +88,7 @@ The script handles the deterministic work — GitHub API calls, label detection,
     "isBranchAssigned": true,
     "isEpic": false
   },
-  "autoTodo": {
+  "autoTask": {
     "items": ["Implement login form", "Add validation", "Write tests"]
   },
   "warnings": []

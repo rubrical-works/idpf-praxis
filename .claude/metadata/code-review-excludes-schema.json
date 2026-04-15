@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "description": "Schema for code-review-excludes.json — default exclude patterns consulted by /code-review Step 3. Each category lists directory names (not glob patterns) that should be excluded when discovering source files.",
+    "source": "Extracted from CommandsSrc/code-review.md Step 3 table (#2327)"
+  },
+  "required": ["version", "categories"],
+  "properties": {
+    "version": { "type": "number", "description": "Schema version. Currently 1." },
+    "categories": {
+      "type": "array",
+      "description": "Exclude categories. Order is informational; consumers should flatten all categories into a single set of excludes, filtered by env where applicable.",
+      "items": {
+        "type": "object",
+        "required": ["name", "directories"],
+        "properties": {
+          "name": { "type": "string", "description": "Human-readable category label (e.g., 'Dependencies', 'Python', 'Build output')." },
+          "directories": {
+            "type": "array",
+            "description": "Directory names or trailing-slash paths to exclude.",
+            "items": { "type": "string" }
+          },
+          "env": {
+            "type": "string",
+            "enum": ["dev", "deployed", "both"],
+            "description": "Environment filter. Omitted = 'both' (applies in all consumers). 'dev' = only when running in idpf-praxis-dev (framework repo itself). 'deployed' = only when running in user projects via Praxis Hub Manager."
+          }
+        }
+      }
+    }
+  }
+}

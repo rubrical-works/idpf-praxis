@@ -1,5 +1,5 @@
 # Deployment Awareness
-**Version:** v0.86.0
+**Version:** v0.87.0
 **Source:** Reference/Deployment-Awareness.md
 **Purpose:** Document the deployment chain from development to distribution.
 

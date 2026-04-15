@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "description": "Schema for .code-review-manifest.json — the incremental-review tracking file written and read by /code-review. Referenced by /code-review Step 2 (Load Manifest) and Step 10 (Manifest Update).",
+    "source": "Extracted from CommandsSrc/code-review.md (#2326)"
+  },
+  "required": ["version", "lastRun", "charter", "files"],
+  "schema": {
+    "version": { "type": "number", "description": "Manifest schema version. Currently 1." },
+    "lastRun": { "type": "string", "description": "ISO date (YYYY-MM-DD) of the most recent /code-review invocation that wrote this manifest." },
+    "charter": {
+      "type": "object",
+      "description": "Charter state captured at last review — used to detect charter drift that forces re-review of all files.",
+      "properties": {
+        "contentHash": { "type": "string", "description": "SHA-256 hash of CHARTER.md content at last review. Prefixed with 'sha256:'. Mismatch with current charter hash forces re-review of every file." }
+      }
+    },
+    "files": {
+      "type": "object",
+      "description": "Map from relative file path to per-file review state. Keys are paths relative to project root.",
+      "additionalProperties": { "$ref": "#/schema/fileEntry" }
+    },
+    "fileEntry": {
+      "type": "object",
+      "description": "Per-file review state.",
+      "properties": {
+        "contentHash": { "type": "string", "description": "SHA-256 hash of file content at last review. Prefixed with 'sha256:'. Mismatch with current file hash queues the file for re-review." },
+        "status": { "type": "string", "enum": ["pending", "approved", "flagged", "deferred"], "description": "Review status — see statusValues block for semantics." },
+        "reviewedAt": { "type": "string", "description": "ISO date (YYYY-MM-DD) of the most recent review of this file." },
+        "findingCount": { "type": "number", "description": "Count of non-info findings recorded at last review. 0 when status is 'approved'." },
+        "findings": { "type": "array", "description": "Findings recorded at last review. Each finding is an object with file path, line range, category, severity, description, recommendation.", "items": { "type": "object" } },
+        "issueRefs": { "type": "array", "description": "Issue numbers (e.g., 1234) created from this file's findings via /bug or /enhancement.", "items": { "type": "number" } },
+        "domains": { "type": "array", "description": "Domain IDs (e.g., 'security', 'accessibility') applied to this file via --with. Merged across runs — not replaced.", "items": { "type": "string" } }
+      }
+    }
+  },
+  "statusValues": {
+    "pending": "Never reviewed — queued on next run.",
+    "approved": "Reviewed with no findings. Skipped on incremental runs when contentHash matches.",
+    "flagged": "Reviewed and has findings. Skipped on incremental runs when contentHash matches (flagged-unchanged means already-reported issues still open).",
+    "deferred": "User skipped this file. Skipped on all incremental runs regardless of hash."
+  },
+  "notes": [
+    "First-run behavior: if .code-review-manifest.json does not exist at project root, /code-review creates an empty manifest ({version: 1, lastRun: <today>, charter: {contentHash: <current>}, files: {}}) and proceeds as if every discovered file is new.",
+    "Malformed-manifest fallback: if the file exists but fails to parse as JSON, /code-review warns and continues as if --full was passed.",
+    "Charter-hash re-review trigger: if charter.contentHash in the manifest differs from the current CHARTER.md hash, every discovered file is queued for re-review (regardless of per-file contentHash match).",
+    "Domain merging (Step 10 rule 5): when --with <domains> is active, the per-file domains array merges new domains with existing ones — it does not replace. This lets repeat runs with different domains accumulate coverage."
+  ]
+}

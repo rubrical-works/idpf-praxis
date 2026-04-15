@@ -1,0 +1,39 @@
+{
+  "$schema": "./code-review-excludes-schema.json",
+  "version": 1,
+  "categories": [
+    {
+      "name": "Dependencies",
+      "directories": ["node_modules/", "vendor/", "Pods/", "packages/"]
+    },
+    {
+      "name": "Python",
+      "directories": ["__pycache__/", ".venv/", "venv/", "site-packages/", ".tox/"]
+    },
+    {
+      "name": "Build output",
+      "directories": ["dist/", "build/", "out/", "target/", "bin/", "obj/"]
+    },
+    {
+      "name": "Framework builds",
+      "directories": [".next/", ".nuxt/", ".svelte-kit/", ".angular/"]
+    },
+    {
+      "name": "Java/Gradle",
+      "directories": [".gradle/", ".maven/"]
+    },
+    {
+      "name": "Test coverage",
+      "directories": ["coverage/", ".nyc_output/"]
+    },
+    {
+      "name": "System",
+      "directories": [".git/"]
+    },
+    {
+      "name": "IDPF",
+      "env": "dev",
+      "directories": [".min-mirror/"]
+    }
+  ]
+}

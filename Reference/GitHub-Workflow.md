@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.86.0
+**Version:** v0.87.0
 **Source:** Reference/GitHub-Workflow.md
 **MUST READ:** This file must be read at session startup and after any compaction.
 This document configures Claude to automatically manage GitHub issues during development sessions.
@@ -163,7 +163,7 @@ If not "In progress", run `gh pmu move $ISSUE --status in_progress` before spawn
 | After user says "Done" | `Fixes #XXX`, `Closes #XXX`, `Resolves #XXX` | -- |
 GitHub automatically closes issues when `Fixes/Closes/Resolves #XXX` commits merge to default branch, bypassing the STOP checkpoint.
 ## Workflow Routing (CRITICAL)
-**Work Command Routing:** When user says "work #N", the `/work` command handles validation, branch assignment, issue type detection (epic vs standard), auto-todo extraction, PRD tracker auto-move, and framework methodology dispatch. See `/work` command spec.
+**Work Command Routing:** When user says "work #N", the `/work` command handles validation, branch assignment, issue type detection (epic vs standard), auto-task extraction, PRD tracker auto-move, and framework methodology dispatch. See `/work` command spec.
 **Epic Detection:** Epic label takes precedence. Always check labels before routing. Never skip per-sub-issue STOP boundary. See `/work` (Steps 4, 7, 12).
 **Trigger Word Routing (Create Issue First):**
 | Trigger | Command | Description |

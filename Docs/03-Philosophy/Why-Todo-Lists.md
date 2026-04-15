@@ -56,7 +56,7 @@ When every step is an explicit todo item, skipping one becomes visible. The assi
 
 ### 5. Structures Epic and Batch Workflows
 
-The `/work` command demonstrates the most sophisticated use of todo lists. When working an epic, the auto-TODO system generates a list from sub-issues:
+The `/work` command demonstrates the most sophisticated use of todo lists. When working an epic, the auto-TASK system generates a list from sub-issues:
 
 ```
 - [ ] #101: Implement authentication module

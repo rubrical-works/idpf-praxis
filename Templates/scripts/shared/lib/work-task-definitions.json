@@ -1,0 +1,84 @@
+{
+  "$schema": "./work-task-definitions-schema.json",
+  "version": 1,
+  "tasks": [
+    {
+      "order": 1,
+      "subject": "Step 1a: CI Wait",
+      "condition": "context.wait == true",
+      "description": "Don't start work on a branch with broken/pending CI. Surfaces upstream problems before AC effort is invested."
+    },
+    {
+      "order": 2,
+      "subject": "Step 1b: Epic Complexity Assessment",
+      "condition": "context.type == 'epic' && --nonstop",
+      "description": "Functional epics need stricter TDD enforcement — sets strictTDD which makes the Sub-Agent Review Gate mandatory rather than post-hoc."
+    },
+    {
+      "order": 3,
+      "subject": "Step 2: Framework Methodology Dispatch",
+      "condition": "always",
+      "description": "Loads the active framework's TDD/process guidance into context. Non-blocking."
+    },
+    {
+      "order": 4,
+      "subject": "Step 2a: Load TDD Checklist",
+      "condition": "always",
+      "description": "Externalized TDD phases (RED/GREEN/REFACTOR) enable deepReference skill loading on gate failure. Silent fallback to inline behavior is degradable but loses the deep-reference layer."
+    },
+    {
+      "order": 5,
+      "subject": "Step 3: Work the Issue (Pre-Agent + Sub-Agent + Commit-per-AC gates apply)",
+      "condition": "always",
+      "description": "Pre-Agent Status Gate is a compaction-recovery safeguard — re-verify in_progress before spawning any implementation Agent. Sub-Agent Review Gate: file content must be read and verified after every Agent return; agent summaries do not satisfy this gate. Commit-per-AC: do not start the next AC until this commit is made."
+    },
+    {
+      "order": 6,
+      "subject": "Step 3b: Documentation Judgment",
+      "condition": "always",
+      "description": "Construction/ artifacts (Design-Decisions, Tech-Debt) capture the why behind the work. Re-read doc-templates.json from disk — never paraphrase from memory."
+    },
+    {
+      "order": 7,
+      "subject": "Step 4: Verify Acceptance Criteria",
+      "condition": "always",
+      "description": "Ground in file state — re-read each modified file before evaluating its corresponding AC. Prevents batch fatigue hallucination where pattern-matching against memory replaces reading the file."
+    },
+    {
+      "order": 8,
+      "subject": "Step 4a: QA Extraction",
+      "condition": "created at Phase 2; executes only if unverifiable ACs found",
+      "description": "Unverifiable ACs become QA sub-issues automatically. Re-read qa-config.json from disk."
+    },
+    {
+      "order": 9,
+      "subject": "Step 4b: Force-Move Prohibition Check",
+      "condition": "always",
+      "description": "Story/enhancement issues you implemented this session must NOT be force-moved past unchecked AC boxes. Detection: label + this-session-in-progress check."
+    },
+    {
+      "order": 10,
+      "subject": "Step 4c: Log Changed Files to Issue Body",
+      "condition": "always",
+      "description": "Issue body becomes a permanent record of what shipped. Useful for post-release audits."
+    },
+    {
+      "order": 11,
+      "subject": "Step 5: Move to in_review",
+      "condition": "always",
+      "description": "Status transition is the handoff to user review."
+    },
+    {
+      "order": 12,
+      "subject": "Step 6: STOP Boundary",
+      "condition": "always",
+      "description": "Hard stop. User must explicitly approve before /done. Closing an issue is irreversible from the workflow's perspective."
+    },
+    {
+      "order": 13,
+      "subject": "Step 6a: Post-Nonstop Audit",
+      "condition": "--nonstop",
+      "description": "Three audits: commit density (warning), AC checkbox (blocking), test coverage (delegated to tdd-refactor-coverage-audit skill)."
+    }
+  ]
+}

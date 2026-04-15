@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.86.0
+ * @framework-script 0.87.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -31,21 +31,36 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// Diagnostic crash handler (#2314): captures full stack traces for intermittent
-// require() failures that Claude Code truncates to just the innermost Node frame.
-// Remove once the underlying failure is identified and fixed.
+// Diagnostic crash handler (#2314, hardened in #2322): captures full stack
+// traces for intermittent require() failures that Claude Code truncates to
+// just the innermost Node frame. Paths are anchored to __dirname so captures
+// land in the hook directory regardless of invocation CWD. Handler is kept
+// permanently as cheap insurance; removal is evaluated in #2328 after the
+// underlying loader:1459 failure is fixed.
 process.on('uncaughtException', (e) => {
   try {
     fs.appendFileSync(
-      path.join(process.cwd(), '.claude', 'hooks', 'crash.log'),
+      path.resolve(__dirname, 'crash.log'),
       `[${new Date().toISOString()}] ${e.stack}\n\n`
     );
   } catch (_) { /* swallow logging failure so handler never crashes the hook */ }
+  console.error(e.stack);
   process.exit(1);
 });
 
-// Cache file location
-const CACHE_FILE = path.join(process.cwd(), '.claude', 'hooks', '.command-cache.json');
+// Startup breadcrumb (#2322): unconditional per-invocation trace so we can
+// distinguish "hook never started" vs "hook crashed mid-execution" on the
+// next reproduction. Wrapped in try/catch — a breadcrumb failure must never
+// crash the hook itself.
+try {
+  fs.appendFileSync(
+    path.resolve(__dirname, 'startup.log'),
+    `[${new Date().toISOString()}] pid=${process.pid} cwd=${process.cwd()}\n`
+  );
+} catch (_) { /* swallow breadcrumb failure */ }
+
+// Cache file location (#2322: anchored to __dirname for CWD invariance)
+const CACHE_FILE = path.resolve(__dirname, '.command-cache.json');
 
 // Analysis keywords that trigger STOP-after-report behavior
 // When these appear with an issue reference, inject reminder to report only
@@ -190,7 +205,7 @@ process.stdin.on('end', () => {
                     }
                 }
 
-                // Auto-todo: Extract acceptance criteria or sub-issues for todo list
+                // Auto-task: Extract acceptance criteria or sub-issues for task list
                 const labels = issueData.labels || [];
                 const isEpic = labels.some(l => l === 'epic' || l.name === 'epic');
 
@@ -203,8 +218,8 @@ process.stdin.on('end', () => {
                         );
                         const subIssues = JSON.parse(subResult);
                         if (subIssues && subIssues.length > 0) {
-                            contextMessage += `\n[AUTO-TODO: EPIC]\n`;
-                            contextMessage += `Create a todo list from these sub-issues:\n`;
+                            contextMessage += `\n[AUTO-TASK: EPIC]\n`;
+                            contextMessage += `Create a task list from these sub-issues:\n`;
                             subIssues.forEach(sub => {
                                 contextMessage += `- #${sub.number}: ${sub.title}\n`;
                             });
@@ -216,10 +231,10 @@ process.stdin.on('end', () => {
                     // Story/Bug: extract acceptance criteria checkboxes
                     const checkboxes = body.match(/- \[ \] .+/g) || [];
                     if (checkboxes.length > 0) {
-                        contextMessage += `\n[AUTO-TODO: ACCEPTANCE CRITERIA]\n`;
-                        contextMessage += `Create a todo list from these acceptance criteria:\n`;
+                        contextMessage += `\n[AUTO-TASK: ACCEPTANCE CRITERIA]\n`;
+                        contextMessage += `Create a task list from these acceptance criteria:\n`;
                         checkboxes.forEach(cb => {
-                            // Clean up the checkbox format for todo
+                            // Clean up the checkbox format for task
                             const item = cb.replace(/^- \[ \] /, '').trim();
                             contextMessage += `- ${item}\n`;
                         });
@@ -256,7 +271,7 @@ process.stdin.on('end', () => {
                 let contextMessage = `[INVOKE: /work all in ${statusFilter}]\n`;
 
                 try {
-                // Opportunistically query issues for AUTO-TODO
+                // Opportunistically query issues for AUTO-TASK
                 const result = execSync(
                     `gh pmu list --status ${statusFilter} --json`,
                     { encoding: 'utf-8', timeout: 15000 }
@@ -265,8 +280,8 @@ process.stdin.on('end', () => {
                 const data = JSON.parse(result);
                 const issues = data.items || [];
                 if (issues.length > 0) {
-                    contextMessage += `\n[AUTO-TODO: BATCH ISSUES]\n`;
-                    contextMessage += `Create a todo list with these issues:\n`;
+                    contextMessage += `\n[AUTO-TASK: BATCH ISSUES]\n`;
+                    contextMessage += `Create a task list with these issues:\n`;
                     issues.forEach(issue => {
                         contextMessage += `- #${issue.number}: ${issue.title}\n`;
                     });
@@ -647,7 +662,7 @@ function getAgileDetailedCommands() {
 | \`enhancement: <title>\` | Create an enhancement issue |
 | \`proposal: <title>\` | Create a proposal document + tracking issue |
 | \`idea: <title>\` | Alias for proposal: |
-| \`work #N\` | Start working on an issue (validates branch, extracts auto-TODO) |
+| \`work #N\` | Start working on an issue (validates branch, extracts auto-TASK) |
 | \`work all in <status>\` | Batch work on issues by status |
 | \`done [#N]\` | Complete issue (in_review → done) |
 | \`review #N\` | Route to /review-issue |

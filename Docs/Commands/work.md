@@ -1,6 +1,6 @@
 # /work
 
-Start working on one or more issues with branch validation, auto-TODO extraction, and TDD dispatch.
+Start working on one or more issues with branch validation, auto-TASK extraction, and TDD dispatch.
 
 ## Arguments
 
