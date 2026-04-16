@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue

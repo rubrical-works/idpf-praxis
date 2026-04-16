@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * block-cd.js
  *
  * PreToolUse hook that blocks `cd` commands in the Bash tool.

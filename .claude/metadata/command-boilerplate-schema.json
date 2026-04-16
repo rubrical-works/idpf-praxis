@@ -26,13 +26,13 @@
     },
     "executionInstructions": {
       "type": "object",
-      "required": ["steps", "todoRules"],
+      "required": ["steps", "taskRules"],
       "properties": {
         "steps": {
           "type": "array",
           "items": { "type": "string" }
         },
-        "todoRules": {
+        "taskRules": {
           "type": "array",
           "items": { "type": "string" }
         }

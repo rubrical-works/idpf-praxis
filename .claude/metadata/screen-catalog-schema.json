@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "screen-catalog-schema.json",
+  "title": "Screen Catalog Registry Schema",
+  "description": "Schema for Mockups/screen-catalog.json — the master inventory of screens across a project. Written/read by .claude/scripts/shared/lib/screen-catalog.js and consumed by /catalog-screens, /mockups, and /design-system. See PRD: PRD/Screen-Design-Pipeline/PRD-Screen-Design-Pipeline.md (#2333).",
+  "type": "object",
+  "required": ["version", "screens"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Catalog schema version. Bumped on breaking schema changes."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last catalog write"
+    },
+    "lastModified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last catalog write (alias of generatedAt)"
+    },
+    "screens": {
+      "type": "object",
+      "description": "Screens keyed by screen name (e.g., 'Home', 'ProfileWizard'). Names are stable identifiers referenced by canonicalSpec, parent, navigatesTo, modals, and children.",
+      "additionalProperties": {
+        "$ref": "#/$defs/screenEntry"
+      }
+    }
+  },
+  "$defs": {
+    "screenEntry": {
+      "type": "object",
+      "required": ["status", "kind", "canonicalSpec"],
+      "additionalProperties": false,
+      "description": "A single screen in the catalog. status + kind + canonicalSpec are the minimal identity; everything else is topology, provenance, or token wiring.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["planned", "active", "deprecated", "removed"],
+          "description": "Lifecycle state. planned = in catalog, not yet implemented. active = in source, in use. deprecated = still in source, scheduled for removal. removed = no longer in source; entry kept as historical record."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["page", "wizard", "step", "section", "modal", "component"],
+          "description": "Structural role. page = top-level route. wizard = multi-step flow container. step = one step of a wizard. section = named region of a page. modal = overlay. component = reusable UI atom referenced by other screens."
+        },
+        "canonicalSpec": {
+          "type": "string",
+          "description": "Project-relative path to the screen spec JSON (e.g., 'Mockups/Home/Screen.json'). Must resolve inside project root; path-traversal inputs are rejected by the helper per NFR-3.",
+          "pattern": "^(?!.*\\.\\.)[^\\\\:*?\"<>|]+$"
+        },
+        "source": {
+          "type": ["string", "array", "null"],
+          "description": "Source file(s) this screen was discovered from (e.g., 'src/routes/home/+page.svelte'). Null when the screen is planned but not yet in source.",
+          "items": { "type": "string" }
+        },
+        "route": {
+          "type": ["string", "null"],
+          "description": "URL route for pages (e.g., '/profile/settings'). Null for non-routed screens (components, sections, steps)."
+        },
+        "introduced": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of when the screen first entered the catalog"
+        },
+        "lastModified": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of the last update to this entry"
+        },
+        "parent": {
+          "type": ["string", "null"],
+          "description": "Name of the parent screen (a wizard for its steps, a page for its sections/modals). Null for top-level pages or unattached components."
+        },
+        "navigatesTo": {
+          "type": "array",
+          "description": "Screen names this screen can navigate to (outbound edges in the navigation graph). Targets must exist in the catalog — enforced by validate-screen-catalog.js invariant #4.",
+          "items": { "type": "string" }
+        },
+        "modals": {
+          "type": "array",
+          "description": "Names of modal screens owned by this screen",
+          "items": { "type": "string" }
+        },
+        "children": {
+          "type": "array",
+          "description": "Names of child screens (steps for wizards, sections for pages). Must be consistent with each child's parent field — enforced by invariant #6.",
+          "items": { "type": "string" }
+        },
+        "tags": {
+          "type": "array",
+          "description": "Free-form tags for grouping (e.g., 'auth', 'dashboard')",
+          "items": { "type": "string" }
+        },
+        "designTokens": {
+          "type": ["string", "null"],
+          "enum": ["applied", "pending", null],
+          "description": "Design-token application status. applied = mockup was generated with current tokens. pending = mockup exists but predates current tokens. Null = no mockup yet."
+        },
+        "tokenDependencies": {
+          "type": "array",
+          "description": "Design-token keys this screen's mockup consumes (e.g., 'color.primary.500', 'gradient.hero'). Populated by /mockups during generation; read by /design-system propagation to find affected mockups on token change.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

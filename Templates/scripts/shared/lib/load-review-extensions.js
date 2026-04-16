@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description Load and resolve review extension domains for /review-issue and /code-review. Exports loadCodeReviewExtensions(), resolveAutoInclusion(), filterDomainsByCharter(), suggestDomains(), and AVAILABLE_EXTENSIONS. Used by review-preamble.js and code-review-preamble.js.
  * @checksum sha256:placeholder
  *
@@ -101,8 +101,18 @@ function resolveAutoInclusion(projectDir, explicitDomains = [], options = {}) {
   return { domains: [...domains], sources };
 }
 
+// #2359 — Section marker regexes. The dev source authors write H2 headings,
+// but the minimization pipeline flattens `## X` → `**X**` in .min-mirror/ and
+// that is what ships to user projects. The parser must accept either form.
+const CODE_REVIEW_HEADING = /^##\s+Code Review Questions\b/;
+const CODE_REVIEW_BOLD = /^\*\*Code Review Questions\*\*\s*$/;
+const ANY_H2_HEADING = /^##\s+/;
+const ANY_BOLD_PARAGRAPH = /^\*\*[^*]+\*\*\s*$/;
+
 /**
  * Extract "Code Review Questions" section from criteria file content.
+ * Accepts either `## Code Review Questions` (H2) or `**Code Review Questions**`
+ * (bold paragraph). Terminates on the next H2 OR the next bold paragraph.
  * @param {string} content - Full content of a review criteria markdown file
  * @returns {string[]} Array of question strings (bullet items)
  */
@@ -112,18 +122,15 @@ function extractCodeReviewQuestions(content) {
   let inSection = false;
 
   for (const line of lines) {
-    // Detect start of Code Review Questions section
-    if (/^##\s+Code Review Questions/.test(line)) {
+    if (CODE_REVIEW_HEADING.test(line) || CODE_REVIEW_BOLD.test(line)) {
       inSection = true;
       continue;
     }
 
-    // Detect next section (any ## heading) — end of our section
-    if (inSection && /^##\s+/.test(line)) {
+    if (inSection && (ANY_H2_HEADING.test(line) || ANY_BOLD_PARAGRAPH.test(line))) {
       break;
     }
 
-    // Collect bullet items within the section
     if (inSection && /^\s*-\s+/.test(line)) {
       questions.push(line.replace(/^\s*-\s+/, '').trim());
     }

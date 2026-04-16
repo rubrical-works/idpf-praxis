@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "screen-kinds.schema.json",
+  "title": "Screen Kinds Registry",
+  "description": "Single source of truth for the kind enum used by both screen-catalog-schema.json and screen-spec-schema.json. PRD #2333 AC49.",
+  "type": "object",
+  "required": ["kinds"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "_meta": { "type": "object" },
+    "kinds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "descriptions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

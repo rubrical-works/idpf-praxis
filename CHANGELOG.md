@@ -8,6 +8,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.88.0] - 2026-04-16
+
+### Added
+
+- **Screen Design Pipeline** (#2333-#2356, 24 sub-issues). End-to-end pipeline from screen catalog → mockups → design tokens → validation:
+  - `Mockups/screen-catalog.json` — central screen registry with schema, kind/status enums, catalog-level validation (`validate-screen-catalog.js`, 9 invariants) (#2339, #2354, #2355).
+  - `/catalog-screens` extensions: "Initialize full screen catalog" bulk-discovery (#2340), `--from-screenshot` / `--from-screenshots` with mime-allowlist (#2342), registry upsert + drift report (#2341), NAVIGATION.md regeneration via navigation-graph (#2353).
+  - `/mockups` extensions: catalog-driven input + `--from-image` reference workflow (#2345), registry upsert + `tokenDependencies` wiring (#2344), NAVIGATION.md regeneration (#2353). `/mockups` no longer generates framework-native component code (#2343).
+  - `/design-system` extensions: `--from-screenshot` token-candidate flow (#2349), 4-category drift report with selective apply (#2350), token update-mode detection (#2351), token change propagation to dependent mockups via `findAffectedMockups` (#2352).
+  - DTCG gradient support (12th `$type`) — linear/radial, alias + fallback (#2346), gradient rendering across HTML + drawio output paths (#2347), CSS gradient discovery adapter (#2348).
+  - Design decisions documented for screen catalog lifecycle DAG (#2339), screen design pipeline externalization (#2356).
+- **`/create-prd` commits generated artifacts atomically** (#2369). New Phase 7 Step 4 commits `PRD/{name}/` + `Proposal/Implemented/{Name}.md` with `Refs #` message; Step 5 report extended with `Committed: {sha}` line. Extract Mode Step 6 adds a parallel commit for the extracted PRD directory. Regression guarded by `tests/commands/create-prd-commit-step.test.js`.
+
+### Changed
+
+- **`/workit` prototype retired; consolidated into `/work`** (#2368). The hybrid command+rule architecture from the `/workit` parallel-evaluation prototype (#2329) is now the primary `/work` implementation via `.claude/rules/08-work-execution.md`. `/workit` command, rule file, minimized mirror, and tests all removed.
+- **`/work` execution rule hardened** across several sub-issues:
+  - Step 2b: Prime per-sub-issue parent task list for epic/branch processing (#2357).
+  - Step 4d: Minimize touched `CommandsSrc/` specs after command-spec edits (#2358).
+  - Step 6a audit 3 upgraded from narrative to procedural skill invocation — delegates test coverage audit to `tdd-refactor-coverage-audit` (#2360).
+  - Sub-Agent Review Gate clarified for direct-work path (no Agent spawn) — Step 4 file re-reads absorb the gate's verification intent (#2365).
+  - Scope per-AC tests to touched directory tree + full-suite sweep at sub-issue boundary (#2366).
+  - Commit gate reframed as commit-per-deliverable with explicit grouping heuristic (#2363).
+  - Step 4e added: register added helpers across framework-manifest + constants + JSDoc tag (#2362).
+  - Step 6 Post-STOP Cleanup replaced one-liner with procedural Step 6b (#2364); further folded into Step 6 STOP sequence (#2372).
+- **`Reference/GitHub-Workflow.md` rewritten** (#2335) to ~190 lines (from 520+), with gh-pmu configuration reference extracted to `Reference/gh-pmu-Configuration.md`. Deployed `.min-mirror/` and rules regenerated via `sync-rules`.
+- **`listSubIssues` envelope mapping fixed + per-sub-issue commit density** (#2361) in `nonstop-audit.js`.
+- **Code Review Questions marker parser tolerates bold-paragraph form** (#2359) in `load-review-extensions.js`; structural guard for all four Review Questions sections in deployed criteria.
+
+### Fixed
+
+- **`done-preamble.js` skips auto-move-to-done for epic issues** (#2367) — epics close via the sub-issue cascade, not via the preamble.
+- **ESLint unsafe-regex errors silenced in `css-gradients.js`** (#2370) — the ReDoS false-positive is silenced with per-line disables after review.
+- **`create-prd-commit-step.test.js` unsafe-regex ReDoS fix** (#2369) — tightened the Extract Mode alternative group.
+- **`command-boilerplate-schema.json` aligned with `taskRules` field name** — the data file was renamed `todoRules` → `taskRules` in #2241 but the schema was not updated; this closes the drift.
+
+### Removed
+
+- **`/workit` command, rule, mirror, and tests** (#2368) — folded into `/work`.
+- **Framework-native component generation from `/mockups`** (#2343) — mockup output stays at the mockup layer; hand-off to implementation is deliberate.
+
+---
+
 ## [0.87.0] - 2026-04-15
 
 ### Added
@@ -760,7 +803,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.87.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.88.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -1053,7 +1096,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.87.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.88.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -1424,13 +1467,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.87.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.87.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.87.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.88.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.88.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.88.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.87.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.88.0` placeholder (#1479)
 
 ---
 
@@ -2128,15 +2171,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.87.0 placeholder after packaging
+- **#1059** - Skills retain v0.88.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.87.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.88.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.87.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.88.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -2296,7 +2339,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.87.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.88.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -2404,7 +2447,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.87.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.88.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -2435,8 +2478,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.87.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.87.0` placeholder
+- **#933** - v0.88.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.88.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -2577,7 +2620,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.87.0` placeholder
+  - Changed hardcoded version to `v0.88.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -2617,7 +2660,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.87.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.88.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -2694,10 +2737,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.87.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.88.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.87.0` placeholder
+- **#821** - README-DIST.md now uses `v0.88.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -2814,7 +2857,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.87.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.88.0 placeholder
 
 ---
 
@@ -2862,7 +2905,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.87.0 placeholders to 209 framework source files
+- Restored v0.88.0 placeholders to 209 framework source files
 
 ---
 
@@ -2930,12 +2973,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.87.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.88.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.87.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.88.0` format for consistent replacement
 
 ---
 
@@ -3004,7 +3047,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.87.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.88.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

@@ -30,7 +30,7 @@
       "order": 5,
       "subject": "Step 3: Work the Issue (Pre-Agent + Sub-Agent + Commit-per-AC gates apply)",
       "condition": "always",
-      "description": "Pre-Agent Status Gate is a compaction-recovery safeguard — re-verify in_progress before spawning any implementation Agent. Sub-Agent Review Gate: file content must be read and verified after every Agent return; agent summaries do not satisfy this gate. Commit-per-AC: do not start the next AC until this commit is made."
+      "description": "Pre-Agent Status Gate is a compaction-recovery safeguard — re-verify in_progress before spawning any implementation Agent. Sub-Agent Review Gate: file content must be read and verified after every Agent return; agent summaries do not satisfy this gate. For direct-work paths (no Agent spawn), the Sub-Agent Review Gate is N/A; Step 4 file re-reads absorb the verification intent and are mandatory when strictTDD=true. Run scoped tests (touched directory tree: .claude/scripts/shared/lib → tests/scripts/shared/lib; command spec → tests/metadata or tests/commands) between AC commits for fast feedback; full-suite runs once per sub-issue at Step 4f before in_review. Commit-per-AC: do not start the next AC until this commit is made."
     },
     {
       "order": 6,
@@ -64,21 +64,39 @@
     },
     {
       "order": 11,
+      "subject": "Step 4d: Minimize Touched Command Specs",
+      "condition": "dev-repo AND any commit in this sub-issue touched CommandsSrc/",
+      "description": "CommandsSrc/ edits require LLM-driven minimization to regenerate Stage 1 + Stage 2 outputs. Generative task — must invoke /fw-minimize-files via Skill tool, not a script call. Synced source + outputs is the contract the deploy pipeline depends on."
+    },
+    {
+      "order": 12,
+      "subject": "Step 4e: Register Added Helpers",
+      "condition": "dev-repo AND any commit in this sub-issue added a new .js under .claude/scripts/shared/[lib/]",
+      "description": "Helper registration is off-band from helper creation — framework-manifest.json deploymentFiles.scripts.[shared|lib].files + constants.js INSTALLED_FILES_MANIFEST.scripts[Lib].files + @framework-script JSDoc tag all require parallel updates or CI (deployment-parity.test.js, manifest-validation.test.js) fails. Detection: git diff --name-status filtered by 'A' + path prefix .claude/scripts/shared/."
+    },
+    {
+      "order": 13,
+      "subject": "Step 4f: Full-Suite Regression Sweep",
+      "condition": "always",
+      "description": "Scoped per-AC tests can miss cross-cutting regressions; the full sweep at the sub-issue boundary catches them before in_review. Runs once per sub-issue after Step 4c/4d/4e, before Step 5. Failure blocks the in_review move; commit a fix and re-run."
+    },
+    {
+      "order": 14,
       "subject": "Step 5: Move to in_review",
       "condition": "always",
       "description": "Status transition is the handoff to user review."
     },
     {
-      "order": 12,
-      "subject": "Step 6: STOP Boundary",
+      "order": 15,
+      "subject": "Step 6: STOP Boundary — Cleanup, Report, Wait",
       "condition": "always",
-      "description": "Hard stop. User must explicitly approve before /done. Closing an issue is irreversible from the workflow's perspective."
+      "description": "Three-part sequence executed in order: (1) prune invocation-owned tasks from the task list (Step/AC/Sub-issue/preamble prefixes; leave user tasks intact), (2) emit the in_review report, (3) STOP and wait for 'done'. Cleanup is part of the STOP sequence, not a sibling step after it — the task list is the runtime step machine and accumulated tasks pollute compaction recovery if left across the STOP boundary. Hard stop after part (3); closing an issue is irreversible from the workflow's perspective."
     },
     {
-      "order": 13,
+      "order": 16,
       "subject": "Step 6a: Post-Nonstop Audit",
       "condition": "--nonstop",
-      "description": "Three audits: commit density (warning), AC checkbox (blocking), test coverage (delegated to tdd-refactor-coverage-audit skill)."
+      "description": "Three audits before the epic moves to in_review: commit density (warning, script), AC checkbox (blocking, script), test coverage (advisory, skill-delegated — invoke tdd-refactor-coverage-audit per sub-issue). Coverage audit is non-blocking and degrades gracefully when the skill is absent."
     }
   ]
 }

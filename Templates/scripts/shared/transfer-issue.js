@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description Transfer an issue between branches or remove it from branch assignment. Validates source and target branches, updates gh pmu branch field, and reports the transfer. Used by /transfer-issue command.
  * @checksum sha256:placeholder
  *

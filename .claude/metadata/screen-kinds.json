@@ -1,0 +1,23 @@
+{
+  "$schema": "./screen-kinds.schema.json",
+  "_meta": {
+    "description": "Single source of truth for screen kind enum, referenced by both screen-catalog-schema.json (AC4) and screen-spec-schema.json (AC46). Per PRD #2333 Technical Notes — defining the enum in one place prevents drift between catalog and spec layers.",
+    "ac": ["AC4", "AC46", "AC49"]
+  },
+  "kinds": [
+    "page",
+    "wizard",
+    "step",
+    "section",
+    "modal",
+    "component"
+  ],
+  "descriptions": {
+    "page": "Top-level route (e.g., /home, /profile)",
+    "wizard": "Multi-step flow container (composes steps)",
+    "step": "One step of a wizard",
+    "section": "Named region of a page",
+    "modal": "Overlay shown above another screen",
+    "component": "Reusable UI atom referenced by other screens"
+  }
+}

@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.87.0",
+  "version": "0.88.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -76,7 +76,6 @@
         "pivot.md",
         "plan-workstreams.md",
         "work.md",
-        "workit.md",
         "done.md",
         "bug.md",
         "enhancement.md",
@@ -152,7 +151,8 @@
           "stats-collect.js",
           "qa-extract.js",
           "log-changed-files.js",
-          "nonstop-audit.js"
+          "nonstop-audit.js",
+          "validate-screen-catalog.js"
         ]
       },
       "shared/lib": {
@@ -190,7 +190,16 @@
           "qa-config-schema.json",
           "code-review-manifest-schema.json",
           "work-task-definitions.json",
-          "work-task-definitions-schema.json"
+          "work-task-definitions-schema.json",
+          "screen-catalog.js",
+          "bulk-discover-screens.js",
+          "navigation-graph.js",
+          "screenshot-input.js",
+          "dtcg-gradients.js",
+          "screenshot-token-candidates.js",
+          "token-drift-report.js",
+          "token-update-mode.js",
+          "token-propagation.js"
         ]
       },
       "hooks": {
@@ -302,9 +311,9 @@
         "env": "dev"
       },
       {
-        "id": "workit-execution",
-        "src": "Reference/workit-execution.md",
-        "dest": "08-workit-execution.md",
+        "id": "work-execution",
+        "src": "Reference/work-execution.md",
+        "dest": "08-work-execution.md",
         "env": "both"
       }
     ],
@@ -539,8 +548,7 @@
     "review-issue",
     "review-prd",
     "review-proposal",
-    "review-test-plan",
-    "work"
+    "review-test-plan"
   ],
   "managedCommands": [
     "add-story",
@@ -562,7 +570,7 @@
     "split-story",
     "switch-branch",
     "transfer-issue",
-    "workit"
+    "work"
   ],
   "deprecatedCommands": [
     { "file": "switch-role.md", "action": "removed", "version": "0.17.0", "reason": "Single specialist model" },

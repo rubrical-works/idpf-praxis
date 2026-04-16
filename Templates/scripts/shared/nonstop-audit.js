@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs two audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
@@ -34,7 +34,11 @@ function parseArgs(argv) {
 function listSubIssues(parentIssue, execFn = execSync) {
   const raw = execFn(`gh pmu sub list ${parentIssue} --json`, { encoding: 'utf8' });
   const parsed = JSON.parse(raw);
-  return Array.isArray(parsed) ? parsed : (parsed.items || []);
+  if (Array.isArray(parsed)) return parsed;
+  // #2361 — gh pmu sub list --json returns { issue, children: [...] }. Prior
+  // code read parsed.items and silently dropped every sub-issue. Accept
+  // children first; keep items as a backward-compat fallback.
+  return parsed.children || parsed.items || [];
 }
 
 function fetchIssue(issueNumber, execFn = execSync) {
@@ -102,6 +106,27 @@ function auditAcCheckbox(subIssuesWithBodies) {
   };
 }
 
+// #2361 AC2 — per-sub-issue commit-density audit. Each sub-issue is audited
+// against its own AC count; aggregate totals are retained for backward
+// compatibility with older callers.
+function auditCommitDensityPerSubIssue(details, countFn) {
+  const perSubIssue = [];
+  for (const d of details) {
+    const acs = countTotalAcs(d.body);
+    if (acs === 0) continue;
+    const commits = countFn(d.number);
+    const threshold = Math.ceil(acs / 3);
+    perSubIssue.push({
+      subIssue: d.number,
+      commits,
+      acs,
+      threshold,
+      status: commits >= threshold ? 'pass' : 'warn'
+    });
+  }
+  return perSubIssue;
+}
+
 function audit({ issueNumber, listFn, fetchFn, countFn }) {
   const subIssues = listFn(issueNumber);
   if (!subIssues.length) {
@@ -126,12 +151,24 @@ function audit({ issueNumber, listFn, fetchFn, countFn }) {
   const totalAcs = details.reduce((sum, d) => sum + countTotalAcs(d.body), 0);
   const totalCommits = details.reduce((sum, d) => sum + countFn(d.number), 0);
 
-  const commitDensity = auditCommitDensity(totalCommits, totalAcs);
+  const aggregate = auditCommitDensity(totalCommits, totalAcs);
+  const perSubIssue = auditCommitDensityPerSubIssue(details, countFn);
+  const anyWarn = perSubIssue.some(r => r.status === 'warn');
+  const commitDensity = {
+    ...aggregate,
+    perSubIssue,
+    status: aggregate.status === 'skip' ? 'skip' : (anyWarn ? 'warn' : 'pass')
+  };
+
   const acCheckbox = auditAcCheckbox(details);
 
   const warnings = [];
   const blocks = [];
-  if (commitDensity.status === 'warn') warnings.push(commitDensity.message);
+  for (const r of perSubIssue) {
+    if (r.status === 'warn') {
+      warnings.push(`#${r.subIssue}: Low commit density (${r.commits} commits for ${r.acs} ACs, threshold ${r.threshold}). Warning only — does not block.`);
+    }
+  }
   if (acCheckbox.status === 'fail') blocks.push(acCheckbox.message);
 
   return {
@@ -171,7 +208,9 @@ module.exports = {
   countUncheckedAcs,
   countTotalAcs,
   auditCommitDensity,
+  auditCommitDensityPerSubIssue,
   auditAcCheckbox,
   audit,
-  fetchIssue
+  fetchIssue,
+  listSubIssues
 };

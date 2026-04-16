@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description DTCG token schema generation and validation. Generates JSON Schema
  *   for the Design Tokens Community Group specification (Living Draft 2025-04-18).
  *   Validates token files against the schema, checking $value/$type/$description
@@ -16,7 +16,7 @@
 'use strict';
 
 /**
- * All 11 DTCG token types from the specification.
+ * All 12 DTCG token types from the specification + IDPF gradient extension (#2346).
  * @see https://github.com/design-tokens/community-group (Living Draft 2025-04-18)
  */
 const DTCG_TYPES = [
@@ -30,7 +30,8 @@ const DTCG_TYPES = [
   'shadow',
   'border',
   'typography',
-  'transition'
+  'transition',
+  'gradient'
 ];
 
 /**
@@ -48,7 +49,14 @@ const TYPE_VALIDATORS = {
   shadow: (v) => typeof v === 'object' && v !== null && !Array.isArray(v),
   border: (v) => typeof v === 'object' && v !== null && !Array.isArray(v),
   typography: (v) => typeof v === 'object' && v !== null && !Array.isArray(v),
-  transition: (v) => typeof v === 'object' && v !== null && !Array.isArray(v)
+  transition: (v) => typeof v === 'object' && v !== null && !Array.isArray(v),
+  gradient: (v) => {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    if (!Array.isArray(v.stops) || v.stops.length === 0) return false;
+    const allowedTypes = ['linear-gradient', 'radial-gradient'];
+    if (v.type && !allowedTypes.includes(v.type)) return false;
+    return true;
+  }
 };
 
 /**

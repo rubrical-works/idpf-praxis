@@ -24,8 +24,9 @@ Transform a proposal document into an Agile PRD with user stories, acceptance cr
 ## Key Behaviors
 
 - Validates the proposal issue has the `proposal` label and that a `Proposal/{Name}.md` file is linked in the issue body.
-- Generates UML diagrams (Use Case and Activity by default) as `.drawio.svg` files alongside the PRD in `PRD/{Name}/Diagrams/`.
+- Generates UML diagrams (Use Case and Activity by default) as `.drawio.svg` files alongside the PRD in `PRD/{Name}/Diagrams/`, or inline ASCII UML based on the style you pick at Phase 5.5a.
 - Generates a TDD test plan at `PRD/{Name}/Test-Plan-{Name}.md` and creates a test plan approval issue — `/create-backlog` is blocked until this approval issue is closed.
 - In `solo` review mode, offers to consolidate all stories under a single epic for simpler solo development.
 - After PRD creation, closes and archives the source proposal issue (moves file to `Proposal/Implemented/`) and opens a new PRD tracker issue.
+- **Commits generated artifacts atomically** (Phase 7 Step 4 in Issue-Driven Mode; Extract Mode Step 6) — `git add PRD/{name}/ Proposal/Implemented/{Name}.md && git commit -m "Refs #$issue_num — ..."`. The completion report shows the `Committed: {sha}` line. A `git diff --cached --quiet` guard short-circuits when there are no changes to commit. No `--skip-commit` flag is provided; use `git reset HEAD~1` to regroup.
 - Suggests relevant skills based on technical requirements found in the PRD; confirmed suggestions are saved to `framework-config.json`.

@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
+ *
+ * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
+ * issue has the `epic` label. The /done command spec's Step 1a epic flow
+ * expects sub-issues to transition to Done first, then the epic itself.
+ * Skipping the move here lets the caller orchestrate that ordering instead
+ * of inverting it (which would require post-hoc recovery via `gh pmu move`).
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -516,9 +522,14 @@ async function runSingleIssue(issueNum, options = {}) {
     }
   }
 
-  // 7. Conditional move to done
+  // 7. Conditional move to done — epic guard (#2367): skip auto-move when the
+  // issue has the `epic` label so the /done command spec's epic flow can
+  // process sub-issues first, then close the epic explicitly. The end state
+  // (epic reaches Done only after sub-issues) otherwise gets inverted and
+  // has to be recovered in a follow-up batch.
   let movedToDone = false;
-  if (options.forceMove || (diffVerification && !diffVerification.requiresConfirmation)) {
+  const isEpic = (dataResult.issue.labels || []).some(l => l.name === 'epic');
+  if (!isEpic && (options.forceMove || (diffVerification && !diffVerification.requiresConfirmation))) {
     roundTrips++;
     const moveResult = await moveToDone(issueNum);
     if (moveResult.error) {

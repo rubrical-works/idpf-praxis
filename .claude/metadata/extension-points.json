@@ -1,10 +1,39 @@
 {
   "$schema": "./extension-points-schema.json",
-  "generatedAt": "2026-04-15T01:46:55.853Z",
+  "generatedAt": "2026-04-16T17:04:00.248Z",
   "version": "1.0.0",
-  "commandCount": 20,
-  "extensionPointCount": 83,
-  "deprecatedExtensionPoints": [],
+  "commandCount": 19,
+  "extensionPointCount": 79,
+  "deprecatedExtensionPoints": [
+    {
+      "command": "work",
+      "name": "pre-work",
+      "deprecatedIn": "0.88.0",
+      "removedIn": "0.88.0",
+      "reason": "Consolidated /work from /workit hybrid shell (MANAGED, no extension points) — #2368"
+    },
+    {
+      "command": "work",
+      "name": "post-work-start",
+      "deprecatedIn": "0.88.0",
+      "removedIn": "0.88.0",
+      "reason": "Consolidated /work from /workit hybrid shell (MANAGED, no extension points) — #2368"
+    },
+    {
+      "command": "work",
+      "name": "post-implementation",
+      "deprecatedIn": "0.88.0",
+      "removedIn": "0.88.0",
+      "reason": "Consolidated /work from /workit hybrid shell (MANAGED, no extension points) — #2368"
+    },
+    {
+      "command": "work",
+      "name": "post-ac-verification",
+      "deprecatedIn": "0.88.0",
+      "removedIn": "0.88.0",
+      "reason": "Consolidated /work from /workit hybrid shell (MANAGED, no extension points) — #2368"
+    }
+  ],
   "commands": {
     "bug": {
       "type": "EXTENSIBLE",
@@ -530,33 +559,6 @@
           "name": "post-review",
           "location": "",
           "purpose": ""
-        }
-      ],
-      "copyright": "Rubrical Works (c) 2026"
-    },
-    "work": {
-      "type": "EXTENSIBLE",
-      "description": "Start working on issues with validation and auto-task extraction (project)",
-      "extensionPoints": [
-        {
-          "name": "pre-work",
-          "location": "Step 0, before context gathering preamble",
-          "purpose": "Add pre-work setup such as environment checks, dependency validation, or workspace preparation"
-        },
-        {
-          "name": "post-work-start",
-          "location": "Step 1 (Context Gathering), after preamble completes",
-          "purpose": "Add actions after issue context is loaded but before implementation begins"
-        },
-        {
-          "name": "post-implementation",
-          "location": "Step 3b (Documentation Judgment), after all ACs implemented",
-          "purpose": "Add post-implementation actions such as linting, formatting, or documentation generation"
-        },
-        {
-          "name": "post-ac-verification",
-          "location": "Step 4 (Verify Acceptance Criteria), after verification and QA extraction",
-          "purpose": "Add final checks or custom reporting after all ACs are verified"
         }
       ],
       "copyright": "Rubrical Works (c) 2026"

@@ -34,6 +34,15 @@
       "type": ["string", "null"],
       "description": "Parent screen for nested/modal screens"
     },
+    "kind": {
+      "type": "string",
+      "enum": ["page", "wizard", "step", "section", "modal", "component"],
+      "description": "Structural role. Must match the kind enum in screen-catalog-schema.json (#2339). Per PRD #2333 Technical Notes, both schemas reference the single source of truth at .claude/metadata/screen-kinds.json (AC46, AC49)."
+    },
+    "catalogEntry": {
+      "type": ["string", "null"],
+      "description": "Cross-reference: the screen name in Mockups/screen-catalog.json that this spec belongs to (AC46). Resolved by /catalog-screens registry-upsert (AC8)."
+    },
     "authentication": {
       "type": "string",
       "enum": ["none", "required", "optional"],

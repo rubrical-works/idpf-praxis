@@ -6,7 +6,7 @@ const path = require('path');
 const { readFileSafe } = require('./lib/shell-safe.js');
 
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description Orchestrate application of selected CI recommendations with sequential execution, confirmation prompts, error recovery, and summary reporting. Accepts recommendation objects from ci-recommend.js and applies them via ci-add.js. Part of the /ci apply subcommand.
  * @checksum sha256:placeholder
  *

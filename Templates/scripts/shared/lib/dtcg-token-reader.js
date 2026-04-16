@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.87.0
+ * @framework-script 0.88.0
  * @description DTCG token reader for integration with /mockups and /catalog-screens.
  *   Loads design tokens from Design-System/, supports theme merging,
  *   provides token value extraction by path, and returns structured palettes.
@@ -94,11 +94,17 @@ function getMockupPalette(projectRoot, options = {}) {
   const { found, tokens } = loadDesignTokens(projectRoot, options);
 
   if (!found || !tokens) {
+    let defaultGradients = {};
+    try {
+      const { getDefaultGradients } = require('./dtcg-gradients.js');
+      defaultGradients = getDefaultGradients();
+    } catch { /* helper optional */ }
     return {
       hasTokens: false,
       colors: { primary: '#3b82f6', secondary: '#6366f1', background: '#ffffff', text: '#111827' },
       fonts: { sans: 'system-ui, sans-serif', mono: 'monospace' },
-      spacing: { sm: '8px', md: '16px', lg: '24px' }
+      spacing: { sm: '8px', md: '16px', lg: '24px' },
+      gradients: defaultGradients
     };
   }
 
@@ -106,7 +112,8 @@ function getMockupPalette(projectRoot, options = {}) {
     hasTokens: true,
     colors: extractGroup(tokens, 'color'),
     fonts: extractGroup(tokens, 'fontFamily'),
-    spacing: extractGroup(tokens, 'dimension')
+    spacing: extractGroup(tokens, 'dimension'),
+    gradients: extractGroup(tokens, 'gradient')
   };
 }
 
