@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * @description List available CI features with enabled/disabled status. Detects active features by scanning workflow YAML files and formats output with status indicators. Part of the /ci list subcommand.
  * @checksum sha256:placeholder
  *

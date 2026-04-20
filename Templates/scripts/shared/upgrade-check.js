@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * @description Check for third-party framework/dependency upgrades. Reads CHARTER.md or Tech-Stack.md for dependency list, queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
  *

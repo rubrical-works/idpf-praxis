@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * Screen Catalog Registry helper.
  *
  * Reads/writes Mockups/screen-catalog.json — the master inventory of
@@ -14,7 +14,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const Ajv = require('ajv');
+const Ajv2020 = require('ajv/dist/2020');
+const addFormats = require('ajv-formats');
 
 const DEFAULT_CATALOG_PATH = path.join('Mockups', 'screen-catalog.json');
 const SCHEMA_PATH = path.join(__dirname, '..', '..', '..', 'metadata', 'screen-catalog-schema.json');
@@ -24,11 +25,9 @@ function getValidator() {
   if (_validator) return _validator;
   const raw = fs.readFileSync(SCHEMA_PATH, 'utf8');
   const schema = JSON.parse(raw);
-  const ajv = new Ajv({ allErrors: true, strict: false });
-  // Strip $schema + $id so Ajv 6.x (no draft 2020-12) compiles cleanly and
-  // duplicate-$id guard does not fire on repeated validator construction.
-  const { $schema: _s, $id: _i, ...schemaForAjv } = schema;
-  _validator = ajv.compile(schemaForAjv);
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  _validator = ajv.compile(schema);
   return _validator;
 }
 

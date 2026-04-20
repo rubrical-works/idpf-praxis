@@ -1,13 +1,18 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.88.0",
+  "version": "0.89.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
     "IDPF-Agile",
     "IDPF-Vibe"
   ],
+  "runtimeNpmDependencies": {
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.8.3"
+  },
   "domainSpecialists": [
     "Accessibility-Specialist",
     "API-Integration-Specialist",
@@ -45,7 +50,10 @@
     "precompact-hook.js",
     "test-on-change.js",
     "imported-skills.json",
-    "GENERATED.md"
+    "GENERATED.md",
+    "startup.log",
+    "crash.log",
+    ".command-cache.json"
   ],
   "deploymentFiles": {
     "commands": {
@@ -92,6 +100,28 @@
         "audit-commands.md",
         "idpf-stats.md",
         "issue-reset.md"
+      ],
+      "managed": [
+        "add-story.md",
+        "assign-branch.md",
+        "audit-commands.md",
+        "bad-test-review.md",
+        "change-domain-expert.md",
+        "charter.md",
+        "code-review.md",
+        "complete-prd.md",
+        "create-backlog.md",
+        "extensions.md",
+        "idpf-stats.md",
+        "issue-reset.md",
+        "pivot.md",
+        "plan-workstreams.md",
+        "playwright-check.md",
+        "resolve-review.md",
+        "split-story.md",
+        "switch-branch.md",
+        "transfer-issue.md",
+        "work.md"
       ]
     },
     "scripts": {
@@ -148,6 +178,7 @@
           "mockup-element-extractor.js",
           "mockup-ac-generator.js",
           "mockup-token-styles.js",
+          "mockups-serve.js",
           "stats-collect.js",
           "qa-extract.js",
           "log-changed-files.js",
@@ -199,7 +230,16 @@
           "screenshot-token-candidates.js",
           "token-drift-report.js",
           "token-update-mode.js",
-          "token-propagation.js"
+          "token-propagation.js",
+          "discovery-adapters/css-gradients.js",
+          "discovery-adapters/css-vars.js",
+          "discovery-adapters/react-native.js",
+          "discovery-adapters/style-dictionary.js",
+          "discovery-adapters/tailwind.js",
+          "export-adapters/css-vars.js",
+          "export-adapters/react-native.js",
+          "export-adapters/style-dictionary.js",
+          "export-adapters/tailwind.js"
         ]
       },
       "hooks": {
@@ -525,6 +565,31 @@
           "name": "stats-config-schema",
           "source": ".claude/metadata/stats-config-schema.json",
           "description": "JSON Schema for stats-config.json"
+        },
+        {
+          "name": "code-review-excludes",
+          "source": ".claude/metadata/code-review-excludes.json",
+          "description": "Default excludes for /code-review (#2327)"
+        },
+        {
+          "name": "code-review-excludes-schema",
+          "source": ".claude/metadata/code-review-excludes-schema.json",
+          "description": "JSON Schema for code-review-excludes.json (#2327)"
+        },
+        {
+          "name": "screen-catalog-schema",
+          "source": ".claude/metadata/screen-catalog-schema.json",
+          "description": "JSON Schema for Mockups/screen-catalog.json (#2339)"
+        },
+        {
+          "name": "screen-kinds",
+          "source": ".claude/metadata/screen-kinds.json",
+          "description": "Screen kind enum + catalogEntry registry for /catalog-screens (#2355)"
+        },
+        {
+          "name": "screen-kinds-schema",
+          "source": ".claude/metadata/screen-kinds.schema.json",
+          "description": "JSON Schema for screen-kinds.json (#2355)"
         }
       ]
     }

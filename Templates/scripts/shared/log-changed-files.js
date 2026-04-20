@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * @description Compute the Files Changed section for a /work issue by scanning commits that
  * reference the issue ("Refs #N"), classifying each file via lib/classify-changed-files.js,
  * and emitting a formatted markdown section to stdout. Empty output when no commits match

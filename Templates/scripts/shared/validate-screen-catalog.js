@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * Validate Mockups/screen-catalog.json against 9 invariants.
  *
  * Invariants:
@@ -30,12 +30,13 @@ const SCHEMA_PATH = path.join(__dirname, '..', '..', 'metadata', 'screen-catalog
 let _schemaValidator = null;
 function schemaValidator() {
   if (_schemaValidator) return _schemaValidator;
-  const Ajv = require('ajv');
+  const Ajv2020 = require('ajv/dist/2020');
+  const addFormats = require('ajv-formats');
   const raw = fs.readFileSync(SCHEMA_PATH, 'utf8');
   const schema = JSON.parse(raw);
-  const ajv = new Ajv({ allErrors: true, strict: false });
-  const { $schema: _s, $id: _i, ...rest } = schema;
-  _schemaValidator = ajv.compile(rest);
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  _schemaValidator = ajv.compile(schema);
   return _schemaValidator;
 }
 

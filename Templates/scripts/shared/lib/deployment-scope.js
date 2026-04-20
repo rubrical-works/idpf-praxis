@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * @description Classify files and commits by deployment scope (deployed vs dev-only).
  * Uses minimize-config.json rules, deployment chain awareness, and known path patterns.
  * Used by generate-changelog.js to separate user-facing from internal changes.

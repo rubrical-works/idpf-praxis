@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -12,14 +12,14 @@
  *   - The schema is loaded once and cached
  *
  * Schema source: .claude/metadata/framework-config.schema.json (draft-07).
- * Validation library: ajv 6 (already in this repo's package.json).
+ * Validation library: ajv 8 (declared runtime dep per #2378).
  *
- * See #2292 for context.
+ * See #2292 for context. #2378 migrated from ajv 6 to ajv 8.
  */
 
 const fs = require('fs');
 const path = require('path');
-const Ajv = require('ajv');
+const Ajv = require('ajv').default;
 
 const CONFIG_FILENAME = 'framework-config.json';
 const SCHEMA_REL_PATH = '.claude/metadata/framework-config.schema.json';
@@ -36,8 +36,8 @@ function getValidator(cwd) {
   if (cachedValidator) return cachedValidator;
   const schemaPath = path.join(cwd, SCHEMA_REL_PATH);
   const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-  // ajv 6 defaults to draft-07, which matches the schema's $schema declaration
-  const ajv = new Ajv({ allErrors: true });
+  // ajv 8 default export supports draft-07, which matches the schema's $schema declaration
+  const ajv = new Ajv({ allErrors: true, strict: false });
   cachedValidator = ajv.compile(schema);
   return cachedValidator;
 }

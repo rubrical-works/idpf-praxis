@@ -1,5 +1,5 @@
 **Agile-Driven Development Framework - Core**
-**Version:** v0.88.0
+**Version:** v0.89.0
 **Module:** Core (loaded at session startup)
 **Terminology**
 1. **User Story**: Feature described from user's perspective with acceptance criteria

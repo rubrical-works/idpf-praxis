@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * validate-dist.js - Distribution integrity validator
  *
  * Validates that the distribution package is complete and consistent.
@@ -194,6 +194,49 @@ for (const file of sampleFiles) {
       pass(`${file} — no unresolved placeholders`);
     }
   }
+}
+
+// 6. Runtime npm dependencies — every entry in framework-manifest.json
+//    runtimeNpmDependencies must have a matching `node_modules/<pkg>/package.json`
+//    installed in the dist tree, and the installed version must satisfy the
+//    declared semver range. Introduced #2378 — catches the class of failure
+//    where `npm ci --omit=dev` silently dropped a declared runtime dep
+//    (e.g. ajv absent from `dist/node_modules/` at deploy time).
+section('Runtime npm Dependencies');
+
+try {
+  const manifestPath = path.join(ROOT, 'framework-manifest.json');
+  const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const runtimeDeps = manifestJson.runtimeNpmDependencies || {};
+  const declaredPkgs = Object.keys(runtimeDeps);
+
+  if (declaredPkgs.length === 0) {
+    pass('(no runtimeNpmDependencies declared — skipping installed-version check)');
+  } else {
+    for (const pkgName of declaredPkgs) {
+      const installedPkgJsonPath = path.join(ROOT, 'node_modules', pkgName, 'package.json');
+      if (!fs.existsSync(installedPkgJsonPath)) {
+        fail(`${pkgName} — declared in manifest runtimeNpmDependencies but node_modules/${pkgName}/package.json missing`);
+        continue;
+      }
+      try {
+        const installedVersion = JSON.parse(fs.readFileSync(installedPkgJsonPath, 'utf8')).version;
+        // Minimum check: the installed version major must match the declared range's major.
+        const declaredRange = runtimeDeps[pkgName];
+        const declaredMajor = (declaredRange.match(/\d+/) || [null])[0];
+        const installedMajor = (installedVersion.match(/^(\d+)/) || [null, null])[1];
+        if (declaredMajor && installedMajor && declaredMajor !== installedMajor) {
+          fail(`${pkgName} — declared ${declaredRange} but installed ${installedVersion} (major mismatch)`);
+        } else {
+          pass(`${pkgName}@${installedVersion} (declared ${declaredRange})`);
+        }
+      } catch (e) {
+        fail(`${pkgName} — could not read installed package.json: ${e.message}`);
+      }
+    }
+  }
+} catch (e) {
+  fail(`Runtime npm deps check failed: ${e.message}`);
 }
 
 // Summary

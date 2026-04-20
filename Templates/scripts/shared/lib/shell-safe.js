@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.88.0
+ * @framework-script 0.89.0
  * @description Shell-safe utilities for CodeQL compliance: sanitizeShellArg (whitelist
  * validation for shell-interpolated values), readFileSafe (TOCTOU-safe file reading),
  * and atomicWriteSync (write-to-temp-then-rename for config files).

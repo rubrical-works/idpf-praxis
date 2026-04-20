@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.88.0
+**Version:** v0.89.0
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule. Shell `CommandsSrc/work.md` has args/prereqs/errors; this covers Workflow.
 ## Execution Instructions

@@ -6,7 +6,8 @@ Produce DTCG-compliant design tokens with pluggable adapter architecture, visual
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| *(none)* | No | Init mode — guided walkthrough to create design tokens |
+| *(none)* | No | Init mode when no tokens exist; status summary when they do. |
+| `--init` | No | Force init mode regardless of current state. Prompts for backup (`backupAndOffer` → `*.bak.{ts}`) when valid tokens already exist; follows the shared `'unreadable'` path when the token file is present but unparseable. |
 | `--discover` | No | Discovery mode — extract tokens from existing code via adapters |
 | `--export <adapter>` | No | Export tokens to framework-specific format |
 | `--export all` | No | Export to all detected framework formats |
@@ -18,6 +19,7 @@ Produce DTCG-compliant design tokens with pluggable adapter architecture, visual
 
 ```
 /design-system
+/design-system --init
 /design-system --discover
 /design-system --export tailwind
 /design-system --theme dark
