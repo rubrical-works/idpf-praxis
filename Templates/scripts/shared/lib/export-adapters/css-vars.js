@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * @description CSS Custom Properties export adapter. Translates DTCG tokens
  *   to a CSS file with :root custom property declarations.
  * @checksum sha256:placeholder

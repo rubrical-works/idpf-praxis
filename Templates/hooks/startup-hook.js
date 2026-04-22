@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -282,7 +282,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 // Build additionalContext (plain text + explicit instructions)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildAdditionalContext(info, plainBlock) {
+function buildAdditionalContext(info, plainBlock, checkResults = []) {
   // The block must be visible to the user. Claude Code does not auto-surface
   // hook stderr in the UI, so we instruct Claude to echo the block verbatim
   // as the FIRST action of the response. The content is fully deterministic
@@ -305,6 +305,13 @@ function buildAdditionalContext(info, plainBlock) {
   if (info.specialistPath) {
     const rel = path.relative(process.cwd(), info.specialistPath).replace(/\\/g, '/');
     instructions.push(`Read \`${rel}\` to load the active domain specialist (${info.domainSpecialist}) into context.`);
+  }
+
+  // Statusline: prompt setup when no statusLine configured. Restores the #1542
+  // flow lost in the procedural→hook-driven startup migration (#2398).
+  const statusline = checkResults.find((r) => r && r.name === 'statusline');
+  if (statusline && statusline.parsed?.data?.configured === false) {
+    instructions.push('Statusline is not configured — invoke the `statusline-setup` agent to configure it.');
   }
 
   // Charter pending instruction goes LAST so the user sees the full block first.
@@ -350,7 +357,7 @@ async function main() {
   process.stderr.write(coloredBlock + '\n');
 
   // Emit hookSpecificOutput to stdout (Claude's context)
-  const additionalContext = buildAdditionalContext(info, plainBlock);
+  const additionalContext = buildAdditionalContext(info, plainBlock, checkResults);
   const hookOutput = {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',

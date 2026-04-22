@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
@@ -15,19 +15,21 @@
  * @returns {object} Domain entities object (or { error: string } on failure)
  */
 function generateFromCharter(charterContent, projectVersion) {
+  const CONTRACT_HINT = 'CHARTER.md must start with "# Project Charter: <name>" and include a "## Key Entities" section with a three-column table (Entity | Count | Location). Count may be "TBD". See CommandsSrc/charter.md Step 7 for the full contract (#2379).';
+
   if (!charterContent || typeof charterContent !== 'string' || charterContent.trim() === '') {
-    return { error: 'Charter content is empty or invalid' };
+    return { error: 'Charter content is empty or invalid', hint: CONTRACT_HINT };
   }
 
   // Validate this looks like a charter (must have # heading)
   if (!charterContent.match(/^#\s+/m)) {
-    return { error: 'Content does not appear to be a valid charter (no markdown headings found)' };
+    return { error: 'Content does not appear to be a valid charter (no markdown headings found)', hint: CONTRACT_HINT };
   }
 
   // Extract project name from title
   const titleMatch = charterContent.match(/^#\s+Project Charter:\s*(.+)/m);
   if (!titleMatch) {
-    return { error: 'Charter title not found (expected "# Project Charter: <name>")' };
+    return { error: 'Charter title not found (expected "# Project Charter: <name>")', hint: CONTRACT_HINT };
   }
   const projectName = titleMatch[1].trim();
 
@@ -38,8 +40,13 @@ function generateFromCharter(charterContent, projectVersion) {
   const inScope = extractListItems(charterContent, 'In Scope');
   const outOfScope = extractListItems(charterContent, 'Out of Scope');
 
-  // Extract entities from Key Entities table
+  // Extract entities from Key Entities table. Missing section surfaces a
+  // warning at top-level (not silent entities:{}), per #2379.
+  const hasKeyEntitiesSection = /##\s+Key Entities/.test(charterContent);
   const entities = extractEntities(charterContent);
+  const warning = !hasKeyEntitiesSection
+    ? 'Key Entities section not found in CHARTER.md; entities is empty. ' + CONTRACT_HINT
+    : undefined;
 
   // Extract companion repositories as external entities
   extractCompanionRepos(charterContent, entities);
@@ -67,7 +74,7 @@ function generateFromCharter(charterContent, projectVersion) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  return {
+  const result = {
     generatedFrom: 'CHARTER.md',
     generatedAt: today,
     projectVersion: projectVersion || 'unknown',
@@ -88,6 +95,8 @@ function generateFromCharter(charterContent, projectVersion) {
     driftSignals,
     validationRules
   };
+  if (warning) result.warning = warning;
+  return result;
 }
 
 /**

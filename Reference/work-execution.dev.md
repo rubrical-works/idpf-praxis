@@ -1,7 +1,7 @@
 # /work Execution Rule
 **Version:** v0.90.0
-**Source:** Reference/work-execution.md
-Auto-loaded execution rule. Shell `CommandsSrc/work.md` has args/prereqs/errors; this covers Workflow.
+**Source:** Reference/work-execution.md (dev-preserve variant, #2395)
+Auto-loaded execution rule. Shell `CommandsSrc/work.md` has args/prereqs/errors; this covers Workflow. This variant preserves FRAMEWORK-ONLY blocks for self-hosted dev; the stripped variant ships via `.min-mirror/Reference/work-execution.md` to user projects.
 ## Execution Instructions
 **REQUIRED:** Routed command — two-phase task creation. Task list IS the runtime step machine.
 **Phase 1:** Create exactly one task: `Step 1: Context Gathering (preamble script)`. Description: all downstream gates depend on parsed context.
@@ -54,8 +54,20 @@ Per AC: verifiable → `[x]`; unverifiable → auto-extract via Step 4a, mark `[
 **NEVER** `gh pmu move --force` to bypass unchecked ACs on issues you implemented. Legitimate: epic parents, external closures, branch trackers, test-plan approvals. Detection: `story`/`enhancement` label AND `in_progress` this session → **HALT**, report unchecked count, verify via Step 4.
 #### Step 4c: Log Changed Files to Issue Body
 `node .claude/scripts/shared/log-changed-files.js --issue $ISSUE`. Prints `### Files Changed` section to stdout (empty → caller skips append). Append (when non-empty) via `gh pmu view --body-stdout` → edit → `gh pmu edit -F`.
+<!-- FRAMEWORK-ONLY-START -->
+#### Step 4d: Minimize Touched Command Specs (FRAMEWORK-ONLY — dev repo)
+Trigger: any commit made in Steps 3/3b for the current sub-issue touched `CommandsSrc/*.md`. Detect via `git diff --name-only <sub-issue-start-sha>..HEAD -- CommandsSrc/`.
+For each touched source: (1) invoke `/fw-minimize-files CommandsSrc/<file>.md` via the **Skill tool** (`fw-minimize-files`) — generative LLM task; do not substitute a script call. (2) Verify Stage 1 output `.claude/commands/<file>.md` and Stage 2 output `.min-mirror/Templates/commands/<file>.md` (FRAMEWORK-ONLY stripped) — unless the file is in `getStage2ExcludedFiles()` (via `node .claude/scripts/framework/minimize-helper.js stage2-excluded`). (3) Commit regenerated Stage 1+2 outputs with the source: `Refs #$ISSUE — minimize <file>.md`. Runs before Step 5 so the sub-issue lands with synced source + outputs. Applies in default and `--nonstop`.
+#### Step 4e: Register Added Helpers (FRAMEWORK-ONLY — dev repo)
+Trigger: any commit added a new `.js` under `.claude/scripts/shared/` or `.claude/scripts/shared/lib/`. Detect via `git diff --name-status <sub-issue-start-sha>..HEAD -- .claude/scripts/shared/` filtered to status `A`.
+Helper registration is off-band — three parallel edits required or CI fails (`tests/installers/deployment-parity.test.js`, `manifest-validation.test.js`):
+1. Edit `framework-manifest.json` `deploymentFiles.scripts.shared.files` (or `.lib.files`) — append helper filename.
+2. Edit `.claude/scripts/framework/constants.js` `INSTALLED_FILES_MANIFEST.scripts.files` (or `scriptsLib.files`) — append (plain string or feature-flag closure on `enableGitHubWorkflow`).
+3. Add `@framework-script v0.90.0` as first line of helper JSDoc — enforced by `manifest-validation.test.js` (#1019 guard).
+4. Commit all edits with the helper: `Refs #$ISSUE`. Runs before Step 5.
+<!-- FRAMEWORK-ONLY-END -->
 #### Step 4f: Full-Suite Regression Sweep
-After Step 4c, run `npx jest --no-coverage` before Step 5. All tests must pass. Failure blocks `in_review` — commit a fix (`Refs #$ISSUE`) and re-run. Complements per-AC scoped tests with a cross-cutting regression check at the sub-issue boundary.
+After Step 4c (and 4d/4e if they fired), run `npx jest --no-coverage` before Step 5. All tests must pass. Failure blocks `in_review` — commit a fix (`Refs #$ISSUE`) and re-run. Complements per-AC scoped tests with a cross-cutting regression check at the sub-issue boundary.
 ### Step 5: Move to in_review
 `gh pmu move $ISSUE --status in_review`
 ### Step 6: STOP Boundary — Cleanup, Report, Wait

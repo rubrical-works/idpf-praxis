@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
@@ -430,8 +430,10 @@ async function main() {
     }
   }
 
-  // Clean up findings file
-  try { fs.unlinkSync(findingsFile); } catch (_e) { /* ignore */ }
+  // Findings file cleanup is owned by the caller (#2396) — the /review-issue
+  // spec chains `&& rm .tmp-<issue>-findings.json`. Do not delete here or
+  // the caller's rm fails with "No such file or directory" and its
+  // non-zero exit masks the script's success.
 
   // Query issue status for context-aware closing notification
   let issueStatus = '';

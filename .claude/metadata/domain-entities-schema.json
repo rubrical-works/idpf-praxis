@@ -21,6 +21,10 @@
       "type": "string",
       "description": "Project version at time of generation"
     },
+    "warning": {
+      "type": "string",
+      "description": "Optional non-fatal warning surfaced by the generator (e.g. missing Key Entities section — see #2379)"
+    },
     "boundedContext": {
       "type": "object",
       "required": ["name", "purpose", "boundary"],

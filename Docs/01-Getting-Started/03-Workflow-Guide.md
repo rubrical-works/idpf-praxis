@@ -15,7 +15,7 @@ Charter → Proposal → PRD → Backlog → Work → Release
 
 Each stage has a dedicated slash command. You interact with these commands through Claude Code, and the AI assistant handles the technical execution — writing code, running tests, managing Git operations — on your behalf.
 
-**Your role throughout this guide is: decide, direct, review, approve.** The AI's role is: analyze, implement, test, commit. For a full explanation, see `01-Your-Role.md`.
+**Your role throughout this guide is: decide, direct, review, approve.** The AI's role is: analyze, implement, test, commit. For a full explanation, see `02-Your-Role.md`.
 
 This guide walks through each stage in order, showing what you run, what happens, and what to do next.
 

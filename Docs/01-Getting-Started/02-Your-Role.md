@@ -175,7 +175,7 @@ No. The AI performs TDD autonomously. You need to understand acceptance criteria
 Not required, but more review means higher quality. At minimum, check that the acceptance criteria are met and the AI didn't change files it shouldn't have. At maximum, read every diff. Your comfort level determines where you land on that spectrum.
 
 **"I need to know Git to use IDPF."**
-The slash commands abstract Git operations. You type `/create-branch`, not `git checkout -b`. You type `/done`, not `git commit && git push`. Understanding Git helps you recover from problems faster (see `04-When-Things-Go-Wrong.md`), but it's not required for normal operation.
+The slash commands abstract Git operations. You type `/create-branch`, not `git checkout -b`. You type `/done`, not `git commit && git push`. Understanding Git helps you recover from problems faster (see `05-When-Things-Go-Wrong.md`), but it's not required for normal operation.
 
 **"This is for developers who want structure."**
 It can be. But it's equally for non-developers who want to build software with an AI assistant and need a process that prevents the AI from going off the rails. The structure isn't developer ceremony — it's the guardrails that make AI-assisted development reliable.
@@ -186,10 +186,11 @@ It can be. But it's equally for non-developers who want to build software with a
 
 | If You Want To... | Read |
 |---|---|
-| Install and run your first issue | `00-Quick-Start.md` |
-| Understand every stage of the workflow | `02-Workflow-Guide.md` |
-| Choose how much planning to do | `03-Planning-Approaches.md` |
-| Know what to do when something breaks | `04-When-Things-Go-Wrong.md` |
+| Install dependencies on Windows | `00-Installation.md` |
+| Install and run your first issue | `01-Quick-Start.md` |
+| Understand every stage of the workflow | `03-Workflow-Guide.md` |
+| Choose how much planning to do | `04-Planning-Approaches.md` |
+| Know what to do when something breaks | `05-When-Things-Go-Wrong.md` |
 
 ---
 

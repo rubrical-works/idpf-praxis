@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "design-system-init-categories.schema.json",
+  "title": "design-system Init Category Catalog",
+  "description": "Source-of-truth enumeration of categories presented by /design-system init. Drives the AskUserQuestion option set so two sessions cannot drift. Spec at CommandsSrc/design-system.md Step 3 must mirror this file; tests/metadata/design-system-init-categories.test.js enforces parity.",
+  "type": "object",
+  "required": ["version", "topLevel", "componentPatterns", "defaultRule"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "defaultRule": {
+      "type": "string",
+      "description": "Plain-English statement of the on/off default policy applied to componentPatterns."
+    },
+    "topLevel": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "alwaysSelected"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "label": { "type": "string", "minLength": 1 },
+          "alwaysSelected": { "type": "boolean" },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "componentPatterns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "defaultOn"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "label": { "type": "string", "minLength": 1 },
+          "defaultOn": { "type": "boolean" },
+          "rationale": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

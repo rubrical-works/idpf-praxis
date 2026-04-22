@@ -9,7 +9,7 @@
 
 The solo practitioner working with an AI assistant is IDPF's primary design target. Every feature — the charter, STOP boundaries, review gates, TDD enforcement — was built for the human+AI pair where one person makes all the decisions and the AI does the heavy lifting. That person doesn't need to be a developer. They need to be a clear thinker who can define what to build, evaluate whether it was built correctly, and decide when to ship.
 
-Technical expertise raises the ceiling — you'll catch more AI mistakes, make better architectural choices, and produce higher-quality software. But the floor is functional without it. See `../01-Getting-Started/01-Your-Role.md` for a full breakdown of the roles you'll fill.
+Technical expertise raises the ceiling — you'll catch more AI mistakes, make better architectural choices, and produce higher-quality software. But the floor is functional without it. See `../01-Getting-Started/02-Your-Role.md` for a full breakdown of the roles you'll fill.
 
 The question isn't whether IDPF fits solo work; it's which parts of the pipeline to use for which kinds of work.
 
@@ -70,7 +70,7 @@ The charter, the review commands, and the acceptance criteria are the solo devel
 
 ## Domain Specialist Coverage
 
-Solo practitioners typically wear multiple hats — product visioner, requirements author, quality reviewer, process conductor (see `../01-Getting-Started/01-Your-Role.md`). The 22 domain specialists help the AI switch context to match what you're working on:
+Solo practitioners typically wear multiple hats — product visioner, requirements author, quality reviewer, process conductor (see `../01-Getting-Started/02-Your-Role.md`). The 22 domain specialists help the AI switch context to match what you're working on:
 
 | Solo Dev Activity | Specialist | Switch With |
 |---|---|---|

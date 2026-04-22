@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.89.0
+**Version:** v0.90.0
 **Source:** Reference/Windows-Shell-Safety.md
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
@@ -17,7 +17,8 @@ Claude Code uses Git Bash on Windows. Most Unix commands work, but these pattern
 | `set VAR=value` | `export VAR=value` |
 | `C:\path\to\file` | `C:/path/to/file` |
 | `taskkill /F /IM` | `powershell -Command 'Stop-Process ...'` |
-**Pattern Safety**
+## Pattern Safety
+
 | Pattern | Safe? | Use Instead |
 |---------|:-----:|-------------|
 | `$(cmd)` -- short, predictable output | Yes | -- |

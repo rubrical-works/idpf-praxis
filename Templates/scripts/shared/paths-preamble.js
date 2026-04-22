@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * @description Consolidate /paths command setup into a single JSON response. Parses flags (--quick, --dry-run, --categories, --from-code), validates category names, detects flag conflicts, fetches issue metadata, validates issue type (proposal/enhancement), detects partial analysis state, and returns structured JSON envelope.
  * @checksum sha256:placeholder
  *

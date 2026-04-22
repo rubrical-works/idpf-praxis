@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * DTCG gradient $type helpers (#2346).
  *   - validateGradientValue: structural check (linear/radial + stops)
  *   - resolveGradientAlias: resolve {color.path} references inside stop colors

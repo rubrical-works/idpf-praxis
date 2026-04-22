@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-09
 **Topic:** From zero to your first completed issue in one session
-**Note:** You don't need to be a developer to follow this guide. See `01-Your-Role.md` for what IDPF expects from you.
+**Note:** You don't need to be a developer to follow this guide. See `02-Your-Role.md` for what IDPF expects from you.
 
 ---
 
@@ -164,7 +164,7 @@ In about 15 minutes you:
 5. Worked it with TDD methodology
 6. Completed it with a commit and status transition
 
-Every subsequent issue follows steps 5-8. For larger features, the pipeline extends: `/proposal` → `/create-prd` → `/create-backlog` → then `/work` each story. See `02-Workflow-Guide.md` (same directory) for the full lifecycle.
+Every subsequent issue follows steps 5-8. For larger features, the pipeline extends: `/proposal` → `/create-prd` → `/create-backlog` → then `/work` each story. See `03-Workflow-Guide.md` (same directory) for the full lifecycle.
 
 ---
 
@@ -172,10 +172,10 @@ Every subsequent issue follows steps 5-8. For larger features, the pipeline exte
 
 | If You Want To... | Read |
 |---|---|
-| Understand what you'll actually be doing | `01-Your-Role.md` |
-| Understand the full pipeline | `02-Workflow-Guide.md` |
-| Choose between top-down and bottom-up planning | `03-Planning-Approaches.md` |
-| Know what to do when something breaks | `04-When-Things-Go-Wrong.md` |
+| Understand what you'll actually be doing | `02-Your-Role.md` |
+| Understand the full pipeline | `03-Workflow-Guide.md` |
+| Choose between top-down and bottom-up planning | `04-Planning-Approaches.md` |
+| Know what to do when something breaks | `05-When-Things-Go-Wrong.md` |
 | Run reviews in parallel across sessions | `../02-Advanced/04-Concurrent-Sessions.md` |
 | Understand why the framework has so many checkpoints | `../03-Philosophy/Intentional-Friction.md` |
 

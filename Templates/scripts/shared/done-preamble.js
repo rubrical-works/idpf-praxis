@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -97,7 +97,7 @@ async function execJSON(cmd, errorCode, errorMsg) {
 /**
  * Parse command-line arguments for done-preamble
  * @param {string[]} args
- * @returns {{ mode: string, issues?: number[], forceMove?: boolean } | { error: { code: string, message: string } }}
+ * @returns {{ mode: string, issues?: number[], forceMove?: boolean, yes?: boolean } | { error: { code: string, message: string } }}
  */
 function parseArgs(args) {
   // No args → discovery mode (will be implemented in Story #1557)
@@ -106,6 +106,7 @@ function parseArgs(args) {
   }
 
   const forceMove = args.includes('--force-move');
+  const yes = args.includes('--yes') || args.includes('-y');
   const hasAll = args.includes('--all');
 
   // --all conflicts with --issue/--issues
@@ -113,7 +114,9 @@ function parseArgs(args) {
     if (args.includes('--issue') || args.includes('--issues')) {
       return { error: { code: 'CONFLICTING_ARGS', message: '--all cannot be combined with --issue or --issues.' } };
     }
-    return { mode: 'discovery', all: true };
+    const result = { mode: 'discovery', all: true };
+    if (yes) result.yes = true;
+    return result;
   }
 
   const flagIndex = args.indexOf('--issue');
@@ -127,7 +130,9 @@ function parseArgs(args) {
     if (isNaN(num) || num <= 0 || String(num) !== cleaned) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: "${raw}". Must be a positive integer.` } };
     }
-    return { mode: 'single', issues: [num], forceMove };
+    const result = { mode: 'single', issues: [num], forceMove };
+    if (yes) result.yes = true;
+    return result;
   }
 
   const issuesIndex = args.indexOf('--issues');
@@ -140,7 +145,9 @@ function parseArgs(args) {
     if (nums.some(n => isNaN(n) || n <= 0)) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue numbers in: "${raw}".` } };
     }
-    return { mode: 'batch', issues: nums, forceMove };
+    const result = { mode: 'batch', issues: nums, forceMove };
+    if (yes) result.yes = true;
+    return result;
   }
 
   // Unrecognized args with only --force-move
@@ -661,6 +668,7 @@ async function main() {
 
   if (parsed.mode === 'discovery') {
     const result = await runDiscovery({ all: parsed.all || false });
+    if (parsed.yes) result.yes = true;
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;
@@ -668,6 +676,7 @@ async function main() {
 
   if (parsed.mode === 'single') {
     const result = await runSingleIssue(parsed.issues[0], { forceMove: parsed.forceMove });
+    if (parsed.yes) result.yes = true;
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;
@@ -686,6 +695,7 @@ async function main() {
       warnings: [],
       roundTrips: results.reduce((sum, r) => sum + (r.roundTrips || 0), 0)
     };
+    if (parsed.yes) envelope.yes = true;
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
     process.exit(0);
     return;

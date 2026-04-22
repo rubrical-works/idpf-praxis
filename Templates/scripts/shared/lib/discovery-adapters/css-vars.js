@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * @description CSS Custom Properties discovery adapter. Detects CSS files with
  *   custom properties (--*) and extracts them to DTCG color/dimension tokens.
  * @checksum sha256:placeholder

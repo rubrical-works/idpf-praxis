@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.89.0",
+  "version": "0.90.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -348,13 +348,14 @@
         "id": "task-creation-timing",
         "src": "Reference/Task-Creation-Timing.md",
         "dest": "07-task-creation-timing.md",
-        "env": "dev"
+        "env": "both"
       },
       {
         "id": "work-execution",
         "src": "Reference/work-execution.md",
         "dest": "08-work-execution.md",
-        "env": "both"
+        "env": "both",
+        "devPreserveFrameworkOnly": true
       }
     ],
     "metadata": {
@@ -390,6 +391,16 @@
           "name": "framework-config-schema",
           "source": ".claude/metadata/framework-config.schema.json",
           "description": "JSON schema for framework-config.json; validated at write time by framework-config.js helper (#2292)"
+        },
+        {
+          "name": "design-system-init-categories",
+          "source": ".claude/metadata/design-system-init-categories.json",
+          "description": "Source-of-truth category enumeration for /design-system init AskUserQuestion (#2397)"
+        },
+        {
+          "name": "design-system-init-categories-schema",
+          "source": ".claude/metadata/design-system-init-categories.schema.json",
+          "description": "JSON schema for design-system-init-categories.json (#2397)"
         },
         {
           "name": "extension-points",

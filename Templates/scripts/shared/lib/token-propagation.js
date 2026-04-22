@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.89.0
+ * @framework-script 0.90.0
  * Token change propagation: find mockups that consumed changed tokens
  * and apply user decision (yes/no/select) about regeneration.
  *

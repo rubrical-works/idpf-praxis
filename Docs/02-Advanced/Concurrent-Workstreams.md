@@ -308,7 +308,7 @@ Status transitions are one-way. A destroyed workstream cannot be revived — cre
 ## What to Read Next
 
 - [Concurrent Sessions](04-Concurrent-Sessions.md) — How to parallelize review work across multiple Claude Code sessions (the tactical counterpart to workstreams)
-- [Planning Approaches](../01-Getting-Started/03-Planning-Approaches.md) — Top-down vs bottom-up planning, including the Parallel Tracks pattern
+- [Planning Approaches](../01-Getting-Started/04-Planning-Approaches.md) — Top-down vs bottom-up planning, including the Parallel Tracks pattern
 - [Hub Architecture](Hub-and-Project-Architecture.md) — How the hub/project model works with shared infrastructure
 
 ---

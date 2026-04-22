@@ -1,0 +1,99 @@
+{
+  "$schema": "./design-system-init-categories.schema.json",
+  "version": "1.0.0",
+  "defaultRule": "ON when the pattern appears in the majority of mature web/mobile design systems (Material, Carbon, Polaris, Atlassian) and is required for typical UI work. OFF when the pattern is specialized, advanced, or domain-specific (motion choreography, stroke-based icon systems, layout grid frameworks).",
+  "topLevel": [
+    {
+      "id": "color-palette",
+      "label": "Color palette",
+      "alwaysSelected": true,
+      "description": "Primary, secondary, accent, neutral scale, semantic colors."
+    },
+    {
+      "id": "typography",
+      "label": "Typography",
+      "alwaysSelected": true,
+      "description": "Font families, size scale, weight scale."
+    },
+    {
+      "id": "spacing",
+      "label": "Spacing",
+      "alwaysSelected": true,
+      "description": "Base unit and scale."
+    },
+    {
+      "id": "components",
+      "label": "Components",
+      "alwaysSelected": true,
+      "description": "Aggregate of all DTCG-common pattern tokens. Subcategories selectable independently per defaultOn rule."
+    }
+  ],
+  "componentPatterns": [
+    {
+      "id": "border-radii",
+      "label": "Border radii",
+      "defaultOn": true,
+      "rationale": "Universal in modern UI; rounded corners are baseline."
+    },
+    {
+      "id": "shadows",
+      "label": "Shadows / elevation",
+      "defaultOn": true,
+      "rationale": "Material-style elevation and drop shadows are pervasive across systems."
+    },
+    {
+      "id": "transitions",
+      "label": "Transitions (duration + easing)",
+      "defaultOn": true,
+      "rationale": "Hover/focus/state transitions are baseline interaction polish."
+    },
+    {
+      "id": "z-index-layers",
+      "label": "Z-index layers",
+      "defaultOn": true,
+      "rationale": "Modal/dropdown/tooltip stacking requires named layers in any non-trivial UI."
+    },
+    {
+      "id": "breakpoints",
+      "label": "Breakpoints",
+      "defaultOn": true,
+      "rationale": "Responsive design is universal; named breakpoints are baseline."
+    },
+    {
+      "id": "icon-sizes",
+      "label": "Icon sizes",
+      "defaultOn": true,
+      "rationale": "Multi-size icon scale is standard wherever an icon system exists."
+    },
+    {
+      "id": "opacity-scale",
+      "label": "Opacity scale",
+      "defaultOn": false,
+      "rationale": "Most systems use ad-hoc opacity values; a tokenized scale is specialized."
+    },
+    {
+      "id": "blur-filter",
+      "label": "Blur / filter",
+      "defaultOn": false,
+      "rationale": "iOS-style frosted glass and filter tokens are specialized to certain aesthetics."
+    },
+    {
+      "id": "motion-keyframes",
+      "label": "Motion / keyframes",
+      "defaultOn": false,
+      "rationale": "Choreographed motion vocabularies are advanced; transitions cover baseline needs."
+    },
+    {
+      "id": "stroke-widths",
+      "label": "Stroke widths",
+      "defaultOn": false,
+      "rationale": "Specific to stroke-based icon systems; not relevant when icons are filled or imported."
+    },
+    {
+      "id": "grid-tokens",
+      "label": "Grid tokens",
+      "defaultOn": false,
+      "rationale": "Layout grids are framework-specific (Bootstrap, Tailwind grid); spacing scale covers baseline needs."
+    }
+  ]
+}
