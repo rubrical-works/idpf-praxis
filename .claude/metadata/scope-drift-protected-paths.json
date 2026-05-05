@@ -1,0 +1,31 @@
+{
+  "$schema": "./scope-drift-protected-paths.schema.json",
+  "version": 1,
+  "description": "Paths that the Step 4c state-drift gate (#2404) always protects. A sub-issue touching one of these requires the issue body to name the file explicitly (under Files to modify: or in a previously-logged Files Changed section) or carry a `Scope-Override: <reason>` line in the most recent commit message or an issue comment.",
+  "paths": [
+    {
+      "pattern": "framework-config.json",
+      "reason": "Per-project configuration; accidental edits break charter integrity and skill enforcement."
+    },
+    {
+      "pattern": "framework-manifest.json",
+      "reason": "Versioned framework deployment contract; off-band edits desync dist + PHM consumers."
+    },
+    {
+      "pattern": ".claude/metadata/**",
+      "reason": "Schema-driven registries (extension points, recipes, criteria, signals); silent drift here breaks downstream consumers without test coverage."
+    },
+    {
+      "pattern": ".gh-pmu.json",
+      "reason": "Project-board configuration; accidental edits break GitHub Workflow integration."
+    },
+    {
+      "pattern": ".gh-pmu.checksum",
+      "reason": "Integrity seal for .gh-pmu.json; must only change when the config it seals also changes."
+    },
+    {
+      "pattern": "CHARTER.md",
+      "reason": "Project charter; out-of-scope edits drift from the project's stated vision and current focus."
+    }
+  ]
+}

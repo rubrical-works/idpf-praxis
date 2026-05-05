@@ -1,7 +1,7 @@
 # /work Execution Rule
-**Version:** v0.90.0
+**Version:** v0.91.0
 **Source:** Reference/work-execution.md
-Auto-loaded execution rule. Shell `CommandsSrc/work.md` has args/prereqs/errors; this covers Workflow.
+Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow.
 ## Execution Instructions
 **REQUIRED:** Routed command — two-phase task creation. Task list IS the runtime step machine.
 **Phase 1:** Create exactly one task: `Step 1: Context Gathering (preamble script)`. Description: all downstream gates depend on parsed context.
@@ -21,7 +21,7 @@ If not epic/branch tracker, clear task list.
 ### Step 1: Context Gathering (Preamble)
 `node .claude/scripts/shared/work-preamble.js` with `--issue N`, `--issues "N,N,N"`, or `--status <status>`. `--assign` to auto-assign.
 Parse JSON: `ok:false` → report `errors[]`, STOP. `ok:true` → extract `context`, `gates`, `autoTask`, `warnings`, report.
-**--assign errors:** `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch`). `--schema` for envelope reference.
+**--assign errors:** `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch`), `BRANCH_TRACKER_NOT_ASSIGNABLE` (target is a branch tracker — assign sub-issues instead). `--schema` for envelope reference.
 ### Step 1a: CI Wait (--wait)
 Trigger: `context.wait==true`. `node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 300`. 0=pass continue; 1=fail **STOP**; 2=timeout **STOP**; 3=no runs continue.
 ### Step 1b: Epic Complexity Assessment
@@ -52,8 +52,9 @@ Per AC: verifiable → `[x]`; unverifiable → auto-extract via Step 4a, mark `[
 `node .claude/scripts/shared/qa-extract.js --issue $ISSUE`. Reads `qa-config.json`, matches unverifiable ACs against keywords, creates labeled QA sub-issues, returns `{matched:[{acText,subIssueNumber,annotation}]}`. Apply each annotation to parent body.
 #### Step 4b: Force-Move Prohibition
 **NEVER** `gh pmu move --force` to bypass unchecked ACs on issues you implemented. Legitimate: epic parents, external closures, branch trackers, test-plan approvals. Detection: `story`/`enhancement` label AND `in_progress` this session → **HALT**, report unchecked count, verify via Step 4.
-#### Step 4c: Log Changed Files to Issue Body
+#### Step 4c: Log Changed Files + State-Drift Gate
 `node .claude/scripts/shared/log-changed-files.js --issue $ISSUE`. Prints `### Files Changed` section to stdout (empty → caller skips append). Append (when non-empty) via `gh pmu view --body-stdout` → edit → `gh pmu edit -F`.
+**State-drift gate (#2404):** After body update, `node .claude/scripts/shared/scope-drift-check.js --issue $ISSUE`. Compares `Refs #$ISSUE` commit files against (1) body `Files to modify:`/`**Files:**` section ∪ prior `### Files Changed`, and (2) `.claude/metadata/scope-drift-protected-paths.json`. Exit 0 = continue (blocking-no-violations OR advisory); Exit 1 = **HALT** (blocking + violations) — do not proceed to Step 4d/5. Resolutions: add paths to body `Files to modify:` + re-run; `git revert` + re-run; or `Scope-Override: <reason>` in latest commit message or issue comment + re-run (echoed in next report). Always-protected (halt even with no declared scope): `framework-config.json`, `framework-manifest.json`, `.claude/metadata/**`, `.gh-pmu.json`, `.gh-pmu.checksum`, `CHARTER.md`. Gate is additive — `log-changed-files.js` still runs regardless.
 #### Step 4f: Full-Suite Regression Sweep
 After Step 4c, run `npx jest --no-coverage` before Step 5. All tests must pass. Failure blocks `in_review` — commit a fix (`Refs #$ISSUE`) and re-run. Complements per-AC scoped tests with a cross-cutting regression check at the sub-issue boundary.
 ### Step 5: Move to in_review

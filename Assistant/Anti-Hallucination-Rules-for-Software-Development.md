@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Software Development
-**Version:** v0.90.0
+**Version:** v0.91.0
 **Core Principle:** Verification over assumption. Project state over training memory. Observable actions over confident-sounding answers.
 Every rule names a *condition* and an *observable action*. Rules that cannot be checked from a session log do not belong here.
 ---

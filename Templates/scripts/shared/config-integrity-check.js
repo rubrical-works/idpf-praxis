@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.90.0
+ * @framework-script 0.91.0
  * @description Check .gh-pmu.json config integrity via gh pmu config verify.
  * Gates on gh-pmu >= 1.3.1 (config verify was introduced in that version).
  * Non-blocking; used during session startup.

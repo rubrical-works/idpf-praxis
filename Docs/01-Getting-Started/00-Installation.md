@@ -97,7 +97,23 @@ IDPF runs inside Claude Code. It is a token-rich environment (spec reads, TDD cy
 4. On first run, sign in with the same account as your Claude subscription.
 5. Set the default model to **Claude Opus** — IDPF's STOP boundaries, sequential processing, and anti-hallucination rules require Opus-level instruction-following. See `../02-Advanced/Choosing-a-Model.md` for the trade-offs.
 
-### 6. Praxis Hub Manager (PHM)
+### 6. GitHub Kanban Template Project
+
+Before launching Praxis Hub Manager, create the GitHub Project that PHM will clone when bootstrapping each new project. PHM's startup **Environment Check** modal flags a missing template source and disables **New Project** until one is set.
+
+You only need to do this **once per GitHub owner** (user or organization) that will host Praxis-managed projects. If you later host projects under a second owner (e.g., a GitHub organization), repeat this step for that owner.
+
+1. In GitHub's top nav, click the **[+]** icon → **New project**.
+2. If prompted, select the **owner** (user or organization). PHM clones from the owner level, not from a single repository.
+3. Under **Start from a template**, pick **Kanban**. Do not pick Blank, Team planning, or any other template — PHM expects the Kanban columns (Todo / In Progress / Done).
+4. **Deselect** **Import items from repository**. The template must start empty — PHM populates items itself per project.
+5. Name it something clear, e.g. `Praxis Kanban Template`, and click **Create project**.
+6. On the new project's board view, click **View** → **Fields**, toggle **Labels** to **Visible**, then **Save changes to view**. The Labels field is hidden by default; making it visible gives you per-card visual indicators.
+7. Record the project **name** (as entered above) or **number** (the integer at the end of `https://github.com/users/<you>/projects/<NUMBER>`). PHM will ask for this value the first time you open it.
+
+Full walkthrough with verification checklist: `06-Kanban-Template-Setup.md`.
+
+### 7. Praxis Hub Manager (PHM)
 
 PHM is the Electron app that creates the central IDPF hub and wires your projects into it. It handles hub download, symlinks, skill extraction, and per-project `.claude/` setup.
 
@@ -120,7 +136,7 @@ At this point **framework users** are done with installation. Continue to `01-Qu
 
 Continue here only if you intend to modify `idpf-praxis-dev`, `px-manager`, or `gh-pmu`. Everything above must be installed first.
 
-### 7. Clone the framework repo
+### 8. Clone the framework repo
 
 The framework source of truth is `idpf-praxis-dev`. Pick a project root (this guide uses `E:\Projects`):
 
@@ -139,7 +155,7 @@ npx jest --no-coverage
 
 All tests should pass. If Jest reports missing modules, re-run `npm install`.
 
-### 8. Self-hosted session
+### 9. Self-hosted session
 
 `idpf-praxis-dev` dogfoods IDPF itself (`selfHosted: true` in `framework-config.json`). To start a development session:
 
@@ -149,7 +165,7 @@ All tests should pass. If Jest reports missing modules, re-run `npm install`.
 
 This launches Claude Code in the project with all IDPF rules, hooks, and commands active against the framework's own source tree.
 
-### 9. Clone Praxis Hub Manager (optional)
+### 10. Clone Praxis Hub Manager (optional)
 
 Needed only if you plan to modify PHM itself. **Using** IDPF does not require the PHM source.
 
@@ -163,7 +179,7 @@ npm run dev
 
 `npm run dev` starts the Electron app in development mode. See `px-manager/README.md` for build and packaging details.
 
-### 10. Clone gh-pmu (optional)
+### 11. Clone gh-pmu (optional)
 
 Needed only if you plan to modify the `gh-pmu` extension. Day-to-day IDPF work uses the installed extension from step 4.
 

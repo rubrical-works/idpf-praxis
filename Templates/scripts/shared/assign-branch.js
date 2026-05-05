@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.90.0
+ * @framework-script 0.91.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -197,6 +197,27 @@ function classifyExpansionResult({ issueNumber, isEpic, labelsLoaded, children }
     }
 
     return { status: 'expanded', count: children.length, warning: null };
+}
+
+/**
+ * Identify which of the given issue numbers are branch trackers (have the
+ * 'branch' label). Used to reject assignment operations targeting trackers
+ * (#2403). Failed label fetches are treated as non-tracker — getIssueLabels
+ * already emits a warning, so this function does not block on transient
+ * fetch failures.
+ *
+ * @param {number[]} issueNumbers
+ * @returns {Promise<number[]>} Issue numbers that are branch trackers
+ */
+async function findBranchTrackers(issueNumbers) {
+    const trackers = [];
+    for (const num of issueNumbers) {
+        const { labels } = await getIssueLabels(num);
+        if (labels.some(l => l.toLowerCase() === 'branch')) {
+            trackers.push(num);
+        }
+    }
+    return trackers;
 }
 
 /**
@@ -594,6 +615,20 @@ async function main() {
         }
     }
 
+    // Step 5a: Reject branch trackers as assignment targets (#2403)
+    // Branch trackers are container issues, not units of implementation work;
+    // assigning one to a branch is always a user mistake. Detected before any
+    // mutation (epic expansion, assignment, tracker linking).
+    const trackerHits = await findBranchTrackers(issueNumbers);
+    if (trackerHits.length > 0) {
+        for (const num of trackerHits) {
+            console.error(`Error: Issue #${num} is a branch tracker and cannot be assigned. Target the sub-issues on the branch instead.`);
+        }
+        endTimer('total');
+        process.exit(1);
+        return;
+    }
+
     // Step 5b: Expand epic issues into sub-issues
     const { expanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers);
     issueNumbers = expanded;
@@ -733,6 +768,7 @@ module.exports = {
     linkAllToTracker,
     expandEpicSubIssues,
     classifyExpansionResult,
+    findBranchTrackers,
     hasBranchAssigned,
     main,
     // Export helpers for testing

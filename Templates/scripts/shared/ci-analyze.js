@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.90.0
+ * @framework-script 0.91.0
  * @description Analyze a project to detect languages, test tooling, deployment targets, and current CI configuration. Generates structured project profile used by ci-recommend.js to produce CI improvement recommendations. Part of the /ci recommend subcommand.
  * @checksum sha256:placeholder
  *

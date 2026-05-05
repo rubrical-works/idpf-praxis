@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.90.0",
+  "version": "0.91.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -182,7 +182,9 @@
           "stats-collect.js",
           "qa-extract.js",
           "log-changed-files.js",
+          "scope-drift-check.js",
           "nonstop-audit.js",
+          "create-epic.js",
           "validate-screen-catalog.js"
         ]
       },
@@ -436,6 +438,16 @@
           "name": "imported-skills",
           "source": ".claude/metadata/imported-skills.json",
           "description": "Registry of skills imported from idpf-praxis-skills"
+        },
+        {
+          "name": "scope-drift-protected-paths",
+          "source": ".claude/metadata/scope-drift-protected-paths.json",
+          "description": "Always-protected paths for Step 4c state-drift gate (#2404)"
+        },
+        {
+          "name": "scope-drift-protected-paths-schema",
+          "source": ".claude/metadata/scope-drift-protected-paths.schema.json",
+          "description": "JSON schema for scope-drift-protected-paths.json (#2404)"
         },
         {
           "name": "domain-signals",

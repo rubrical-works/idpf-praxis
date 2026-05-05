@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.90.0
+ * @framework-script 0.91.0
  * Screenshot-input validator for --from-screenshot / --from-screenshots
  * on /catalog-screens and /mockups. Enforces NFR-3 mime allowlist.
  * Refs #2342 (PRD #2333)

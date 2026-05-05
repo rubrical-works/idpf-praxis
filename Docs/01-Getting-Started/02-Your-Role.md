@@ -182,6 +182,16 @@ It can be. But it's equally for non-developers who want to build software with a
 
 ---
 
+## Tip: When the AI Stacks Questions
+
+Sometimes the AI will ask you several questions at once — a numbered list, or multiple questions buried in a paragraph. This can be overwhelming, and answering out of order can confuse the conversation.
+
+If that happens, just say: **"ask questions one at a time"**
+
+The AI will re-ask the first question, wait for your answer, then move to the next. This is especially useful during `/charter`, `/proposal`, `/create-prd`, and other commands where the AI is gathering requirements from you.
+
+---
+
 ## What to Read Next
 
 | If You Want To... | Read |

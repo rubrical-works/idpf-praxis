@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.90.0
+ * @framework-script 0.91.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -260,6 +260,19 @@ function detectIssueType(issueData) {
   if (labels.includes('branch')) return 'branch';
   if (labels.includes('epic')) return 'epic';
   return 'standard';
+}
+
+/**
+ * Test whether an issue is a branch tracker (carries the 'branch' label).
+ * Used by --assign rejection (#2403): branch trackers represent a working
+ * branch, not implementation work, so assigning them to a branch is always
+ * a user mistake.
+ * @param {{ labels: Array<{ name: string }> }} issueData
+ * @returns {boolean}
+ */
+function isBranchTracker(issueData) {
+  const labels = (issueData.labels || []).map(l => l.name);
+  return labels.includes('branch');
 }
 
 // ─── Acceptance Criteria Parsing ───
@@ -645,6 +658,14 @@ async function runSingleIssue(issueNum, options) {
       return buildErrorEnvelope([issueCheck.error]);
     }
 
+    // Branch trackers are not assignable (#2403) — reject before any mutation.
+    if (isBranchTracker(issueCheck.issue)) {
+      return buildErrorEnvelope([{
+        code: 'BRANCH_TRACKER_NOT_ASSIGNABLE',
+        message: `Issue #${issueNum} is a branch tracker and cannot be assigned. Target the sub-issues on the branch instead.`
+      }]);
+    }
+
     roundTrips++;
     const currentBranch = await getCurrentBranch();
     if (!currentBranch) {
@@ -822,6 +843,20 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
 
   // --assign: check assignability and perform assignment
   if (assignRequested) {
+    // Branch trackers are not assignable (#2403) — reject before any mutation.
+    if (isBranchTracker(issueResult.issue)) {
+      return {
+        ok: false,
+        issueNum,
+        errors: [{
+          code: 'BRANCH_TRACKER_NOT_ASSIGNABLE',
+          message: `Issue #${issueNum} is a branch tracker and cannot be assigned. Target the sub-issues on the branch instead.`
+        }],
+        warnings: [],
+        roundTrips
+      };
+    }
+
     roundTrips++;
     const currentBranch = await getCurrentBranch();
     if (!currentBranch) {
@@ -1000,6 +1035,7 @@ module.exports = {
   gatherIssueOnly,
   gatherBranchData,
   detectIssueType,
+  isBranchTracker,
   parseAcceptanceCriteria,
   moveToInProgress,
   parsePrdTracker,
