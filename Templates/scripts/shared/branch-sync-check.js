@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * @description Check branch sync status with upstream. Detects behind, ahead,
  *   diverged, and no-upstream states. Non-blocking; used during session startup.
  * @checksum sha256:placeholder

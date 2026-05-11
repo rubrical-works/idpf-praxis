@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * @description React Native discovery adapter. Detects StyleSheet.create
  *   patterns and extracts style values to DTCG tokens.
  * @checksum sha256:placeholder

@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.91.0
+**Version:** v0.91.1
 **Source:** Reference/work-execution.md (dev-preserve variant, #2395)
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow. This variant preserves FRAMEWORK-ONLY blocks for self-hosted dev; the stripped variant ships via `.min-mirror/Reference/work-execution.md` to user projects.
 ## Execution Instructions
@@ -64,7 +64,7 @@ Trigger: any commit added a new `.js` under `.claude/scripts/shared/` or `.claud
 Helper registration is off-band — three parallel edits required or CI fails (`tests/installers/deployment-parity.test.js`, `manifest-validation.test.js`):
 1. Edit `framework-manifest.json` `deploymentFiles.scripts.shared.files` (or `.lib.files`) — append helper filename.
 2. Edit `.claude/scripts/framework/constants.js` `INSTALLED_FILES_MANIFEST.scripts.files` (or `scriptsLib.files`) — append (plain string or feature-flag closure on `enableGitHubWorkflow`).
-3. Add `@framework-script v0.91.0` as first line of helper JSDoc — enforced by `manifest-validation.test.js` (#1019 guard).
+3. Add `@framework-script v0.91.1` as first line of helper JSDoc — enforced by `manifest-validation.test.js` (#1019 guard).
 4. Commit all edits with the helper: `Refs #$ISSUE`. Runs before Step 5.
 <!-- FRAMEWORK-ONLY-END -->
 #### Step 4f: Full-Suite Regression Sweep

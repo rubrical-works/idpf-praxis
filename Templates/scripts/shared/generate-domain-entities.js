@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.

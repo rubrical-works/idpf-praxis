@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.91.0
+**Version:** v0.91.1
 
 **Purpose:** AI-facing reference material for session work after startup.
 

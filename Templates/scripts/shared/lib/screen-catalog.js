@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * Screen Catalog Registry helper.
  *
  * Reads/writes Mockups/screen-catalog.json — the master inventory of

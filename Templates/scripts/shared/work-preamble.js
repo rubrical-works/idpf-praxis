@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -97,6 +97,18 @@ async function execJSON(command, args, errorCode, errorMsg) {
  * @param {string[]} args
  * @returns {{ mode: string, issues: number[] } | { error: { code: string, message: string } }}
  */
+// #2414 — find a flag in either space form (--flag value) or equals form (--flag=value).
+// Empty equals values (`--flag=`) are returned as `value: ''` so callers can emit MISSING_ARGUMENT.
+function findFlag(args, name) {
+  const exact = `--${name}`;
+  const i = args.indexOf(exact);
+  if (i !== -1) return { index: i, value: args[i + 1] };
+  const prefix = `${exact}=`;
+  const j = args.findIndex(a => a.startsWith(prefix));
+  if (j !== -1) return { index: j, value: args[j].slice(prefix.length) };
+  return null;
+}
+
 function parseArgs(args) {
   if (args.length === 0) {
     return { error: { code: 'MISSING_ARGUMENT', message: 'No arguments provided. Use --issue N, --issues "N,N", or --status <status>.' } };
@@ -105,7 +117,7 @@ function parseArgs(args) {
   // Detect --schema flag (mutually exclusive with other flags)
   const hasSchema = args.includes('--schema');
   if (hasSchema) {
-    const hasOther = args.includes('--issue') || args.includes('--issues') || args.includes('--status');
+    const hasOther = findFlag(args, 'issue') || findFlag(args, 'issues') || findFlag(args, 'status');
     if (hasOther) {
       return { error: { code: 'MUTUAL_EXCLUSION', message: '--schema cannot be combined with --issue, --issues, or --status.' } };
     }
@@ -116,9 +128,9 @@ function parseArgs(args) {
   const hasAssign = args.includes('--assign');
   const hasWait = args.includes('--wait');
 
-  const flagIndex = args.indexOf('--issue');
-  if (flagIndex !== -1) {
-    const raw = args[flagIndex + 1];
+  const issueFlag = findFlag(args, 'issue');
+  if (issueFlag) {
+    const raw = issueFlag.value;
     if (!raw) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--issue requires a value.' } };
     }
@@ -135,9 +147,9 @@ function parseArgs(args) {
     return result;
   }
 
-  const issuesIndex = args.indexOf('--issues');
-  if (issuesIndex !== -1) {
-    const raw = args[issuesIndex + 1];
+  const issuesFlag = findFlag(args, 'issues');
+  if (issuesFlag) {
+    const raw = issuesFlag.value;
     if (!raw) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--issues requires a comma-separated list.' } };
     }
@@ -153,9 +165,9 @@ function parseArgs(args) {
     return result;
   }
 
-  const statusIndex = args.indexOf('--status');
-  if (statusIndex !== -1) {
-    const status = args[statusIndex + 1];
+  const statusFlag = findFlag(args, 'status');
+  if (statusFlag) {
+    const status = statusFlag.value;
     if (!status) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--status requires a value.' } };
     }

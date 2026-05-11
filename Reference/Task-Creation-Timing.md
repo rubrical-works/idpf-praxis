@@ -1,5 +1,5 @@
 # Task Creation Timing for Routed Commands
-**Version:** v0.91.0
+**Version:** v0.91.1
 **Purpose:** Prevent orphaned tasks when commands have routing decisions.
 ## Two-Phase Task Creation
 ### Phase 1: Preamble Task Only

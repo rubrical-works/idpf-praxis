@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * @description UserPromptSubmit hook that enforces branch-gated work requirements. Blocks 'work #N' commands when the target issue lacks branch assignment and provides branch context awareness for branch-aware workflows. Registered as a Claude Code hook.
  * @checksum sha256:placeholder
  *

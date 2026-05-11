@@ -1,5 +1,5 @@
 ---
-version: "v0.91.0"
+version: "v0.91.1"
 description: Merge branch to main with gated checks (project)
 argument-hint: "[--skip-gates] [--dry-run]"
 copyright: "Rubrical Works (c) 2026"
@@ -88,7 +88,7 @@ gh pr create --base main --head $(git branch --show-current) \
 ### Wait for CI
 
 ```bash
-node .claude/scripts/framework/wait-for-ci.js
+node .claude/scripts/shared/wait-for-ci.js
 ```
 
 **If CI fails, STOP and report.**

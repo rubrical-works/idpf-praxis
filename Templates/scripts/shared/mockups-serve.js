@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  *
  * Zero-dependency static file server for /mockups --serve (#2377).
  * Uses only Node built-ins (http, fs, path) — no npm dependencies, offline-safe.

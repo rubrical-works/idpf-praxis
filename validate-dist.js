@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * validate-dist.js - Distribution integrity validator
  *
  * Validates that the distribution package is complete and consistent.
@@ -47,7 +47,6 @@ section('Required Directories');
 
 const requiredDirs = [
   'IDPF-Agile',
-  'IDPF-Vibe',
   'Overview',
   'Reference',
   'System-Instructions',

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * Generate Mockups/NAVIGATION.md from a screen catalog.
  * Sections: Pages (with nested outbound edges and modals),
  *           Wizards (with steps), Dangling References, Unreachable.

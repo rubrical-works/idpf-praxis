@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.0
+ * @framework-script 0.91.1
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -22,7 +22,48 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { minimatch } = require('minimatch');
+
+// Vendored glob matcher (#2418). The framework root ships without a populated
+// node_modules in deployed projects, so external `require()` calls crash
+// /work Step 4c at module-load time. The pattern set actually used here —
+// literals, `*`, and recursive `**` — is small enough that an inline matcher
+// is cheaper than declaring + installing a dependency. Supports:
+//   - exact path match           e.g.  framework-config.json
+//   - `*`  (within one segment)  e.g.  src/*.js
+//   - `**` (across segments)     e.g.  .claude/metadata/**
+// Leading-dot segments are matched by `*`/`**` (equivalent to minimatch's
+// `{ dot: true }` mode). Brace expansion, negation, and `?` are NOT
+// supported — they are not used by any caller. If a future caller needs
+// them, switch the helper rather than re-introducing an external dep.
+function globToRegex(pattern) {
+  let re = '^';
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        re += '.*';
+        i += 2;
+        if (pattern[i] === '/') i++;
+      } else {
+        re += '[^/]*';
+        i++;
+      }
+    } else if ('.+^$()|{}[]\\'.includes(c)) {
+      re += '\\' + c;
+      i++;
+    } else {
+      re += c;
+      i++;
+    }
+  }
+  re += '$';
+  return new RegExp(re);
+}
+
+function globMatch(filePath, pattern) {
+  return globToRegex(pattern).test(filePath);
+}
 
 const DEFAULT_METADATA_PATH = path.join(
   __dirname, '..', '..', 'metadata', 'scope-drift-protected-paths.json'
@@ -128,7 +169,7 @@ function extractBacktickedPaths(chunk) {
 
 function matchesAny(filePath, patterns) {
   if (!Array.isArray(patterns) || patterns.length === 0) return false;
-  return patterns.some(p => minimatch(filePath, p, { dot: true }));
+  return patterns.some(p => globMatch(filePath, p));
 }
 
 // ─── Override Detection ───
@@ -157,7 +198,7 @@ function checkDrift({ touched, declaredScope, scopeSource, protectedPaths, overr
     const isProtected = matchesAny(file, protectedPatterns);
 
     if (isProtected && !inDeclared) {
-      const proto = protectedPaths.find(p => minimatch(file, p.pattern, { dot: true }));
+      const proto = protectedPaths.find(p => globMatch(file, p.pattern));
       violations.push({
         path: file,
         reason: 'always-protected',
