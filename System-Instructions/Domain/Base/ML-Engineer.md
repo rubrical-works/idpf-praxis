@@ -1,5 +1,5 @@
 # System Instructions: Machine Learning Engineer
-**Version:** v0.91.1
+**Version:** v0.92.0
 **Purpose:** Specialized expertise in machine learning, model development, training, deployment (MLOps), and production ML systems.
 **Core ML Engineering Expertise**
 **ML Frameworks & Libraries**

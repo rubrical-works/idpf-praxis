@@ -1,5 +1,5 @@
 # System Instructions: Platform Engineer
-**Version:** v0.91.1
+**Version:** v0.92.0
 **Purpose:** Specialized expertise in building and maintaining internal developer platforms, tooling, and infrastructure to improve team productivity and developer experience.
 ---
 **Internal Developer Platform (IDP)**

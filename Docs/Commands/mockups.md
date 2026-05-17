@@ -8,6 +8,8 @@ Create or modify text-based or interactive UI screen mockups, driven by the scre
 |----------|----------|-------------|
 | `#NN` | No | Issue number (bug, enhancement, proposal, or PRD) to pre-populate context |
 | `--from-image <path>` | No | Use a reference image (png/jpeg/webp) as the visual baseline for mockup generation. Bypasses the source-selection question. |
+| `--showcase` | No | Launch the Living Style Guide browser review surface on `127.0.0.1`. Renders the screen catalog (UI components / iconography) alongside the other seven design categories; captures accept/reject/annotate decisions to `Design-System/showcase/decisions.json`. Mutually exclusive with `--apply-decisions`. |
+| `--apply-decisions` | No | Read pending decisions from `Design-System/showcase/decisions.json` and apply mockup outcomes (revise / mark accepted / mark rejected / record annotations) without launching the server. For scripted / CI use. Mutually exclusive with `--showcase`. |
 
 ## Usage
 
@@ -15,6 +17,8 @@ Create or modify text-based or interactive UI screen mockups, driven by the scre
 /mockups
 /mockups #42
 /mockups --from-image ./design/home.png
+/mockups --showcase
+/mockups --apply-decisions
 ```
 
 ## Key Behaviors
@@ -32,3 +36,4 @@ Create or modify text-based or interactive UI screen mockups, driven by the scre
 - Protects against file collisions — asks to overwrite, rename, or skip when a target already exists.
 - After completion, auto-generates/updates `Mockups/{Name}/README.md` and writes mockup references back to the source issue or proposal; offers to stage and commit all changes.
 - **STOP** after reporting — does not proceed without user instruction.
+- **Living Style Guide** (`--showcase`): launches a loopback browser surface that renders the screen catalog into the UI Components and Iconography categories of a nine-category review, captures reviewer decisions to `Design-System/showcase/decisions.json` (append-only JSON-Lines), and applies outcomes back to mockups / catalog entries on the next invocation. `--apply-decisions` provides the same apply step without the server for scripted / headless use. See `Docs/02-Advanced/Screen-Design-Pipeline.md` → "Living Style Guide" for the full workflow.

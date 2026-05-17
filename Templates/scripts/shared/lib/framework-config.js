@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.1
+ * @framework-script 0.92.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every

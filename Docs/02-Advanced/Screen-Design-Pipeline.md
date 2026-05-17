@@ -244,6 +244,140 @@ Extracted values are presented as candidates alongside your existing tokens. You
 
 ---
 
+## Living Style Guide — Browser Review of the Design System
+
+The pipeline produces JSON tokens and markdown specs by default. For visual review, all three commands accept a `--showcase` flag that launches a local browser-based review surface, captures your decisions, and applies them back to the underlying artifacts on the next invocation.
+
+This closes the design-decision loop without leaving the framework: no remote hosting, no GUI install, no external dependencies. The server binds loopback-only (`127.0.0.1`), the bundle is plain HTML/CSS/JS, and decisions persist as an append-only JSON-Lines log on your filesystem.
+
+### What `--showcase` Renders
+
+The showcase organizes your design system into nine canonical categories:
+
+| Category | Source |
+|----------|--------|
+| UI Components | `Mockups/screen-catalog.json` (component-kind entries) |
+| Typography | DTCG tokens (`Design-System/idpf-design.tokens.json`) |
+| Color | DTCG tokens |
+| Iconography | Screen catalog |
+| Spacing & Layout | DTCG tokens |
+| Imagery & Illustration | Inline showcase content / stub |
+| Motion | DTCG tokens |
+| Voice & Tone | Inline showcase content / stub |
+| Accessibility Patterns | Inline showcase content / stub |
+
+Categories with no underlying source render a "not yet populated" placeholder rather than crashing — you can launch the showcase on a partially-built design system.
+
+### Launching the Showcase
+
+Run any of the three pipeline commands with `--showcase`:
+
+```
+/design-system --showcase
+/mockups --showcase
+/catalog-screens --showcase
+```
+
+What happens:
+
+1. The bundle is rendered to `Design-System/showcase/` (HTML + bundled token/catalog JSON + assets).
+2. `showcase-server.js` binds `127.0.0.1` on an available port (uses the same port-walk fallback as the `--serve` infrastructure from `#2377`; the CLI prints the URL if browser-launch fails).
+3. Your default browser opens to the showcase index.
+
+The three commands launch the same surface — `--showcase` from `/design-system` is the canonical entry point, but the other two are equivalent so you can stay in the command that matches the artifact you're reviewing.
+
+### Capturing Decisions in the Browser
+
+For every item in every category, the showcase exposes three controls: **Approve**, **Reject**, and **Annotate**. Each click POSTs a record to the server, which validates it against `.claude/metadata/decisions.schema.json` and appends it to `Design-System/showcase/decisions.json` (one JSON object per line).
+
+A decision record looks like:
+
+```json
+{"category": "color", "itemId": "palette-warm", "decision": "accept", "timestamp": "2026-05-16T14:32:00Z"}
+{"category": "ui-components", "itemId": "button-ghost", "decision": "reject", "note": "Contrast fails AA against surface-2.", "timestamp": "2026-05-16T14:33:12Z"}
+{"category": "typography", "itemId": "scale-display-large", "decision": "annotate", "note": "Consider tightening line-height to 1.1.", "timestamp": "2026-05-16T14:34:00Z"}
+```
+
+Notes are optional for accept/reject and required for annotate; they cap at 1000 characters. `itemId` is namespaced by `(category, itemId)` — the same `itemId` may appear under different categories without collision.
+
+When you're finished, click **Done** in the browser (or `Ctrl-C` the CLI process). Either path shuts down the server cleanly; no zombie process is left bound.
+
+### Implicit Resume — Applying Decisions
+
+The next time you run the originating command **without** `--showcase`, it auto-detects pending decisions in `decisions.json` and applies them to its respective artifacts:
+
+| Command | Apply Behavior |
+|---------|---------------|
+| `/design-system` | Accepted palettes/scales committed to tokens; rejected variants removed; annotations recorded in token metadata |
+| `/mockups` | Mockups revised or marked accepted/rejected; annotations recorded |
+| `/catalog-screens` | Catalog entries marked accepted, annotated, or flagged for rework |
+
+The command reports per-decision actions on resume so you can audit what was applied:
+
+```
+Applied 7 pending decisions from Design-System/showcase/decisions.json:
+  palette-warm (color) accepted → tokens.json updated
+  button-ghost (ui-components) rejected → catalog entry flagged for rework
+  scale-display-large (typography) annotated → metadata.note set
+  ...
+
+2 stale decisions skipped (itemId no longer present):
+  variant-button-pill (ui-components)
+  gradient-hero-alt (color)
+```
+
+**Stale-decision detection** means a decision recorded against an item that no longer exists in the current artifact is reported and skipped — no error, no silent drop.
+
+**Idempotency:** the apply step is idempotent. Re-running the command after a successful apply does nothing further. The implementation uses a last-apply marker so re-runs don't double-apply.
+
+### `--apply-decisions` for Scripted / Headless Use
+
+When you want to apply pending decisions without launching a browser — for CI scripts, automation, or headless servers — pass `--apply-decisions` instead of `--showcase`:
+
+```
+/design-system --apply-decisions
+/mockups --apply-decisions
+/catalog-screens --apply-decisions
+```
+
+This reads `decisions.json`, applies outcomes, and reports per-decision actions exactly like implicit resume — but never attempts to bind a port or open a browser.
+
+`--showcase` and `--apply-decisions` are mutually exclusive; passing both yields a clear error.
+
+### Filesystem Contract
+
+Everything the showcase produces lives under `Design-System/`:
+
+| Path | Purpose |
+|------|---------|
+| `Design-System/showcase/` | Generated bundle (HTML/CSS/JS + bundled JSON) — safe to delete; regenerated on next `--showcase` |
+| `Design-System/showcase/decisions.json` | Append-only JSON-Lines log of reviewer decisions — **keep this committed** if you want decision history |
+| `.claude/metadata/decisions.schema.json` | Schema the server validates against — managed by the framework |
+
+The bundle is regenerated every `--showcase` run. The decisions log is **append-only** — applying decisions does not truncate the log, it advances an apply marker so the log doubles as an audit trail.
+
+### Accessibility
+
+The showcase surface itself satisfies the Accessibility Patterns category it documents:
+
+- WCAG AA contrast on all text against the chosen theme
+- Visible focus state on every interactive element
+- Full keyboard navigation: Tab/Shift-Tab between items, Enter to activate, Esc to close annotation textareas, arrow keys to move within a category
+
+You can review the showcase with a keyboard alone or with a screen reader; the surface is intended to enforce the discipline it teaches.
+
+### When to Use the Showcase
+
+| Scenario | Recommended Approach |
+|----------|---------------------|
+| Reviewing a new token palette before committing | `/design-system --showcase` |
+| Stakeholder review of a screen set before implementation | `/mockups --showcase` |
+| Auditing screens flagged for rework after a sprint | `/catalog-screens --showcase` |
+| CI/automation applying pre-recorded decisions | `--apply-decisions` (no browser) |
+| Quick scan of tokens, no decisions needed | Open the JSON directly — `--showcase` is overhead if you're not capturing decisions |
+
+---
+
 ## Visual Input Sources
 
 All three commands accept screenshots or reference images as input:

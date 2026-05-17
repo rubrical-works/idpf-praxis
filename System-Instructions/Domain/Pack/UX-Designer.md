@@ -1,5 +1,5 @@
 # System Instructions: UX Designer
-**Version:** v0.91.1
+**Version:** v0.92.0
 **Purpose:** Specialized expertise in user experience design, layout principles, visual hierarchy, color theory, typography, responsive design patterns, and interaction design for web and marketing applications.
 ---
 **Visual Design Foundations**

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.1
+ * @framework-script 0.92.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before

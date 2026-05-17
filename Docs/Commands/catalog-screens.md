@@ -9,6 +9,8 @@ Discover and catalog UI screen elements from application source code — or from
 | `#NN` | No | Issue number for context. Reads the issue body for screen/feature names and writes spec file references back to the issue when done. |
 | `--from-screenshot <path>` | No | Extract a single screen spec from a screenshot image (png/jpeg/webp). |
 | `--from-screenshots <dir>` | No | Bulk-extract specs from a directory of screenshots; non-image files skipped with warning. |
+| `--showcase` | No | Launch the Living Style Guide browser review surface on `127.0.0.1`. Renders the catalog alongside design tokens in nine canonical categories; captures accept/reject/annotate decisions to `Design-System/showcase/decisions.json`. Mutually exclusive with `--apply-decisions`. |
+| `--apply-decisions` | No | Read pending decisions from `Design-System/showcase/decisions.json` and apply catalog outcomes (mark accepted / annotated / flagged for rework) without launching the server. For scripted / CI use. Mutually exclusive with `--showcase`. |
 
 ## Usage
 
@@ -17,6 +19,8 @@ Discover and catalog UI screen elements from application source code — or from
 /catalog-screens #42
 /catalog-screens --from-screenshot ./design/home.png
 /catalog-screens --from-screenshots ./design/screenshots/
+/catalog-screens --showcase
+/catalog-screens --apply-decisions
 ```
 
 ## Key Behaviors
@@ -31,3 +35,4 @@ Discover and catalog UI screen elements from application source code — or from
 - For "Update existing" and "Re-scan" flows, diffs source against existing specs and preserves all user-enriched data. Never silently overwrites user edits.
 - Writes one file per screen to `Mockups/{Name}/Specs/{Screen-Name}.md`, then offers to stage and commit.
 - **STOP boundary:** halts after the commit offer — does not proceed without user instruction.
+- **Living Style Guide** (`--showcase`): launches a loopback browser surface that renders the catalog into the UI Components and Iconography categories of a nine-category review, captures reviewer decisions to `Design-System/showcase/decisions.json` (append-only JSON-Lines), and applies outcomes back to catalog entries on the next invocation. `--apply-decisions` provides the same apply step without the server for scripted / headless use. See `Docs/02-Advanced/Screen-Design-Pipeline.md` → "Living Style Guide" for the full workflow.

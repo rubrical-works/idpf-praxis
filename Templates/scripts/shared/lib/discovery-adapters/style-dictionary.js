@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.1
+ * @framework-script 0.92.0
  * @description Style Dictionary discovery adapter. Detects existing Style
  *   Dictionary token files and imports them to DTCG format.
  * @checksum sha256:placeholder

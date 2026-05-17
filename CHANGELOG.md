@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.92.0] - 2026-05-17
+
+### Added
+
+- **Living Style Guide** (#2429 epic, stories #2430–#2436). Browser-based design-system review surface added to `/design-system`, `/mockups`, and `/catalog-screens` via a new `--showcase` flag. A local 127.0.0.1 Node static-file server (built on top of the new `lib/local-server.js` extracted from `mockups-serve.js`) hosts a generated showcase bundle that renders nine canonical categories (UI Components, Typography, Color, Iconography, Spacing & Layout, Imagery & Illustration, Motion, Voice & Tone, Accessibility Patterns) from existing token + catalog sources, with "not yet populated" placeholders for missing inputs. Reviewer accept / reject / annotate decisions POST to `/record`, validate against `.claude/metadata/decisions.schema.json`, and append (JSON-Lines) to `Design-System/showcase/decisions.json`. On the next invocation of the originating command — or via the explicit `--apply-decisions` flag for scripted / headless use — pending decisions are applied to the underlying artifacts with stale-decision detection, idempotent re-runs, and per-decision reporting. `--showcase` and `--apply-decisions` are mutually exclusive. Showcase surface itself meets WCAG AA contrast, visible focus states, and full keyboard navigation (Tab/Shift-Tab/Enter/Esc/arrow keys); manual smoke checklist captured at `Construction/Test-Plans/living-style-guide-accessibility-checklist.md`. New helpers `showcase-server.js`, `showcase-bundle.js`, `showcase-resume.js`, `showcase-apply-decisions.js`, and `lib/local-server.js` registered through manifest + `constants.js` + `@framework-script` plumbing per `/work` Step 4e; Stage 1 + Stage 2 outputs regenerated for the three touched command specs. Design decisions captured at `Construction/Design-Decisions/2026-05-16-local-server-lib-extraction.md` and `Construction/Design-Decisions/2026-05-16-showcase-bundle-location.md`.
+- **AC Feasibility Gates across requirements pipeline** (#2424, #2425). New `ac-feasibility-prompts.json` metadata + schema externalize the AC-drafting checks Claude must apply when generating or accepting acceptance criteria. Five gates added: Step 2a AC Feasibility Quick-Check in `/bug` and `/enhancement`; Step 4a AC Feasibility Gate in `/add-story`; Phase 4.6 AC Feasibility Gate in `/create-prd`; Phase 5.5 AC Feasibility Re-Check in `/create-backlog`. Test-plan-template Approval Checklist gains an AC feasibility line. Anti-hallucination rule extended with an AC-drafting feasibility section that names `/create-prd`, `/create-backlog`, and test-plan-approval as gated entry points. Stage 1 + Stage 2 regenerated for `/bug`, `/enhancement`, `/add-story`, `/create-prd`, `/create-backlog`; six new regression tests; extension-points registry rebuilt.
+
+### Changed
+
+- **`/review-issue` Step 1 redirect dispatch rewrite** (#2428). Step 1 now enumerates all three redirect targets (proposal / PRD / test-plan) explicitly rather than relying on positional inference. Regression test added at `tests/commands/review-issue-redirect-dispatch.test.js`; Stage 1 + Stage 2 outputs regenerated; extension-points registry rebuilt.
+- **Step 6a Audit (3) no-Node fallback** (#2423). Coverage audit step in `Reference/work-execution.md` now follows the "No-Runtime Fallback Pattern (Pattern 4)": when Node ≥ 18 is available, calls `tdd-refactor-coverage-audit` skill's `test-coverage-audit.js`; otherwise applies the inline fallback procedure from the skill's `resources/test-coverage-conventions.json`. Rule output (`08-work-execution.md`) and `.min-mirror/Reference/work-execution{,.dev}.md` regenerated.
+- **Proposal moved to Implemented** (#2386). `Proposal/Living-Style-Guide.md` → `Proposal/Implemented/Living-Style-Guide.md`. PRD and Test Plan generated under `PRD/Living-Style-Guide/`; review log + path analysis applied.
+
+### Fixed
+
+- **Showcase server ISO-8601 regex** (#2430). Replaced the original ISO-8601 timestamp regex (flagged by ESLint `security/detect-unsafe-regex`) with a single-pass validator in `showcase-server.js`.
+
+### Deployment / Tooling
+
+- New schema: `.claude/metadata/decisions.schema.json` (Living Style Guide decision records).
+- New metadata + schema pair: `.claude/metadata/ac-feasibility-prompts.json` + `ac-feasibility-prompts-schema.json`.
+- `extension-points.json` and `extension-recipes.json` regenerated during release prep.
+- 5 new shared helpers registered: `showcase-server.js`, `showcase-bundle.js`, `showcase-resume.js`, `showcase-apply-decisions.js`, `lib/local-server.js`.
+
+### Documentation
+
+- **Living Style Guide user docs** (#2429). New "Living Style Guide — Browser Review of the Design System" section in `Docs/02-Advanced/Screen-Design-Pipeline.md` covering nine-category rendering, decision capture, implicit resume, `--apply-decisions` for scripted use, filesystem contract, and accessibility posture. `Docs/Commands/{design-system,mockups,catalog-screens}.md` each gain `--showcase` and `--apply-decisions` rows in the arguments table, usage examples, and a key-behavior bullet pointing to the pipeline guide.
+
+---
+
 ## [0.91.1] - 2026-05-10
 
 ### Fixed
@@ -912,7 +942,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.91.1` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.92.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -1205,7 +1235,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.91.1` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.92.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -1576,13 +1606,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.91.1` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.91.1` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.91.1` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.92.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.92.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.92.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.91.1` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.92.0` placeholder (#1479)
 
 ---
 
@@ -2280,15 +2310,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.91.1 placeholder after packaging
+- **#1059** - Skills retain v0.92.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.91.1 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.92.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.91.1"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.92.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -2448,7 +2478,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.91.1` pattern
+  - All 52 framework JS files now use `@framework-script v0.92.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -2556,7 +2586,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.91.1` placeholder
+- **#951** - Replace hardcoded versions with `v0.92.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -2587,8 +2617,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.91.1 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.91.1` placeholder
+- **#933** - v0.92.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.92.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -2729,7 +2759,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.91.1` placeholder
+  - Changed hardcoded version to `v0.92.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -2769,7 +2799,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.91.1` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.92.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -2846,10 +2876,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.91.1` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.92.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.91.1` placeholder
+- **#821** - README-DIST.md now uses `v0.92.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -2966,7 +2996,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.91.1 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.92.0 placeholder
 
 ---
 
@@ -3014,7 +3044,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.91.1 placeholders to 209 framework source files
+- Restored v0.92.0 placeholders to 209 framework source files
 
 ---
 
@@ -3082,12 +3112,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.91.1` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.92.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.91.1` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.92.0` format for consistent replacement
 
 ---
 
@@ -3156,7 +3186,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.91.1` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.92.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

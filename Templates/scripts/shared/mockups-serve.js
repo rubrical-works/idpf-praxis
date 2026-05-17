@@ -1,8 +1,11 @@
 /**
- * @framework-script 0.91.1
+ * @framework-script 0.92.0
  *
  * Zero-dependency static file server for /mockups --serve (#2377).
- * Uses only Node built-ins (http, fs, path) — no npm dependencies, offline-safe.
+ *
+ * Composes the shared local-server infrastructure
+ * (.claude/scripts/shared/lib/local-server.js, #2430) for bind + port-fallback;
+ * keeps its own static-file handler and banner contract that /mockups --serve relies on.
  *
  * CLI:
  *   node mockups-serve.js --root <dir> [--port <N>]
@@ -11,17 +14,18 @@
  *   const { startServer, findAvailablePort, formatBanner } = require('./mockups-serve');
  *   const { server, port } = await startServer({ root, port });
  *
- * Port-in-use behavior: if the requested port is occupied, falls back to the
- * next free port via findAvailablePort and reports the actual port used.
+ * Port-in-use behavior (legacy from #2377): if the requested port is occupied,
+ * falls back to an OS-assigned free port (via lib's fallbackToZero option) and
+ * reports the actual port used.
  *
  * Rubrical Works (c) 2026
  */
 
 'use strict';
 
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const lib = require('./lib/local-server.js');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -72,47 +76,20 @@ function handleRequest(root, req, res) {
   });
 }
 
-function tryListen(server, port) {
-  return new Promise((resolve, reject) => {
-    const onError = (err) => {
-      server.removeListener('listening', onListen);
-      reject(err);
-    };
-    const onListen = () => {
-      server.removeListener('error', onError);
-      resolve(server.address().port);
-    };
-    server.once('error', onError);
-    server.once('listening', onListen);
-    server.listen(port, '127.0.0.1');
-  });
-}
-
+// Backwards-compatible findAvailablePort: try preferred only, fall back to OS-assigned.
+// Matches the pre-#2430 behavior; mockups-serve callers expect this shape.
 async function findAvailablePort(preferred) {
-  // Try preferred; on EADDRINUSE, let the OS assign a free port (listen 0).
-  const probe = http.createServer();
-  try {
-    const actual = await tryListen(probe, preferred).catch(async (err) => {
-      if (err && err.code === 'EADDRINUSE') {
-        return tryListen(probe, 0);
-      }
-      throw err;
-    });
-    await new Promise((r) => probe.close(r));
-    return actual;
-  } catch (err) {
-    try { probe.close(); } catch (_) { /* ignore */ }
-    throw err;
-  }
+  return lib.findAvailablePort(preferred, { range: 1, fallbackToZero: true });
 }
 
 async function startServer({ root, port }) {
   if (!root) throw new Error('startServer: root is required');
   const requested = typeof port === 'number' ? port : 3000;
-  const actualPort = requested === 0 ? 0 : await findAvailablePort(requested);
-  const server = http.createServer((req, res) => handleRequest(root, req, res));
-  const listenedPort = await tryListen(server, actualPort);
-  return { server, port: listenedPort };
+  return lib.bindLoopbackServer({
+    requestHandler: (req, res) => handleRequest(root, req, res),
+    port: requested,
+    portOpts: { range: 1, fallbackToZero: true },
+  });
 }
 
 function formatBanner(root, port) {

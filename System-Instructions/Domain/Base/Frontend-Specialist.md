@@ -1,5 +1,5 @@
 # System Instructions: Frontend Specialist
-**Version:** v0.91.1
+**Version:** v0.92.0
 **Purpose:** Specialized expertise in user interfaces, client-side logic, browser technologies, and frontend architecture.
 **Core Frontend Expertise**
 **JavaScript & TypeScript**

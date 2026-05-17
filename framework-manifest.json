@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.91.1",
+  "version": "0.92.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -185,7 +185,11 @@
           "scope-drift-check.js",
           "nonstop-audit.js",
           "create-epic.js",
-          "validate-screen-catalog.js"
+          "validate-screen-catalog.js",
+          "showcase-server.js",
+          "showcase-bundle.js",
+          "showcase-resume.js",
+          "showcase-apply-decisions.js"
         ]
       },
       "shared/lib": {
@@ -241,7 +245,8 @@
           "export-adapters/css-vars.js",
           "export-adapters/react-native.js",
           "export-adapters/style-dictionary.js",
-          "export-adapters/tailwind.js"
+          "export-adapters/tailwind.js",
+          "local-server.js"
         ]
       },
       "hooks": {
@@ -364,6 +369,21 @@
       "source": ".claude/metadata/",
       "target": ".claude/metadata/",
       "registries": [
+        {
+          "name": "ac-feasibility-prompts",
+          "source": ".claude/metadata/ac-feasibility-prompts.json",
+          "description": "Externalized prompt block for AC verification-mechanism feasibility gate in /add-story, /bug, /enhancement (#2424)"
+        },
+        {
+          "name": "ac-feasibility-prompts-schema",
+          "source": ".claude/metadata/ac-feasibility-prompts-schema.json",
+          "description": "JSON schema (Draft 2020-12) for ac-feasibility-prompts.json (#2424)"
+        },
+        {
+          "name": "decisions-schema",
+          "source": ".claude/metadata/decisions.schema.json",
+          "description": "JSON schema (Draft 2020-12) for Living Style Guide showcase decision records (#2430, AC1.1.5)"
+        },
         {
           "name": "extension-recipes",
           "source": ".claude/metadata/extension-recipes.json",

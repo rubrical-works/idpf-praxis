@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.1
+ * @framework-script 0.92.0
  * Token update-mode helpers for /design-system.
  * AC35 — PRD #2333 Story 1.13. Refs #2351.
  *

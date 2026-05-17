@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ac-feasibility-prompts-schema.json",
+  "title": "AC Feasibility Prompts Schema",
+  "description": "Schema for .claude/metadata/ac-feasibility-prompts.json — externalized LLM-readable prompt block driving the AC verification-mechanism feasibility gate in /add-story, /bug, /enhancement (and, per #2425 follow-up, /create-prd and /create-backlog).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "classify", "verificationGate", "deliverableSplit"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version of this prompts file. Bump on breaking shape changes."
+    },
+    "classify": {
+      "type": "object",
+      "description": "First gate: classify each AC as deliverable vs verification.",
+      "additionalProperties": false,
+      "required": ["question", "guidance"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "guidance": { "type": "string", "minLength": 1 }
+      }
+    },
+    "verificationGate": {
+      "type": "object",
+      "description": "Second gate: for verification ACs, name the mechanism explicitly and check existing test-harness usage.",
+      "additionalProperties": false,
+      "required": ["question", "actionIfNo", "triggerPhrases"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "actionIfNo": { "type": "string", "minLength": 1 },
+        "triggerPhrases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Heuristic phrases that flag an AC for verificationGate evaluation. The list is intentionally non-exhaustive — the load-bearing piece is the gate's prompts, not the trigger list. Add phrases as new aspirational-mechanism patterns emerge."
+        }
+      }
+    },
+    "deliverableSplit": {
+      "type": "object",
+      "description": "Third gate: when an AC bundles deliverable + verification, split into independently judgable ACs.",
+      "additionalProperties": false,
+      "required": ["question", "guidance"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "guidance": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

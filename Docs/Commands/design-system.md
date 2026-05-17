@@ -14,6 +14,8 @@ Produce DTCG-compliant design tokens with pluggable adapter architecture, visual
 | `--theme <name>` | No | Generate or apply a theme override file |
 | `--from-screenshot <path>` | No | Extract token candidates (color / typography / spacing / gradient) from a visual reference image (png/jpeg/webp). |
 | `--diff` | No | Produce a 4-category drift report (additions / removals / mismatches / broken aliases) across registered discovery adapters — no writes. |
+| `--showcase` | No | Launch the Living Style Guide browser review surface on `127.0.0.1`. Renders nine canonical categories from current tokens + catalog; captures accept/reject/annotate decisions to `Design-System/showcase/decisions.json`. Mutually exclusive with `--apply-decisions`. |
+| `--apply-decisions` | No | Read pending decisions from `Design-System/showcase/decisions.json` and apply token outcomes (accept → commit, reject → remove, annotate → record metadata) without launching the server. For scripted / CI use. Mutually exclusive with `--showcase`. |
 
 ## Usage
 
@@ -26,6 +28,8 @@ Produce DTCG-compliant design tokens with pluggable adapter architecture, visual
 /design-system --from-screenshot ./design/home.png
 /design-system --diff
 /design-system --diff --apply
+/design-system --showcase
+/design-system --apply-decisions
 ```
 
 ## Key Behaviors
@@ -41,3 +45,4 @@ Produce DTCG-compliant design tokens with pluggable adapter architecture, visual
 - **Theme mode** generates theme override files that layer on top of the base token set.
 - Integrates with `/mockups` (palette-to-CSS conversion, `tokenDependencies` upsert) and `/catalog-screens` (token usage discovery).
 - Supports `pre-init` and `post-export` extension points.
+- **Living Style Guide** (`--showcase`): launches a loopback browser surface that renders tokens + catalog into nine canonical design categories, captures reviewer decisions to `Design-System/showcase/decisions.json` (append-only JSON-Lines), and applies outcomes back to tokens on the next invocation. `--apply-decisions` provides the same apply step without the server for scripted / headless use. See `Docs/02-Advanced/Screen-Design-Pipeline.md` → "Living Style Guide" for the full workflow.

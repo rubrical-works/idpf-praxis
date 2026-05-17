@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.1
+ * @framework-script 0.92.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs two audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body

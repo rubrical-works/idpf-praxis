@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.91.1
+ * @framework-script 0.92.0
  * Token drift report aggregator + formatter + selective apply.
  * AC33/AC34/AC38/AC39 — PRD #2333 Story 1.12. Refs #2350.
  *

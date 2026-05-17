@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "decisions.schema.json",
+  "title": "Living Style Guide Decision Record",
+  "description": "Schema for individual reviewer-decision records appended to Design-System/showcase/decisions.json by the showcase server (Story 1.1, Epic #2429). Each record captures one accept/reject/annotate action against one (category, itemId) pair.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["category", "itemId", "decision", "timestamp"],
+  "properties": {
+    "category": {
+      "description": "One of the nine canonical showcase categories.",
+      "type": "string",
+      "enum": [
+        "ui-components",
+        "typography",
+        "color",
+        "iconography",
+        "spacing-layout",
+        "imagery-illustration",
+        "motion",
+        "voice-tone",
+        "accessibility-patterns"
+      ]
+    },
+    "itemId": {
+      "description": "Stable identifier within the category (e.g., a token name, a screen catalog entry id). Namespaced by (category, itemId) — same itemId may appear under different categories without collision.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9._:\\-]+$"
+    },
+    "decision": {
+      "description": "Reviewer action taken on the item.",
+      "type": "string",
+      "enum": ["accept", "reject", "annotate"]
+    },
+    "note": {
+      "description": "Optional reviewer note. Capped at 1000 chars (Design-Decisions/2026-05-16, PRD Open Q4).",
+      "type": "string",
+      "maxLength": 1000
+    },
+    "timestamp": {
+      "description": "ISO-8601 UTC timestamp of when the decision was recorded.",
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "examples": [
+    {
+      "category": "color",
+      "itemId": "palette-warm",
+      "decision": "accept",
+      "timestamp": "2026-05-16T14:32:00Z"
+    },
+    {
+      "category": "ui-components",
+      "itemId": "button-ghost",
+      "decision": "reject",
+      "note": "Contrast fails AA against the surface-2 background.",
+      "timestamp": "2026-05-16T14:33:12Z"
+    },
+    {
+      "category": "typography",
+      "itemId": "scale-display-large",
+      "decision": "annotate",
+      "note": "Consider tightening line-height to 1.1 on the hero variant.",
+      "timestamp": "2026-05-16T14:34:00Z"
+    }
+  ]
+}

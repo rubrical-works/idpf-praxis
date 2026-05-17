@@ -1,5 +1,5 @@
 # System Instructions: Backend Specialist
-**Version:** v0.91.1
+**Version:** v0.92.0
 **Purpose:** Specialized expertise in server-side development, APIs, business logic, and backend architecture.
 **Core Backend Expertise**
 **Server Languages & Frameworks**

@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.91.1
+**Version:** v0.92.0
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow.
 ## Execution Instructions
@@ -76,7 +76,7 @@ Say "done" or run /done #$ISSUE to close.
 **`--nonstop` mode:** same cycle, **no STOP** between sub-issues. Report `Sub-issue #N: $TITLE → In Review (M/T processed)`. Ignored for standard issues. One commit/AC (`Refs #N`); push deferred to `/done`. Any test/AC/QA/`gh pmu` failure halts immediately — report sub-issue, completed count, resume instructions. **Post-compaction:** `TaskList` — `in_progress` sub-issue parent is primary resume signal; else fall back to `gh pmu sub list $ISSUE` and resume from first not in `in_review`/`done`. Final: `Nonstop Processing Complete` (processed/skipped/failed).
 #### Step 6a: Post-Nonstop Audit
 1. `node .claude/scripts/shared/nonstop-audit.js --issue $ISSUE` after all sub-issues reach `in_review`, before moving epic. Returns `{ok,warnings,blocks}` covering audit (1) commit density (warning, non-blocking, per sub-issue) and audit (2) AC checkbox (blocks — require Step 4 on flagged sub-issues).
-2. **Audit (3) — coverage (skill):** Per sub-issue, invoke `tdd-refactor-coverage-audit` skill or `node .claude/skills/tdd-refactor-coverage-audit/scripts/test-coverage-audit.js --since-commit <sha>` where sha is immediately before first `Refs #N` commit. Warnings advisory. Skill absent → `"Skipped coverage audit: tdd-refactor-coverage-audit skill not installed."`, continue.
+2. **Audit (3) — coverage (skill):** Per sub-issue, invoke `tdd-refactor-coverage-audit` skill where sha is immediately before first `Refs #N` commit. Applies **No-Runtime Fallback Pattern (Pattern 4)**: Node 18+ → `node .claude/skills/tdd-refactor-coverage-audit/scripts/test-coverage-audit.js --since-commit <sha>` (primary); Node unavailable → follow skill's "Fallback Procedure" (read `resources/test-coverage-conventions.json`, run `git diff --name-status --diff-filter=A <sha>..HEAD`, apply pairing rules inline). Both paths emit equivalent advisory output (`newSources`, `pairedSources`, `missingTests[]`, `coverage`); never blocks. Skill absent → `"Skipped coverage audit: tdd-refactor-coverage-audit skill not installed."`, continue.
 3. Aggregate audit output. Proceed to epic `in_review` move only after audit (2) blocks cleared.
 **After all sub-issues reach `in_review`/`done`:**
 - **Epic:** Evaluate epic ACs via Step 4, move to `in_review`, **STOP** — wait for "done".

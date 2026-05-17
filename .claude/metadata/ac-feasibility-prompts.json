@@ -1,0 +1,26 @@
+{
+  "$schema": "./ac-feasibility-prompts-schema.json",
+  "version": 1,
+  "classify": {
+    "question": "For each proposed AC, is it about (a) what we ship — a concrete deliverable observable in the codebase — or (b) how we verify a deliverable — a test/check that produces pass/fail?",
+    "guidance": "Deliverable ACs name a file, function, section, or behavior. Verification ACs name a test, a parity check, a comparison, or an assertion. Many ACs mix both — split them."
+  },
+  "verificationGate": {
+    "question": "For each verification AC, name the mechanism explicitly (e.g., 'Jest unit test', 'contract-parity token-presence assertion', 'manual release-checklist step', 'subprocess CLI invocation'). Then: does any existing test in this repo use that mechanism?",
+    "actionIfNo": "Either (a) rewrite the AC to use a mechanism already in use, (b) commit to a feasibility spike — a throwaway test that proves the mechanism works — and reference its issue number, or (c) name an honest weaker mechanism (manual checklist, contract-parity, etc.) that does exist.",
+    "triggerPhrases": [
+      "Agent subagent",
+      "Agent following",
+      "LLM-driven parity",
+      "asserts equivalence",
+      "exact for the",
+      "parity test",
+      "subagent following",
+      "Claude follows the procedure"
+    ]
+  },
+  "deliverableSplit": {
+    "question": "When a single AC bundles deliverable + verification (e.g., 'the skill has a fallback path AND output matches the script'), split into two ACs so each is independently judgable.",
+    "guidance": "AC-Deliverable: the skill has a fallback path with documented inputs/outputs. AC-Verification: <mechanism> asserts <invariant> against <fixture>. The implementer can renegotiate the verification AC if the mechanism turns out to be infeasible without renegotiating what shipped."
+  }
+}

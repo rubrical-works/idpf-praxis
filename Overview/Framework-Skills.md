@@ -1,5 +1,5 @@
 **Framework Skills Reference**
-**Version:** v0.91.1
+**Version:** v0.92.0
 > **Note:** Skills have been migrated to [idpf-praxis-skills](https://github.com/rubrical-works/idpf-praxis-skills). Use `/fw-import-skills` to import skills for framework development.
 **Location:** `idpf-praxis-skills` repository (formerly `Skills/` in this repo)
 **Total Skills:** 38 (6 TDD/BDD, 1 PRD, 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps (incl. observability-setup), 2 testing/browser, 2 desktop (incl. electron-cross-build), 1 diagrams, 4 deployment platforms, 1 SEO, 1 privacy compliance, 2 platform, 1 i18n, 1 test scaffolding)
