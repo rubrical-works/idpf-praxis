@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Delete binary assets from older GitHub releases, keeping only the N most recent tagged releases (default: 3). Preserves release metadata (notes, tags) while removing downloadable files to reduce storage.
  * @checksum sha256:placeholder
  *
@@ -9,8 +9,11 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
+const { execFileSync } = require('child_process');
 const gh = require('./lib/gh');
 const out = require('./lib/output');
+const { validateTag } = require('./lib/input-validation');
+const { sanitizeShellArg } = require('./lib/shell-safe');
 
 function showHelp() {
     console.log(`
@@ -84,13 +87,17 @@ function getAllReleases(repo) {
  * @param {boolean} dryRun - If true, don't actually delete
  * @returns {boolean} Success status
  */
-function deleteAsset(tagName, assetName, dryRun = false) {
+function deleteAsset(tagName, assetName, dryRun = false, execFileFn = execFileSync) {
     if (dryRun) {
         return true;
     }
 
     try {
-        gh.exec(`release delete-asset ${tagName} "${assetName}" --yes`);
+        // tag and asset name are GitHub-API-sourced. Validate them and spawn via
+        // array-args so neither can cross a shell boundary (#2456).
+        const safeTag = validateTag(tagName);
+        const safeAsset = sanitizeShellArg(assetName, 'asset name');
+        execFileFn('gh', ['release', 'delete-asset', safeTag, safeAsset, '--yes'], { encoding: 'utf8' });
         return true;
     } catch {
         return false;
@@ -230,4 +237,6 @@ async function main() {
     }));
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { deleteAsset };

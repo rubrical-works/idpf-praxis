@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description DTCG theme management: generation, validation, merge resolution,
  *   type mismatch detection, and circular alias detection across base+theme tokens.
  * @checksum sha256:placeholder
@@ -15,6 +15,10 @@
 
 const fs = require('fs');
 const path = require('path');
+// Single leaf-detection predicate for the DTCG pipeline. Local copies keyed
+// on $type are what let this module, dtcg-token-reader and the validator
+// drift apart and silently drop $value-only overrides (#2466).
+const { isTokenLeaf } = require('./dtcg-schema.js');
 
 const ALIAS_PATTERN = /^\{([^}]+)\}$/;
 
@@ -69,10 +73,17 @@ function validateThemeOverrides(baseTokens, themeOverrides) {
 
       const currentPath = basePath ? `${basePath}.${key}` : key;
 
-      if (themeValue && typeof themeValue === 'object' && '$type' in themeValue) {
-        // Check if base has matching token with different type
+      if (isTokenLeaf(themeValue)) {
         const baseValue = getNestedValue(baseNode, key);
-        if (baseValue && '$type' in baseValue && baseValue.$type !== themeValue.$type) {
+
+        // A $value-only override inherits its type from the base, so the base
+        // token has to exist for the override to mean anything (#2466).
+        if (!baseValue || typeof baseValue !== 'object') {
+          warnings.push(`unknown token at ${currentPath}: no matching base token to override`);
+          continue;
+        }
+
+        if ('$type' in themeValue && '$type' in baseValue && baseValue.$type !== themeValue.$type) {
           warnings.push(
             `type mismatch at ${currentPath}: base is "${baseValue.$type}", theme is "${themeValue.$type}"`
           );
@@ -87,6 +98,7 @@ function validateThemeOverrides(baseTokens, themeOverrides) {
   walk('', baseTokens, themeOverrides);
   return { valid: warnings.length === 0, warnings };
 }
+
 
 function getNestedValue(obj, key) {
   if (!obj || typeof obj !== 'object') return undefined;
@@ -107,12 +119,11 @@ function mergeTheme(baseTokens, themeOverrides) {
     for (const [key, value] of Object.entries(source)) {
       if (key.startsWith('$')) continue;
 
-      if (value && typeof value === 'object' && '$type' in value) {
-        // Leaf token — replace
-        if (!target[key] || typeof target[key] !== 'object') {
-          target[key] = {};
-        }
-        target[key] = { ...value };
+      if (isTokenLeaf(value)) {
+        // Leaf token — overlay onto the base so an override carrying only
+        // $value inherits $type and $description rather than losing them.
+        const base = target[key] && typeof target[key] === 'object' ? target[key] : {};
+        target[key] = { ...base, ...value };
       } else if (value && typeof value === 'object') {
         if (!target[key] || typeof target[key] !== 'object') {
           target[key] = {};

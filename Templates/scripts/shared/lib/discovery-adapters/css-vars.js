@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description CSS Custom Properties discovery adapter. Detects CSS files with
  *   custom properties (--*) and extracts them to DTCG color/dimension tokens.
  * @checksum sha256:placeholder
@@ -26,7 +26,10 @@ function detect(projectRoot) {
   const cssFiles = findCssFiles(projectRoot);
   return cssFiles.some(file => {
     const content = fs.readFileSync(file, 'utf8');
-    return CSS_VAR_PATTERN.test(content);
+    // Fresh regex per file — CSS_VAR_PATTERN carries the /g flag, so calling
+    // .test() on the shared instance advances lastIndex and produces false
+    // negatives on subsequent files and repeat calls (#2466).
+    return new RegExp(CSS_VAR_PATTERN.source).test(content);
   });
 }
 

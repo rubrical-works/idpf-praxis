@@ -6,7 +6,7 @@ const path = require('path');
 const { readFileSafe } = require('./lib/shell-safe.js');
 
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Orchestrate application of selected CI recommendations with sequential execution, confirmation prompts, error recovery, and summary reporting. Accepts recommendation objects from ci-recommend.js and applies them via ci-add.js. Part of the /ci apply subcommand.
  * @checksum sha256:placeholder
  *
@@ -151,14 +151,22 @@ function applyAdd(projectDir, rec) {
     };
   }
 
-  // Delegate to ci-add if available
+  // Delegate to ci-add. Note: ci-add exports addCIFeature(projectDir, featureId, opts)
+  // and returns { success, message, file?, feature? } — not { detail }.
   try {
-    const { addFeatureToWorkflow } = require('./ci-add.js');
-    const result = addFeatureToWorkflow(projectDir, rec.feature);
+    const { addCIFeature } = require('./ci-add.js');
+    const result = addCIFeature(projectDir, rec.feature, { skipConfirm: true });
+    if (!result.success) {
+      return {
+        recommendation: rec,
+        status: 'failed',
+        error: result.message || `Failed to add ${rec.feature}`
+      };
+    }
     return {
       recommendation: rec,
       status: 'applied',
-      detail: result.detail || `Added ${rec.feature}`
+      detail: result.message || `Added ${rec.feature}`
     };
   } catch (err) {
     return {
@@ -189,22 +197,32 @@ function applyImprove(projectDir, rec) {
  * Apply a Remove recommendation.
  */
 function applyRemove(workflowsDir, rec) {
-  if (!rec.file) {
+  if (!rec.feature) {
     return {
       recommendation: rec,
       status: 'failed',
-      error: 'No file specified for Remove recommendation'
+      error: 'No feature specified for Remove recommendation'
     };
   }
 
-  // Delegate to ci-remove if available
+  // Delegate to ci-remove. ci-remove exports removeCIFeature(projectDir, featureId, opts)
+  // and returns { success, message, file?, feature? }. workflowsDir is
+  // <projectDir>/.github/workflows, so projectDir is two levels up.
   try {
-    const { removeFeatureFromWorkflow } = require('./ci-remove.js');
-    const result = removeFeatureFromWorkflow(path.dirname(workflowsDir), rec.feature);
+    const { removeCIFeature } = require('./ci-remove.js');
+    const projectDir = path.dirname(path.dirname(workflowsDir));
+    const result = removeCIFeature(projectDir, rec.feature, { skipConfirm: true });
+    if (!result.success) {
+      return {
+        recommendation: rec,
+        status: 'failed',
+        error: result.message || `Failed to remove ${rec.feature}`
+      };
+    }
     return {
       recommendation: rec,
       status: 'applied',
-      detail: result.detail || `Removed ${rec.feature} from ${rec.file}`
+      detail: result.message || `Removed ${rec.feature}`
     };
   } catch (err) {
     return {

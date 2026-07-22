@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Analyze commits referencing an issue to detect hallucinated or incomplete work. Examines diffs for comment-only changes, EOF-only appends, and suspect patterns (e.g., TODO placeholders, empty function bodies). Parallelizes per-commit and per-file git operations for performance. Used by /done verification phase.
  * @checksum sha256:placeholder
  *
@@ -10,6 +10,7 @@
 
 const { exec: execCb } = require('child_process');
 const { promisify } = require('util');
+const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 
 const execAsync = promisify(execCb);
 const EXEC_OPTS = { encoding: 'utf-8' };
@@ -177,8 +178,13 @@ function classifyDiffLines(rawDiff) {
  * Filters out merge commits.
  */
 async function findCommitsForIssue(issueNumber) {
+    // Boundary-anchored (#2467). This call site is the widest of the five: it
+    // greps a bare `#N` with no keyword prefix and with --all, so #245 matched
+    // #2453 across every ref. The boundary stops the prefix cross-match; the
+    // keyword-less form is retained deliberately, because this gate must see
+    // Fixes/Closes/Resolves and plain mentions alike, not only `Refs #N`.
     const output = await execSafe(
-        `git log --all --grep="#${issueNumber}" --format="%H|%s"`
+        `git log --all --grep="${issueRefGrepPattern(issueNumber, { keyword: null })}" --format="%H|%s"`
     );
 
     if (!output) return [];

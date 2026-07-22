@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description DTCG adapter loader with auto-discovery and fault isolation.
  *   Loads discovery and export adapters from Design-System/adapters/ directories.
  *   Discovery adapters implement detect()/extract(); export adapters implement translate().
@@ -58,10 +58,85 @@ function safeRequire(filePath) {
  * @param {string} projectRoot - Project root to pass to adapters
  * @returns {{ tokens: object, results: Array<{ name: string, detected: boolean, error?: string }> }}
  */
+/**
+ * Whether a node is a DTCG token leaf rather than a group. A leaf carries
+ * $value; groups are plain nested objects.
+ * @param {*} node
+ * @returns {boolean}
+ */
+function isLeafNode(node) {
+  return node !== null
+    && typeof node === 'object'
+    && !Array.isArray(node)
+    && Object.prototype.hasOwnProperty.call(node, '$value');
+}
+
+/**
+ * Recursively merge `incoming` into `target`, preserving tokens already
+ * present. Every discovery adapter emits top-level groups named
+ * color/dimension/gradient, so a shallow Object.assign made the last adapter
+ * to run wipe out every earlier adapter's tokens in the same group (#2466).
+ *
+ * First writer wins on a genuine leaf collision — discovery order is
+ * deterministic (adapters are listed sorted), so this is stable — and each
+ * collision is recorded for the caller to report.
+ *
+ * @param {object} target - Accumulated tokens, mutated in place
+ * @param {object} incoming - Tokens from the current adapter
+ * @param {string} adapterName - Name of the adapter supplying `incoming`
+ * @param {Map<string,string>} owners - path → adapter that first wrote it
+ * @param {Array<object>} collisions - Collected collision records
+ * @param {string} [prefix] - Dotted path accumulated so far
+ */
+function deepMergeTokens(target, incoming, adapterName, owners, collisions, prefix = '') {
+  const recordCollision = (dottedPath) => {
+    collisions.push({
+      path: dottedPath,
+      adapter: adapterName,
+      keptFrom: owners.get(dottedPath) || null
+    });
+  };
+
+  const claim = (key, dottedPath, value) => {
+    target[key] = value;
+    owners.set(dottedPath, adapterName);
+  };
+
+  for (const [key, value] of Object.entries(incoming)) {
+    const dottedPath = prefix ? `${prefix}.${key}` : key;
+    const occupied = Object.prototype.hasOwnProperty.call(target, key);
+    const isGroup = value !== null && typeof value === 'object'
+      && !Array.isArray(value) && !isLeafNode(value);
+
+    if (isGroup) {
+      // A leaf already sitting where a group wants to go is a real clash —
+      // do not clobber it.
+      if (isLeafNode(target[key])) {
+        recordCollision(dottedPath);
+        continue;
+      }
+      if (!occupied || typeof target[key] !== 'object') {
+        target[key] = {};
+      }
+      deepMergeTokens(target[key], value, adapterName, owners, collisions, dottedPath);
+      continue;
+    }
+
+    // Leaf, scalar, or array — first writer wins.
+    if (occupied) {
+      recordCollision(dottedPath);
+      continue;
+    }
+    claim(key, dottedPath, value);
+  }
+}
+
 function runDiscoveryAdapters(adapterDir, projectRoot) {
   const adapters = listAdapters(adapterDir);
   const mergedTokens = {};
   const results = [];
+  const collisions = [];
+  const owners = new Map();
 
   for (const adapter of adapters) {
     const { module: mod, error: loadError } = safeRequire(adapter.path);
@@ -88,9 +163,10 @@ function runDiscoveryAdapters(adapterDir, projectRoot) {
       }
 
       const tokens = mod.extract(projectRoot);
-      // Merge discovered tokens
+      // Merge discovered tokens group-wise — a shallow assign here dropped
+      // every earlier adapter's tokens in a shared group (#2466).
       if (tokens && typeof tokens === 'object') {
-        Object.assign(mergedTokens, tokens);
+        deepMergeTokens(mergedTokens, tokens, adapter.name, owners, collisions);
       }
       results.push({ name: adapter.name, detected: true });
     } catch (err) {
@@ -98,7 +174,7 @@ function runDiscoveryAdapters(adapterDir, projectRoot) {
     }
   }
 
-  return { tokens: mergedTokens, results };
+  return { tokens: mergedTokens, results, collisions };
 }
 
 /**
@@ -155,5 +231,7 @@ module.exports = {
   listAdapters,
   runDiscoveryAdapters,
   runExportAdapter,
-  runAllExportAdapters
+  runAllExportAdapters,
+  deepMergeTokens,
+  isLeafNode
 };

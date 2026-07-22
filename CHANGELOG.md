@@ -8,6 +8,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.93.0] - 2026-07-22
+
+Hardening release. The bulk of this cycle went into fail-closed validators, shell-injection
+defenses across helper scripts, and correctness fixes in the DTCG design-system adapters.
+Two new capabilities ship (`lib/issue-ref-match.js`, npm supply-chain cooldowns); everything
+else is a fix, a rule correction, or documentation.
+
+### Added
+
+- **Shared issue-reference matcher** (#2467). New `.claude/scripts/shared/lib/issue-ref-match.js` centralizes boundary-anchored issue matching so `#24` no longer matches `#248`. Adopted across five scripts (`done-verify.js`, `log-changed-files.js`, `nonstop-audit.js`, `reset-issue-preamble.js`, `scope-drift-check.js`), which also now track issue renames. Registered through `framework-manifest.json` + `constants.js`.
+- **npm supply-chain cooldowns** (#2481). New `.npmrc` blocks install scripts, and `.github/dependabot.yml` adopts dependency cooldowns so freshly published versions are not pulled immediately. Rationale recorded in `Construction/Design-Decisions/2026-07-21-npm-dependency-cooldowns.md`.
+- **Directory-wide declared-dependency guard** (#2471). New `tests/scripts/shared/runtime-deps-declared.test.js` enforces the runtime dependency contract tree-wide: every non-built-in `require()` under `.claude/scripts/shared/` must appear in `runtimeNpmDependencies`.
+
+### Changed
+
+- **QA extraction adopts Option A** (#2472, #2477). A QA-extracted acceptance criterion now stays unchecked (`- [ ] … → QA: #N`) and acts as the release gate rather than being marked complete. `/work` Rule 08 Steps 4/4b/5 updated accordingly, `qa-config.json` gains `closurePath`, and `nonstop-audit.js`'s AC-checkbox audit exempts QA gates. Cross-artifact divergence guard added so the rule and the audit cannot drift apart. Decision recorded in `Construction/Design-Decisions/2026-07-16-qa-extraction-checkbox-model.md`.
+- **Pre-Work Status Gate rescoped to the workflow moment** (#2483). The `in_progress` gate previously triggered on spawning an implementation Agent, so the sanctioned direct-work path bypassed it and sub-issues were worked without ever reaching `in_progress`. It is now keyed to the workflow moment — before the first acceptance criterion of any issue — and fires identically inline or via Agent. `work-preamble.js` `movedToInProgress` now reports a real transition instead of a bare exit 0. Pinned across all six affected files with a desync test.
+- **Startup charter summary is a post-hook read** (#2475, then reversed by #2484). #2475 precomputed the summary into `Charter Vision:` / `Charter Focus:` block lines so it could not be silently skipped; because those lines clipped at 200 characters into truncated sentences, #2484 reversed the rendering and restored a read-`CHARTER.md`-and-summarize instruction in `additionalContext`. The block now carries only `Charter Status:`. Both decisions are documented.
+- **Startup echo directive hardened** (#2479). The verbatim-echo instruction now names its observed failure modes explicitly (collapsing lists to summaries, inventing duplicate lines). This hardens, but does not eliminate, a model-dependent display step.
+- **`/work` rule exit codes reconciled with the script** (#2464). Rule 08's documented `wait-for-ci.js` exit codes now match the set the script actually returns.
+
+### Fixed
+
+- **DTCG design-system adapters** (#2466). Ten fixes: unified leaf detection so `$value`-only theme overrides apply; `extractGroup` keyed by full path rather than terminal key; deep-merge of discovery adapter output instead of clobbering groups; nested Tailwind palettes extracted with path-prefixed keys; non-identifier keys quoted in generated Tailwind config; gradients parsed with function-valued stops and interpolated positions; valid CSS emitted for composite token types; Style Dictionary nesting path preserved on import; non-numeric base units rejected instead of writing a `NaNpx` scale.
+- **Validators fail closed** (#2460). Manifest completeness now fails on missing files and recurses `shared/lib`; command marker scanning widened from 500 to 4000 bytes; `validate-minimization` checks the source→mirror direction; `validate-minimized-commands` fails closed on surviving markers and broken scope; `minimize-helper` gains tolerant FRAMEWORK-ONLY stripping with an unbalanced-marker error.
+- **Gemini transform** (#2461). CRLF-tolerant frontmatter parsing (list lines no longer abort); only genuine tool references translated, not English words; dispatch matcher/command emitted via `JSON.stringify`; CLI exits non-zero when any transform error was recorded; stale rule echo and an unreachable PreCompact map entry removed.
+- **CI wait keyed to the right run** (#2464). `wait-for-ci.js` now parses `--branch`/`--timeout` and keys its verdict to the matching run, so a green run on an unrelated branch no longer satisfies the gate. The `gh` poll is bounded, and a hung `gh` degrades to retry-then-abort.
+- **Distribution deploy verification** (#2462). `verify-dist-deploy.js` correlates the dist CI check to the release commit and counts in-progress (timeout) checks as not-verified rather than passing.
+- **Extension registry build** (#2459). Extension-table cells parsed positionally so a blank cell no longer shifts columns; the deprecation block is gated before the registry is written.
+- **Skill import CLI** (#2463). `main(argv, deps)` extracted for testability; `--all` no longer shadows `importAll`; `--update` no longer records shas for failed updates.
+- **Piped changelog generation** (#2465). Envelope path, stdin race, and missing top-level catch in `generate-changelog.js`.
+- **CI recommend/apply** (#2455). `ci-apply` uses the real `ci-add`/`ci-remove` exports with correct return-shape handling; `ci-recommend`'s deprecated-action Alter emits `actionRef` plus the upgrade target.
+- **Commands-source guard exit code** (#2458). `guard-commands-src.js` exits 2 on block, with a spawn-based exit-code test.
+- **Startup hook robustness** (#2457). Final-stage timeout resolves the check promise; `safeExec` passes a timeout to `execSync`; `renderBlock` surfaces inline-check hard failures instead of omitting them silently.
+- **Step 4e manifest key** (#2473). Corrected the bracketed key path for `deploymentFiles.scripts["shared/lib"]` and added a guard test for prose key paths — the dot form reads `undefined` silently.
+
+### Security
+
+- **Shell-injection hardening across helpers** (#2456). `qa-extract`, `upgrade-check`, `gh.js`, `cleanup-release-assets`, `analyze-commits`, and `import-skills` now validate inputs and use `execFileSync` array-args before any shell or path use. `SHELL_META` rejects newlines; an unsafe regex in `validateNpmPackageName` was replaced.
+- **Local server containment** (#2468). Shared containment checks, guarded decoding, and Host-header validation across `local-server.js`, `mockups-serve.js`, and `showcase-server.js`; bracketed IPv6 Host parsed by index rather than regex.
+- **Lockfile advisories cleared** (#2482). High-severity advisories resolved in `package-lock.json`.
+
+### Deployment / Tooling
+
+- Runtime dependency contract rewritten around declared-vs-undeclared rather than "no external packages" (#2471), correcting four stale `#2395`-fallout references in the Rule File Generation section.
+- `extension-points.json` and `extension-recipes.json` regenerated during release prep.
+- `.gh-pmu.json` organization owner corrected (`rubrical-works` → `rubrical-worker`).
+
+### Documentation
+
+- **Deployment-Awareness** (#2471) — runtime dependency contract and rule-generation sections corrected; `showcase-server.js` validator comment fixed.
+- **Session startup** (#2478) — startup-hook output-channel description corrected.
+- New proposals: Specialist Architecture Remediation (#2453, superseding #1977), Command Ecosystem Review (#2451), Distributable IDPF Workflow-Graph Artifact (#2452). Seven superseded proposals archived.
+- Design decisions and tech debt recorded for #1977, #2455, #2463, #2464, #2466, #2472, #2475, #2479, #2483, #2484.
+- Code review report added at `Construction/Code-Reviews/2026-07-14-report.md`.
+
+### Known Issues
+
+- `IDPF-Vibe/` remains an empty directory (a `.gitkeep` only) while still listed in `framework-manifest.json` and `minimize-config.json`, which makes the Phase 2g IDPF-sync release gate report 2/2/1. Nothing deployable is missing — the directory has no content — and v0.92.0 shipped the same state. Reconciliation tracked separately.
+
+---
+
 ## [0.92.0] - 2026-05-17
 
 ### Added
@@ -942,7 +1004,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.92.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.93.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -1235,7 +1297,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.92.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.93.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -1606,13 +1668,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.92.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.92.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.92.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.93.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.93.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.93.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.92.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.93.0` placeholder (#1479)
 
 ---
 
@@ -2310,15 +2372,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.92.0 placeholder after packaging
+- **#1059** - Skills retain v0.93.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.92.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.93.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.92.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.93.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -2478,7 +2540,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.92.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.93.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -2586,7 +2648,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.92.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.93.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -2617,8 +2679,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.92.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.92.0` placeholder
+- **#933** - v0.93.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.93.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -2759,7 +2821,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.92.0` placeholder
+  - Changed hardcoded version to `v0.93.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -2799,7 +2861,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.92.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.93.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -2876,10 +2938,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.92.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.93.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.92.0` placeholder
+- **#821** - README-DIST.md now uses `v0.93.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -2996,7 +3058,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.92.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.93.0 placeholder
 
 ---
 
@@ -3044,7 +3106,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.92.0 placeholders to 209 framework source files
+- Restored v0.93.0 placeholders to 209 framework source files
 
 ---
 
@@ -3112,12 +3174,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.92.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.93.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.92.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.93.0` format for consistent replacement
 
 ---
 
@@ -3186,7 +3248,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.92.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.93.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

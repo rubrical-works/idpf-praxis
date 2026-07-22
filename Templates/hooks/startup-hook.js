@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -42,9 +42,16 @@ const error = (s) => `${ANSI.red}${s}${ANSI.reset}`;
 // Synchronous session info gather (cheap, no child processes)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function safeExec(cmd) {
+function safeExec(cmd, timeoutMs = 5000) {
   try {
-    return execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    // timeout guards session startup against a hung git (index.lock contention,
+    // credential prompt) or a hung `gh pmu` extension. On timeout execSync throws
+    // and the catch degrades to '' (#2457 defect 2).
+    return execSync(cmd, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: timeoutMs,
+    }).trim();
   } catch {
     return '';
   }
@@ -138,13 +145,17 @@ const TIMEOUT_STAGES = [15000, 30000, 45000, 60000]; // monotonic milestones fro
  * Uses monotonic timestamps (Date.now()) so a check resolving between
  * deadlines does not desync the warning ladder.
  */
-async function runChecksParallel(checks) {
+async function runChecksParallel(checks, stages = TIMEOUT_STAGES) {
   const startTs = Date.now();
-  const pending = new Map(); // name → { promise, child, settled, result }
+  const pending = new Map(); // name → { promise, child, settled, result, resolve }
 
   for (const { name, script } of checks) {
-    const handle = { settled: false, result: null, child: null };
+    const handle = { settled: false, result: null, child: null, resolve: null };
     handle.promise = new Promise((resolve) => {
+      // Capture resolve so the final-stage timeout handler can settle the
+      // promise. Without this the 'exit' early-return on settled means a
+      // timed-out check never resolves and Promise.all hangs forever (#2457).
+      handle.resolve = resolve;
       const child = spawn('node', [script], {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
@@ -172,8 +183,8 @@ async function runChecksParallel(checks) {
   }
 
   // Schedule monotonic warning ladder
-  const warningTimers = TIMEOUT_STAGES.map((ms, idx) => {
-    const isFinal = idx === TIMEOUT_STAGES.length - 1;
+  const warningTimers = stages.map((ms, idx) => {
+    const isFinal = idx === stages.length - 1;
     return setTimeout(() => {
       const stillPending = [];
       for (const [name, h] of pending.entries()) {
@@ -189,6 +200,9 @@ async function runChecksParallel(checks) {
             try { h.child.kill('SIGKILL'); } catch { /* best-effort */ }
             h.settled = true;
             h.result = { name, status: 'error', error: 'timeout', elapsedSec: elapsed };
+            // Settle the promise — the child's 'exit' handler early-returns on
+            // settled, so without this call Promise.all would hang (#2457).
+            if (h.resolve) h.resolve(h.result);
           }
         }
         process.stderr.write(error(`✗ Check(s) timed out after ${elapsed}s: ${stillPending.join(', ')}\n`));
@@ -231,6 +245,10 @@ function renderBlock(info, checkResults, opts = { color: true }) {
         lines.push(`- Config Integrity: ${e('⚠️ Drift detected — run gh pmu config verify for details')}`);
       } else if (r.error === 'timeout') {
         lines.push(`- Config Integrity: ${e('⚠️ check timed out')}`);
+      } else if (r.status === 'error') {
+        // Non-timeout hard failure (non-zero exit, unparsable stdout, spawn
+        // error). Without this branch the user got no signal (#2457 defect 3).
+        lines.push(`- Config Integrity: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
       }
       // skipped → omit
     }
@@ -245,6 +263,9 @@ function renderBlock(info, checkResults, opts = { color: true }) {
         lines.push(`- Branch Sync: ${w(`${ahead} commit(s) ahead of upstream`)}`);
       } else if (r.error === 'timeout') {
         lines.push(`- Branch Sync: ${e('⚠️ check timed out')}`);
+      } else if (r.status === 'error') {
+        // Non-timeout hard failure — surface it rather than silently omitting (#2457 defect 3).
+        lines.push(`- Branch Sync: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
       }
       // up-to-date / skipped → omit
     }
@@ -252,6 +273,11 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 
   // Charter status
   if (info.charterStatus === 'Active') {
+    // #2484: the block carries the status line only. The charter summary is a
+    // post-hook read (see buildAdditionalContext) — #2475's precomputed
+    // `Charter Vision:` / `Charter Focus:` lines clipped at 200 chars and
+    // presented truncated sentences, which read as noise in a block of short
+    // factual status lines.
     lines.push(`- Charter Status: Active`);
   } else {
     lines.push(`- ${e('Charter Status: Pending — /charter must run as the final startup action')}`);
@@ -287,8 +313,14 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
   // hook stderr in the UI, so we instruct Claude to echo the block verbatim
   // as the FIRST action of the response. The content is fully deterministic
   // (the hook computed it); only the display step depends on Claude.
+  //
+  // #2479: the display step remains model-dependent (no non-model channel puts
+  // the hook's exact bytes on the user's screen — verified against Claude Code
+  // hook docs). The observed failure collapsed a list to a summary and invented
+  // a duplicate line, so the directive names both failure modes explicitly to
+  // reduce lossy paraphrase. This hardens, it does not eliminate, the risk.
   const parts = [
-    'DISPLAY THE FOLLOWING BLOCK VERBATIM AS YOUR FIRST RESPONSE — before any other action, commentary, or tool call. Render it as a code block for monospace alignment:',
+    'DISPLAY THE FOLLOWING BLOCK VERBATIM AS YOUR FIRST RESPONSE — before any other action, commentary, or tool call. Reproduce every line exactly as written: do not summarize, collapse, or abbreviate any line; reproduce every list item in full; and do not add, invent, or duplicate lines. Render it as a code block for monospace alignment:',
     '',
     '```',
     plainBlock,
@@ -298,8 +330,15 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
 
   const instructions = [];
 
+  // #2484: charter summary is a post-hook read again, reversing #2475's
+  // precompute. The tradeoff is deliberate — #2475 made the summary immune to
+  // being silently skipped by a later model turn, but only by clipping it to
+  // 200 chars per section, which produced truncated sentences. A read of
+  // CHARTER.md yields full prose and can surface observations the clipped lines
+  // could not (e.g. a Current Focus naming a version the working branch has
+  // moved past). Listed first so the summary lands right after the block.
   if (info.charterStatus === 'Active') {
-    instructions.push('Read CHARTER.md and provide a one-paragraph summary (vision + current focus) AFTER displaying the block above.');
+    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus. Note any mismatch you observe between the charter and current repository state.');
   }
 
   if (info.specialistPath) {
@@ -373,6 +412,7 @@ module.exports = {
   runChecksParallel,
   renderBlock,
   buildAdditionalContext,
+  safeExec,
   ANSI,
   TIMEOUT_STAGES,
 };

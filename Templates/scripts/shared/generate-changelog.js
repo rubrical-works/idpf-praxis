@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Generate a Keep a Changelog formatted entry from categorized commits. Accepts piped input from analyze-commits.js or reads commits directly. Groups changes by type (Added, Changed, Fixed, Removed) with issue references. Used by /prepare-release.
  * @checksum sha256:placeholder
  *
@@ -41,29 +41,72 @@ Examples:
 `);
 }
 
-async function readStdin() {
-    return new Promise((resolve) => {
+/**
+ * Read a JSON envelope from stdin.
+ *
+ * Previously this resolved null after a fixed 100ms if no data had arrived
+ * yet. analyze-commits.js spawns git once per commit and routinely takes
+ * longer than that, so the piped input was silently discarded and the script
+ * fell back to its own analysis — nondeterministic, and the fallback loses the
+ * deploymentScope classification that populates the Internal section (#2465).
+ *
+ * Now: a TTY resolves null immediately (nothing is being piped); a non-TTY is
+ * read to 'end' with no timer at all. Malformed JSON rejects rather than
+ * resolving null, so bad input is reported instead of silently triggering the
+ * fallback path.
+ *
+ * @param {object} [deps] - `stdin` override for tests
+ * @returns {Promise<object|null>} parsed envelope, or null when nothing was piped
+ */
+async function readStdin(deps = {}) {
+    const stdin = deps.stdin || process.stdin;
+
+    return new Promise((resolve, reject) => {
         let data = '';
 
-        if (process.stdin.isTTY) {
+        if (stdin.isTTY) {
             resolve(null);
             return;
         }
 
-        process.stdin.setEncoding('utf8');
-        process.stdin.on('data', chunk => data += chunk);
-        process.stdin.on('end', () => {
+        stdin.setEncoding('utf8');
+        stdin.on('data', chunk => data += chunk);
+        stdin.on('error', err => reject(new Error(`Failed to read stdin: ${err.message}`)));
+        stdin.on('end', () => {
+            if (!data.trim()) {
+                resolve(null);
+                return;
+            }
             try {
                 resolve(JSON.parse(data));
-            } catch {
-                resolve(null);
+            } catch (err) {
+                reject(new Error(`Failed to parse JSON from stdin: ${err.message}`));
             }
         });
-
-        setTimeout(() => {
-            if (!data) resolve(null);
-        }, 100);
     });
+}
+
+/**
+ * Pull the commit list out of whatever shape arrived on stdin.
+ *
+ * analyze-commits.js emits {success, message, data:{lastTag, commits, summary}},
+ * but main() read `analysis.commits` — undefined — so generateChangelog's
+ * for-of threw "commits is not iterable" on every real pipe (#2465). The bare
+ * `commits` shape is still accepted for hand-built input and the internal
+ * fallback path.
+ *
+ * @param {object|null} analysis
+ * @returns {Array<object>|null} the commits array, or null when absent
+ */
+function extractCommits(analysis) {
+    if (!analysis) return null;
+    if (analysis.data && Array.isArray(analysis.data.commits)) {
+        return analysis.data.commits;
+    }
+    if (Array.isArray(analysis.commits)) {
+        return analysis.commits;
+    }
+    return null;
 }
 
 function formatDate(dateStr) {
@@ -184,10 +227,18 @@ async function main() {
     }
 
     // Try to read piped input
-    let analysis = await readStdin();
+    const analysis = await readStdin();
+    let commits = extractCommits(analysis);
 
-    // If no piped input, analyze commits
-    if (!analysis) {
+    // If no piped input, analyze commits ourselves. Note this fallback cannot
+    // set deploymentScope, so the Internal section stays empty — which is why
+    // silently landing here on a slow pipe was a real defect (#2465).
+    if (commits === null) {
+        if (analysis) {
+            out.error('Piped input did not contain a commits array (expected data.commits)');
+            process.exit(1);
+        }
+
         if (!git.isGitRepo()) {
             out.error('Not a git repository');
             process.exit(1);
@@ -195,7 +246,7 @@ async function main() {
 
         const tag = git.getLatestTag();
         const rawCommits = git.getCommitsSince(tag);
-        const commits = rawCommits.map(commit => {
+        commits = rawCommits.map(commit => {
             const parsed = git.parseConventionalCommit(commit.message);
             return {
                 hash: commit.hash,
@@ -205,12 +256,10 @@ async function main() {
                 breaking: parsed.breaking
             };
         });
-
-        analysis = { commits };
     }
 
     // Generate changelog
-    const changelog = generateChangelog(analysis.commits, version, date);
+    const changelog = generateChangelog(commits, version, date);
 
     // Output markdown directly (not JSON)
     console.log(changelog);
@@ -218,4 +267,14 @@ async function main() {
     process.exit(0);
 }
 
-main();
+// --- Module Guard ---
+// Without this, requiring the module for tests executes main() — and its
+// process.exit(1) on a missing --version kills the test runner (#2465).
+if (require.main === module) {
+    main().catch(err => {
+        out.error(err && err.message ? err.message : String(err));
+        process.exit(1);
+    });
+}
+
+module.exports = { readStdin, extractCommits, generateChangelog, formatDate, capitalizeFirst };

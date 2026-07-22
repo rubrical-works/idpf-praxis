@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Input validation utilities to prevent command injection, path traversal, and ReDoS from externally-sourced inputs. Exports validateIssueNumber(), validateBranchName(), validatePath(), and related guards. Used by all preamble scripts accepting user input.
  * @checksum sha256:placeholder
  *
@@ -14,8 +14,11 @@
 
 const path = require('path');
 
-// Shell metacharacters that enable command injection
-const SHELL_META = /[`$(){}|;&<>!\\]/;
+// Shell metacharacters that enable command injection. Includes \n and \r:
+// an embedded newline acts as a command separator when a "validated" value is
+// interpolated into a shell string (lib/gh.js). Kept consistent with
+// sanitizeShellArg in lib/shell-safe.js, which already rejects \n\r (#2456).
+const SHELL_META = /[`$(){}|;&<>!\\\n\r]/;
 
 /**
  * Validate an issue number is a positive integer.
@@ -62,6 +65,80 @@ function validateTag(tag) {
     throw new Error(`Tag contains unsafe characters: ${tag.substring(0, 30)}`);
   }
   return tag;
+}
+
+/**
+ * Validate a GitHub repository in owner/repo format. Interpolated into `gh`
+ * command strings (lib/gh.js); GitHub owner/name allow [A-Za-z0-9._-] only, so
+ * anything else is rejected before it can reach the shell (#2456).
+ * @param {string} repo
+ * @returns {string} Validated owner/repo
+ * @throws {Error} If not a valid owner/repo string
+ */
+const REPO_NAME = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+function validateRepo(repo) {
+  if (typeof repo !== 'string' || !repo.trim()) {
+    throw new Error('Repository is required');
+  }
+  if (!REPO_NAME.test(repo)) {
+    throw new Error(`Invalid repository (expected owner/repo): ${repo.substring(0, 40)}`);
+  }
+  return repo;
+}
+
+/**
+ * Validate a workflow run ID is a positive integer, returned as a string for
+ * safe interpolation. Run IDs come from API responses; guard before shell use.
+ * @param {string|number} runId
+ * @returns {string} Validated run ID as a string
+ * @throws {Error} If not a positive integer
+ */
+function validateRunId(runId) {
+  const num = Number(runId);
+  if (!Number.isInteger(num) || num <= 0) {
+    throw new Error(`Invalid run ID: ${String(runId).substring(0, 20)}`);
+  }
+  return String(num);
+}
+
+/**
+ * Validate an npm package name against the npm name grammar.
+ * Dependency keys read from a (possibly hostile) package.json are otherwise
+ * interpolated into `npm view ...` — a crafted key executes shell code (#2456).
+ * Rules: <= 214 chars; optional @scope/ prefix; lowercase url-safe chars only;
+ * no leading dot or underscore.
+ * @param {string} name
+ * @returns {string} Validated package name
+ * @throws {Error} If the name is not a valid npm package name
+ */
+// One name segment (scope or package): starts with a url-safe char that is not
+// '.' or '_', rest url-safe. Single linear char-classes (no nested quantifiers)
+// to stay clear of ReDoS — validated per-segment rather than one combined regex.
+const NPM_SEGMENT = /^[a-z0-9~-][a-z0-9._~-]*$/;
+function validateNpmPackageName(name) {
+  if (typeof name !== 'string' || !name.trim()) {
+    throw new Error('Package name is required');
+  }
+  const invalid = () => new Error(`Invalid npm package name: ${name.substring(0, 40)}`);
+  if (name.length > 214) {
+    throw invalid();
+  }
+  let pkg = name;
+  if (name[0] === '@') {
+    const slash = name.indexOf('/');
+    if (slash < 0) {
+      throw invalid();
+    }
+    const scope = name.slice(1, slash);
+    pkg = name.slice(slash + 1);
+    if (!NPM_SEGMENT.test(scope)) {
+      throw invalid();
+    }
+  }
+  if (!NPM_SEGMENT.test(pkg)) {
+    throw invalid();
+  }
+  return name;
 }
 
 /**
@@ -147,6 +224,9 @@ module.exports = {
   validateIssueNumber,
   validateBranchName,
   validateTag,
+  validateRepo,
+  validateRunId,
+  validateNpmPackageName,
   validateVersion,
   safePath,
   validateFilename,

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description GitHub CLI wrapper with retry logic, transient-error detection, and safe exec helpers. Exports ghExec(), ghQuery(), isTransientError(), and related utilities. Used by most preamble and workflow scripts.
  * @checksum sha256:placeholder
  *
@@ -11,6 +11,7 @@
  */
 
 const { execSync, spawnSync } = require('child_process');
+const { validateBranchName, validateRepo, validateTag, validateRunId } = require('./input-validation');
 
 /**
  * Check if an error message indicates a transient HTTP error (5xx)
@@ -89,7 +90,7 @@ function execJson(args) {
  * @returns {object} Latest run info
  */
 function getLatestRun(repo) {
-    const repoArg = repo ? `--repo ${repo}` : '';
+    const repoArg = repo ? `--repo ${validateRepo(repo)}` : '';
     const runs = execJson(`run list --limit 1 --json databaseId,status,conclusion,name,headBranch,createdAt,updatedAt ${repoArg}`);
     return runs[0] || null;
 }
@@ -107,10 +108,9 @@ function getRuns(options = {}) {
     const safeLimit = Number.isInteger(Number(limit)) ? Number(limit) : 10;
     let args = `run list --limit ${safeLimit} --json databaseId,status,conclusion,name,headBranch,createdAt,updatedAt`;
     if (branch) {
-        const { validateBranchName } = require('./input-validation');
         args += ` --branch ${validateBranchName(branch)}`;
     }
-    if (repo) args += ` --repo ${repo}`;
+    if (repo) args += ` --repo ${validateRepo(repo)}`;
     return execJson(args);
 }
 
@@ -121,8 +121,8 @@ function getRuns(options = {}) {
  * @returns {object} Run details with jobs
  */
 function getRun(runId, repo) {
-    const repoArg = repo ? `--repo ${repo}` : '';
-    return execJson(`run view ${runId} --json databaseId,status,conclusion,name,jobs,createdAt,updatedAt ${repoArg}`);
+    const repoArg = repo ? `--repo ${validateRepo(repo)}` : '';
+    return execJson(`run view ${validateRunId(runId)} --json databaseId,status,conclusion,name,jobs,createdAt,updatedAt ${repoArg}`);
 }
 
 /**
@@ -132,9 +132,12 @@ function getRun(runId, repo) {
  * @returns {object} Release info with assets
  */
 function getRelease(tag, repo) {
-    const repoArg = repo ? `--repo ${repo}` : '';
+    // Validate inputs BEFORE the try so a malformed tag/repo fails loudly rather
+    // than being swallowed by the "release might not exist" fallback (#2456).
+    const safeTag = validateTag(tag);
+    const repoArg = repo ? `--repo ${validateRepo(repo)}` : '';
     try {
-        return execJson(`release view ${tag} --json tagName,name,body,createdAt,assets,url ${repoArg}`);
+        return execJson(`release view ${safeTag} --json tagName,name,body,createdAt,assets,url ${repoArg}`);
     } catch {
         // Release might not exist yet
         return null;
@@ -150,9 +153,10 @@ function getRelease(tag, repo) {
  */
 function listReleases(options = {}) {
     const { limit = 10, repo } = options;
-    const repoArg = repo ? `--repo ${repo}` : '';
+    const safeLimit = Number.isInteger(Number(limit)) ? Number(limit) : 10;
+    const repoArg = repo ? `--repo ${validateRepo(repo)}` : '';
     try {
-        return execJson(`release list --limit ${limit} --json tagName,name,createdAt,isDraft,isPrerelease ${repoArg}`);
+        return execJson(`release list --limit ${safeLimit} --json tagName,name,createdAt,isDraft,isPrerelease ${repoArg}`);
     } catch {
         return [];
     }

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description DTCG init mode builder for interactive token creation.
  *   Defines token categories with sensible defaults, supports optional
  *   categories (skip), and produces valid DTCG-compliant token output.
@@ -191,8 +191,48 @@ function buildFontWeightTokens(category, custom) {
   };
 }
 
+/**
+ * Parse a custom numeric input, rejecting anything that would poison the
+ * generated scale.
+ *
+ * parseInt returns NaN for non-numeric input and NaN propagates silently
+ * through every arithmetic expression, so a typo used to write a whole scale
+ * of literal 'NaNpx' tokens with no error raised anywhere (#2466). parseInt
+ * is also too permissive in the other direction — parseInt('8abc') is 8 —
+ * so this uses Number() and requires the whole string to be numeric.
+ *
+ * @param {string|number} raw - the supplied value
+ * @param {string} fieldName - name used in the error message
+ * @param {object} [opts]
+ * @param {boolean} [opts.allowZero] - whether 0 is a legitimate value
+ * @returns {number}
+ * @throws {Error} when the value is not a usable positive number
+ */
+function parseNumericOption(raw, fieldName, opts = {}) {
+  // A trailing "px" is accepted — the category defaults are written that way
+  // ("8px") and users naturally type it — but the numeric part must still be
+  // wholly numeric, so "px" alone and "8abc" are both rejected.
+  const text = String(raw).trim().replace(/px$/i, '').trim();
+  const n = text === '' ? NaN : Number(text);
+
+  if (!Number.isFinite(n)) {
+    throw new Error(`Invalid ${fieldName}: "${raw}" is not a number`);
+  }
+  if (n < 0) {
+    throw new Error(`Invalid ${fieldName}: "${raw}" must not be negative`);
+  }
+  if (n === 0 && !opts.allowZero) {
+    throw new Error(`Invalid ${fieldName}: "${raw}" must be greater than zero`);
+  }
+
+  return n;
+}
+
 function buildSpacingTokens(category, custom) {
-  const baseUnit = parseInt(custom.baseUnit || '8', 10);
+  const baseUnit = parseNumericOption(
+    custom.baseUnit === undefined || custom.baseUnit === '' ? '8' : custom.baseUnit,
+    'baseUnit'
+  );
   return {
     spacing: {
       xs: createToken('dimension', `${baseUnit / 2}px`, 'Extra small spacing'),
@@ -207,7 +247,15 @@ function buildSpacingTokens(category, custom) {
 
 function buildBorderRadiusTokens(category, custom) {
   const radiusGroup = category.groups.find(g => g.name === 'borderRadius');
-  const base = parseInt(custom.borderRadius || radiusGroup.defaultValue, 10);
+  // Zero is allowed here — square corners are a legitimate design choice,
+  // unlike a zero spacing unit which would collapse the whole scale.
+  const base = parseNumericOption(
+    custom.borderRadius === undefined || custom.borderRadius === ''
+      ? radiusGroup.defaultValue
+      : custom.borderRadius,
+    'borderRadius',
+    { allowZero: true }
+  );
   return {
     sm: createToken('dimension', `${base / 2}px`, 'Small border radius'),
     md: createToken('dimension', `${base}px`, 'Medium border radius'),

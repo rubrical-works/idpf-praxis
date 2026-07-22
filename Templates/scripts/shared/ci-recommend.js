@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Analyze a project and generate CI improvement recommendations based on detected languages, test tooling, deployment targets, and deprecated action versions. Produces structured recommendation objects consumed by ci-recommend-ui.js and ci-apply.js.
  * @checksum sha256:placeholder
  *
@@ -139,7 +139,11 @@ function analyzeGaps(projectDir) {
               type: 'Alter',
               description: `Upgrade deprecated ${actionRef} to ${upgrade} in ${wf.fileName}`,
               impact: 'Security and compatibility improvements',
-              file: wf.fileName
+              file: wf.fileName,
+              // ci-apply.js applyAlter hard-requires actionRef + upgrade for the
+              // string replacement. Both are available here from DEPRECATED_ACTIONS.
+              actionRef,
+              upgrade
             });
           }
         }

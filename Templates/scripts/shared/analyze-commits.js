@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Parse git commits since the last semver tag and categorize by conventional commit type (feat, fix, chore, etc.). Extracts type, scope, breaking change flags, and issue references. Used by /prepare-release and piped into generate-changelog.js.
  * @checksum sha256:placeholder
  *
@@ -9,8 +9,22 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { classifyCommit } = require('./lib/deployment-scope');
+const { validateTag } = require('./lib/input-validation');
+
+/**
+ * Build validated `git log` array-args for the commit range since lastTag.
+ * lastTag comes from `git tag` output; a hostile tag from a compromised remote
+ * would otherwise inject via string interpolation (#2456). Validate it and
+ * return discrete args so git is invoked without a shell.
+ * @param {string} lastTag
+ * @returns {string[]} execFileSync args for `git`
+ */
+function buildLogArgs(lastTag) {
+  const safeTag = validateTag(lastTag);
+  return ['log', `${safeTag}..HEAD`, '--pretty=format:%H|%s'];
+}
 
 function parseConventionalCommit(message) {
     // Split into two patterns to avoid nested quantifiers flagged by safe-regex
@@ -49,7 +63,7 @@ async function main() {
             return;
         }
 
-        const rawLog = execSync(`git log ${lastTag}..HEAD --pretty=format:"%H|%s"`, {
+        const rawLog = execFileSync('git', buildLogArgs(lastTag), {
             encoding: 'utf8'
         }).trim();
 
@@ -100,4 +114,6 @@ async function main() {
     }
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { buildLogArgs };

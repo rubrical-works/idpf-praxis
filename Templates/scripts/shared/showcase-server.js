@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  *
  * Living Style Guide showcase server (#2430, Story 1.1).
  *
@@ -33,6 +33,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const lib = require('./lib/local-server.js');
+// Shared request-safety primitives (#2468) — one implementation, both servers.
+const { resolveSafe, isLoopbackHost } = lib;
 
 const DEFAULT_BUNDLE_DIR = 'Design-System/showcase';
 const DEFAULT_DECISIONS = 'Design-System/showcase/decisions.json';
@@ -55,14 +57,19 @@ const MIME = {
 
 // ─── Schema-driven validation (zero-dep, vendored) ────────────────────────
 //
-// Per `.claude/rules/04-deployment-awareness.md` Runtime Dependency Contract:
-// deployed helpers must not require external npm packages. The framework root
-// in user projects has no node_modules — `require('ajv')` would crash. We
-// vendor a minimal validator that reads the schema file and enforces the
-// specific keywords decisions.schema.json uses: type, required, enum, pattern,
-// minLength, maxLength, additionalProperties (literal false), format date-time
-// (loose ISO-8601). See tests/metadata/decisions-schema.test.js for the Ajv-backed
-// schema-shape tests; this validator is a runtime mirror.
+// This validator is intentionally dependency-free — but NOT because
+// `require('ajv')` would crash. ajv is a declared runtime dependency
+// (framework-manifest.json runtimeNpmDependencies, bundled into the framework
+// root's node_modules by deploy-dist.yml since #2378), so requiring it is
+// permitted under `.claude/rules/04-deployment-awareness.md` Runtime Dependency
+// Contract (the declared-vs-undeclared rule). We vendor instead as a judgment
+// call: the surface needed here is tiny — a handful of keywords for one schema —
+// so inlining it avoids pulling a validator into this lightweight dev-facing
+// server for no real gain. The vendored validator reads the schema file and
+// enforces exactly the keywords decisions.schema.json uses: type, required,
+// enum, pattern, minLength, maxLength, additionalProperties (literal false),
+// format date-time (loose ISO-8601). See tests/metadata/decisions-schema.test.js
+// for the Ajv-backed schema-shape tests; this validator is a runtime mirror.
 
 // Validate an ISO-8601 date-time string without a single regex (avoids
 // `security/detect-unsafe-regex` lint false-positive on nested quantifiers).
@@ -171,13 +178,9 @@ function contentTypeFor(filePath) {
   return MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
 }
 
-function resolveSafe(root, urlPath) {
-  let p = decodeURIComponent(urlPath.split('?')[0].split('#')[0]);
-  if (p === '/' || p === '') p = '/index.html';
-  const resolved = path.resolve(root, '.' + p);
-  if (!resolved.startsWith(path.resolve(root))) return null;
-  return resolved;
-}
+// resolveSafe now comes from lib/local-server.js (#2468). The private copy
+// here was byte-identical to mockups-serve.js's, which is how one review miss
+// produced two vulnerable call sites.
 
 function serveStatic(bundleDir, req, res) {
   const filePath = resolveSafe(bundleDir, req.url || '/');
@@ -311,6 +314,16 @@ function handleDone(_req, res, ctx) {
 
 function makeRequestHandler(ctx) {
   return (req, res) => {
+    // DNS-rebinding defence (#2468) — FIRST, before any route dispatch, so it
+    // covers /record, /done, /nonce and static alike. Absent this, a page
+    // resolving to 127.0.0.1 is same-origin: it can GET /nonce for the
+    // anti-CSRF token and then POST forged /record decisions.
+    if (!isLoopbackHost(req.headers && req.headers.host)) {
+      res.statusCode = 403;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end('403 Forbidden: non-loopback Host');
+      return;
+    }
     // Use WHATWG URL with a dummy origin so we get pathname stably.
     const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname;
     if (req.method === 'POST' && pathname === '/record') {

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Style Dictionary discovery adapter. Detects existing Style
  *   Dictionary token files and imports them to DTCG format.
  * @checksum sha256:placeholder
@@ -98,23 +98,29 @@ function extract(projectRoot) {
 function convertSDToDTCG(sdTokens, groupName) {
   const result = {};
 
-  function walk(node, currentGroup) {
+  // The nesting path used to be discarded — walk() recursed with the same
+  // group and stored each leaf under its bare terminal key, so brand.500 and
+  // neutral.500 overwrote each other (#2466). The path is now carried down
+  // and joined into the token name.
+  function walk(node, currentGroup, pathParts) {
     for (const [key, value] of Object.entries(node)) {
       if (typeof value === 'object' && value !== null && 'value' in value) {
         // This is a leaf token in SD format
         if (!result[currentGroup]) result[currentGroup] = {};
-        result[currentGroup][key] = {
+        const fullPath = [...pathParts, key];
+        result[currentGroup][fullPath.join('-')] = {
           $type: guessType(value.value),
           $value: value.value,
-          $description: value.comment || `Imported from Style Dictionary ${groupName}.${key}`
+          $description: value.comment
+            || `Imported from Style Dictionary ${groupName}.${fullPath.join('.')}`
         };
       } else if (typeof value === 'object' && value !== null) {
-        walk(value, currentGroup);
+        walk(value, currentGroup, [...pathParts, key]);
       }
     }
   }
 
-  walk(sdTokens, groupName);
+  walk(sdTokens, groupName, []);
   return result;
 }
 
@@ -133,4 +139,4 @@ function guessType(value) {
   return 'color'; // default fallback
 }
 
-module.exports = { detect, extract };
+module.exports = { detect, extract, convertSDToDTCG };

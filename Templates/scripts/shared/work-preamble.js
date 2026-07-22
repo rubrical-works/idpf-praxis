@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -427,18 +427,47 @@ function buildEpicAutoTask(activeSubIssues, processingOrder) {
 // ─── Status Transitions ───
 
 /**
- * Move an issue to in_progress status
- * @param {number} issueNum
- * @returns {Promise<{ moved: boolean, error?: { code: string, message: string } }>}
+ * Normalize a board status string for comparison.
+ * Board values arrive in mixed spellings ('In progress' from `gh pmu view`,
+ * 'in_progress' from CLI flags), so compare on a punctuation-free lowercase form.
+ * @param {string|null|undefined} status
+ * @returns {string} normalized status, or '' when absent
  */
-async function moveToInProgress(issueNum) {
+function normalizeStatus(status) {
+  if (!status || typeof status !== 'string') return '';
+  return status.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+/**
+ * Ensure an issue is in in_progress status.
+ *
+ * `moved` reports whether this call caused a STATE CHANGE — not whether the
+ * command exited 0 (#2483). Before that fix `moved` was unconditionally true on
+ * success, so an issue already in_progress (every branch tracker, which
+ * `gh pmu branch start` creates in that state) produced a no-op that the
+ * envelope reported as a successful transition. That false signal is why
+ * /work's missing sub-issue transitions went unnoticed.
+ *
+ * `priorStatus` is supplied by the caller from data already fetched by
+ * gatherAllData (`--json=...,status`), so determining this costs no extra
+ * round trip. The move is still issued when already in_progress — this
+ * ensures the target state rather than skipping — we simply stop claiming
+ * to have changed something that did not change.
+ *
+ * @param {number} issueNum
+ * @param {string} [priorStatus] Board status before this call
+ * @returns {Promise<{ moved: boolean, alreadyInProgress: boolean, error?: { code: string, message: string } }>}
+ */
+async function moveToInProgress(issueNum, priorStatus) {
+  const alreadyInProgress = normalizeStatus(priorStatus) === 'inprogress';
   try {
     await execFileAsync('gh', ['pmu', 'move', String(issueNum), '--status', 'in_progress'], EXEC_OPTS);
-    return { moved: true };
+    return { moved: !alreadyInProgress, alreadyInProgress };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
     return {
       moved: false,
+      alreadyInProgress,
       error: { code: 'MOVE_FAILED', message: `Failed to move #${issueNum} to in_progress: ${msg}` }
     };
   }
@@ -731,12 +760,14 @@ async function runSingleIssue(issueNum, options) {
   const type = detectIssueType(dataResult.issue);
   const frameworkConfig = readFrameworkConfig();
 
-  // 4. Move to in_progress
+  // 4. Ensure in_progress. Prior status comes from gatherAllData above — no extra
+  //    round trip — so movedToInProgress can report a real transition (#2483).
   roundTrips++;
-  const moveResult = await moveToInProgress(issueNum);
+  const moveResult = await moveToInProgress(issueNum, dataResult.branch && dataResult.branch.status);
   const gates = {
     assigned: assignGate,
     movedToInProgress: moveResult.moved,
+    alreadyInProgress: moveResult.alreadyInProgress,
     prdTrackerMoved: false
   };
   if (moveResult.error) {
@@ -908,7 +939,7 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
     frameworkPath: shared.frameworkPath
   };
 
-  const gates = { assigned: assignGate, movedToInProgress: false, prdTrackerMoved: false };
+  const gates = { assigned: assignGate, movedToInProgress: false, alreadyInProgress: false, prdTrackerMoved: false };
 
   return {
     ok: true,
@@ -976,7 +1007,7 @@ async function main() {
       gates: {
         name: 'gates',
         type: 'object',
-        description: 'Boolean gate results: assigned, movedToInProgress, prdTrackerMoved.'
+        description: 'Boolean gate results: assigned, movedToInProgress, alreadyInProgress, prdTrackerMoved. movedToInProgress reports a real state change — it is false when the issue was already in_progress (see alreadyInProgress), not merely when the move command failed.'
       },
       autoTask: {
         name: 'autoTask',
@@ -1049,6 +1080,7 @@ module.exports = {
   detectIssueType,
   isBranchTracker,
   parseAcceptanceCriteria,
+  normalizeStatus,
   moveToInProgress,
   parsePrdTracker,
   movePrdTracker,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Check for third-party framework/dependency upgrades. Reads CHARTER.md or Tech-Stack.md for dependency list, queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
  *
@@ -11,8 +11,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { readFileSafe, readJsonSafe } = require('./lib/shell-safe.js');
+const { validateNpmPackageName } = require('./lib/input-validation.js');
 
 // ======================================
 //  Constants
@@ -324,8 +325,13 @@ function queryLatestVersion(registry, packageName) {
   try {
     switch (registry) {
       case 'npm': {
-        const result = execSync(
-          `npm view "${packageName}" version`,
+        // packageName is a package.json dependency KEY — arbitrary, and in a
+        // cloned repo attacker-controlled. Validate against the npm grammar and
+        // spawn via execFileSync array-args so it never reaches a shell (#2456).
+        const safeName = validateNpmPackageName(packageName);
+        const result = execFileSync(
+          'npm',
+          ['view', safeName, 'version'],
           { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000 }
         );
         return result.trim();

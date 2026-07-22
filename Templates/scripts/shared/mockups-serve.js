@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  *
  * Zero-dependency static file server for /mockups --serve (#2377).
  *
@@ -26,6 +26,8 @@
 const fs = require('fs');
 const path = require('path');
 const lib = require('./lib/local-server.js');
+// Shared request-safety primitives (#2468) — one implementation, both servers.
+const { resolveSafe, isLoopbackHost } = lib;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -47,16 +49,17 @@ function contentTypeFor(filePath) {
   return MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
 }
 
-function resolveSafe(root, urlPath) {
-  // Map "/" → "/index.html"; strip query/hash; prevent path traversal.
-  let p = decodeURIComponent(urlPath.split('?')[0].split('#')[0]);
-  if (p === '/' || p === '') p = '/index.html';
-  const resolved = path.resolve(root, '.' + p);
-  if (!resolved.startsWith(path.resolve(root))) return null;
-  return resolved;
-}
-
 function handleRequest(root, req, res) {
+  // DNS-rebinding defence (#2468): without this, a malicious page resolving to
+  // 127.0.0.1 becomes same-origin and can read arbitrary files from the served
+  // tree. This server is a pure file server, so rebinding here yields reads —
+  // the wider consequence of the two servers.
+  if (!isLoopbackHost(req.headers && req.headers.host)) {
+    res.statusCode = 403;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end('403 Forbidden: non-loopback Host');
+    return;
+  }
   const filePath = resolveSafe(root, req.url || '/');
   if (!filePath) {
     res.statusCode = 400;

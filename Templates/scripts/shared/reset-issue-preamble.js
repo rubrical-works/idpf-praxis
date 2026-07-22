@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Analyze an issue to determine what /issue-reset would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,7 @@ const { exec: execCb } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
+const { bodyMentionsIssue } = require('./lib/issue-ref-match.js');
 
 const execAsync = promisify(execCb);
 const SCHEMA_VERSION = 1;
@@ -107,7 +108,12 @@ function findTestPlanFiles(issueNumber) {
   const matching = [];
   for (const file of files) {
     const content = fs.readFileSync(path.join(testPlanDir, file), 'utf-8');
-    if (content.includes(`#${issueNumber}`) || content.includes(`#${issueNumber} `)) {
+    // Boundary-anchored (#2467). The previous condition was
+    // `includes('#N') || includes('#N ')` — the second clause is a strict
+    // subset of the first and could never change the result. It read like a
+    // deliberate boundary check, which is plausibly why the flaw survived
+    // review; neither clause stopped #24 from matching #245.
+    if (bodyMentionsIssue(content, issueNumber)) {
       matching.push(path.join('Construction', 'Test-Plans', file));
     }
   }

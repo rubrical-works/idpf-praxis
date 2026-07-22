@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.92.0
+**Version:** v0.93.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions.
 ## Project Configuration
@@ -20,11 +20,12 @@ When these keywords appear with an issue reference (#N):
 4. End with: "Analysis complete. Say 'work' to implement."
 **Forbidden during analysis:** side-effect scripts, creating/editing/moving issues, code changes, `gh pmu move`, `git commit`, state-modifying `node` scripts.
 OK: `gh pmu view 123`, `gh issue view 123 --json body`. Forbidden: `gh pmu move 123 --status in_progress`, `node .claude/scripts/shared/assign-branch.js --add-ready`.
-**Pre-Agent Status Verification Gate:** Before spawning any Agent tool for **implementation work**, verify issue is `in_progress`:
+**Pre-Work Status Gate:** Before work begins on an issue — **before its first acceptance criterion is worked**, inline or via spawned Agent — verify issue is `in_progress`:
 ```bash
 gh pmu view $ISSUE --json=status --jq='.status'
 ```
-If not "In progress", run `gh pmu move $ISSUE --status in_progress` before spawning. Does NOT apply to research/review/exploration agents.
+If not "In progress", run `gh pmu move $ISSUE --status in_progress` before proceeding. Applies to **every** issue and **each sub-issue** of an epic/branch tracker as its turn begins. Does NOT apply to research/review/exploration agents. Covers two failure modes: **compaction** between preamble and start of work losing the transition; and — epics/branch trackers — the preamble having moved only the tracker, never the sub-issues (#2483).
+Trigger is the **workflow moment**, NOT the mechanism — an actor-keyed rephrasing reintroduces the defect. `/work` Step 3 states the same contract; change both together (`tests/commands/work.test.js` fails on desync).
 **Commit Message Issue References:**
 | Phase | Allowed Keywords | Forbidden Keywords |
 |-------|------------------|-------------------|

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description DTCG token reader for integration with /mockups and /catalog-screens.
  *   Loads design tokens from Design-System/, supports theme merging,
  *   provides token value extraction by path, and returns structured palettes.
@@ -16,6 +16,9 @@
 
 const fs = require('fs');
 const path = require('path');
+// Shared with dtcg-schema and dtcg-theme-manager so all three agree on what a
+// token leaf is — they previously did not (#2466).
+const { isTokenLeaf } = require('./dtcg-schema.js');
 
 const TOKEN_FILE = 'idpf-design.tokens.json';
 const DESIGN_DIR = 'Design-System';
@@ -134,8 +137,11 @@ function extractGroup(tokens, groupName) {
       if (key.startsWith('$')) continue;
       const fullKey = prefix ? `${prefix}.${key}` : key;
 
-      if (value && typeof value === 'object' && '$value' in value) {
-        result[key] = value.$value;
+      if (isTokenLeaf(value)) {
+        // Store under the full dotted path. Storing under the bare terminal
+        // key made color.brand.500 and color.neutral.500 collide on '500',
+        // with the later one silently winning (#2466).
+        result[fullKey] = value.$value;
       } else if (value && typeof value === 'object') {
         walk(value, fullKey);
       }
@@ -158,9 +164,11 @@ function deepMerge(target, source) {
   for (const [key, value] of Object.entries(source)) {
     if (key.startsWith('$')) continue;
 
-    if (value && typeof value === 'object' && '$type' in value) {
-      if (!merged[key]) merged[key] = {};
-      merged[key] = { ...value };
+    if (isTokenLeaf(value)) {
+      // Overlay onto the base leaf so a $value-only override inherits $type
+      // and $description instead of dropping them (#2466).
+      const base = merged[key] && typeof merged[key] === 'object' ? merged[key] : {};
+      merged[key] = { ...base, ...value };
     } else if (value && typeof value === 'object' && !Array.isArray(value)) {
       if (!merged[key] || typeof merged[key] !== 'object') merged[key] = {};
       merged[key] = deepMerge(merged[key], value);
@@ -235,5 +243,7 @@ module.exports = {
   getTokenValue,
   getMockupPalette,
   findTokensByValue,
-  resolveAlias
+  resolveAlias,
+  deepMerge,
+  extractGroup
 };

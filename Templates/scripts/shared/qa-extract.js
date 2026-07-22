@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -16,7 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 const CONFIG_PATH = path.join(__dirname, 'lib', 'qa-config.json');
 
@@ -77,9 +77,14 @@ function fetchIssue(issueNumber, execFn = execSync) {
   return JSON.parse(raw);
 }
 
-function createSubIssue(parentIssue, title, bodyPath, execFn = execSync) {
-  const cmd = `gh pmu sub create --parent ${parentIssue} --title ${JSON.stringify(title)} --label qa-required -F ${bodyPath}`;
-  const raw = execFn(cmd, { encoding: 'utf8' });
+// Title is `QA: ${acText}` verbatim from unchecked AC lines in (attacker-
+// influenceable) issue bodies. Pass every value as a discrete execFileSync
+// argument so the shell is never a trust boundary — backticks/$()/quotes in
+// the title are inert data, not code (#2456). Do NOT reintroduce a shell
+// string here.
+function createSubIssue(parentIssue, title, bodyPath, execFileFn = execFileSync) {
+  const args = ['pmu', 'sub', 'create', '--parent', String(parentIssue), '--title', title, '--label', 'qa-required', '-F', bodyPath];
+  const raw = execFileFn('gh', args, { encoding: 'utf8' });
   const m = raw.match(/#(\d+)/);
   if (!m) throw new Error(`gh pmu sub create output did not include a sub-issue number:\n${raw}`);
   return parseInt(m[1], 10);
@@ -171,5 +176,6 @@ module.exports = {
   renderBody,
   buildAnnotation,
   extract,
-  fetchIssue
+  fetchIssue,
+  createSubIssue
 };

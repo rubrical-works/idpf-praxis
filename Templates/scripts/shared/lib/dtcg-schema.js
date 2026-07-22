@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description DTCG token schema generation and validation. Generates JSON Schema
  *   for the Design Tokens Community Group specification (Living Draft 2025-04-18).
  *   Validates token files against the schema, checking $value/$type/$description
@@ -105,15 +105,38 @@ function generateSchema() {
 }
 
 /**
- * Check if a node is a DTCG token leaf (has $value and $type).
+ * Check if a node is a DTCG token leaf.
+ *
+ * Keyed on $value, the one property every leaf must carry. Keying on $type
+ * was wrong in both directions: a malformed `{ $value }` leaf was walked as a
+ * group and its missing $type never reported, while a spec-legal group-level
+ * $type made a group look like a leaf (#2466).
+ *
+ * This is the single leaf-detection predicate for the DTCG pipeline —
+ * dtcg-theme-manager and dtcg-token-reader import it rather than carrying
+ * their own copies, which is how the three drifted apart in the first place.
+ *
  * @param {object} node
  * @returns {boolean}
  */
 function isTokenLeaf(node) {
-  return node !== null &&
-    typeof node === 'object' &&
-    !Array.isArray(node) &&
-    '$type' in node;
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) {
+    return false;
+  }
+
+  // $value is definitive — only a leaf carries one.
+  if ('$value' in node) return true;
+
+  // $type alone is a leaf ONLY when nothing hangs off it. A group may legally
+  // carry $type to set a default for its children, and treating that group as
+  // a leaf was the false positive half of the bug; a bare `{ $type }` with no
+  // children is a malformed leaf and must reach validateLeaf so its missing
+  // $value is reported.
+  if ('$type' in node) {
+    return !Object.keys(node).some(k => !k.startsWith('$'));
+  }
+
+  return false;
 }
 
 /**

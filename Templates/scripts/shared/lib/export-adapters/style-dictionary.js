@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Style Dictionary export adapter. Translates DTCG tokens to
  *   Amazon Style Dictionary compatible JSON format.
  * @checksum sha256:placeholder

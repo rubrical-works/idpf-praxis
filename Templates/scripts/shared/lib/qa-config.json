@@ -23,5 +23,5 @@
   "bodyTemplate": "## QA: {acDescription}\n\nParent: #{parentIssue} — {parentTitle}\n\n### Steps to Perform\n\n1. {steps}\n\n### Expected Result\n\n{expectedResult}",
   "subIssueCommand": "gh pmu sub create --parent $ISSUE --title \"QA: [AC description]\" --label qa-required -F .tmp-qa-body.md",
   "annotationFormat": "- [ ] {acText} → QA: #{subIssueNumber}",
-  "closurePath": "Parent stays in_review until all QA sub-issues are closed and AC checked off."
+  "closurePath": "Option A (config wins, #2472): the '- [ ]' box is an open QA gate. The parent moves to in_review via the Step 4b QA force-exception and stays there until all QA sub-issues are closed and their AC boxes are checked; only then can the parent reach done."
 }

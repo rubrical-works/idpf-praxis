@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  *
  * Shared 127.0.0.1 server infrastructure used by /mockups --serve (#2377) and
  * /design-system --showcase (#2429, Story 1.1). Provides:
@@ -21,6 +21,7 @@
 'use strict';
 
 const http = require('http');
+const path = require('path');
 const { spawn } = require('child_process');
 
 const DEFAULT_HOST = '127.0.0.1';
@@ -223,12 +224,97 @@ function attachGracefulShutdown(server, onShutdown) {
   };
 }
 
+// ─── Request-safety primitives (#2468) ───────────────────────────────────
+//
+// Both local servers previously carried byte-identical private copies of
+// resolveSafe(), and neither validated Host. One implementation here means a
+// single review miss cannot again produce two vulnerable call sites.
+
+/**
+ * Resolve a request URL path to an absolute file path strictly inside `root`.
+ *
+ * Containment uses path.relative() rather than string prefix comparison.
+ * `resolved.startsWith(path.resolve(root))` — the superseded check — has no
+ * trailing separator, so serving `Mockups/login` also served
+ * `Mockups/login-internal/...`: the sibling's absolute path genuinely starts
+ * with the root's. path.relative() is correct on both separators without the
+ * caller reasoning about trailing-separator normalisation, which is the exact
+ * class of reasoning that produced the bug.
+ *
+ * Malformed percent-encoding returns null rather than throwing. decodeURIComponent
+ * raises URIError on input like `/%zz`; called synchronously in a request
+ * handler that killed the process.
+ *
+ * @param {string} root Served root directory
+ * @param {string} urlPath Raw request path (may contain query/hash/encoding)
+ * @returns {string|null} Absolute path inside root, or null if unsafe/undecodable
+ */
+function resolveSafe(root, urlPath) {
+  let p;
+  try {
+    p = decodeURIComponent(String(urlPath == null ? '' : urlPath).split('?')[0].split('#')[0]);
+  } catch (_e) {
+    return null; // malformed percent-encoding — caller should answer 400
+  }
+  if (p === '/' || p === '') p = '/index.html';
+
+  const rootAbs = path.resolve(root);
+  const resolved = path.resolve(rootAbs, '.' + p);
+  const rel = path.relative(rootAbs, resolved);
+
+  // Outside the root when the relative path climbs out ('..') or is absolute
+  // (different drive on Windows). An empty rel means resolved === root itself.
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return resolved;
+}
+
+/**
+ * Whether a Host header points at loopback.
+ *
+ * Absent this check a DNS-rebinding page resolving to 127.0.0.1 becomes
+ * same-origin to a local server. That is what makes the traversal and the
+ * malformed-decode DoS remotely reachable rather than local-only — it is the
+ * precondition for the other two defects, not a lesser sibling.
+ *
+ * Matches the full hostname, never a substring: `localhost.evil.example`
+ * resolves wherever the attacker chooses.
+ *
+ * @param {string|null|undefined} hostHeader Raw Host header (may include :port)
+ * @returns {boolean}
+ */
+function isLoopbackHost(hostHeader) {
+  if (!hostHeader || typeof hostHeader !== 'string') return false;
+
+  let host = hostHeader.trim();
+  // Bracketed IPv6 literal, optionally with a port: [::1] / [::1]:9000
+  // Parsed by index rather than regex: a `[^\]]+` quantifier here trips
+  // eslint security/detect-unsafe-regex, and string slicing is both cheaper
+  // and easier to read than a pattern that has to be argued safe.
+  if (host.startsWith('[')) {
+    const close = host.indexOf(']');
+    if (close === -1) return false;
+    const rest = host.slice(close + 1);
+    if (rest !== '' && !/^:\d+$/.test(rest)) return false;
+    const addr = host.slice(1, close).toLowerCase();
+    return addr === '::1' || addr === '0:0:0:0:0:0:0:1';
+  }
+  // Strip a trailing :port from hostname / IPv4 forms
+  host = host.replace(/:\d+$/, '').toLowerCase();
+
+  if (host === 'localhost') return true;
+  if (host === '::1') return true;
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  return false;
+}
+
 module.exports = {
   tryListen,
   findAvailablePort,
   bindLoopbackServer,
   openBrowserCrossPlatform,
   attachGracefulShutdown,
+  resolveSafe,
+  isLoopbackHost,
   // exposed for tests / introspection
   DEFAULT_HOST,
   DEFAULT_RANGE,

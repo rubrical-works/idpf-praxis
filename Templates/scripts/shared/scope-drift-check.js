@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { issueRefGrepPattern, collectTouchedPaths } = require('./lib/issue-ref-match.js');
 
 // Vendored glob matcher (#2418). The framework root ships without a populated
 // node_modules in deployed projects, so external `require()` calls crash
@@ -238,14 +239,14 @@ function loadProtectedPaths(metadataPath = DEFAULT_METADATA_PATH) {
 function readGitLogForIssue(issueNumber, sinceCommit) {
   const args = sinceCommit
     ? ['log', '--name-status', `${sinceCommit}..HEAD`, '--pretty=format:']
-    : ['log', '--name-status', `--grep=Refs #${issueNumber}`, '--pretty=format:'];
+    : ['log', '--name-status', `--grep=${issueRefGrepPattern(issueNumber)}`, '--pretty=format:'];
   return execFileSync('git', args, { encoding: 'utf-8' });
 }
 
 function readLatestCommitMessage(issueNumber) {
   try {
     return execFileSync('git', [
-      'log', '-1', `--grep=Refs #${issueNumber}`, '--format=%B'
+      'log', '-1', `--grep=${issueRefGrepPattern(issueNumber)}`, '--format=%B'
     ], { encoding: 'utf-8' }).trim();
   } catch (_e) {
     return '';
@@ -300,12 +301,11 @@ function run({ issue, body, gitLog, latestCommitMessage, comments, protectedPath
 }
 
 function parseTouchedFromGitLog(raw) {
-  const seen = new Set();
-  for (const line of raw.split('\n')) {
-    const m = line.match(/^([AMD])\t(.+)$/);
-    if (m) seen.add(m[2].trim());
-  }
-  return [...seen];
+  // Rename/copy aware (#2467): a `git mv` of an always-protected path emits an
+  // R line carrying two tab-separated paths. The superseded parser recognised
+  // only add/modify/delete statuses, so it dropped that line entirely and the
+  // move passed the gate. collectTouchedPaths records both old and new paths.
+  return collectTouchedPaths(raw);
 }
 
 // ─── Reporting ───

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.92.0
+ * @framework-script 0.93.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs two audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
@@ -19,6 +19,7 @@
  */
 
 const { execSync } = require('child_process');
+const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 
 function parseArgs(argv) {
   const out = { issue: null };
@@ -47,7 +48,10 @@ function fetchIssue(issueNumber, execFn = execSync) {
 }
 
 function countCommitsForIssue(issueNumber, execFn = execSync) {
-  const raw = execFn(`git log --grep="Refs #${issueNumber}" --pretty=format:"x"`, { encoding: 'utf8' });
+  // Boundary-anchored (#2467): an unbounded grep inflated per-sub-issue commit
+  // counts with unrelated issues' commits, masking genuine low-commit-density
+  // warnings — the audit reported healthy numbers it had not earned.
+  const raw = execFn(`git log --grep="${issueRefGrepPattern(issueNumber)}" --pretty=format:"x"`, { encoding: 'utf8' });
   if (!raw) return 0;
   return raw.split('\n').filter(Boolean).length;
 }
@@ -56,7 +60,13 @@ function countUncheckedAcs(body) {
   if (!body) return 0;
   let count = 0;
   for (const line of body.split('\n')) {
-    if (/^\s*- \[ \] /.test(line)) count++;
+    if (!/^\s*- \[ \] /.test(line)) continue;
+    // Exempt intentionally-open QA gates (#2477): a line carrying a "→ QA: #N"
+    // reference is an open gate by design (Rule 08 Step 4b Option A / #2472),
+    // not incomplete work. Scoped strictly to → QA: #N lines — not a general
+    // bypass; any other unchecked AC still counts.
+    if (/→\s*QA:\s*#\d+/.test(line)) continue;
+    count++;
   }
   return count;
 }
