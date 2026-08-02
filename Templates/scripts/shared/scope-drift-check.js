@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.93.0
+ * @framework-script 0.94.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -98,20 +98,33 @@ function parseArgs(argv) {
  */
 function parseDeclaredScope(body) {
   if (!body || typeof body !== 'string') {
-    return { paths: [], source: 'none' };
+    return { paths: [], source: 'none', warnings: [] };
   }
 
-  const fromExplicit = extractFilesToModify(body);
+  const { paths: fromExplicit, sectionFound } = extractFilesToModifySection(body);
   const fromHistory = extractFilesChanged(body);
+
+  // A declaration that names no backticked path is silently equivalent to no
+  // declaration — it contributes nothing and the gate falls through to the
+  // `### Files Changed` history (#2523 Mode 3, seen on #2436). Backticks stay
+  // required: reading bare prose as paths would turn "Bundle generator HTML
+  // template" into one. The failure is surfaced instead of repaired.
+  const warnings = [];
+  if (sectionFound && fromExplicit.length === 0) {
+    warnings.push(
+      'Files to modify section found but no backticked paths parsed — ' +
+      'declaration ignored. Wrap each path in backticks.'
+    );
+  }
 
   if (fromExplicit.length > 0) {
     const union = Array.from(new Set([...fromExplicit, ...fromHistory]));
-    return { paths: union, source: 'files-to-modify' };
+    return { paths: union, source: 'files-to-modify', warnings };
   }
   if (fromHistory.length > 0) {
-    return { paths: fromHistory, source: 'files-changed' };
+    return { paths: fromHistory, source: 'files-changed', warnings };
   }
-  return { paths: [], source: 'none' };
+  return { paths: [], source: 'none', warnings };
 }
 
 // Line-based section extraction (#2409). Replaces a single regex with
@@ -119,29 +132,98 @@ function parseDeclaredScope(body) {
 // (`\n##` vs `\n###`), which the safe-regex2 heuristic flags as catastrophic-
 // backtracking risk. Behavior is identical to the prior regex on every existing
 // test fixture.
-function extractSection(body, isHeader, isTerminator) {
+// `isTerminator` receives (line, index, lines) so a rule can look ahead; the
+// extra arguments are ignored by single-argument terminators.
+//
+// `options.fenceAware` skips header matches inside ``` / ~~~ fences, and
+// `options.pickBest` selects among multiple matches — both added in #2523,
+// where a body that *discusses* the header format shadowed its own declaration.
+// Defaults reproduce the original first-match, fence-blind behavior exactly.
+function extractSection(body, isHeader, isTerminator, options = {}) {
+  const { fenceAware = false, pickBest = null } = options;
   if (!body || typeof body !== 'string') return '';
   const lines = body.split('\n');
-  let i = 0;
-  while (i < lines.length && !isHeader(lines[i])) i++;
-  if (i >= lines.length) return '';
-  const collected = [];
-  for (let j = i + 1; j < lines.length; j++) {
-    if (isTerminator(lines[j])) break;
-    collected.push(lines[j]);
+
+  const starts = [];
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (fenceAware && /^\s*(?:```|~~~)/.test(lines[i])) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && isHeader(lines[i])) starts.push(i);
   }
-  return collected.join('\n');
+  if (starts.length === 0) return '';
+
+  const sections = starts.map((start) => {
+    const collected = [];
+    for (let j = start + 1; j < lines.length; j++) {
+      if (isTerminator(lines[j], j, lines)) break;
+      collected.push(lines[j]);
+    }
+    return collected.join('\n');
+  });
+
+  if (pickBest) {
+    const chosen = sections.find(pickBest);
+    if (chosen !== undefined) return chosen;
+  }
+  return sections[0];
 }
 
-function extractFilesToModify(body) {
+// Returns { paths, sectionFound } — the caller needs to tell "no declaration"
+// apart from "a declaration that parsed to nothing" (#2523 Mode 3).
+function extractFilesToModifySection(body) {
   const isHeader = (line) => {
     const t = line.trim().toLowerCase();
     return t === '**files:**' || t === '**files to modify:**';
   };
-  // Terminate on blank line, any **bold:** sub-header, or any ##/### heading.
-  const isTerminator = (line) =>
-    line.trim() === '' || /^\*\*/.test(line) || /^##/.test(line);
-  return extractBacktickedPaths(extractSection(body, isHeader, isTerminator));
+
+  // A **bold:** sub-header or ##/### heading always ends the section. A blank
+  // line ends it only when the declaration does not resume: standard markdown
+  // puts a blank line between the bold header and a table, so terminating on
+  // the first blank swallowed every table-form declaration whole (#2523 Mode 1).
+  // Prose after a blank line still terminates, so the widened rule cannot drag
+  // unrelated backticked text into the declared scope.
+  const isTerminator = (line, idx, lines) => {
+    if (/^\*\*/.test(line) || /^##/.test(line)) return true;
+    if (line.trim() !== '') return false;
+    let k = idx + 1;
+    while (k < lines.length && lines[k].trim() === '') k++;
+    if (k >= lines.length) return true;
+    const next = lines[k];
+    if (/^\*\*/.test(next) || /^##/.test(next)) return true;
+    // Continue only into a list item or a table row.
+    return !/^\s*(?:[-*+]\s|\|)/.test(next);
+  };
+
+  const section = extractSection(body, isHeader, isTerminator, {
+    fenceAware: true,
+    pickBest: (candidate) => extractBacktickedPaths(candidate).length > 0
+  });
+
+  const sectionFound = section !== '' || hasFilesToModifyHeader(body);
+  return { paths: extractBacktickedPaths(section), sectionFound };
+}
+
+function hasFilesToModifyHeader(body) {
+  if (!body || typeof body !== 'string') return false;
+  const lines = body.split('\n');
+  let inFence = false;
+  for (const line of lines) {
+    if (/^\s*(?:```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const t = line.trim().toLowerCase();
+    if (t === '**files:**' || t === '**files to modify:**') return true;
+  }
+  return false;
+}
+
+function extractFilesToModify(body) {
+  return extractFilesToModifySection(body).paths;
 }
 
 function extractFilesChanged(body) {
@@ -213,7 +295,18 @@ function checkDrift({ touched, declaredScope, scopeSource, protectedPaths, overr
     }
   }
 
-  const mode = (scopeSource !== 'none' || violations.some(v => v.reason === 'always-protected'))
+  // Mode keys on protected violations alone (#2520). Declaring scope used to
+  // escalate the gate to blocking, which made the declaration actively harmful:
+  // a declared list is a *plan*, and the touched set growing during
+  // implementation is expected, not drift. Under the old rule, persisting a
+  // review-authored list would have turned normal work into routine halts —
+  // strictly worse than the occasional override it was meant to replace.
+  //
+  // Growth is still reported as an `outside-declared-scope` violation, and the
+  // next Step 4c pass absorbs it via parseDeclaredScope's union with the
+  // `### Files Changed` history. Undeclared protected paths still halt (see the
+  // guard above), which is where the gate earns its keep.
+  const mode = violations.some(v => v.reason === 'always-protected')
     ? 'blocking'
     : 'advisory';
 
@@ -283,7 +376,7 @@ function readIssueComments(issueNumber) {
  */
 function run({ issue, body, gitLog, latestCommitMessage, comments, protectedPaths, sinceCommit }) {
   const touched = parseTouchedFromGitLog(gitLog || '');
-  const { paths: declaredScope, source: scopeSource } = parseDeclaredScope(body || '');
+  const { paths: declaredScope, source: scopeSource, warnings } = parseDeclaredScope(body || '');
   const override = findOverride({ commitMessage: latestCommitMessage || '', comments: comments || [] });
   const drift = checkDrift({ touched, declaredScope, scopeSource, protectedPaths: protectedPaths || [], override });
 
@@ -296,7 +389,8 @@ function run({ issue, body, gitLog, latestCommitMessage, comments, protectedPath
     declaredScope,
     scopeSource,
     violations: drift.violations,
-    override: drift.override
+    override: drift.override,
+    warnings: warnings || []
   };
 }
 
@@ -330,6 +424,12 @@ function formatReport(envelope) {
   }
   if (envelope.override) {
     lines.push(`  Override (${envelope.override.source}): ${envelope.override.reason}`);
+  }
+  // A malformed declaration would otherwise read identically to no declaration
+  // in this report — the exact silence #2523 was filed about.
+  if (envelope.warnings && envelope.warnings.length > 0) {
+    lines.push(`  Warnings:`);
+    for (const w of envelope.warnings) lines.push(`    - ${w}`);
   }
   if (!envelope.ok) {
     lines.push('');

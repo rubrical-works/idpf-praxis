@@ -1,0 +1,10 @@
+{
+  "$schema": "trigger-flag-allowlist-schema.json",
+  "version": 1,
+  "commands": {
+    "/review-issue": ["--with", "--mode", "--force"],
+    "/bug": [],
+    "/enhancement": [],
+    "/proposal": []
+  }
+}

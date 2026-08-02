@@ -94,6 +94,13 @@
       "autoCheckMethod": "Evaluate prose for vague language (\"should work\", \"might need\", \"probably\"), undefined terms, or ambiguous scope"
     },
     {
+      "id": "command-claim-feasible",
+      "name": "Commands named in decisions can do what is claimed",
+      "description": "Verify every slash command a decision names is actually scoped to the work the decision assigns it",
+      "type": "objective",
+      "autoCheckMethod": "For each decision in the proposal, extract every slash command it names (pattern `/[a-z][a-z0-9-]*`). For each, read `CommandsSrc/<command>.md` and confirm that command's documented scope covers the capability the decision claims for it. Report a fail naming the decision, the command, and the gap when it does not. The discriminator that is easiest to miss is *which artifact* a review command reads: `/review-issue` reviews an issue **as a specification** — its story criteria evaluate user-story format, AC presence, AC testability, scope, and body template, and nothing in it evaluates implemented content; `/code-review` is the command that reviews implemented **source files**. A decision reading \"AI-written, user-reviewed via the normal `/review-issue` flow\" is therefore infeasible as written, and every AC generated from it inherits the defect (#2508). Also flag decisions naming a command for work another command's checklist already owns (CHANGELOG, tagging, release publication belong to `/prepare-release`)."
+    },
+    {
       "id": "technical-feasibility",
       "name": "Technical feasibility",
       "description": "Assess whether the proposed solution is technically achievable",
@@ -128,6 +135,13 @@
       "description": "Check for screen specs or mockups in UI-related proposals",
       "type": "objective",
       "autoCheckMethod": "If the proposal mentions screens, UI, forms, or user interface elements, check for `## Screen Specs` or `## Mockups` sections. If screens are mentioned but no specs/mockups are referenced, flag. If the proposal is CLI-only, API-only, or has no UI references, skip this check entirely."
+    },
+    {
+      "id": "prior-art-checked",
+      "name": "Prior art checked",
+      "description": "Proposal records that a prior-art sweep ran",
+      "type": "objective",
+      "autoCheckMethod": "Test for the literal '**Prior Art:**' marker defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading. Present and complete = pass. Absent, or PARTIAL (an incomplete sweep, treated as absent), = run the prior-art sweep step. Proposals created before the cutoff in .claude/scripts/shared/lib/prior-art-marker.js are not applicable rather than failing. When framework-config.json reviewSweep is false, report skip, not fail."
     }
   ],
   "subjective": [
@@ -137,9 +151,18 @@
       "question": "Is the scope appropriate — neither too broad nor too narrow?",
       "header": "Scope",
       "options": [
-        { "label": "Appropriate", "description": "Scope is well-bounded, achievable, and addresses the core problem" },
-        { "label": "Needs adjustment", "description": "Slightly too broad or missing a key aspect" },
-        { "label": "Problematic", "description": "Scope is too large, too vague, or misses the core problem" }
+        {
+          "label": "Appropriate",
+          "description": "Scope is well-bounded, achievable, and addresses the core problem"
+        },
+        {
+          "label": "Needs adjustment",
+          "description": "Slightly too broad or missing a key aspect"
+        },
+        {
+          "label": "Problematic",
+          "description": "Scope is too large, too vague, or misses the core problem"
+        }
       ],
       "partialReviewNote": "Partial reviews are valid — if user declines to answer, record as '⊘ Skipped' and continue."
     }

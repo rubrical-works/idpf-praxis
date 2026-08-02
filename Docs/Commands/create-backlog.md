@@ -23,3 +23,18 @@ Create GitHub epics and stories from an approved PRD, with TDD test case skeleto
 - Epic priority is set to the highest priority among its child stories.
 - After creation, runs keyword matching against story content and suggests relevant skills to install — can be skipped or selectively accepted.
 - Moves the PRD tracker to `in_progress` status; the tracker stays open until `/complete-prd` is run.
+
+## Human Gates Are Preserved
+
+Test plan rows marked as human actions become explicitly-open gates rather than ordinary checkboxes. This distinction is load-bearing: it is the only signal that later tells an intentionally-open gate apart from unfinished work. Flattening a human row into a plain checkbox produces a story that cannot reach review, because the box cannot honestly be checked before the review it describes has happened.
+
+Two related rules apply when converting these rows:
+
+- If a row names a command as the reviewer but that command's documented scope does not cover reviewing implemented work, the human action is emitted instead of the command name.
+- If a row describes work another command's checklist already owns, it is dropped rather than annotated.
+
+## Success Criteria Are Never Invented
+
+When a PRD's epic section has no Success Criteria, that slot has no source. The command does **not** synthesize criteria from the epic's child stories and does not invent them. Instead it emits the heading marked as unspecified, records the gap, and warns — a missing section is a gap to surface, not a prompt to generate.
+
+Where the PRD does supply criteria, they are treated as acceptance criteria and run through the same feasibility checks used elsewhere: a criterion bundling a deliverable with its verification is split, and one whose condition resolves only after the epic reaches review is annotated as a gate.

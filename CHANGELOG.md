@@ -8,6 +8,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.94.0] - 2026-08-02
+
+Specialist architecture release. The domain-specialist system had a gap since #1977: the active
+role was announced at session start but its content never loaded. This cycle closes that end to
+end — the specialist inventory was cut and rewritten, a loading mechanism was built behind an
+allowlist and input validation, and the unreliable load-verification signal was retired. Alongside
+it, a prior-art sweep lands across the authoring and review commands, and a run of scope-tracking
+fixes make `Files to modify` reliable enough for the drift gate to depend on.
+
+**Upgrade note:** eight domain specialists were removed and `domainSpecialist` is now constrained
+by an enum. A project whose `framework-config.json` names a removed specialist will fail schema
+validation and warn at startup. Set `domainSpecialist` to one of the remaining 17, or clear it.
+
+### Added
+
+- **Domain specialist injection at session start** (#2503, epic #2492). `startup-hook.js` now injects the configured specialist's content into `additionalContext` instead of emitting a "read this file" directive, closing the announced-but-not-loaded gap of #1977. A directive can be skipped by a model turn; injected content cannot.
+- **Loadable-specialists allowlist** (#2503). New `loadableSpecialists` field in `framework-manifest.json` names the 8 rewritten specialists whose content is safe to inject. The other 9 remain announce-only — they are still in reference-catalog format, which is what caused the measured verbosity contamination this epic exists to prevent. Added as a sibling field rather than restructuring `domainSpecialists`, which five consumers read.
+- **Input validation before any file read** (#2503). New `resolveSpecialist()` checks name shape with pure string operations, then manifest membership, then the loadable gate, before a config-derived path is ever built. Previously the raw config value went straight into `path.join`, making `framework-config.json` an arbitrary-file-disclosure surface. Fails closed: an unreadable manifest yields no allowlist, and no allowlist injects nothing.
+- **Shared specialist resolver** (#2504). Extracted to `.claude/scripts/shared/lib/specialist-resolver.js` so `/change-domain-expert` and the startup hook apply one implementation rather than two descriptions of the same rules.
+- **`--prior-art` for `/proposal` and `/enhancement`** (#2514). Sweeps the codebase, existing proposals and issue history *before* the body is composed, so findings change what gets written rather than annotating something already wrong.
+- **Prior-art criterion for `/review-issue` and `/review-proposal`** (#2517). Sweeps when the marker is absent or records an incomplete run. Duplicated scope is blocking; a project that has opted out reports the criterion as skipped rather than failed, which would otherwise downgrade every review.
+- **Branch-sync update offer at startup** (#2518). When the branch is behind and no locally modified file also changes upstream, startup offers `git pull --ff-only`. Conflicts — not dirtiness — are the discriminator, so a dirty tree that does not touch the incoming diff still gets the offer. Restores a capability #2001 shipped and #2290 removed silently; a guard test now makes a second silent removal fail CI.
+- **Organizational-expectations channel** (#2506, epic #2493). Tier 1 framework-level channel for org expectations.
+- **`Reference/Domain-Specialist-Loading.md`** (#2503, #2504, #2505). Documents the resolution order, the measured per-session token cost (~2.3K–3.7K, mean ~2.8K), the config-on-disk authority rule, and the switch limitations.
+- **`Reference/Project-Skills-Semantics.md`** (#2507). Explains why `projectSkills` and `/context`'s Project Skills section legitimately disagree — the misread that produced a false finding under #1977.
+- **Charter entity-count guard** (#2519). `tests/reference/charter-entity-counts.test.js` reconciles `CHARTER.md` counts against `framework-manifest.json` and disk, so adding a script without updating the charter fails CI.
+- **Byte-attestation retirement guard** (#2505). Sweeps the executable trees for the retired self-report pattern. Matches the attestation shape rather than the word "bytes", since the guarded trees legitimately discuss byte counts throughout.
+
+### Changed
+
+- **Eight specialists rewritten in opinion-dense format** (#2495–#2502, epic #2491). Accessibility, Security-Engineer, Mobile, Embedded-Systems, SRE, Systems-Programmer, Graphics-Engineer and Performance-Engineer moved off the reference-catalog template that primed verbosity contamination.
+- **`domainSpecialist` constrained by enum** (#2503). `framework-config.schema.json` no longer accepts an arbitrary string. The enum admits the 17 shipped specialists plus `Framework-Developer`, the self-hosted maintainer role that no file backs; a parity test pins that as the only permitted extra so the enum cannot drift into a second specialist list.
+- **`/change-domain-expert` rewritten** (#2504). Selection now reads the manifest instead of a hardcoded table of 8 Base experts, and resolution searches `Base/` then `Pack/` — the previous hardcoded `Base/` path could not load 4 of the 8 rewritten specialists. Two steps that rewrote a `**Domain Specialist:**` line in `CLAUDE.md` and `.claude/rules/03-startup.md` were removed: neither line exists in either file, so both were no-ops.
+- **`/review-issue` always derives and persists `Files to modify`** (#2520). Previously the list was produced only as a side effect of repairing a deficient Proposed Solution, so a well-authored issue never received one and was guaranteed to halt later at the scope-drift gate. A declared scope also no longer escalates that gate to blocking.
+- **`/create-backlog` emits `Files to modify` in generated sub-issues** (#2521), closing the same starvation on the PRD path.
+- **Acceptance-criteria phase feasibility** (#2508). Authoring commands now ask whether a criterion can close inside the phase that owns it, not just whether its mechanism exists. Work another command's checklist owns is dropped; genuinely load-bearing human gates are annotated as explicitly open rather than left to deadlock `in_review`.
+- **`/done` CI watch timeout raised to 600s**, `post-done` relocated and `post-push` added (#2522).
+- **Trigger-word flag routing by token shape** (#2515). `workflow-trigger.js` extracts flag-shaped tokens by shape rather than allowlist membership, so no flag is silently dropped and a bare `--` in prose is preserved verbatim.
+- **`minimize-config.json` drops `IDPF-Vibe`** from `includedDirectories`. The framework was retired in May (#2401 removed its minimized output, `acf187d7` dropped it from `deploy-dist.yml`); only the config still claimed it.
+
+### Fixed
+
+- **Out-of-phase acceptance criteria deadlocked `in_review`** (#2508). A criterion such as "user-reviewed and approved before merge" names a real review whose output does not exist when the box must be checked, so it could neither be honestly checked nor left bare.
+- **Epic-path `Files to modify` table silently dropped** (#2523). `extractFilesToModify` terminates at a blank line, and markdown puts a blank line before a table, yielding empty declared scope with no error.
+- **`switch-branch` masked `gh pmu` failures** (#2511) as "No open branches found", and **could not switch to a branch that exists only on the remote** (#2512).
+- **`npm audit` high-severity gate failed CI on every branch** (#2510) via the brace-expansion advisory in a dev dependency chain.
+- **`qa-config.json` references omitted its path** (#2509), violating the full-path convention that survives compaction.
+- **Framework-only Deployment Impact field shipped to user projects** (#2516), carrying a dangling `minimize-config` reference with it.
+
+### Removed
+
+- **Eight no-value domain specialists** (#2494, epic #2491). The inventory drops from 25 to 17.
+- **Self-reported byte-count attestation** (#2505). The signal was proven unreliable — a model attested 8,092 bytes for a 10,817-byte file that was demonstrably fully loaded. Because the number tracked nothing, a mismatch proved neither a partial nor a complete load, making it worse than no gate. Deterministic injection needs no runtime gate; where a directive-based path needs one, use back-half content recall or an echoed `wc -c`, both of which are produced by something other than the process being verified.
+
+---
+
 ## [0.93.0] - 2026-07-22
 
 Hardening release. The bulk of this cycle went into fail-closed validators, shell-injection
@@ -1004,7 +1060,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.93.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.94.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -1297,7 +1353,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.93.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.94.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -1668,13 +1724,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.93.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.93.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.93.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.94.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.94.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.94.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.93.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.94.0` placeholder (#1479)
 
 ---
 
@@ -2372,15 +2428,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.93.0 placeholder after packaging
+- **#1059** - Skills retain v0.94.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.93.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.94.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.93.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.94.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -2540,7 +2596,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.93.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.94.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -2648,7 +2704,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.93.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.94.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -2679,8 +2735,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.93.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.93.0` placeholder
+- **#933** - v0.94.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.94.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -2821,7 +2877,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.93.0` placeholder
+  - Changed hardcoded version to `v0.94.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -2861,7 +2917,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.93.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.94.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -2938,10 +2994,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.93.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.94.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.93.0` placeholder
+- **#821** - README-DIST.md now uses `v0.94.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -3058,7 +3114,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.93.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.94.0 placeholder
 
 ---
 
@@ -3106,7 +3162,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.93.0 placeholders to 209 framework source files
+- Restored v0.94.0 placeholders to 209 framework source files
 
 ---
 
@@ -3174,12 +3230,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.93.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.94.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.93.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.94.0` format for consistent replacement
 
 ---
 
@@ -3248,7 +3304,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.93.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.94.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

@@ -29,3 +29,19 @@ Review one or more GitHub issues with type-specific criteria and tracked history
 - Applies the `security-finding` label automatically when `--with security` (or `--with all`) surfaces a warning or failure
 - After review, posts a structured comment, updates the `**Reviews:** N` count on the issue, and swaps `reviewed`/`pending` labels
 - Available domain extensions: `security`, `accessibility`, `performance`, `chaos`, `contract`, `qa`, `seo`, `privacy`
+
+## Files-to-Modify Is Always Written
+
+For every bug, enhancement and story, the review derives a **Files to modify** list and writes it into the issue body — not just into the review output, which later scope checks cannot see.
+
+This runs whether or not the Proposed Solution needed repair. Previously the list was produced only as a side effect of *fixing* a deficient Proposed Solution, which meant a carefully written issue never received one and was guaranteed to halt later during implementation.
+
+Re-reviewing an unchanged issue produces no body diff: the section is replaced in place rather than appended.
+
+Declaring the files an issue touches has a direct payoff — a declared path is exempt from the protected-path halt during implementation, so the issue can proceed without a scope override.
+
+## Prior-Art Sweep
+
+If the issue carries no prior-art marker, or carries one recording an incomplete sweep, the review performs the sweep and records the finding.
+
+Prior work that duplicates the issue's scope is treated as blocking and lowers the review verdict. If the sweep is switched off for the project, the criterion is reported as skipped rather than failed — reporting it as a failure would downgrade every review in a project that has deliberately opted out.

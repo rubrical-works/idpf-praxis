@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.93.0
+ * @framework-script 0.94.0
  *
  * Shared 127.0.0.1 server infrastructure used by /mockups --serve (#2377) and
  * /design-system --showcase (#2429, Story 1.1). Provides:

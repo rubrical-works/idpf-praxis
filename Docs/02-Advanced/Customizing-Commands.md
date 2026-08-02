@@ -187,6 +187,7 @@ These are the commands where you'll spend most of your extension effort. Release
 | Command | Points | Key Extensions |
 |---|---|---|
 | **`/merge-branch`** | 6 | pre-gate, gates, post-gate, post-pr-create, post-merge, post-close |
+| **`/done`** | 3 | pre-done, post-push, post-done |
 | **`/work`** | 3 | pre-work, post-work-start, pre-framework-dispatch |
 | **`/destroy-branch`** | 3 | pre-destroy, post-confirm, post-destroy |
 | **`/review-issue`** | 3 | pre-review, criteria-customize, post-review |
@@ -197,7 +198,6 @@ These are the commands where you'll spend most of your extension effort. Release
 
 | Command | Points | Key Extensions |
 |---|---|---|
-| **`/done`** | 2 | pre-done, post-done |
 | **`/bug`** | 2 | pre-create, post-create |
 | **`/enhancement`** | 2 | pre-create, post-create |
 | **`/proposal`** | 2 | pre-create, post-create |

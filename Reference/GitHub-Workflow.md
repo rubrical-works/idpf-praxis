@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.93.0
+**Version:** v0.94.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions.
 ## Project Configuration
@@ -42,13 +42,21 @@ GitHub automatically closes issues when `Fixes/Closes/Resolves #XXX` commits mer
 | `idea:` | `/proposal` | Alias for proposal |
 | `proposal:` | `/proposal` | Create proposal + tracking issue |
 Each creates issue, reports number, STOPs. Do NOT implement until user says "work".
+Flags are extracted and appended to the invocation, not left in the title, so no `--` token becomes part of an issue's identity: `enhancement: add dark mode --prior-art` → `/enhancement add dark mode --prior-art`.
 **Review Command Routing:** `review` with issue reference (`#N`) routes to `/review-issue`:
 | Trigger Pattern | Routes To |
 |----------------|-----------|
 | `review #42` | `/review-issue 42` |
 | `review #42 #43 #44` | `/review-issue 42 43 44` |
 | `please review #42` | `/review-issue 42` |
+| `review #42 --with security` | `/review-issue 42 --with security` |
+| `review #42 --mode solo --force` | `/review-issue 42 --mode solo --force` |
 `review` is a **tracked action** (routes to command), not an analysis keyword. `review` without issue number does not trigger routing.
+**Flag Pass-Through Convention:** applies to every routing path above; commands gaining flags later inherit it.
+- **Extraction is by token shape** — `--` followed by a letter. Bare `--`, `---`, or `--` in prose is not a flag; preserved verbatim in title text.
+- **No flag-shaped token is ever discarded.** Unrecognized flags pass through; the command reports them. Silent truncation is never correct — a dropped flag narrows the result with nothing for the user to notice.
+- **Recognized flags are data,** per command, in `.claude/metadata/trigger-flag-allowlist.json`. Adding one is a data edit, not a hook edit.
+- **Declaration governs value attachment only.** A recognized flag may claim the next token as its value (`--with security`); an unrecognized one may not, so trailing prose is not swallowed into args.
 **Epic Detection:** Epic label takes precedence. Always check labels before routing. Never skip per-sub-issue STOP boundary.
 ## Reopen Workflows
 **Reopening Closed Issues:** Trigger: "reopen issue #N", "reopen #N", "open issue #N again"

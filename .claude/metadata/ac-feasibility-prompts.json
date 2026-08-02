@@ -21,6 +21,59 @@
   },
   "deliverableSplit": {
     "question": "When a single AC bundles deliverable + verification (e.g., 'the skill has a fallback path AND output matches the script'), split into two ACs so each is independently judgable.",
-    "guidance": "AC-Deliverable: the skill has a fallback path with documented inputs/outputs. AC-Verification: <mechanism> asserts <invariant> against <fixture>. The implementer can renegotiate the verification AC if the mechanism turns out to be infeasible without renegotiating what shipped."
+    "guidance": "AC-Deliverable: the skill has a fallback path with documented inputs/outputs. AC-Verification: <mechanism> asserts <invariant> against <fixture>. The implementer can renegotiate the verification AC if the mechanism turns out to be infeasible without renegotiating what shipped. Applies equally to epic success criteria: 'N specialists rewritten in opinion-dense format, each user-reviewed via /review-issue' bundles a deliverable that was fully satisfied with a verification that could not be — and one checkbox cannot express that split state.",
+    "appliesTo": [
+      "story acceptance criteria",
+      "bug acceptance criteria",
+      "enhancement acceptance criteria",
+      "epic success criteria"
+    ]
+  },
+  "phaseFeasibility": {
+    "question": "For each AC, which workflow phase owns its completion condition — implementation (resolves while the story is worked), review (resolves after the story reaches in_review), or release (resolves during /prepare-release)? An AC owned by a later phase cannot be checked before the in_review move, and `gh pmu move` validates checkboxes.",
+    "guidance": "This is a different question from verificationGate. verificationGate asks whether the named mechanism exists; phaseFeasibility asks whether the condition can resolve in time. An AC can name a mechanism that exists and still be unsatisfiable — 'user-reviewed and approved before merge' names a real review process whose output simply does not exist yet when the box must be checked. Judge by asking: at the moment /work reaches Step 5, is this condition knowably true? If not, the AC is out of phase.",
+    "actionIfOutOfPhase": "Two dispositions, decided by whether another command's checklist already owns the work. (a) OWNED ELSEWHERE — the obligation appears in the `ownedElsewhere` list below: DROP the AC. Do not annotate it. A story checkbox for CHANGELOG or tagging duplicates an obligation /prepare-release already discharges and creates a second place to mark it done. (b) NOT OWNED — the gate is genuinely load-bearing for this story (a required human review, a sign-off): keep it and emit it pre-annotated using `annotationFormat`, choosing the `gatePhases` token whose phase owns the condition. Prefer annotation over deletion when the requirement is real: the goal is to stop the gate deadlocking the transition, not to remove the requirement.",
+    "gatePhases": ["review", "release"],
+    "annotationFormat": "- [ ] {acText} → GATE: {phase}",
+    "triggerPhrases": [
+      "user-reviewed",
+      "user reviewed",
+      "reviewed and approved",
+      "approved via",
+      "approval recorded",
+      "sign-off",
+      "signed off",
+      "before merge",
+      "after merge",
+      "once merged",
+      "at release time",
+      "on release",
+      "post-release",
+      "when released",
+      "in CHANGELOG",
+      "in the CHANGELOG"
+    ],
+    "ownedElsewhere": [
+      {
+        "work": "CHANGELOG entry for this change",
+        "owner": "/prepare-release",
+        "ownerChecklistItem": "- [ ] CHANGELOG updated"
+      },
+      {
+        "work": "Version tag creation and push",
+        "owner": "/prepare-release",
+        "ownerChecklistItem": "- [ ] Tag pushed"
+      },
+      {
+        "work": "GitHub Release publication and release notes",
+        "owner": "/prepare-release",
+        "ownerChecklistItem": "- [ ] GitHub Release created"
+      },
+      {
+        "work": "Release asset verification after deployment",
+        "owner": "/prepare-release",
+        "ownerChecklistItem": "- [ ] Release assets verified"
+      }
+    ]
   }
 }

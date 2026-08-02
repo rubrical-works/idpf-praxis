@@ -108,18 +108,18 @@ Skills have been migrated to the [idpf-praxis-skills](https://github.com/rubrica
 
 ---
 
-## Domain Specialists (25)
+## Domain Specialists (17)
 
 | Specialist | Specialist | Specialist |
 |------------|------------|------------|
-| Accessibility-Specialist | API-Integration-Specialist | Backend-Specialist |
-| Cloud-Solutions-Architect | Database-Engineer | Data-Engineer |
-| Desktop-Application-Developer | DevOps-Engineer | Embedded-Systems-Engineer |
-| Frontend-Specialist | Full-Stack-Developer | Game-Developer |
-| Graphics-Engineer-Specialist | ML-Engineer | Mobile-Specialist |
-| Performance-Engineer | Platform-Engineer | QA-Test-Engineer |
+| Accessibility-Specialist | Brand-Strategist | Database-Engineer |
+| Data-Engineer | Desktop-Application-Developer | Embedded-Systems-Engineer |
+| Game-Developer | Graphics-Engineer-Specialist | ML-Engineer |
+| Mobile-Specialist | Performance-Engineer | QA-Test-Engineer |
 | Security-Engineer | SRE-Specialist | Systems-Programmer-Specialist |
-| Technical-Writer-Specialist | | |
+| Technical-Writer-Specialist | UX-Designer | |
+
+General web, API, and full-stack development run on Core alone — no specialist is selected for them.
 
 ---
 

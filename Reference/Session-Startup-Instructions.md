@@ -1,11 +1,22 @@
 # Session Startup Instructions
-**Version:** v0.93.0
+**Version:** v0.94.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
 `.claude/hooks/startup-hook.js` runs startup deterministically: gathers session info, runs four checks (upgrade, statusline, config-integrity, branch-sync) in parallel on a staged 15s/30s/45s/60s ladder, emits the **Session Initialized** block to:
 - **stderr** — colored copy for debug/transcript inspection. **Not** auto-surfaced in the Claude Code UI (hook exits 0; upstream docs cover stderr only for exit 2 — do not rely on it). Claude's echo is the only channel reaching the user.
 - **`additionalContext`** — plain text in Claude's context: the block plus a verbatim-echo instruction, and post-hook actions (charter read + summary when active, domain specialist load, `/charter` if pending). The charter summary **is** a post-hook content read: when `charterStatus` is `Active`, Claude reads `CHARTER.md` after echoing the block and emits a concise prose summary. The block carries only the `Charter Status:` line (#2484 reversed #2475's precomputed `Charter Vision:`/`Charter Focus:` lines, clipped at 200 chars).
+## Branch Sync Offer
+`behind` makes `additionalContext` carry an **offer**, not just a status line — `06-runtime-triggers.md` *offer, don't force*: the hook asks, never mutates.
+| Sync state | Post-hook action |
+|---|---|
+| `behind`, no conflicts | Offer `git pull --ff-only`; run on acceptance, report result. Declining leaves the tree untouched. On failure report git's error verbatim, continue — no retry, no non-fast-forward fallback. |
+| `behind`, conflicts | **No offer.** Report the named paths; a fast-forward would abort, and stashing or discarding destroys work. |
+| `diverged` | **No offer.** Report the divergence only. |
+| `ahead` / `up-to-date` / `no-upstream` | No action. |
+**Conflicts, not dirtiness, are the discriminator.** `branch-sync-check.js` intersects `git status --porcelain` against `git diff --name-only HEAD..@{upstream}` into `conflictingPaths`. A dirty tree not touching the incoming diff fast-forwards cleanly and still gets the offer; keying on dirtiness would refuse a safe update in the common case.
+**`fetched` separates a verified from a cached count.** The check fetches the upstream ref first: a branch goes stale for the same reason its tracking ref does, so the cached ref is wrong exactly when the offer matters. Best-effort (own timeout, `GIT_TERMINAL_PROMPT=0`); failure sets `fetched: false` and still offers, marked as possibly low.
+**`diverged` is deliberately narrow.** An earlier implementation offered rebase/merge/skip — a history rewrite chosen before the user sees the divergence.
 ## Post-Compact Behavior
 **No re-reading required.** `.claude/rules/` reload automatically after compaction; the hook does not re-run — Claude resumes from in-memory context.
 ## On-Demand Documentation Loading

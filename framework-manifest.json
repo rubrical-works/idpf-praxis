@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.93.0",
+  "version": "0.94.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -15,30 +15,32 @@
   },
   "domainSpecialists": [
     "Accessibility-Specialist",
-    "API-Integration-Specialist",
-    "Backend-Specialist",
     "Brand-Strategist",
-    "Cloud-Solutions-Architect",
-    "Content-Strategist",
     "Database-Engineer",
     "Data-Engineer",
     "Desktop-Application-Developer",
-    "DevOps-Engineer",
     "Embedded-Systems-Engineer",
-    "Frontend-Specialist",
-    "Full-Stack-Developer",
     "Game-Developer",
     "Graphics-Engineer-Specialist",
     "ML-Engineer",
     "Mobile-Specialist",
     "Performance-Engineer",
-    "Platform-Engineer",
     "QA-Test-Engineer",
     "Security-Engineer",
     "SRE-Specialist",
     "Systems-Programmer-Specialist",
     "Technical-Writer-Specialist",
     "UX-Designer"
+  ],
+  "loadableSpecialists": [
+    "Accessibility-Specialist",
+    "Embedded-Systems-Engineer",
+    "Graphics-Engineer-Specialist",
+    "Mobile-Specialist",
+    "Performance-Engineer",
+    "Security-Engineer",
+    "SRE-Specialist",
+    "Systems-Programmer-Specialist"
   ],
   "requiredDirectories": [
     "Overview",
@@ -233,6 +235,8 @@
           "navigation-graph.js",
           "output.js",
           "paths-ac-generator.js",
+          "prior-art-marker.js",
+          "prior-art-surfaces.js",
           "qa-config-schema.json",
           "qa-config.json",
           "review-format.js",
@@ -242,6 +246,7 @@
           "screenshot-input.js",
           "screenshot-token-candidates.js",
           "shell-safe.js",
+          "specialist-resolver.js",
           "token-drift-report.js",
           "token-propagation.js",
           "token-update-mode.js",
@@ -516,6 +521,16 @@
           "description": "Review criteria for /review-test-plan command"
         },
         {
+          "name": "trigger-flag-allowlist",
+          "source": ".claude/metadata/trigger-flag-allowlist.json",
+          "description": "Per-command flags recognized by workflow-trigger.js phrase routing"
+        },
+        {
+          "name": "prior-art-sweep",
+          "source": ".claude/metadata/prior-art-sweep.json",
+          "description": "Search surfaces, excludes, term derivation and dispositions for the --prior-art sweep"
+        },
+        {
           "name": "ci-features-schema",
           "source": ".claude/metadata/ci-features-schema.json",
           "description": "JSON Schema for ci-features.json"
@@ -584,6 +599,16 @@
           "name": "test-plan-review-criteria-schema",
           "source": ".claude/metadata/test-plan-review-criteria-schema.json",
           "description": "JSON Schema for test-plan-review-criteria.json"
+        },
+        {
+          "name": "trigger-flag-allowlist-schema",
+          "source": ".claude/metadata/trigger-flag-allowlist-schema.json",
+          "description": "JSON Schema for trigger-flag-allowlist.json"
+        },
+        {
+          "name": "prior-art-sweep-schema",
+          "source": ".claude/metadata/prior-art-sweep-schema.json",
+          "description": "JSON Schema for prior-art-sweep.json"
         },
         {
           "name": "imported-skills-schema",

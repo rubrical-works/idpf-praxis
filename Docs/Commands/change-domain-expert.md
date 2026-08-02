@@ -1,24 +1,37 @@
 # /change-domain-expert
 
-Change the active domain specialist for this project.
+Change the active domain specialist for this project and load it into the current session.
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `[specialist-name]` | No | Specialist name (e.g., `Backend-Specialist`) or list number (e.g., `2`). Presents a numbered menu if omitted. |
+| `[specialist-name]` | No | Specialist name (e.g., `Security-Engineer`) or list number. Presents a numbered menu if omitted. |
 
 ## Usage
 
 ```
 /change-domain-expert
-/change-domain-expert Backend-Specialist
-/change-domain-expert 2
+/change-domain-expert Security-Engineer
+/change-domain-expert UX-Designer
 ```
 
 ## Key Behaviors
 
-- Valid specialists are the 12 Base Experts: Full-Stack-Developer, Backend-Specialist, Frontend-Specialist, Mobile-Specialist, Desktop-Application-Developer, Embedded-Systems-Engineer, Game-Developer, ML-Engineer, Data-Engineer, Cloud-Solutions-Architect, SRE-Specialist, Systems-Programmer-Specialist.
-- Updates three locations: `framework-config.json` (`projectType.domainSpecialist`), `CLAUDE.md` (Domain Specialist line), and `.claude/rules/03-startup.md` (metadata line, file path, and Active Role message).
-- Immediately reads and loads the new specialist file into context so it takes effect for the rest of the session.
-- Requires Framework v0.17.0+ and an existing `framework-config.json`.
+- Selectable specialists come from `framework-manifest.json` `domainSpecialists`, read at run time rather than hardcoded, so the list stays correct as specialists are added, dropped, or rewritten.
+- Only specialists in the `loadableSpecialists` subset have their content injected. The rest are **announce-only**: recorded as the active role, but nothing is loaded. The menu marks these, so you know before choosing.
+- Loading a specialist injects its full instructions and deactivates the previous role.
+- Writes the top-level `domainSpecialist` field in `framework-config.json` through a schema-validating helper, so an invalid value is rejected at write time rather than persisted.
+- An unknown name, a dropped specialist, or a path-like value is rejected **before any file is read**, and the config is left untouched.
+- Resolves specialist files from both `Base/` and `Pack/`.
+
+## Limitations
+
+- **Deactivation is an instruction, not a removal.** The previous specialist's text stays in the context window until compaction.
+- **Repeated switches accumulate.** Each adds roughly 2.3K–3.7K tokens that persist until compaction, so switching several times in one session costs materially more than restarting.
+- **Config on disk wins at the next session start.** The switch survives because it is written to config; if that write is skipped or fails, the next session reverts to the specialist already on disk.
+
+## Requirements
+
+- Framework v0.17.0+
+- `framework-config.json` in the project root

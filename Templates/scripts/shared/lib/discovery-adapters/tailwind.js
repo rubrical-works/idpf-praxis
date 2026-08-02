@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.93.0
+ * @framework-script 0.94.0
  * @description Tailwind CSS discovery adapter. Detects tailwind.config.js
  *   and extracts theme values to DTCG tokens.
  * @checksum sha256:placeholder

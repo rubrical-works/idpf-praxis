@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prior-art-sweep-schema.json",
+  "title": "Prior Art Sweep Schema",
+  "description": "Schema for .claude/metadata/prior-art-sweep.json — configuration for the --prior-art sweep run by /enhancement and /proposal before an artifact body is composed. Framework-owned and hub-shared: this file is read-only in user projects, so it carries no project-settable values. The reviewSweep toggle lives in framework-config.json.",
+  "type": "object",
+  "required": ["searchSurfaces", "excludes", "termDerivation", "dispositions", "bodyFormat", "questions"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": {
+      "type": "integer",
+      "description": "Schema revision of this data file",
+      "minimum": 1
+    },
+    "searchSurfaces": {
+      "type": "object",
+      "description": "Surfaces the sweep searches. Resolved against the consuming project at sweep time — never assumed to exist. A configured surface absent from disk is skipped, not fatal. Zero surfaces resolving is a FAILED sweep (PARTIAL), not an empty one.",
+      "required": ["projectRoots", "resolution"],
+      "properties": {
+        "projectRoots": {
+          "type": "array",
+          "description": "Candidate source roots, in priority order. Generic across project shapes because this file is read verbatim from the hub by projects with no framework layout.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "issueHistory": {
+          "type": "object",
+          "description": "Issue-history search configuration",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "includeClosed": { "type": "boolean" },
+            "command": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "resolution": {
+          "type": "object",
+          "required": ["missingSurface", "zeroResolved"],
+          "properties": {
+            "missingSurface": {
+              "description": "What to do when a configured surface is absent from disk",
+              "const": "skip"
+            },
+            "zeroResolved": {
+              "description": "What to do when NO configured surface resolves. Must be partial — a sweep that searched nothing is a failed sweep, not a clean one.",
+              "const": "partial"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "excludes": {
+      "type": "array",
+      "description": "Generated or historical trees that duplicate source hits. Without these, a sweep returns roughly three hits per real feature and authors learn to skim it.",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "termDerivation": {
+      "type": "object",
+      "description": "How candidate search terms are derived. Derives from the files a change would touch, not only from feature nouns — prior work frequently shares no vocabulary with the request.",
+      "required": ["stopwords", "featureNouns", "targetFiles"],
+      "properties": {
+        "stopwords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "featureNouns": {
+          "type": "object",
+          "required": ["guidance"],
+          "properties": {
+            "guidance": { "type": "string" },
+            "synonymExpansion": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "targetFiles": {
+          "type": "object",
+          "description": "Derive terms from what a change would modify. This is the axis that finds prior work sharing no vocabulary with the request.",
+          "required": ["guidance"],
+          "properties": {
+            "guidance": { "type": "string" },
+            "rationale": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "dispositions": {
+      "type": "object",
+      "description": "Evidence signals mapping sweep findings to one of three verdicts",
+      "required": ["alreadyShipped", "warranted", "noneFound"],
+      "properties": {
+        "alreadyShipped": { "$ref": "#/$defs/disposition" },
+        "warranted": { "$ref": "#/$defs/disposition" },
+        "noneFound": { "$ref": "#/$defs/disposition" }
+      },
+      "additionalProperties": false
+    },
+    "bodyFormat": {
+      "type": "object",
+      "description": "Exact strings emitted into the artifact. Fixed here rather than restated per spec so a downstream consumer can test for marker presence without parsing prose.",
+      "required": ["heading", "noneFoundFormat", "foundEntryFormat", "partialFormat"],
+      "properties": {
+        "heading": {
+          "type": "string",
+          "description": "Literal heading a consumer tests for"
+        },
+        "noneFoundFormat": { "type": "string" },
+        "foundEntryFormat": { "type": "string" },
+        "partialFormat": {
+          "type": "string",
+          "description": "Incomplete sweep. Distinguishable from noneFoundFormat without parsing prose, and treated by consumers as equivalent to an absent marker."
+        }
+      },
+      "additionalProperties": false
+    },
+    "questions": {
+      "type": "array",
+      "description": "Generative prompts the sweep applies",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["question", "guidance", "actionIfFound"],
+        "properties": {
+          "id": { "type": "string" },
+          "question": { "type": "string" },
+          "guidance": { "type": "string" },
+          "actionIfFound": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "disposition": {
+      "type": "object",
+      "required": ["verdict", "signals", "action"],
+      "properties": {
+        "verdict": { "type": "string" },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "action": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

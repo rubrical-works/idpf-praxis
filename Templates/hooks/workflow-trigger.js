@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.93.0
+ * @framework-script 0.94.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -61,6 +61,17 @@ try {
 
 // Cache file location (#2322: anchored to __dirname for CWD invariance)
 const CACHE_FILE = path.resolve(__dirname, '.command-cache.json');
+
+// Per-command flag allowlist (#2515). Anchored to __dirname so it resolves
+// through the hub symlink in user projects regardless of invocation CWD.
+const FLAG_ALLOWLIST_FILE = path.resolve(__dirname, '..', 'metadata', 'trigger-flag-allowlist.json');
+
+// A token is flag-shaped when it is "--" followed by a letter. The boundary is
+// shape, not membership: a bare "--" separator, a "---" rule, and "--" inside
+// prose are NOT flag-shaped and stay in the title (#2515). Membership in the
+// allowlist decides only whether a flag may claim the following token as its
+// value — never whether it is extracted.
+const FLAG_TOKEN = /^--[A-Za-z]/;
 
 // Analysis keywords that trigger STOP-after-report behavior
 // When these appear with an issue reference, inject reminder to report only
@@ -360,11 +371,16 @@ process.stdin.on('end', () => {
             // to avoid picking up stray numbers from conversation context
             const issueMatches = prompt.match(/#(\d+)/g) || [];
             const issueArgs = [...new Set(issueMatches.map(n => n.replace('#', '')))].join(' ');
+            // Pass flags through (#2515). Before this, everything but #N was
+            // discarded, so /review-issue's --with/--mode/--force were
+            // unreachable from the phrase path and the narrowing was silent.
+            const { flags } = extractFlags(prompt, getRecognizedFlags('/review-issue'));
+            const reviewArgs = flags ? `${issueArgs} ${flags}` : issueArgs;
             const output = {
                 systemMessage: 'Success',
                 hookSpecificOutput: {
                     hookEventName: 'UserPromptSubmit',
-                    additionalContext: `[INVOKE: /review-issue ${issueArgs}]`
+                    additionalContext: `[INVOKE: /review-issue ${reviewArgs}]`
                 }
             };
             console.log(JSON.stringify(output));
@@ -385,11 +401,17 @@ process.stdin.on('end', () => {
             };
 
             const command = commandMap[triggerType];
+            // Strip flags from the title centrally rather than leaving each
+            // command spec to sanitize its own (#2515). For a trailing flag the
+            // emitted string is unchanged — only the title/flag boundary moves,
+            // so no "--" token can become part of an issue's identity.
+            const { head, flags } = extractFlags(title, getRecognizedFlags(command));
+            const triggerArgs = flags ? `${head} ${flags}`.trim() : head;
             const output = {
                 systemMessage: `Success`,
                 hookSpecificOutput: {
                     hookEventName: "UserPromptSubmit",
-                    additionalContext: `[INVOKE: ${command} ${title}]`
+                    additionalContext: `[INVOKE: ${command} ${triggerArgs}]`
                 }
             };
             console.log(JSON.stringify(output));
@@ -414,6 +436,65 @@ process.stdin.on('end', () => {
         process.exit(0);
     }
 });
+
+/**
+ * Read the recognized flags for a command from the externalized allowlist.
+ *
+ * Adding a flag to a command is a data edit, not a hook edit. A missing or
+ * unreadable file degrades safely: no flag is "recognized", so none claims a
+ * value, but flag-shaped tokens are still extracted and passed through.
+ *
+ * @param {string} command - Slash command including leading slash (e.g. '/review-issue')
+ * @returns {string[]} Recognized flags, or [] when undeclared or unreadable
+ */
+function getRecognizedFlags(command) {
+    try {
+        const raw = fs.readFileSync(FLAG_ALLOWLIST_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        const flags = parsed?.commands?.[command];
+        return Array.isArray(flags) ? flags : [];
+    } catch (_e) {
+        return [];
+    }
+}
+
+/**
+ * Split prompt text into non-flag text and the flag tokens to pass through.
+ *
+ * Extraction is governed by token shape (FLAG_TOKEN), so a flag-shaped token is
+ * never silently discarded — recognized or not. The allowlist governs only
+ * value attachment: `--with security` collapses to one flag with its value when
+ * `--with` is recognized for that command; when it is not, `security` is
+ * ordinary text and returns to the head rather than being swallowed.
+ *
+ * @param {string} text - Prompt remainder to split
+ * @param {string[]} recognized - Flags this command declares
+ * @returns {{head: string, flags: string}} Non-flag text and space-joined flag tokens
+ */
+function extractFlags(text, recognized) {
+    const head = [];
+    const flags = [];
+    let awaitingValueFor = null;
+
+    for (const token of text.split(/\s+/).filter(Boolean)) {
+        if (FLAG_TOKEN.test(token)) {
+            flags.push(token);
+            // "--flag=value" carries its own value; only the bare form can
+            // claim the next token, and only when the command declares it.
+            const name = token.split('=')[0];
+            awaitingValueFor = (!token.includes('=') && recognized.includes(name)) ? name : null;
+            continue;
+        }
+        if (awaitingValueFor) {
+            flags.push(token);
+            awaitingValueFor = null;
+            continue;
+        }
+        head.push(token);
+    }
+
+    return { head: head.join(' '), flags: flags.join(' ') };
+}
 
 /**
  * Detect active IDPF framework (single source of truth)

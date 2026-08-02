@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.93.0
+ * @framework-script 0.94.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -65,6 +65,15 @@ function readJson(filePath) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Domain specialist resolution (#2503, extracted to a shared module in #2504)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// /change-domain-expert reaches the same injection surface mid-session and must
+// apply the same allowlist and input validation. One implementation, two
+// callers — see .claude/scripts/shared/lib/specialist-resolver.js.
+const { resolveSpecialist, isSafeSpecialistName } = require('../scripts/shared/lib/specialist-resolver.js');
+
 function gatherSessionInfo(cwd) {
   const date = new Date().toISOString().slice(0, 10);
 
@@ -102,14 +111,12 @@ function gatherSessionInfo(cwd) {
 
   const ghPmuVersion = safeExec('gh pmu --version').split('\n')[0] || '';
 
-  // Resolve domain specialist path (deterministic — Claude reads the file later)
-  let specialistPath = null;
-  if (domainSpecialist) {
-    const basePath = path.join(cwd, frameworkPath, 'System-Instructions', 'Domain', 'Base', `${domainSpecialist}.md`);
-    const packPath = path.join(cwd, frameworkPath, 'System-Instructions', 'Domain', 'Pack', `${domainSpecialist}.md`);
-    if (fs.existsSync(basePath)) specialistPath = basePath;
-    else if (fs.existsSync(packPath)) specialistPath = packPath;
-  }
+  // Resolve the domain specialist. Config-on-disk is the single source of
+  // truth (#2503): this runs on every session start, so a switch made in a
+  // previous session — or a deactivation instruction that was lost to
+  // compaction — cannot outlive the session that made it.
+  const specialist = resolveSpecialist({ cwd, frameworkPath, domainSpecialist });
+  const specialistPath = specialist.path;
 
   return {
     date,
@@ -125,6 +132,7 @@ function gatherSessionInfo(cwd) {
     frameworkPath,
     charterStatus,
     ghPmuVersion,
+    specialist,
     specialistPath,
   };
 }
@@ -234,6 +242,10 @@ function renderBlock(info, checkResults, opts = { color: true }) {
   lines.push(`- Process Framework: ${info.processFramework}${info.selfHosted ? ' (self-hosted)' : ''}`);
   if (info.frameworkVersion) lines.push(`- Framework Version: ${info.frameworkVersion}`);
   lines.push(`- Active Role: ${info.domainSpecialist || 'Not configured'}`);
+  // #2503: a specialist that was configured but could not be loaded is worth a
+  // line — the role is still announced above, so without this the user cannot
+  // tell an injected specialist from a silently skipped one.
+  if (info.specialist?.warning) lines.push(`- ${w(`Specialist: ⚠️ ${info.specialist.warning}`)}`);
   if (info.reviewMode) lines.push(`- Review Mode: ${info.reviewMode}`);
 
   // Check results
@@ -330,6 +342,10 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
 
   const instructions = [];
 
+  // Drives both the role-adoption instruction and the appended content blob;
+  // the two must never disagree about whether an injection is happening.
+  const injectingSpecialist = info.specialist?.status === 'loaded';
+
   // #2484: charter summary is a post-hook read again, reversing #2475's
   // precompute. The tradeoff is deliberate — #2475 made the summary immune to
   // being silently skipped by a later model turn, but only by clipping it to
@@ -341,9 +357,13 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
     instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus. Note any mismatch you observe between the charter and current repository state.');
   }
 
-  if (info.specialistPath) {
-    const rel = path.relative(process.cwd(), info.specialistPath).replace(/\\/g, '/');
-    instructions.push(`Read \`${rel}\` to load the active domain specialist (${info.domainSpecialist}) into context.`);
+  // #2503: the specialist is INJECTED, not pointed at. The former
+  // `Read <path>` directive is what left the announced role without its
+  // knowledge (#1977) — a directive can be skipped, content cannot. The blob
+  // itself is appended after the numbered actions (see below) so it does not
+  // separate the block from the instructions that act on it.
+  if (injectingSpecialist) {
+    instructions.push(`Adopt the active domain specialist role (${info.specialist.name}); its full instructions are appended below.`);
   }
 
   // Statusline: prompt setup when no statusLine configured. Restores the #1542
@@ -353,6 +373,47 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
     instructions.push('Statusline is not configured — invoke the `statusline-setup` agent to configure it.');
   }
 
+  // Branch sync: turn the passive warning line into an actionable offer (#2518).
+  //
+  // Restores a capability #2001 shipped and #2290 (1bdb451d) removed. It was
+  // deleted silently because nothing asserted on the emitted text — the guard
+  // in tests/hooks/startup-hook.test.js exists to make a second deletion fail
+  // CI. Follows 06-runtime-triggers.md "offer, don't force": the hook never
+  // mutates the working tree, it only instructs Claude to ask.
+  const branchSync = checkResults.find((r) => r && r.name === 'branch-sync');
+  const sync = branchSync?.parsed?.data;
+
+  if (sync && sync.status === 'behind') {
+    const conflicts = Array.isArray(sync.conflictingPaths) ? sync.conflictingPaths : [];
+
+    if (conflicts.length > 0) {
+      // A fast-forward would abort here, so there is nothing safe to offer.
+      // Naming the paths is the actionable part; resolving them is the user's
+      // call, and stashing or discarding on their behalf would destroy work.
+      instructions.push(
+        `Branch \`${sync.branch}\` is ${sync.behind} commit(s) behind its upstream, but these locally modified files also change in the incoming commits: ${conflicts.join(', ')}. Report this and make no update offer — a fast-forward would abort. Do not stash, discard, or revert the local changes; leave them for the user to resolve.`
+      );
+    } else {
+      // `fetched: false` means the count came from a possibly stale
+      // remote-tracking ref, so the true divergence may be larger. Still worth
+      // offering — the pull is safe either way — but say so.
+      const staleNote = sync.fetched === false
+        ? ' (measured against a cached remote-tracking ref — the upstream fetch failed, so the real count may be higher)'
+        : '';
+      instructions.push(
+        `Branch \`${sync.branch}\` is ${sync.behind} commit(s) behind its upstream${staleNote}. Offer to update from the remote: ask the user, and on acceptance run \`git pull --ff-only\` and report the result. Declining leaves the working tree untouched. If the pull fails, report the git error verbatim and continue the session — do not retry, and do not fall back to a non-fast-forward merge.`
+      );
+    }
+  } else if (sync && sync.status === 'diverged') {
+    // Deliberately narrower than #2001, which offered rebase/merge/skip here.
+    // A history-rewrite prompt at session start commits the user before they
+    // have seen the divergence. Reinstating that choice is a separate issue.
+    instructions.push(
+      `Branch \`${sync.branch}\` has diverged from its upstream (${sync.ahead} ahead, ${sync.behind} behind). Report the divergence and make no offer — a fast-forward is impossible, and choosing between rebase and merge is out of scope for session startup.`
+    );
+  }
+  // ahead / up-to-date / no-upstream / check absent → no instruction
+
   // Charter pending instruction goes LAST so the user sees the full block first.
   if (info.charterStatus !== 'Active') {
     instructions.push('Charter is missing or template — invoke /charter as the FINAL action of startup, after displaying the Session Initialized block.');
@@ -361,6 +422,20 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
   if (instructions.length > 0) {
     parts.push('Post-startup actions (perform in order, AFTER displaying the block):');
     instructions.forEach((line, i) => parts.push(`${i + 1}. ${line}`));
+  }
+
+  // Specialist content goes last and is fenced by explicit BEGIN/END markers.
+  // The markers are what let the model tell role instructions apart from the
+  // surrounding hook directives — without them a specialist file's own
+  // imperative prose reads as if the harness had issued it.
+  if (injectingSpecialist) {
+    const { name, content } = info.specialist;
+    parts.push(
+      '',
+      `--- BEGIN DOMAIN SPECIALIST: ${name} ---`,
+      content.trimEnd(),
+      `--- END DOMAIN SPECIALIST: ${name} ---`
+    );
   }
 
   return parts.join('\n');
@@ -409,6 +484,8 @@ async function main() {
 // Public API for testing
 module.exports = {
   gatherSessionInfo,
+  resolveSpecialist,
+  isSafeSpecialistName,
   runChecksParallel,
   renderBlock,
   buildAdditionalContext,

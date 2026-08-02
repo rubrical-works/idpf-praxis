@@ -29,5 +29,11 @@
     "globals": "^17.5.0",
     "jest": "^30.3.0",
     "js-yaml": "^4.1.1"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.8"
+  },
+  "overridesRationale": {
+    "brace-expansion": "#2510 — GHSA-mh99-v99m-4gvg (high): DoS via unbounded expansion. The advisory range is a flat <=5.0.7, so NO patched 1.x or 2.x exists and a path-scoped pin is impossible; 5.0.8+ is the only clear line, which forces a flat override. Reached solely through dev dependencies (eslint>minimatch; jest>glob>minimatch; jest>babel-plugin-istanbul>test-exclude>minimatch) — no runtime dependency is involved and runtimeNpmDependencies (ajv, ajv-formats, yaml) is unaffected. npm's own suggested fix is jest@25, an 11-major downgrade, which is why this is pinned by hand instead. brace-expansion@5 is ESM-first but ships a CommonJS export condition, so minimatch's require() still resolves; engines are 'node 20 || >=22' and CI runs Node 20. Floor is 5.0.8, NOT 5.0.9: the .npmrc min-release-age=7 cooldown (#2481) makes anything published in the last week unresolvable, and 5.0.9 landed 2026-07-30 while 5.0.8 landed 2026-07-23 — a ^5.0.9 pin fails install with ETARGET. The caret lets it float to 5.0.9+ once those clear the cooldown. DO NOT drop this entry on a dependency bump without re-running `npm audit --audit-level=high` — removing it silently restores the CI gate failure that blocked every branch."
   }
 }

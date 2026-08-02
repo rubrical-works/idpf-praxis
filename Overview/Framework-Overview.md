@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.93.0
+**Version:** v0.94.0
 Comprehensive reference for AI assistants and framework development.
 **Core Principle:** System Instructions define WHO; Frameworks define WHAT process; Skills provide reusable capabilities; Assistant Guidelines ensure quality.
 ---
@@ -243,43 +243,35 @@ src/
 **Location:** `System-Instructions/`
 System Instructions are **REQUIRED** for all framework operation. Frameworks define process; System Instructions define identity and expertise.
 **Domain Specialization Architecture:**
-- 25 Domain Specialists loaded at session startup via `domainSpecialist` in `framework-config.json`
+- 17 Domain Specialists loaded at session startup via `domainSpecialist` in `framework-config.json`
 - Resolves in `System-Instructions/Domain/Base/` or `Domain/Pack/`
-**Domain Specialists (25):**
+**Domain Specialists (17):** Base (1-8) selected at install; Pack (9-17) JIT-loaded.
 | # | Specialist | Key Technologies/Focus |
 |---|-----------|----------------------|
-| 1 | Backend | Django, Flask, FastAPI, Express, NestJS, Rails, Spring, Go |
-| 2 | Frontend | React, Vue, Angular, Svelte; CSS architecture; state management; WCAG |
-| 3 | DevOps-Engineer | CI/CD, Docker, K8s, IaC (Terraform/Pulumi), monitoring |
-| 4 | Database-Engineer | Schema design, query optimization, replication, migrations |
-| 5 | API-Integration | REST, GraphQL, gRPC, WebSocket; microservices; message brokers |
-| 6 | Security-Engineer | OWASP, OAuth/OIDC, cryptography, pentesting, compliance |
-| 7 | Platform-Engineer | IDPs, service catalogs, golden paths, DevEx |
-| 8 | Mobile | Swift/SwiftUI, Kotlin/Compose, React Native, Flutter |
-| 9 | Data-Engineer | ETL (Airflow/Prefect/Dagster), Spark, data warehousing |
-| 10 | QA-Test-Engineer | Test strategy, automation (Cypress/Playwright/Selenium), TDD/BDD |
-| 11 | Cloud-Solutions-Architect | System design, AWS/Azure/GCP, scalability, ADRs |
-| 12 | SRE | SLO/SLI/SLA, error budgets, observability, incident response |
-| 13 | Embedded-Systems | C/C++, ARM Cortex-M, RTOS, hardware protocols |
-| 14 | ML-Engineer | TensorFlow, PyTorch, deep learning, MLOps |
-| 15 | Performance-Engineer | Profiling, load testing, Core Web Vitals, APM |
-| 16 | Accessibility | WCAG 2.1/2.2, assistive tech, auditing, legal compliance |
-| 17 | Full-Stack | End-to-end development, holistic system thinking |
-| 18 | Desktop-Application | Qt, GTK, Electron, Tauri; packaging/distribution |
-| 19 | Game-Developer | Unity, Unreal, Godot; game patterns; multiplayer |
-| 20 | Graphics-Engineer | Vulkan, DirectX, OpenGL, Metal, WebGPU; rendering |
-| 21 | Systems-Programmer | Low-level systems, OS internals, compilers, perf-critical code |
-| 22 | Technical-Writer | Docs-as-code, API docs, documentation generators |
-| 23 | Content-Strategist | Messaging frameworks, audience segmentation, editorial workflows, voice/tone |
-| 24 | UX-Designer | Layout, visual hierarchy, color theory, typography, responsive design, interaction |
-| 25 | Brand-Strategist | Brand identity, visual consistency, style guides, brand architecture, governance |
+| 1 | Mobile | Swift/SwiftUI, Kotlin/Compose, React Native, Flutter |
+| 2 | Desktop-Application | Qt, GTK, Electron, Tauri; packaging/distribution |
+| 3 | Embedded-Systems | C/C++, ARM Cortex-M, RTOS, hardware protocols |
+| 4 | Game-Developer | Unity, Unreal, Godot; game patterns; multiplayer |
+| 5 | ML-Engineer | TensorFlow, PyTorch, deep learning, MLOps |
+| 6 | Data-Engineer | ETL (Airflow/Prefect/Dagster), Spark, data warehousing |
+| 7 | SRE | SLO/SLI/SLA, error budgets, observability, incident response |
+| 8 | Systems-Programmer | Low-level systems, OS internals, compilers, perf-critical code |
+| 9 | Database-Engineer | Schema design, query optimization, replication, migrations |
+| 10 | Security-Engineer | OWASP, OAuth/OIDC, cryptography, pentesting, compliance |
+| 11 | QA-Test-Engineer | Test strategy, automation (Cypress/Playwright/Selenium), TDD/BDD |
+| 12 | Performance-Engineer | Profiling, load testing, Core Web Vitals, APM |
+| 13 | Accessibility | WCAG 2.1/2.2, assistive tech, auditing, legal compliance |
+| 14 | Graphics-Engineer | Vulkan, DirectX, OpenGL, Metal, WebGPU; rendering |
+| 15 | Technical-Writer | Docs-as-code, API docs, documentation generators |
+| 16 | UX-Designer | Layout, visual hierarchy, color theory, typography, responsive design, interaction |
+| 17 | Brand-Strategist | Brand identity, visual consistency, style guides, brand architecture, governance |
 **Domain Selection Quick Reference:**
-- Full-Stack Web: Backend + Frontend + Database
-- Cloud-Native Microservices: API-Integration + DevOps + Cloud-Architect
-- Mobile App with Backend: Mobile + Backend
-- Data Platform: Data-Engineer + Database-Engineer + Cloud-Architect
-- Secure Production: Backend + Security + SRE
-**Decision Tree:** APIs > Backend | UIs > Frontend | Infrastructure > DevOps/Platform | Systems design > Cloud-Architect | Reliability > SRE | Data > Data+Database | Mobile > Mobile | Security > Security | Performance > Performance | ML > ML | Embedded > Embedded | APIs > API-Integration | Testing > QA-Test | Accessibility > Accessibility | Full-stack > Full-Stack | Desktop > Desktop-App | Games > Game | Graphics > Graphics | Systems > Systems-Programmer | Docs > Technical-Writer
+- Mobile App: Mobile + Database
+- Data Platform: Data-Engineer + Database-Engineer
+- Secure Production: Security + SRE
+- Game / Graphics: Game-Developer + Graphics-Engineer
+- General web, API, or full-stack: Core only, plus Packs on demand
+**Decision Tree:** Reliability > SRE | Data > Data+Database | Mobile > Mobile | Security > Security | Performance > Performance | ML > ML | Embedded > Embedded | Testing > QA-Test | Accessibility > Accessibility | Desktop > Desktop-App | Games > Game | Graphics > Graphics | Systems > Systems-Programmer | Docs > Technical-Writer | Design > UX-Designer | Brand > Brand-Strategist | General web/API/full-stack > Core only
 **Vibe Agent System Instructions:**
 - Vibe-Agent-Core-Instructions.md (Rev 1.3): Platform-agnostic behavioral instructions
 - Platform-specific: Desktop, Web, Mobile, Game, Embedded, Newbie
@@ -374,12 +366,12 @@ Assistant Guidelines (HOW WELL - quality)
 **Framework Ecosystem Summary**
 - **2 Process Frameworks**: IDPF-Agile, IDPF-Vibe (7 variants)
 - **11 Domain Libraries**: Accessibility, API-Design, Chaos, Contract-Testing, i18n, Observability, Performance, Privacy, QA-Automation, Security, SEO
-- **System Instructions**: 1 Core + 25 Domain Specialists + 1 Domain Selection Guide + 1 Legacy + Vibe Agent (Core + 6 platforms)
+- **System Instructions**: 1 Core + 17 Domain Specialists + 1 Domain Selection Guide + 1 Legacy + Vibe Agent (Core + 6 platforms)
 - **38 Skills**: 6 TDD/BDD, 2 code quality, 1 code analysis, 2 beginner setup, 3 beginner support, 2 database, 2 advanced testing, 3 architecture, 2 DevOps, 2 testing/browser, 2 desktop, 1 diagrams, 4 deployment, 1 SEO, 1 privacy, 2 platform, 1 i18n, 1 test scaffolding
 - **2 Assistant Guidelines**: Software dev (with file operations), Skill creation
 > IDPF-PRD deprecated v0.24; requirements engineering uses `create-prd` skill.
 **Integration Model:**
-- **System Instructions** = WHO + DOMAIN (25 specialists, loaded from `framework-config.json`)
+- **System Instructions** = WHO + DOMAIN (17 specialists, loaded from `framework-config.json`)
 - **Frameworks** = WHAT (Agile: stories/TDD/backlog; Vibe: exploratory > Agile; Domains: review knowledge)
 - **Skills** = TOOLS (`/create-prd`, TDD phases, beginner setup/support)
 - **Assistant Guidelines** = HOW WELL (anti-hallucination, accuracy, verification)

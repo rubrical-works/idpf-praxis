@@ -38,7 +38,8 @@
         {
           "id": "deployment-impact-assessed",
           "name": "Deployment impact assessed",
-          "autoCheck": "Check for 'Deployment Impact' section or 'Impact: dev-only' / 'Impact: deployed' in the body. If files or directories are mentioned, cross-reference against minimize-config.json includedDirectories to validate the classification."
+          "autoCheck": "Check for a 'Deployment Impact' section (or 'Impact: dev-only' / 'Impact: deployed') in the body. Validate the classification against framework-manifest.json deploymentFiles - the authority the issue corpus actually reasons from - together with the Stage 1 / Stage 2 command pipeline and deploy-dist.yml. Values: 'dev-only' = touches nothing that reaches a user project (framework scripts, Proposal/, PRD/, Archive/, tests, CHANGELOG); 'deployed' = touches a path carried by deploymentFiles or emitted by Stage 2, so it reaches user projects on hub update - list the affected areas; 'unknown' = the classification could not be determined and needs a human decision before the issue is worked.",
+          "env": "dev"
         }
       ]
     },
@@ -84,7 +85,8 @@
         {
           "id": "deployment-impact-assessed",
           "name": "Deployment impact assessed",
-          "autoCheck": "Check for 'Deployment Impact' section or 'Impact: dev-only' / 'Impact: deployed' in the body. If files or directories are mentioned, cross-reference against minimize-config.json includedDirectories to validate the classification."
+          "autoCheck": "Check for a 'Deployment Impact' section (or 'Impact: dev-only' / 'Impact: deployed') in the body. Validate the classification against framework-manifest.json deploymentFiles - the authority the issue corpus actually reasons from - together with the Stage 1 / Stage 2 command pipeline and deploy-dist.yml. Values: 'dev-only' = touches nothing that reaches a user project (framework scripts, Proposal/, PRD/, Archive/, tests, CHANGELOG); 'deployed' = touches a path carried by deploymentFiles or emitted by Stage 2, so it reaches user projects on hub update - list the affected areas; 'unknown' = the classification could not be determined and needs a human decision before the issue is worked.",
+          "env": "dev"
         }
       ]
     },
@@ -157,7 +159,13 @@
         {
           "id": "deployment-impact-assessed",
           "name": "Deployment impact assessed",
-          "autoCheck": "Check for 'Deployment Impact' section or 'Impact: dev-only' / 'Impact: deployed' in the body. If files or directories are mentioned, cross-reference against minimize-config.json includedDirectories to validate the classification."
+          "autoCheck": "Check for a 'Deployment Impact' section (or 'Impact: dev-only' / 'Impact: deployed') in the body. Validate the classification against framework-manifest.json deploymentFiles - the authority the issue corpus actually reasons from - together with the Stage 1 / Stage 2 command pipeline and deploy-dist.yml. Values: 'dev-only' = touches nothing that reaches a user project (framework scripts, Proposal/, PRD/, Archive/, tests, CHANGELOG); 'deployed' = touches a path carried by deploymentFiles or emitted by Stage 2, so it reaches user projects on hub update - list the affected areas; 'unknown' = the classification could not be determined and needs a human decision before the issue is worked.",
+          "env": "dev"
+        },
+        {
+          "id": "prior-art-checked",
+          "name": "Prior art checked",
+          "autoCheck": "Test for the literal '**Prior Art:**' marker defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading. Present and complete = pass. Absent, or PARTIAL (an incomplete sweep, treated as absent), = run the Step 2a-iv sweep. Issues created before the cutoff in .claude/scripts/shared/lib/prior-art-marker.js are not applicable rather than failing. When framework-config.json reviewSweep is false, report skip, not fail."
         }
       ]
     },

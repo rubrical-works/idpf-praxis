@@ -18,12 +18,36 @@
     },
     "domainSpecialist": {
       "type": "string",
-      "description": "Active domain specialist role (top-level — written by /change-domain-expert and PHM)"
+      "description": "Active domain specialist role (top-level — written by /change-domain-expert and PHM). Constrained to the framework-manifest.json domainSpecialists allowlist (#2503): an unconstrained string let path traversal and absolute paths reach the startup hook's path.join. 'Framework-Developer' is additionally permitted as the self-hosted maintainer role — no specialist file backs it, so the hook treats it as announce-only. It is deliberately NOT in framework-manifest.json, where it would break validate-helpers.js parity against constants.js and the e2e-verification count-vs-files-on-disk check. Enum/manifest parity is enforced by tests/scripts/framework/framework-config.test.js.",
+      "enum": [
+        "Accessibility-Specialist",
+        "Brand-Strategist",
+        "Database-Engineer",
+        "Data-Engineer",
+        "Desktop-Application-Developer",
+        "Embedded-Systems-Engineer",
+        "Framework-Developer",
+        "Game-Developer",
+        "Graphics-Engineer-Specialist",
+        "ML-Engineer",
+        "Mobile-Specialist",
+        "Performance-Engineer",
+        "QA-Test-Engineer",
+        "Security-Engineer",
+        "SRE-Specialist",
+        "Systems-Programmer-Specialist",
+        "Technical-Writer-Specialist",
+        "UX-Designer"
+      ]
     },
     "reviewMode": {
       "type": "string",
       "enum": ["solo", "team", "enterprise"],
       "description": "Review mode configuration"
+    },
+    "reviewSweep": {
+      "type": "boolean",
+      "description": "Whether automated review-time prior-art sweeps run (#2514). Absent means on — there is no second copy of this value anywhere, and no fallback lookup into .claude/metadata/, which is a read-only hub junction downstream. Gates automated sweeps only: an explicit --prior-art invocation sweeps regardless. This is the only lever available between framework releases, since installed hub roots are frozen per version."
     },
     "activeDomains": {
       "type": "array",
@@ -33,7 +57,7 @@
     "projectSkills": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Skills installed in this project (sourced from .claude/skills/*/SKILL.md, sorted alphabetically)"
+      "description": "Skills installed in this project (sourced from .claude/skills/*/SKILL.md, sorted alphabetically). This is the installation contract: the full installed set. It is NOT what /context's 'Project' Skills section lists — that section shows only the model-invocable subset, so a skill whose SKILL.md frontmatter carries disable-model-invocation: true is absent there by design while remaining installed and loadable by the commands that read it. A shorter projectSkills list than /context, or vice versa, is expected and not a defect. See Reference/Project-Skills-Semantics.md."
     },
     "suggestedSkills": {
       "type": "array",

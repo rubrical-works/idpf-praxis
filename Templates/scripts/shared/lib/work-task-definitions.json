@@ -48,7 +48,7 @@
       "order": 8,
       "subject": "Step 4a: QA Extraction",
       "condition": "created at Phase 2; executes only if unverifiable ACs found",
-      "description": "Unverifiable ACs become QA sub-issues automatically. Re-read qa-config.json from disk."
+      "description": "Unverifiable ACs become QA sub-issues automatically. Re-read .claude/scripts/shared/lib/qa-config.json from disk."
     },
     {
       "order": 9,

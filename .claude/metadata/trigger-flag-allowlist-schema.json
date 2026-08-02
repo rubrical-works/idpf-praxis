@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trigger-flag-allowlist-schema.json",
+  "title": "Trigger Flag Allowlist Schema",
+  "description": "Schema for .claude/metadata/trigger-flag-allowlist.json — per-command declaration of the flags workflow-trigger.js recognizes when routing a bare phrase to a slash command. Extraction from prompt text is governed by token shape; this allowlist governs whether a recognized flag may consume the following token as its value.",
+  "type": "object",
+  "required": ["commands"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Schema revision of this data file",
+      "minimum": 1
+    },
+    "commands": {
+      "type": "object",
+      "description": "Map of slash command name to the flags that command recognizes. A command present with an empty array declares that it accepts no flags — distinct from a command being absent, which means the routing path has never been reviewed for flag support.",
+      "propertyNames": {
+        "pattern": "^/[a-z0-9][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "description": "Recognized flags for this command, each in long form",
+        "items": {
+          "type": "string",
+          "pattern": "^--[A-Za-z][A-Za-z0-9-]*$"
+        },
+        "uniqueItems": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -5,7 +5,7 @@
   "description": "Schema for .claude/metadata/ac-feasibility-prompts.json — externalized LLM-readable prompt block driving the AC verification-mechanism feasibility gate in /add-story, /bug, /enhancement (and, per #2425 follow-up, /create-prd and /create-backlog).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "classify", "verificationGate", "deliverableSplit"],
+  "required": ["version", "classify", "verificationGate", "deliverableSplit", "phaseFeasibility"],
   "properties": {
     "$schema": { "type": "string" },
     "version": {
@@ -41,12 +41,65 @@
     },
     "deliverableSplit": {
       "type": "object",
-      "description": "Third gate: when an AC bundles deliverable + verification, split into independently judgable ACs.",
+      "description": "Third gate: when an AC bundles deliverable + verification, split into independently judgable ACs. Applies to story ACs AND to epic success criteria (#2508) — an epic criterion bundling a satisfied deliverable with an unsatisfiable verification cannot be expressed by one checkbox.",
       "additionalProperties": false,
       "required": ["question", "guidance"],
       "properties": {
         "question": { "type": "string", "minLength": 1 },
-        "guidance": { "type": "string", "minLength": 1 }
+        "guidance": { "type": "string", "minLength": 1 },
+        "appliesTo": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Authoring surfaces this gate must be applied to. Epic success criteria were omitted until #2508."
+        }
+      }
+    },
+    "phaseFeasibility": {
+      "type": "object",
+      "description": "Fourth gate (#2508): can this AC close inside the workflow phase that owns it? verificationGate asks whether a mechanism exists; this asks whether the condition can resolve before the story reaches in_review. An AC whose condition resolves later deadlocks the gh pmu checkbox gate.",
+      "additionalProperties": false,
+      "required": ["question", "guidance", "actionIfOutOfPhase", "gatePhases", "annotationFormat", "triggerPhrases", "ownedElsewhere"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "guidance": { "type": "string", "minLength": 1 },
+        "actionIfOutOfPhase": { "type": "string", "minLength": 1 },
+        "gatePhases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Phase tokens permitted in the → GATE: annotation. Kept narrow on purpose — every token widens the Step 4b force-move exemption."
+        },
+        "annotationFormat": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Mirrors the annotationFormat in .claude/scripts/shared/lib/qa-config.json. The box stays unchecked by design; the annotation is what distinguishes an intentionally-open gate from unfinished work."
+        },
+        "triggerPhrases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Heuristic phrases flagging an AC for phase evaluation. Non-exhaustive — the gate's question applies to every AC regardless of trigger match."
+        },
+        "ownedElsewhere": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Release-phase work already discharged by another command's checklist. This class is dropped at authoring, NOT annotated — a story checkbox would duplicate an obligation another command already owns and create a second place to mark it done.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["work", "owner", "ownerChecklistItem"],
+            "properties": {
+              "work": { "type": "string", "minLength": 1 },
+              "owner": { "type": "string", "minLength": 1 },
+              "ownerChecklistItem": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Verbatim checklist line in the owning command spec. Must exist there — the claim is verified by test, so this file cannot itself name a capability a command lacks."
+              }
+            }
+          }
+        }
       }
     }
   }

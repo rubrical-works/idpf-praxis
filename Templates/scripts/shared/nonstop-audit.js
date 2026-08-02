@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.93.0
+ * @framework-script 0.94.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs two audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
@@ -56,16 +56,40 @@ function countCommitsForIssue(issueNumber, execFn = execSync) {
   return raw.split('\n').filter(Boolean).length;
 }
 
+// Phase tokens permitted in the "→ GATE: <phase>" annotation (#2508).
+//
+// Mirrors `phaseFeasibility.gatePhases` in
+// `.claude/metadata/ac-feasibility-prompts.json`. Pinned here rather than read
+// at runtime: this helper is symlinked into user projects and resolves from its
+// real path, so a relative read of `.claude/metadata/` is not dependable there.
+// `tests/scripts/shared/nonstop-audit.test.js` asserts the two lists match, so
+// drift fails CI rather than silently narrowing the exemption.
+//
+// Every token added here widens the Step 4b force-move exemption. Keep it short.
+const GATE_PHASES = ['review', 'release'];
+
+const GATE_ANNOTATION = new RegExp(`→\\s*GATE:\\s*(?:${GATE_PHASES.join('|')})\\b`, 'i');
+
+// An unchecked box that is open *by design* rather than unfinished. Two
+// annotations qualify, and the shared discipline is narrowness: each matches a
+// specific, structured marker, so no unfinished AC can be relabelled past the
+// gate by rewording it.
+//
+//   → QA: #N          (#2477 / #2472) — closure deferred to a QA sub-issue
+//   → GATE: <phase>   (#2508)         — condition resolves after in_review
+//
+// Adding a third requires the same treatment: a structured marker with a closed
+// token set, not a free-text convention.
+function isIntentionallyOpenGate(line) {
+  return /→\s*QA:\s*#\d+/.test(line) || GATE_ANNOTATION.test(line);
+}
+
 function countUncheckedAcs(body) {
   if (!body) return 0;
   let count = 0;
   for (const line of body.split('\n')) {
     if (!/^\s*- \[ \] /.test(line)) continue;
-    // Exempt intentionally-open QA gates (#2477): a line carrying a "→ QA: #N"
-    // reference is an open gate by design (Rule 08 Step 4b Option A / #2472),
-    // not incomplete work. Scoped strictly to → QA: #N lines — not a general
-    // bypass; any other unchecked AC still counts.
-    if (/→\s*QA:\s*#\d+/.test(line)) continue;
+    if (isIntentionallyOpenGate(line)) continue;
     count++;
   }
   return count;
@@ -214,6 +238,7 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  GATE_PHASES,
   parseArgs,
   countUncheckedAcs,
   countTotalAcs,

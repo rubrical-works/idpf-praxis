@@ -1,0 +1,119 @@
+{
+  "$schema": "prior-art-sweep-schema.json",
+  "version": 1,
+  "searchSurfaces": {
+    "projectRoots": [
+      "src",
+      "lib",
+      "app",
+      "packages",
+      "tests",
+      "test",
+      "docs",
+      "CommandsSrc",
+      "Domains",
+      "Reference",
+      "Overview",
+      "Proposal",
+      "System-Instructions"
+    ],
+    "issueHistory": {
+      "enabled": true,
+      "includeClosed": true,
+      "command": "gh issue list --search \"<terms>\" --state all --limit 50"
+    },
+    "resolution": {
+      "missingSurface": "skip",
+      "zeroResolved": "partial"
+    }
+  },
+  "excludes": [
+    ".min-mirror",
+    "Releases",
+    "Proposal/Archive",
+    "Archive",
+    "node_modules",
+    ".git",
+    "coverage",
+    "dist"
+  ],
+  "termDerivation": {
+    "stopwords": [
+      "add", "the", "a", "an", "and", "or", "for", "to", "of", "in", "on",
+      "with", "support", "new", "update", "change", "make", "allow", "enable",
+      "improve", "better", "should", "would", "when", "that", "this", "it"
+    ],
+    "featureNouns": {
+      "guidance": "Extract subsystem and capability nouns from the title and description after removing stopwords. Prefer multi-word phrases over single tokens: 'branch tracker' finds more than 'branch'. Include command names, metadata file names, and any identifier written in code formatting.",
+      "synonymExpansion": true
+    },
+    "targetFiles": {
+      "guidance": "Independently of the description's vocabulary, ask which files a change of this shape would modify, then search for other work touching those same files — open and closed issues, and the files themselves. Treat each derived path as a search term in its own right.",
+      "rationale": "Feature-noun extraction misses prior work that shares no vocabulary with the request. Worked example: #2516 restructures review-criteria.json and its schema; #2517 adds a criterion to the same file. A sweep on the words 'prior art' surfaces neither from the other; a sweep on 'what files would this touch' surfaces it immediately."
+    }
+  },
+  "dispositions": {
+    "alreadyShipped": {
+      "verdict": "already-shipped",
+      "signals": [
+        "Implementing code exists and is reachable from a documented entry point",
+        "A closed issue describes the same capability and its acceptance criteria are checked",
+        "Tests assert the requested behavior",
+        "A command spec, rule, or reference document already specifies the behavior",
+        "The capability is listed in CHANGELOG.md under a released version"
+      ],
+      "action": "STOP without creating the artifact. Report the conflicting issue numbers and file paths."
+    },
+    "warranted": {
+      "verdict": "found-but-warranted",
+      "signals": [
+        "Related work exists but addresses a different surface, path, or actor",
+        "Prior implementation was reverted, deprecated, or superseded",
+        "Prior issue was closed without implementation",
+        "Existing capability is a subset and the request extends it",
+        "Existing work is in another repository in the ecosystem"
+      ],
+      "action": "Continue. Record a Prior Art section listing what exists and how the new work differs."
+    },
+    "noneFound": {
+      "verdict": "none-found",
+      "signals": [
+        "No matching code, spec, test, or metadata on any resolved surface",
+        "No matching issue title or body across open and closed issues"
+      ],
+      "action": "Continue. Record the none-found line, including the terms searched."
+    }
+  },
+  "bodyFormat": {
+    "heading": "**Prior Art:**",
+    "noneFoundFormat": "**Prior Art:** none found (searched: <terms>)",
+    "foundEntryFormat": "| <reference> | <relationship> |",
+    "partialFormat": "**Prior Art:** PARTIAL — <what ran>; <what failed and why>"
+  },
+  "questions": [
+    {
+      "id": "already-implemented",
+      "question": "Does this capability already exist in the codebase, in whole or in part?",
+      "guidance": "Search resolved surfaces for implementing code, specs, metadata, and tests. A partial match still matters — record which part exists.",
+      "actionIfFound": "Classify against dispositions. Fully present and reachable maps to already-shipped; a subset maps to found-but-warranted."
+    },
+    {
+      "id": "prior-issue",
+      "question": "Has this been filed before, including as a closed issue?",
+      "guidance": "Search issue history with includeClosed. Titles frequently share no vocabulary with the request, so search derived target-file paths as well as feature nouns.",
+      "actionIfFound": "List the issue numbers and their relationship. A closed-without-implementation issue is found-but-warranted, not already-shipped."
+    },
+    {
+      "id": "shared-files",
+      "question": "What other in-flight work touches the files this change would modify?",
+      "guidance": "Derive target files per termDerivation.targetFiles, then search open issues for those paths. This is the axis that finds interdependence a vocabulary search cannot.",
+      "actionIfFound": "Record the overlap and note which issue should land first, or that whichever lands second rebases."
+    },
+    {
+      "id": "adjacent-repo",
+      "question": "Does this belong to, or duplicate, work in a companion repository?",
+      "guidance": "Check whether the capability is owned elsewhere in the ecosystem before specifying it here.",
+      "actionIfFound": "Record the owning repository. Out-of-scope work maps to already-shipped for this repo's purposes."
+    }
+  ]
+}

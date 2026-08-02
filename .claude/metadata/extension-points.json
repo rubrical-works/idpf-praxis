@@ -1,9 +1,9 @@
 {
   "$schema": "./extension-points-schema.json",
-  "generatedAt": "2026-07-22T20:57:26.070Z",
+  "generatedAt": "2026-08-02T19:00:44.058Z",
   "version": "1.0.0",
   "commandCount": 19,
-  "extensionPointCount": 79,
+  "extensionPointCount": 80,
   "deprecatedExtensionPoints": [
     {
       "command": "work",
@@ -229,8 +229,13 @@
           "purpose": "Add custom pre-completion checks or final validation before issue is closed"
         },
         {
+          "name": "post-push",
+          "location": "Step 2 (Push), after push completes",
+          "purpose": "Add push-related automation such as deploy triggers. Does not fire when the push was deferred (not last in batch) or skipped (nothing to push)."
+        },
+        {
           "name": "post-done",
-          "location": "Step 1b (Post Work Summary Comment), after summary posted",
+          "location": "Before Step 4 (Cleanup), after CI monitoring is spawned",
           "purpose": "Add post-completion actions such as metrics collection or team notifications"
         }
       ],

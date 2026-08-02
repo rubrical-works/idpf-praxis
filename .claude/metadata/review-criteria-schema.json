@@ -40,6 +40,11 @@
                 "overrides": {
                   "type": "string",
                   "description": "Common criterion ID that this type-specific criterion supersedes"
+                },
+                "env": {
+                  "type": "string",
+                  "enum": ["dev", "deployed", "both"],
+                  "description": "Environment this criterion applies to (#2516). Omitted means 'both' — the default, correct for any criterion that is not framework-development-specific. 'dev' restricts it to a self-hosted framework repo; review-preamble.js filters such criteria out in user projects. Mirrors the env discriminator on framework-manifest.json deploymentFiles.rules."
                 }
               },
               "additionalProperties": false

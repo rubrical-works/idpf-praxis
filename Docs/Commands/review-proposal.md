@@ -28,3 +28,11 @@ Review a proposal document linked from a GitHub issue, with tracked history.
 - Updates `**Reviews:** N` and appends a row to the `## Review Log` table in the proposal file; never edits existing rows
 - Skips issues with the `reviewed` label unless `--force` is used; this command is also invoked automatically when `/review-issue` detects a proposal type
 - Subjective criteria are skipped entirely in `solo` mode
+
+## Prior-Art Sweep
+
+If the proposal carries no prior-art marker, or carries one recording an incomplete sweep, the review performs the sweep and writes the findings into both the proposal document and the tracking issue body.
+
+Prior art that duplicates the proposal's scope is treated as blocking and lowers the recommendation to "Needs revision" or worse — a proposal for something that already exists should not reach implementation.
+
+If the sweep is switched off for the project, the criterion is reported as skipped rather than failed, so an opted-out project does not see every review downgraded. If the sweep configuration cannot be read, the review warns and continues rather than failing.

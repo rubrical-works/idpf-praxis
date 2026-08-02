@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.93.0
+ * @framework-script 0.94.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -147,8 +147,47 @@ function checkEarlyExit(issue, force) {
 
 // ─── Criteria Loading ───
 
+/**
+ * Determine which environment review criteria are being loaded for (#2516).
+ *
+ * **A missing `selfHosted` key means `deployed`.** It is absent from
+ * `framework-config.schema.json` `required`, so every real user project reads
+ * `undefined` rather than `false`. Treating unknown as `dev` would surface
+ * framework-only criteria in exactly the projects the filter exists to
+ * protect — the pre-fix behavior under a new name.
+ *
+ * @param {object|null|undefined} config - Parsed framework-config.json, if readable
+ * @returns {'dev'|'deployed'}
+ */
+function resolveEnvironment(config) {
+  return config && config.selfHosted === true ? 'dev' : 'deployed';
+}
+
+/**
+ * Whether a criterion applies in the given environment.
+ * A criterion with no `env` applies everywhere — that is the default and
+ * covers every criterion authored before #2516.
+ */
+function criterionAppliesTo(criterion, environment) {
+  const env = criterion.env;
+  return !env || env === 'both' || env === environment;
+}
+
 function loadCriteria(issueType, projectDir, modeOverride) {
   const metadataDir = path.join(projectDir, '.claude', 'metadata');
+
+  // Read project config once — it drives both review mode and environment.
+  // Unreadable or absent leaves it null, which resolveEnvironment treats as
+  // deployed (the safe direction).
+  let projectConfig = null;
+  try {
+    projectConfig = JSON.parse(
+      fs.readFileSync(path.join(projectDir, 'framework-config.json'), 'utf-8')
+    );
+  } catch (_e) {
+    projectConfig = null;
+  }
+  const environment = resolveEnvironment(projectConfig);
 
   // Load common (cross-cutting) criteria filtered by review mode
   let common = {};
@@ -157,16 +196,7 @@ function loadCriteria(issueType, projectDir, modeOverride) {
     const parsed = JSON.parse(raw);
 
     // Determine active mode
-    let mode = modeOverride;
-    if (!mode) {
-      try {
-        const configRaw = fs.readFileSync(path.join(projectDir, 'framework-config.json'), 'utf-8');
-        const config = JSON.parse(configRaw);
-        mode = config.reviewMode || 'solo';
-      } catch (_e) {
-        mode = 'solo';
-      }
-    }
+    const mode = modeOverride || (projectConfig && projectConfig.reviewMode) || 'solo';
 
     // Filter criteria by mode
     const criteria = parsed.criteria || {};
@@ -192,6 +222,22 @@ function loadCriteria(issueType, projectDir, modeOverride) {
     // Non-blocking: return empty type-specific criteria
   }
 
+  // Filter by environment (#2516). Framework-only criteria must not reach
+  // user projects. Done here rather than in the /review-issue spec because
+  // this is where criteria are assembled — the command evaluates whatever
+  // this envelope hands it, so a filter in the spec would be a silent no-op.
+  const filteredIds = typeSpecific
+    .filter(c => !criterionAppliesTo(c, environment))
+    .map(c => c.id);
+  typeSpecific = typeSpecific.filter(c => criterionAppliesTo(c, environment));
+
+  for (const [id, criterion] of Object.entries(common)) {
+    if (!criterionAppliesTo(criterion, environment)) {
+      filteredIds.push(id);
+      delete common[id];
+    }
+  }
+
   // Deduplicate: if a type-specific criterion declares `overrides`, remove the corresponding common criterion
   const overriddenIds = new Set();
   for (const criterion of typeSpecific) {
@@ -203,7 +249,17 @@ function loadCriteria(issueType, projectDir, modeOverride) {
     delete common[id];
   }
 
-  return { common, typeSpecific };
+  // Make filtering observable. Absence alone cannot distinguish "filtered
+  // correctly" from "filter never ran".
+  const envFilter = { environment, filtered: filteredIds.length, filteredIds };
+  const warnings = filteredIds.length
+    ? [{
+        code: 'CRITERIA_ENV_FILTERED',
+        message: `Omitted ${filteredIds.length} criterion/criteria not applicable to the ${environment} environment: ${filteredIds.join(', ')}`
+      }]
+    : [];
+
+  return { common, typeSpecific, envFilter, warnings };
 }
 
 // ─── Extension Loading ───
@@ -409,7 +465,10 @@ async function main() {
   const extensionResult = loadExtensions(args.withExtensions || null, process.cwd(), args.withoutExtensions || null);
   criteria.extensions = extensionResult.extensions;
 
-  const allWarnings = [...extensionResult.warnings];
+  // Surface env-filter warnings in the envelope too (#2516) — the filter has
+  // to be observable to a caller reading stdout, not only to a direct
+  // loadCriteria() caller.
+  const allWarnings = [...extensionResult.warnings, ...(criteria.warnings || [])];
 
   // Build context
   const context = {
@@ -445,6 +504,7 @@ module.exports = {
   computeReviewNumber,
   checkEarlyExit,
   loadCriteria,
+  resolveEnvironment,
   loadExtensions,
   buildSuccessEnvelope,
   buildErrorEnvelope

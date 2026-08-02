@@ -9,6 +9,7 @@ Complete one or more issues — transitions from `in_review` to `done`, pushes, 
 | `#issue` | No | Single issue number (e.g., `#42` or `42`) |
 | `#issue #issue...` | No | Multiple issue numbers (e.g., `#42 #43 #44`) |
 | `--all` | No | Complete all `in_review` issues on the current branch (with confirmation) |
+| `--yes` / `-y` | No | Auto-approve interactive prompts. With `--all`, runs unattended. |
 | *(none)* | No | Query `in_review` issues for interactive selection |
 
 ## Usage
@@ -17,6 +18,7 @@ Complete one or more issues — transitions from `in_review` to `done`, pushes, 
 /done #42
 /done #42 #43 #44
 /done --all
+/done --all --yes
 /done
 ```
 
@@ -26,5 +28,9 @@ Complete one or more issues — transitions from `in_review` to `done`, pushes, 
 - Runs a preamble script that validates issue state, verifies diffs, and moves the issue to done in one operation — stops with error details if validation fails.
 - When completing an epic, automatically processes all `in_review` sub-issues first, then completes the epic; warns about sub-issues still `in_progress` or never started.
 - For multiple issues (explicit list, `--all`, or batch selection), pushes only once after the last issue (batch push optimization).
-- After push, spawns background CI monitoring via `ci-watch.js` and reports results when they arrive (pass/fail/timeout per workflow).
+- After push, spawns background CI monitoring via `ci-watch.js` and reports results when they arrive (pass/fail/timeout per workflow). The timeout is 10 minutes.
 - Posts a work summary comment on each closed issue listing changed files and the commit link.
+
+## About `--yes`
+
+`--yes` suppresses interactive prompts only. It does **not** bypass safety gates: acceptance-criteria verification, the force-move prohibition, and `gh pmu` errors all still halt the command exactly as they would without it.
