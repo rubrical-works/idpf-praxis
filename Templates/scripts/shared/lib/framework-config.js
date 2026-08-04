@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -10,6 +10,11 @@
  *   - Writers never produce schema-invalid output (validate-before-write gate)
  *   - Schema drift is caught at write time, not at the next CI run
  *   - The schema is loaded once and cached
+ *   - A failed write never leaves a torn config behind (#2470): write() goes
+ *     through shell-safe's atomicWriteSync, so the destination is replaced by
+ *     rename or not touched at all. Protects against process interruption and
+ *     ENOSPC — not power loss, which would need an fsync of the temp file and
+ *     its parent directory.
  *
  * Schema source: .claude/metadata/framework-config.schema.json (draft-07).
  * Validation library: ajv 8 (declared runtime dep per #2378).
@@ -20,6 +25,7 @@
 const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv').default;
+const { atomicWriteSync } = require('./shell-safe');
 
 const CONFIG_FILENAME = 'framework-config.json';
 const SCHEMA_REL_PATH = '.claude/metadata/framework-config.schema.json';
@@ -95,7 +101,7 @@ function write(cwd, config) {
     throw new Error(`framework-config.json validation failed: ${summary}`);
   }
   const configPath = path.join(cwd, CONFIG_FILENAME);
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  atomicWriteSync(configPath, JSON.stringify(config, null, 2) + '\n');
 }
 
 /**

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -21,7 +21,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execFileTimed: execFileSync } = require('./lib/exec.js');
 const { issueRefGrepPattern, collectTouchedPaths } = require('./lib/issue-ref-match.js');
 
 // Vendored glob matcher (#2418). The framework root ships without a populated

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -9,13 +9,15 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execFile: execFileCb } = require('child_process');
-const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
 const { validateIssueNumber } = require('./lib/input-validation.js');
+const { execFileTimedAsync } = require('./lib/exec.js');
 
-const execFileAsync = promisify(execFileCb);
+// Every spawn here goes through the timed wrapper (#2469). These are /work's
+// Step 1 critical path — including the `gh pmu move --status in_progress` calls —
+// so an unbounded one froze the command with no feedback and no upper bound.
+const execFileAsync = execFileTimedAsync;
 const SCHEMA_VERSION = 1;
 const EXEC_OPTS = { encoding: 'utf-8' };
 
@@ -347,23 +349,39 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
   const skipStatuses = ['in review', 'done'];
 
   // Parallelize all sub-issue status checks with timeout (#1883)
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Sub-issue status check timed out after ${timeoutMs / 1000}s`)), timeoutMs)
-  );
-  const statusResults = await Promise.race([
-    Promise.all(
-      subIssues.map(async (sub) => {
-        try {
-          const { stdout } = await execFileAsync('gh', ['pmu', 'view', String(sub.number), '--json=status'], EXEC_OPTS);
-          const data = JSON.parse(stdout.trim());
-          return { sub, status: data.status };
-        } catch (_e) {
-          return { sub, status: null };
-        }
-      })
-    ),
-    timeoutPromise
-  ]);
+  //
+  // The timer handle is captured and cleared in a `finally` (#2469). Without it
+  // the losing side of the race keeps a 30s timer pending after the checks have
+  // already resolved. Every CLI path here ends in process.exit(), so a real run
+  // never waits on it — but under Jest it holds the worker open, which is how
+  // this surfaced.
+  let timeoutHandle;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error(`Sub-issue status check timed out after ${timeoutMs / 1000}s`)),
+      timeoutMs
+    );
+  });
+
+  let statusResults;
+  try {
+    statusResults = await Promise.race([
+      Promise.all(
+        subIssues.map(async (sub) => {
+          try {
+            const { stdout } = await execFileAsync('gh', ['pmu', 'view', String(sub.number), '--json=status'], EXEC_OPTS);
+            const data = JSON.parse(stdout.trim());
+            return { sub, status: data.status };
+          } catch (_e) {
+            return { sub, status: null };
+          }
+        })
+      ),
+      timeoutPromise
+    ]);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 
   for (const { sub, status } of statusResults) {
     if (status && skipStatuses.includes(status.toLowerCase())) {

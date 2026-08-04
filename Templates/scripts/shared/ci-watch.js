@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -373,22 +373,35 @@ function formatOutput(result) {
 
 /**
  * Format multiple workflow results as JSON string
+ *
+ * Starts from an explicit `'unknown'` rather than `'success'` (#2541). The
+ * previous default was fail-open in the one component whose entire job is
+ * detecting failure: an empty or truncated result set read as a clean pass,
+ * so an enumeration bug upstream surfaced as a confident green rather than a
+ * visible "don't know". Only a non-empty set can reach `'success'`;
+ * `mapExitCode('unknown')` falls through to 1, so an unsubstantiated verdict
+ * never reaches the caller as exit 0.
+ *
  * @param {Array<Object>} results - Array of run result objects
  * @returns {string} JSON string with overall conclusion
  */
 function formatMultiOutput(results) {
   // Determine overall conclusion: failure > cancelled > timeout > success
-  let overall = 'success';
-  for (const r of results) {
-    if (r.conclusion === 'failure') {
-      overall = 'failure';
-      break; // Failure is highest priority
-    }
-    if (r.conclusion === 'cancelled' && overall !== 'failure') {
-      overall = 'cancelled';
-    }
-    if (r.conclusion === 'timeout' && overall === 'success') {
-      overall = 'timeout';
+  let overall = 'unknown';
+
+  if (results.length > 0) {
+    overall = 'success';
+    for (const r of results) {
+      if (r.conclusion === 'failure') {
+        overall = 'failure';
+        break; // Failure is highest priority
+      }
+      if (r.conclusion === 'cancelled' && overall !== 'failure') {
+        overall = 'cancelled';
+      }
+      if (r.conclusion === 'timeout' && overall === 'success') {
+        overall = 'timeout';
+      }
     }
   }
 
@@ -497,13 +510,47 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
     return { output: formatOutput(result), exitCode: mapExitCode('no-run-found') };
   }
 
-  // Phase 2 & 3: Wait for each run to complete, collect results
-  const results = [];
-  for (const run of runs) {
-    const completed = await waitForCompletion(run.databaseId, { poll, timeout, runGh });
-    const result = collectResults(completed, runGh);
-    results.push(result);
+  // Phase 2 & 3: Wait for each tracked run to complete, collect results, then
+  // re-enumerate (#2541).
+  //
+  // The first non-empty poll is a snapshot, not the run set. GitHub routinely
+  // staggers creation by a second or two — on commit 5eab8b4e, Gitleaks and
+  // Semgrep were created at 21:19:08Z and Tests at 21:19:10Z. Iterating the
+  // snapshot dropped Tests entirely, and a dropped run is indistinguishable
+  // from a passing one in the output.
+  //
+  // Termination therefore takes TWO conditions, not one: every tracked run has
+  // completed AND a fresh lookup surfaces no run IDs not already tracked. One
+  // re-list is not sufficient — a run can appear during the second pass as
+  // easily as the first. The whole loop stays bounded by `timeout`.
+  const tracked = new Map(runs.map(r => [r.databaseId, r]));
+  const collected = new Map();
+  const deadline = Date.now() + timeout * 1000;
+
+  for (;;) {
+    for (const runId of tracked.keys()) {
+      if (collected.has(runId)) continue;
+      const completed = await waitForCompletion(runId, { poll, timeout, runGh });
+      collected.set(runId, collectResults(completed, runGh));
+    }
+
+    // Past the deadline every tracked run is already resolved (waitForCompletion
+    // returns a 'timeout' conclusion rather than hanging), so stopping here
+    // leaves nothing unaccounted for.
+    if (Date.now() >= deadline) break;
+
+    const fresh = findRuns(fullSha, runGh, { branch: effectiveBranch });
+    let discovered = false;
+    for (const run of fresh) {
+      if (!tracked.has(run.databaseId)) {
+        tracked.set(run.databaseId, run);
+        discovered = true;
+      }
+    }
+    if (!discovered) break;
   }
+
+  const results = [...collected.values()];
 
   // Single run: simple output. Multiple: multi-workflow output.
   if (results.length === 1) {

@@ -1,11 +1,17 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * Screen Catalog Registry helper.
  *
  * Reads/writes Mockups/screen-catalog.json — the master inventory of
  * screens shared across /catalog-screens, /mockups, and /design-system.
  * Schema lives in .claude/metadata/screen-catalog-schema.json.
+ *
+ * saveCatalog() writes through shell-safe's atomicWriteSync (#2470): the
+ * catalog is replaced by rename or not touched at all, so a failed write
+ * cannot leave a torn file that breaks loadCatalog for all three consumers.
+ * Guards against process interruption and ENOSPC — not power loss, which
+ * would need an fsync of the temp file and its parent directory.
  *
  * Refs #2339 (PRD #2333 — Screen Design Pipeline)
  */
@@ -16,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
+const { atomicWriteSync } = require('./shell-safe');
 
 const DEFAULT_CATALOG_PATH = path.join('Mockups', 'screen-catalog.json');
 const SCHEMA_PATH = path.join(__dirname, '..', '..', '..', 'metadata', 'screen-catalog-schema.json');
@@ -65,7 +72,7 @@ function saveCatalog(catalog, catalogPath = DEFAULT_CATALOG_PATH) {
     const detail = (validate.errors || []).map(describeAjvError).join('; ');
     throw new Error(`Invalid catalog — refusing to write: ${detail}`);
   }
-  fs.writeFileSync(catalogPath, JSON.stringify(out, null, 2) + '\n', 'utf8');
+  atomicWriteSync(catalogPath, JSON.stringify(out, null, 2) + '\n');
 }
 
 function upsertScreen(catalog, name, fields) {

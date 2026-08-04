@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.94.0
+**Version:** v0.95.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
@@ -23,12 +23,8 @@ AI-facing reference for session work after startup. Not a procedural checklist �
 Load only when needed. Paths use `frameworkPath` from `framework-config.json` (relative to root).
 | When Working On | Load File |
 |---|---|
-| IDPF frameworks (Structured, Agile, Vibe, LTS) | `{frameworkPath}/Overview/Framework-Development.md` |
-| Testing frameworks | `{frameworkPath}/Overview/Framework-Testing.md` |
 | System Instructions or Domain Specialists | `{frameworkPath}/Overview/Framework-System-Instructions.md` |
-| Skills (creating, updating, reviewing) | `{frameworkPath}/Overview/Framework-Skills.md` |
-| Framework transitions or hybrid usage | `{frameworkPath}/Overview/Framework-Transitions.md` |
-| Complete reference (all details) | `{frameworkPath}/Overview/Framework-Overview.md` |
+| IDPF-Agile, or the complete framework reference | `{frameworkPath}/Overview/Framework-Overview.md` |
 | PRD work | `{frameworkPath}/Assistant/Anti-Hallucination-Rules-for-PRD-Work.md` |
 ## Framework Path Convention
 **All framework file references in command specs must use the `{frameworkPath}/` prefix**, read from `framework-config.json` → `frameworkPath`. Self-hosted: `"."` → project root. User projects: hub install root (`C:\ProgramData\Praxis Hub Manager\framework_root_X.Y.Z`).

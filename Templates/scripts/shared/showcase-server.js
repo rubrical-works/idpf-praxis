@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  *
  * Living Style Guide showcase server (#2430, Story 1.1).
  *

@@ -156,6 +156,8 @@ Acceptance Criteria:
 
 Claude runs `gh pmu create` with the right flags (`--label enhancement --status backlog --priority p2 --assignee @me`) and reports:
 
+> **Assignee:** `@me` — whoever is authenticated — is the default. Set `defaults.assignee` in `.gh-pmu.json` to have issues assigned to a different login instead.
+
 ```
 Created: Issue #1 — [Enhancement]: Add /health endpoint that returns server status
 Status: Backlog

@@ -13,13 +13,14 @@ Change the active domain specialist for this project and load it into the curren
 ```
 /change-domain-expert
 /change-domain-expert Security-Engineer
-/change-domain-expert UX-Designer
+/change-domain-expert Full-Stack-Developer
 ```
 
 ## Key Behaviors
 
 - Selectable specialists come from `framework-manifest.json` `domainSpecialists`, read at run time rather than hardcoded, so the list stays correct as specialists are added, dropped, or rewritten.
-- Only specialists in the `loadableSpecialists` subset have their content injected. The rest are **announce-only**: recorded as the active role, but nothing is loaded. The menu marks these, so you know before choosing.
+- `domainSpecialists` is a single list of objects. An entry with `loadable: true` has a specialist file and its content is injected; `loadable: false` means no file exists, so the entry is **announce-only** — recorded as the active role, but nothing is loaded. The menu marks these and shows each entry's `description`, so you know before choosing.
+- Announce-only is not a lesser tier. Those entries carry `announceReason`: `model-builtin` (the base model already covers it unprompted, so no file is warranted) or `pending-evaluation` (never assessed). They still drive review-domain auto-inclusion, which is why they are selectable at all.
 - Loading a specialist injects its full instructions and deactivates the previous role.
 - Writes the top-level `domainSpecialist` field in `framework-config.json` through a schema-validating helper, so an invalid value is rejected at write time rather than persisted.
 - An unknown name, a dropped specialist, or a path-like value is rejected **before any file is read**, and the config is left untouched.

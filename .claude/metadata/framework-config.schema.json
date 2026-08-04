@@ -4,7 +4,12 @@
   "title": "Framework Config Schema",
   "description": "Schema for framework-config.json — IDPF framework project configuration. Validates both self-hosted dev repos and PHM-deployed user projects via the optional selfHosted field.",
   "type": "object",
-  "required": ["processFramework", "frameworkVersion", "frameworkPath", "platform"],
+  "required": [
+    "processFramework",
+    "frameworkVersion",
+    "frameworkPath",
+    "platform"
+  ],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -13,28 +18,40 @@
     },
     "processFramework": {
       "type": "string",
-      "enum": ["IDPF-Structured", "IDPF-Agile", "IDPF-Vibe", "IDPF-LTS"],
-      "description": "Active process framework methodology"
+      "enum": [
+        "IDPF-Structured",
+        "IDPF-Agile",
+        "IDPF-LTS"
+      ],
+      "description": "Active process framework methodology. IDPF-Vibe was removed in #2530 when its directory was retired. IDPF-Structured and IDPF-LTS likewise have no directory; their removal was deliberately deferred there and is recorded as a decision, not an oversight."
     },
     "domainSpecialist": {
       "type": "string",
-      "description": "Active domain specialist role (top-level — written by /change-domain-expert and PHM). Constrained to the framework-manifest.json domainSpecialists allowlist (#2503): an unconstrained string let path traversal and absolute paths reach the startup hook's path.join. 'Framework-Developer' is additionally permitted as the self-hosted maintainer role — no specialist file backs it, so the hook treats it as announce-only. It is deliberately NOT in framework-manifest.json, where it would break validate-helpers.js parity against constants.js and the e2e-verification count-vs-files-on-disk check. Enum/manifest parity is enforced by tests/scripts/framework/framework-config.test.js.",
+      "description": "Active domain specialist role (top-level — written by /change-domain-expert and PHM). Constrained to the framework-manifest.json domainSpecialists allowlist (#2503): an unconstrained string let path traversal and absolute paths reach the startup hook's path.join. Since #2533 the manifest holds objects and this enum derives from their `name` fields, so it now admits the eight announce-only entries (`loadable: false`) alongside the seventeen with files — selectable is a broader set than loadable, and this enum governs selection. 'Framework-Developer' is additionally permitted as the self-hosted maintainer role — no specialist file backs it, so the hook treats it as announce-only. It is deliberately NOT in framework-manifest.json, where it would break validate-helpers.js parity against constants.js and the e2e-verification count-vs-files-on-disk check. Enum/manifest parity is enforced by tests/scripts/framework/framework-config.test.js.",
       "enum": [
+        "API-Integration-Specialist",
         "Accessibility-Specialist",
+        "Backend-Specialist",
         "Brand-Strategist",
-        "Database-Engineer",
+        "Cloud-Solutions-Architect",
         "Data-Engineer",
+        "Database-Engineer",
         "Desktop-Application-Developer",
+        "DevOps-Engineer",
         "Embedded-Systems-Engineer",
         "Framework-Developer",
+        "Framework-Engineer",
+        "Frontend-Specialist",
+        "Full-Stack-Developer",
         "Game-Developer",
         "Graphics-Engineer-Specialist",
         "ML-Engineer",
         "Mobile-Specialist",
         "Performance-Engineer",
+        "Platform-Engineer",
         "QA-Test-Engineer",
-        "Security-Engineer",
         "SRE-Specialist",
+        "Security-Engineer",
         "Systems-Programmer-Specialist",
         "Technical-Writer-Specialist",
         "UX-Designer"
@@ -42,7 +59,11 @@
     },
     "reviewMode": {
       "type": "string",
-      "enum": ["solo", "team", "enterprise"],
+      "enum": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "description": "Review mode configuration"
     },
     "reviewSweep": {
@@ -51,22 +72,38 @@
     },
     "activeDomains": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Active domain extensions for review criteria (lowercase domain IDs)"
     },
     "projectSkills": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Skills installed in this project (sourced from .claude/skills/*/SKILL.md, sorted alphabetically). This is the installation contract: the full installed set. It is NOT what /context's 'Project' Skills section lists — that section shows only the model-invocable subset, so a skill whose SKILL.md frontmatter carries disable-model-invocation: true is absent there by design while remaining installed and loadable by the commands that read it. A shorter projectSkills list than /context, or vice versa, is expected and not a defect. See Reference/Project-Skills-Semantics.md."
     },
     "suggestedSkills": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Confirmed skill suggestions persisted by /create-prd for px-manager discovery"
     },
     "deploymentTarget": {
-      "type": ["string", "null"],
-      "enum": ["vercel", "railway", "digitalocean", "render", "other", null],
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "vercel",
+        "railway",
+        "digitalocean",
+        "render",
+        "other",
+        null
+      ],
       "description": "Deployment platform selected during /charter (null when self-hosted or no platform chosen)"
     },
     "frameworkVersion": {
@@ -83,7 +120,11 @@
     },
     "platform": {
       "type": "string",
-      "enum": ["win32", "darwin", "linux"],
+      "enum": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
       "description": "Operating system platform"
     },
     "selfHosted": {

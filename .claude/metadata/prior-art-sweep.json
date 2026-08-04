@@ -39,9 +39,33 @@
   ],
   "termDerivation": {
     "stopwords": [
-      "add", "the", "a", "an", "and", "or", "for", "to", "of", "in", "on",
-      "with", "support", "new", "update", "change", "make", "allow", "enable",
-      "improve", "better", "should", "would", "when", "that", "this", "it"
+      "add",
+      "the",
+      "a",
+      "an",
+      "and",
+      "or",
+      "for",
+      "to",
+      "of",
+      "in",
+      "on",
+      "with",
+      "support",
+      "new",
+      "update",
+      "change",
+      "make",
+      "allow",
+      "enable",
+      "improve",
+      "better",
+      "should",
+      "would",
+      "when",
+      "that",
+      "this",
+      "it"
     ],
     "featureNouns": {
       "guidance": "Extract subsystem and capability nouns from the title and description after removing stopwords. Prefer multi-word phrases over single tokens: 'branch tracker' finds more than 'branch'. Include command names, metadata file names, and any identifier written in code formatting.",
@@ -86,6 +110,7 @@
   },
   "bodyFormat": {
     "heading": "**Prior Art:**",
+    "foundFormat": "**Prior Art:** found — <summary> (searched: <terms>)",
     "noneFoundFormat": "**Prior Art:** none found (searched: <terms>)",
     "foundEntryFormat": "| <reference> | <relationship> |",
     "partialFormat": "**Prior Art:** PARTIAL — <what ran>; <what failed and why>"

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Analyze commits referencing an issue to detect hallucinated or incomplete work. Examines diffs for comment-only changes, EOF-only appends, and suspect patterns (e.g., TODO placeholders, empty function bodies). Parallelizes per-commit and per-file git operations for performance. Used by /done verification phase.
  * @checksum sha256:placeholder
  *
@@ -8,11 +8,12 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec: execCb } = require('child_process');
-const { promisify } = require('util');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original name
+// so call sites are unchanged.
+const { execTimedAsync } = require('./lib/exec.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 
-const execAsync = promisify(execCb);
+const execAsync = execTimedAsync;
 const EXEC_OPTS = { encoding: 'utf-8' };
 
 /**

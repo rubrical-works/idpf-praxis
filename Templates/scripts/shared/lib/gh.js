@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description GitHub CLI wrapper with retry logic, transient-error detection, and safe exec helpers. Exports ghExec(), ghQuery(), isTransientError(), and related utilities. Used by most preamble and workflow scripts.
  * @checksum sha256:placeholder
  *
@@ -10,8 +10,9 @@
  * lib/gh.js - GitHub CLI wrapper
  */
 
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const { validateBranchName, validateRepo, validateTag, validateRunId } = require('./input-validation');
+const { execTimed } = require('./exec');
 
 /**
  * Check if an error message indicates a transient HTTP error (5xx)
@@ -51,10 +52,20 @@ function exec(args, options = {}) {
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-            const output = execSync(`gh ${args}`, { encoding: 'utf8' });
+            const output = execTimed(`gh ${args}`, { encoding: 'utf8' });
             return output.trim();
         } catch (err) {
             lastError = err;
+
+            // A timeout is terminal (#2469). Retrying a bounded 30s failure with
+            // the exponential backoff below turns it into a ~2-minute one, well
+            // past the point where waiting helps. Checked explicitly rather than
+            // relying on it failing the isTransientError match by accident — if a
+            // retry budget is ever wanted here it must be total wall-clock, not
+            // per-attempt.
+            if (err.code === 'ETIMEDOUT') {
+                throw err;
+            }
 
             // Only retry on transient errors
             if (attempt < retries && isTransientError(err.message)) {

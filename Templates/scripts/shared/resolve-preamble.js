@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -170,9 +170,8 @@ function buildErrorEnvelope(errors) {
 // ─── Main ───
 
 async function main() {
-  const { exec: execCb } = require('child_process');
-  const { promisify } = require('util');
-  const execAsync = promisify(execCb);
+  // Spawns bounded via lib/exec.js (#2469).
+  const { execTimedAsync: execAsync } = require('./lib/exec.js');
 
   const args = parseArgs(process.argv.slice(2));
   if (args.error) {

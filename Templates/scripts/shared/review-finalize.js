@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
@@ -9,11 +9,12 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec: execCb } = require('child_process');
-const { promisify } = require('util');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original name
+// so call sites are unchanged.
+const { execTimedAsync } = require('./lib/exec.js');
 const fs = require('fs');
 
-const execAsync = promisify(execCb);
+const execAsync = execTimedAsync;
 const EXEC_OPTS = { encoding: 'utf-8' };
 
 // ─── Shared Constants ───

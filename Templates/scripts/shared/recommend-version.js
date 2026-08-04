@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Recommend semver bump based on commit types. Classifies commits via conventional commit prefixes (feat:, fix:) with fallback to issue label lookup via GitHub API. Returns major/minor/patch recommendation with rationale. Used by /prepare-release version determination.
  * @checksum sha256:placeholder
  *
@@ -9,7 +9,9 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execTimed: execSync } = require('./lib/exec.js');
 
 function parseVersion(tag) {
     const match = tag.replace(/^v/, '').match(/^(\d+)\.(\d+)\.(\d+)/);

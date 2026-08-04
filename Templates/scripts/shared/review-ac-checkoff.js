@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Check off acceptance criteria on review issues based on findings status. Exports checkOffACs(). Used by /review-prd and /review-test-plan for post-review AC updates with optional status transition.
  * @checksum sha256:placeholder
  *
@@ -18,7 +18,9 @@
 
 'use strict';
 
-const { execFileSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execFileTimed: execFileSync } = require('./lib/exec.js');
 const fs = require('fs');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const { sanitizeShellArg } = require('./lib/shell-safe.js');

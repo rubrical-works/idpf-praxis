@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Shared epic-creation helper (#2408). Used by /add-story and
  * /split-story to create epics through a single, testable code path. Returns
  * the standard JSON envelope { ok, epicNumber, labelsVerified, branchAssigned,
@@ -25,7 +25,11 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execFileTimed: execFileSync } = require('./lib/exec.js');
+// #2489: assignee comes from .gh-pmu.json defaults.assignee, not a literal.
+const { resolveAssignee, DEFAULT_ASSIGNEE } = require('./lib/gh-pmu-config.js');
 
 const VALID_PRIORITIES = ['p0', 'p1', 'p2'];
 
@@ -258,19 +262,41 @@ function readCharterReal() {
   try { return fs.readFileSync(p, 'utf-8'); } catch (_e) { return null; }
 }
 
+/**
+ * Build the `gh pmu create` argv for an epic.
+ *
+ * The assignee is always emitted — never omitted when empty. Dropping the flag
+ * would silently create an unassigned issue, which is exactly the failure mode
+ * gh-pmu v1.5.1 replaced with a hard abort (#2489).
+ *
+ * @param {{theme: string, priority: string, assignee: string, bodyFile: string}} opts
+ * @returns {string[]} argv for execFile('gh', argv)
+ */
+function buildCreateArgs({ theme, priority, assignee, bodyFile }) {
+  return [
+    'pmu', 'create',
+    '--title', `Epic: ${theme}`,
+    '--label', 'epic',
+    '--status', 'backlog',
+    '--priority', priority,
+    '--assignee', assignee || DEFAULT_ASSIGNEE,
+    '-F', bodyFile
+  ];
+}
+
 function createIssueReal({ theme, body, priority }) {
   const tmp = `.tmp-epic-body-${process.pid}.md`;
   fs.writeFileSync(tmp, body, 'utf-8');
   try {
-    const raw = execFileSync('gh', [
-      'pmu', 'create',
-      '--title', `Epic: ${theme}`,
-      '--label', 'epic',
-      '--status', 'backlog',
-      '--priority', priority,
-      '--assignee', '@me',
-      '-F', tmp
-    ], { encoding: 'utf-8' });
+    // An explicitly configured but unresolvable login makes gh pmu exit 1
+    // before the createIssue mutation. That error propagates out of here to
+    // run(), which reports it — it is never caught and retried unassigned.
+    const raw = execFileSync('gh', buildCreateArgs({
+      theme,
+      priority,
+      assignee: resolveAssignee(),
+      bodyFile: tmp
+    }), { encoding: 'utf-8' });
     const number = parseCreatedIssueNumber(raw);
     return { number, labels: null, rawOutput: raw };
   } finally {
@@ -335,6 +361,7 @@ if (require.main === module) main();
 
 module.exports = {
   parseArgs,
+  buildCreateArgs,
   buildEpicBody,
   validateCharterScope,
   hasEpicLabel,

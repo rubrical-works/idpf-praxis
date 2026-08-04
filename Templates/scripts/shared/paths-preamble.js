@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Consolidate /paths command setup into a single JSON response. Parses flags (--quick, --dry-run, --categories, --from-code), validates category names, detects flag conflicts, fetches issue metadata, validates issue type (proposal/enhancement), detects partial analysis state, and returns structured JSON envelope.
  * @checksum sha256:placeholder
  *
@@ -11,12 +11,13 @@
 
 'use strict';
 
-const { exec: execCb } = require('child_process');
-const { promisify } = require('util');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original name
+// so call sites are unchanged.
+const { execTimedAsync } = require('./lib/exec.js');
 const fs = require('fs');
 const path = require('path');
 
-const execAsync = promisify(execCb);
+const execAsync = execTimedAsync;
 const SCHEMA_VERSION = 1;
 const EXEC_OPTS = { encoding: 'utf-8' };
 

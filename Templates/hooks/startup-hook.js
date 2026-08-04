@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -281,6 +281,23 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       }
       // up-to-date / skipped → omit
     }
+    if (r.name === 'dependency') {
+      const dep = r.parsed?.data;
+      if (dep?.state === 'missing') {
+        lines.push(`- Dependencies: ${e('⚠️ node_modules not installed — run npm ci')}`);
+      } else if (dep?.state === 'partial') {
+        lines.push(`- Dependencies: ${e(`⚠️ ${dep.missing.length} of ${dep.total} packages missing — run npm ci`)}`);
+      } else if (dep?.state === 'stale') {
+        lines.push(`- Dependencies: ${w('⚠️ node_modules stale vs lockfile')}`);
+      } else if (r.error === 'timeout') {
+        lines.push(`- Dependencies: ${e('⚠️ check timed out')}`);
+      } else if (r.status === 'error') {
+        lines.push(`- Dependencies: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      }
+      // healthy → omit, matching branch-sync's up-to-date. Dependency health is
+      // a transient condition, not an identity assertion like config-integrity,
+      // and a ✅ line on every session is noise in the overwhelmingly common case.
+    }
   }
 
   // Charter status
@@ -305,9 +322,11 @@ function renderBlock(info, checkResults, opts = { color: true }) {
     lines.push(`- Project Skills: ${info.projectSkills.join(', ')}`);
   }
 
-  // Check failures (other than config-integrity / branch-sync which are inline)
+  // Check failures (other than the checks rendered inline above, which already
+  // emit their own timeout/error lines — listing one here too double-reports it)
+  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency']);
   const failedOther = checkResults.filter((r) =>
-    r.status === 'error' && r.name !== 'config-integrity' && r.name !== 'branch-sync'
+    r.status === 'error' && !INLINE_RENDERED.has(r.name)
   );
   for (const r of failedOther) {
     lines.push(`- ${e(`⚠️ ${r.name}: ${r.error || `exit ${r.exitCode}`}`)}`);
@@ -414,6 +433,30 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
   }
   // ahead / up-to-date / no-upstream / check absent → no instruction
 
+  // Dependencies: offer `npm ci`, never run it (#2513).
+  //
+  // Same "offer, don't force" contract as the branch-sync offer above. `npm ci`
+  // deletes node_modules wholesale, needs the network, and routinely takes
+  // minutes against a ladder that starts warning at 15s — not something to
+  // trigger from a session-start hook without asking.
+  const dependency = checkResults.find((r) => r && r.name === 'dependency');
+  const deps = dependency?.parsed?.data;
+
+  if (deps && deps.state !== 'healthy') {
+    const detail = {
+      missing: 'no packages are installed',
+      partial: `${deps.missing?.length} of ${deps.total} declared packages are missing (${(deps.missing || []).join(', ')})`,
+      stale: 'the lockfile is newer than the installed tree',
+    }[deps.state];
+
+    // Naming the downstream failure matters: without it the user hits a jest
+    // error at the first acceptance criterion and reads it as a broken test
+    // rather than as dependencies that were never installed.
+    instructions.push(
+      `Dependencies are not fully installed — ${detail}. Offer to run \`npm ci\`: ask the user, and on acceptance run it and report the result. Declining leaves the tree untouched; note that test-running gates (\`/work\` Step 3 scoped runs and Step 4f's full sweep) will fail until it is installed. Do not run \`npm ci\` without asking.`
+    );
+  }
+
   // Charter pending instruction goes LAST so the user sees the full block first.
   if (info.charterStatus !== 'Active') {
     instructions.push('Charter is missing or template — invoke /charter as the FINAL action of startup, after displaying the Session Initialized block.');
@@ -457,6 +500,7 @@ async function main() {
   checks.push({ name: 'statusline', script: '.claude/scripts/shared/statusline-check.js' });
   checks.push({ name: 'config-integrity', script: '.claude/scripts/shared/config-integrity-check.js' });
   checks.push({ name: 'branch-sync', script: '.claude/scripts/shared/branch-sync-check.js' });
+  checks.push({ name: 'dependency', script: '.claude/scripts/shared/dependency-check.js' });
 
   // Filter to existing scripts (graceful degradation)
   const validChecks = checks.filter((c) => fs.existsSync(path.join(cwd, c.script)));

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Parse git commits since the last semver tag and categorize by conventional commit type (feat, fix, chore, etc.). Extracts type, scope, breaking change flags, and issue references. Used by /prepare-release and piped into generate-changelog.js.
  * @checksum sha256:placeholder
  *
@@ -9,7 +9,9 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execSync, execFileSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execTimed: execSync, execFileTimed: execFileSync } = require('./lib/exec.js');
 const { classifyCommit } = require('./lib/deployment-scope');
 const { validateTag } = require('./lib/input-validation');
 

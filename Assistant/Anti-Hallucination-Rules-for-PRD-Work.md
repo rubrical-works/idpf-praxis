@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for PRD Work
-**Version:** v0.94.0
+**Version:** v0.95.0
 
 ## Core Principle
 

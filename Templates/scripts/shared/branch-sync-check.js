@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Check branch sync status with upstream. Detects behind, ahead,
  *   diverged, and no-upstream states. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
@@ -10,7 +10,9 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execTimed: execSync } = require('./lib/exec.js');
 
 const EXEC_OPTS = { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] };
 

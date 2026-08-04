@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * Domain specialist resolution — shared by the startup hook and
  * /change-domain-expert.
  *
@@ -84,8 +84,17 @@ function resolveSpecialist({ cwd, frameworkPath = '.', domainSpecialist }) {
     };
   }
 
-  const known = Array.isArray(manifest.domainSpecialists) ? manifest.domainSpecialists : [];
-  const loadable = Array.isArray(manifest.loadableSpecialists) ? manifest.loadableSpecialists : [];
+  // domainSpecialists is an array of objects since #2533; the loadable flag moved
+  // onto the entry and the loadableSpecialists sibling was removed. Entries that
+  // are not objects with a string `name` are ignored rather than coerced — a
+  // malformed manifest should narrow the allowlist, never widen it.
+  const entries = Array.isArray(manifest.domainSpecialists) ? manifest.domainSpecialists : [];
+  const known = entries
+    .filter((e) => e && typeof e === 'object' && typeof e.name === 'string')
+    .map((e) => e.name);
+  const loadable = entries
+    .filter((e) => e && typeof e === 'object' && typeof e.name === 'string' && e.loadable === true)
+    .map((e) => e.name);
 
   if (!known.includes(name)) {
     return {
@@ -95,10 +104,10 @@ function resolveSpecialist({ cwd, frameworkPath = '.', domainSpecialist }) {
     };
   }
 
-  // (3) Loadable gate. Specialists still in reference-catalog format announce
-  // their role but never inject — that format caused the verbosity
-  // contamination this epic exists to prevent. Not a warning: it is the
-  // designed path for the deferred specialists.
+  // (3) Loadable gate. `loadable: false` means no file exists to load (#2533) —
+  // the entry's announceReason records why. Not a warning: announce-only is the
+  // designed path for a role the base model already covers, or one whose warrant
+  // has never been evaluated.
   if (!loadable.includes(name)) {
     return { ...base, status: 'announce-only' };
   }

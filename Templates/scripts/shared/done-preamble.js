@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -15,12 +15,14 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec: execCb } = require('child_process');
-const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
+const { execTimedAsync } = require('./lib/exec.js');
 
-const execAsync = promisify(execCb);
+// Every spawn here goes through the timed wrapper (#2469). classifyError has
+// always had a TIMEOUT branch; until these spawns were bounded there was no
+// input that could reach it.
+const execAsync = execTimedAsync;
 const SCHEMA_VERSION = 1;
 const EXEC_OPTS = { encoding: 'utf-8' };
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Manage the 'active' label on branch tracker issues, ensuring at most one open tracker holds it. Exports ensureActiveLabel() and removeActiveLabelOnly(). Used by create-branch.js and destroy-branch.js.
  * @checksum sha256:placeholder
  *
@@ -18,7 +18,9 @@
  *   const { ensureActiveLabel, removeActiveLabelOnly } = require('./lib/active-label');
  */
 
-const { execSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execTimed: execSync } = require('./exec.js');
 
 const EXEC_OPTS = { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] };
 

@@ -1,24 +1,37 @@
 # Domain Specialist Loading
-**Version:** 1.0
+**Version:** 2.0
 **Source:** Reference/Domain-Specialist-Loading.md
 How the configured specialist reaches a session, what it costs, which value decides it.
-## The Two Lists
-`framework-manifest.json` carries two lists: `domainSpecialists` (ship — 17) and `loadableSpecialists` (safe to **inject** — 8).
-A specialist in the first but not the second is **announce-only**: reported as Active Role, loads nothing. Designed state, not degradation — the nine remain in the reference-catalog format that caused measured verbosity contamination, becoming loadable as they are rewritten.
-`loadableSpecialists` is a sibling field, not a restructuring: five consumers read the flat-array-of-string shape, and a sibling leaves four untouched.
+## The One List
+`framework-manifest.json` carries one `domainSpecialists` array of objects; every entry is selectable.
+| Field | Meaning |
+|---|---|
+| `name` | Identifier; file basename when `loadable`. |
+| `loadable` | `true` when **a file exists to load**. |
+| `description` | One-line remit, shown by `/change-domain-expert` and PHM at install time. |
+| `announceReason` | Only when `loadable: false`: `model-builtin` or `pending-evaluation`. |
+Roster: **25 entries — 17 loadable, 8 announce-only** (7 `model-builtin`, 1 `pending-evaluation`). A `loadable: false` entry is **announce-only**: reported as Active Role, loads nothing. Designed state, not degradation.
+**`loadable` means a file exists — nothing more.** It previously also meant "this file's format is safe to inject": all 17 had files but only 8 were allowlisted, the other 9 withheld on **format** grounds, which froze an unresolved measurement into a shipped capability restriction that no issue owned. #2533 collapsed the distinction — `loadable: false` and "no file on disk" are now the same set, and format is **#2536**'s call.
+**Nine loadable specialists are still reference-catalog format** and inject in it today. #1977 measured that format at parity with loading nothing (28.5 vs 28.0 of 30) while producing output-discipline failures opinion-dense did not, so expect no gain and some regression risk. Accepted: the alternative was an untracked indefinite hold. #2536 decides rewrite-or-drop; `model-builtin` is already in the enum for ones that flip back.
+| `announceReason` | Meaning | Can become `loadable: true`? |
+|---|---|---|
+| `model-builtin` | Base model applies it unprompted; a file costs tokens without changing output. | **No** — permanently announce-only. |
+| `pending-evaluation` | Whether a file is warranted has **never been evaluated**. | **Undecided** — #2536 resolves it. |
+`pending-evaluation` says the question is open, not that a file is scheduled. `pending-authoring` would read as a commitment to write one, and the value ships in a cross-repo contract PHM reads. Machine-readable enum, no per-entry prose — rationale lives here, not in a deployed manifest.
+**Why 17 → 25.** #2494 dropped 8 specialists, deleting file and name together. Deleting the **files** was correct and stands. But the **names** are the join key for specialist-driven review-domain auto-inclusion in `review-extensions.json`, and a flat string list could not hold a selectable identity without a file — leaving `contract`, `seo` and `api-design` with **zero** live triggers. The object shape expresses "a real role, deliberately no file", so 7 names return. `Content-Strategist` does not: no extension references it, and `Brand-Strategist` + `Technical-Writer-Specialist` cover the space.
 ## Resolution Order
 `.claude/hooks/startup-hook.js` → `resolveSpecialist()` runs four steps **in this order**, and the order is the security property:
 1. **Shape check** — pure string work, no filesystem access. Separators, dot segments, drive letters, UNC prefixes, NUL rejected here.
 2. **Manifest membership** — must be in `domainSpecialists`, decided before any path is built.
-3. **Loadable gate** — must additionally be in `loadableSpecialists`.
+3. **Loadable gate** — the entry's own `loadable` flag must be true.
 4. **Filesystem** — only now may a config-derived path be resolved and read.
 Reordering reintroduces an arbitrary-file-disclosure surface: the raw config value once went straight into `path.join`.
 | Status | Meaning | Injects | Warns |
 |---|---|---|---|
 | `none` | Not configured | No | No |
 | `rejected` | Unsafe shape, unknown name, or no allowlist | No | Yes |
-| `announce-only` | Known specialist, not yet loadable | No | No |
-| `missing` | Loadable, but no file on disk | No | Yes |
+| `announce-only` | Known specialist, `loadable: false` (no file) | No | No |
+| `missing` | `loadable: true`, file absent or unreadable | No | Yes |
 | `loaded` | Content injected into `additionalContext` | Yes | No |
 Every failure degrades to announce-only — the hook gates session start, so a throw would brick it. **Fails closed:** an unreadable manifest yields no allowlist, and no allowlist means nothing injects.
 ## Per-Session Token Cost

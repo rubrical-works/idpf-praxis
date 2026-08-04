@@ -1,5 +1,5 @@
 # Framework System Instructions Reference
-**Version:** v0.94.0
+**Version:** v0.95.0
 **Location:** `System-Instructions/`
 **Purpose:** Define assistant identity, expertise, and behavioral patterns
 **Critical Requirement:** System Instructions are **REQUIRED** for all framework operation. Frameworks define process; System Instructions define identity and expertise.
@@ -115,7 +115,7 @@
 | Data Platform | Core + Data-Engineer + Database-Engineer |
 | Secure Production System | Core + Security + SRE |
 | Game / Graphics | Core + Game-Developer + Graphics-Engineer-Specialist |
-| General web, API, or full-stack | Core only, plus Packs on demand |
+| General web, API, or full-stack | `Full-Stack-Developer` (announce-only), plus Packs on demand |
 **Decision Tree:**
 - Reliability → SRE-Specialist
 - Data → Data-Engineer + Database-Engineer
@@ -133,8 +133,6 @@
 - Documentation → Technical-Writer-Specialist
 - Interaction/visual design → UX-Designer
 - Brand positioning → Brand-Strategist
-- General web, API, or full-stack → Core only (no specialist)
+- General web, API, or full-stack → `Full-Stack-Developer` (announce-only: active role recorded, nothing injected, auto-includes contract/seo/api-design/qa/privacy/security/accessibility/i18n review domains)
 **Multiple domains can be combined for cross-functional expertise.**
-## Vibe Agent System Instructions
-Vibe Agent instructions live in `System-Instructions/Vibe/` but are dormant: the IDPF-Vibe framework documents they reference were removed in #2401 when IDPF-Structured was retired. IDPF-Vibe is currently a reserved placeholder. Documentation of per-platform Vibe agent instructions will return when the framework is revived.
 **End of Framework System Instructions Reference**

@@ -1,12 +1,11 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.94.0",
+  "version": "0.95.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
-    "IDPF-Agile",
-    "IDPF-Vibe"
+    "IDPF-Agile"
   ],
   "runtimeNpmDependencies": {
     "ajv": "^8.18.0",
@@ -14,33 +13,139 @@
     "yaml": "^2.8.3"
   },
   "domainSpecialists": [
-    "Accessibility-Specialist",
-    "Brand-Strategist",
-    "Database-Engineer",
-    "Data-Engineer",
-    "Desktop-Application-Developer",
-    "Embedded-Systems-Engineer",
-    "Game-Developer",
-    "Graphics-Engineer-Specialist",
-    "ML-Engineer",
-    "Mobile-Specialist",
-    "Performance-Engineer",
-    "QA-Test-Engineer",
-    "Security-Engineer",
-    "SRE-Specialist",
-    "Systems-Programmer-Specialist",
-    "Technical-Writer-Specialist",
-    "UX-Designer"
-  ],
-  "loadableSpecialists": [
-    "Accessibility-Specialist",
-    "Embedded-Systems-Engineer",
-    "Graphics-Engineer-Specialist",
-    "Mobile-Specialist",
-    "Performance-Engineer",
-    "Security-Engineer",
-    "SRE-Specialist",
-    "Systems-Programmer-Specialist"
+    {
+      "name": "API-Integration-Specialist",
+      "loadable": false,
+      "announceReason": "model-builtin",
+      "description": "REST and GraphQL API design, microservice boundaries, and system-to-system integration."
+    },
+    {
+      "name": "Accessibility-Specialist",
+      "loadable": true,
+      "description": "WCAG conformance, assistive-technology behaviour, and EAA / ADA / Section 508 obligations on production web applications."
+    },
+    {
+      "name": "Backend-Specialist",
+      "loadable": false,
+      "announceReason": "model-builtin",
+      "description": "Server-side services, business logic, and backend architecture."
+    },
+    {
+      "name": "Brand-Strategist",
+      "loadable": true,
+      "description": "Brand identity systems, visual consistency, brand voice, and brand governance across digital touchpoints."
+    },
+    {
+      "name": "Cloud-Solutions-Architect",
+      "loadable": false,
+      "announceReason": "model-builtin",
+      "description": "Cloud-native architecture, system design, and infrastructure trade-offs."
+    },
+    {
+      "name": "Data-Engineer",
+      "loadable": true,
+      "description": "Data pipelines, ETL/ELT, warehousing, and analytics infrastructure — movement and transformation, as distinct from Database-Engineer's storage layer."
+    },
+    {
+      "name": "Database-Engineer",
+      "loadable": true,
+      "description": "Schema design, query optimisation, data modeling, and database operations at scale — the storage layer itself, as distinct from Data-Engineer's pipelines."
+    },
+    {
+      "name": "Desktop-Application-Developer",
+      "loadable": true,
+      "description": "Electron, Tauri, and native desktop frameworks across Windows, macOS, and Linux."
+    },
+    {
+      "name": "DevOps-Engineer",
+      "loadable": false,
+      "announceReason": "model-builtin",
+      "description": "CI/CD pipelines, infrastructure automation, and the development-operations boundary."
+    },
+    {
+      "name": "Embedded-Systems-Engineer",
+      "loadable": true,
+      "description": "Bare-metal and RTOS firmware on ARM Cortex-M, hardware bring-up, and safety-critical work under IEC 61508 / ISO 26262 / IEC 62304."
+    },
+    {
+      "name": "Framework-Engineer",
+      "loadable": false,
+      "announceReason": "pending-evaluation",
+      "description": "Libraries, SDKs, and developer tooling others consume: public API surface, semver and deprecation policy, extension-point architecture, and consumer migration paths."
+    },
+    {
+      "name": "Frontend-Specialist",
+      "loadable": false,
+      "announceReason": "model-builtin",
+      "description": "User interfaces, client-side logic, browser platform behaviour, and frontend architecture."
+    },
+    {
+      "name": "Full-Stack-Developer",
+      "loadable": false,
+      "announceReason": "model-builtin",
+      "description": "General web, API, and full-stack application development end to end."
+    },
+    {
+      "name": "Game-Developer",
+      "loadable": true,
+      "description": "Unity, Unreal, and Godot: engine architecture, real-time rendering, physics, and frame-budget discipline."
+    },
+    {
+      "name": "Graphics-Engineer-Specialist",
+      "loadable": true,
+      "description": "Real-time rendering across WebGL/WebGPU and Vulkan, shader authoring, and GPU budgets on desktop and mobile."
+    },
+    {
+      "name": "ML-Engineer",
+      "loadable": true,
+      "description": "Model development, training, and MLOps across the lifecycle from data preparation to production monitoring."
+    },
+    {
+      "name": "Mobile-Specialist",
+      "loadable": true,
+      "description": "Native iOS and Android plus React Native and Flutter: device constraints, platform conventions, and store review."
+    },
+    {
+      "name": "Performance-Engineer",
+      "loadable": true,
+      "description": "Profiling and optimising frontend, backend, and database systems under real production load."
+    },
+    {
+      "name": "Platform-Engineer",
+      "loadable": false,
+      "announceReason": "model-builtin",
+      "description": "Internal developer platforms, shared tooling, and developer-experience infrastructure."
+    },
+    {
+      "name": "QA-Test-Engineer",
+      "loadable": true,
+      "description": "Test strategy, automation frameworks, and quality process across the development lifecycle."
+    },
+    {
+      "name": "SRE-Specialist",
+      "loadable": true,
+      "description": "SLO definition, observability, on-call, incident command, and capacity planning for production services."
+    },
+    {
+      "name": "Security-Engineer",
+      "loadable": true,
+      "description": "Application security review, threat modeling, and incident response under PCI-DSS / SOC 2 / HIPAA / GDPR obligations."
+    },
+    {
+      "name": "Systems-Programmer-Specialist",
+      "loadable": true,
+      "description": "Rust and C at the OS boundary: concurrency primitives, allocators, FFI, and cycle-level performance work."
+    },
+    {
+      "name": "Technical-Writer-Specialist",
+      "loadable": true,
+      "description": "Docs-as-code workflows, API reference, and documentation engineering as a maintained deliverable."
+    },
+    {
+      "name": "UX-Designer",
+      "loadable": true,
+      "description": "Interaction and visual design, layout, typography, colour, and responsive patterns."
+    }
   ],
   "requiredDirectories": [
     "Overview",
@@ -176,6 +281,7 @@
           "statusline-check.js",
           "branch-sync-check.js",
           "config-integrity-check.js",
+          "dependency-check.js",
           "mockup-detect-framework.js",
           "mockup-element-extractor.js",
           "mockup-ac-generator.js",
@@ -219,12 +325,14 @@
           "dtcg-theme-manager.js",
           "dtcg-token-reader.js",
           "dtcg-tokens.js",
+          "exec.js",
           "export-adapters/css-vars.js",
           "export-adapters/react-native.js",
           "export-adapters/style-dictionary.js",
           "export-adapters/tailwind.js",
           "findings-schema.json",
           "framework-config.js",
+          "gh-pmu-config.js",
           "gh.js",
           "git.js",
           "input-validation.js",
@@ -394,26 +502,6 @@
           "name": "extension-recipes",
           "source": ".claude/metadata/extension-recipes.json",
           "description": "Extension recipes for /extensions recipes command"
-        },
-        {
-          "name": "evaluate-rules",
-          "source": ".claude/metadata/evaluate-rules.json",
-          "description": "Hand-authored anti-hallucination rules enforced by /evaluate (#2286)"
-        },
-        {
-          "name": "evaluate-rules-schema",
-          "source": ".claude/metadata/evaluate-rules.schema.json",
-          "description": "JSON schema for evaluate-rules.json; drift fails CI (#2286)"
-        },
-        {
-          "name": "evaluate-triage-patterns",
-          "source": ".claude/metadata/evaluate-triage-patterns.json",
-          "description": "Triage patterns for promoting recurring NOT VERIFIED outputs to evaluate-rules (#2289)"
-        },
-        {
-          "name": "evaluate-triage-patterns-schema",
-          "source": ".claude/metadata/evaluate-triage-patterns.schema.json",
-          "description": "JSON schema for evaluate-triage-patterns.json (#2289)"
         },
         {
           "name": "framework-config-schema",

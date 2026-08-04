@@ -1,7 +1,7 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
- * @description Shared workstream metadata operations for branch lifecycle management. Exports loadWorkstreams(), saveWorkstreams(), validateTransition(), and status constants. Used by /merge-branch, /destroy-branch, and /plan-workstreams.
+ * @framework-script 0.95.0
+ * @description Shared workstream metadata operations for branch lifecycle management. Exports loadWorkstreams(), isWorkstreamBranch(), getSiblings(), getOrphanedEpics(), updateStatus(), allResolved(), and checkStaleWorktrees(). updateStatus() is the single persistence path for .workstreams.json and is called by /merge-branch and /destroy-branch; every other export is read-only.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { atomicWriteSync } = require('./shell-safe');
 
 const VALID_STATUSES = ['active', 'merged', 'destroyed'];
 
@@ -108,7 +109,14 @@ function updateStatus(branchName, status, dir) {
   }
 
   stream.status = status;
-  fs.writeFileSync(filePath, JSON.stringify(metadata, null, 2) + '\n');
+
+  // Atomic (temp + rename), not a plain writeFileSync (#2531). `.workstreams.json`
+  // drives branch lifecycle for every concurrent stream, so a torn file breaks
+  // /merge-branch and /destroy-branch for all of them, not just the branch being
+  // updated. Interruption now leaves the previous file byte-identical rather than
+  // truncated. Does NOT fsync — protects against interruption and ENOSPC, not
+  // power loss (#2531 Scope).
+  atomicWriteSync(filePath, JSON.stringify(metadata, null, 2) + '\n');
 }
 
 /**

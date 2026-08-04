@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Analyze an issue to determine what /issue-reset would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
  * @checksum sha256:placeholder
  *
@@ -9,13 +9,14 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec: execCb } = require('child_process');
-const { promisify } = require('util');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original name
+// so call sites are unchanged.
+const { execTimedAsync } = require('./lib/exec.js');
 const fs = require('fs');
 const path = require('path');
 const { bodyMentionsIssue } = require('./lib/issue-ref-match.js');
 
-const execAsync = promisify(execCb);
+const execAsync = execTimedAsync;
 const SCHEMA_VERSION = 1;
 const EXEC_OPTS = { encoding: 'utf-8' };
 

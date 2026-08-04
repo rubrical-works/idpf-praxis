@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Transfer an issue between branches or remove it from branch assignment. Validates source and target branches, updates gh pmu branch field, and reports the transfer. Used by /transfer-issue command.
  * @checksum sha256:placeholder
  *
@@ -9,7 +9,9 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execFileSync } = require('child_process');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original names
+// so call sites are unchanged.
+const { execFileTimed: execFileSync } = require('./lib/exec.js');
 const { validateIssueNumber, validateBranchName } = require('./lib/input-validation.js');
 
 function exec(cmd) {

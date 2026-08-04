@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -9,12 +9,13 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { exec: execCb } = require('child_process');
-const { promisify } = require('util');
+// Spawns bounded via lib/exec.js (#2469) — aliased to the original name
+// so call sites are unchanged.
+const { execTimedAsync } = require('./lib/exec.js');
 const fs = require('fs');
 const path = require('path');
 
-const execAsync = promisify(execCb);
+const execAsync = execTimedAsync;
 const SCHEMA_VERSION = 1;
 const EXEC_OPTS = { encoding: 'utf-8' };
 
@@ -346,8 +347,18 @@ function buildErrorEnvelope(errors) {
 
 // ─── Data Gathering ───
 
-async function gatherIssueData(issueNum) {
-  const result = await execJSON(
+/**
+ * Fetch the issue fields the review preamble exposes on `context.issue`.
+ *
+ * @param {number} issueNum
+ * @param {object} [deps] - `execJSON` / `execSafe` overrides for tests
+ * @returns {Promise<{issue?: object, warnings?: Array, error?: object}>}
+ */
+async function gatherIssueData(issueNum, deps = {}) {
+  const runJSON = deps.execJSON || execJSON;
+  const runSafe = deps.execSafe || execSafe;
+
+  const result = await runJSON(
     `gh pmu view ${issueNum} --json=number,title,labels,body,state`,
     'NOT_FOUND',
     `Issue #${issueNum} not found`
@@ -362,14 +373,37 @@ async function gatherIssueData(issueNum) {
   const rawLabels = result.data.labels || [];
   const labels = rawLabels.map(l => typeof l === 'string' ? { name: l } : l);
 
+  // Second round trip, deliberately (#2539). `gh pmu view` exposes no
+  // creation-timestamp field, and it drops an unknown `--json` field silently
+  // at exit 0 — so appending `,createdAt` to the call above looks like a
+  // one-word fix, passes review, and changes nothing. `gh issue view` does
+  // return it. Repo resolution matches countReviewComments below: inherited
+  // from the working directory, not read from config.
+  const createdAt = await runSafe(
+    `gh issue view ${issueNum} --json createdAt --jq=.createdAt`
+  );
+
+  const warnings = [];
+  if (!createdAt) {
+    warnings.push({
+      code: 'CREATED_AT_UNAVAILABLE',
+      message: `Could not establish a creation timestamp for issue #${issueNum}. `
+        + 'The prior-art criterion treats an unknown creation date as exempt, so it '
+        + 'will report not-applicable and no sweep will run — which reads as a '
+        + 'correct skip rather than a missing check.'
+    });
+  }
+
   return {
     issue: {
       number: result.data.number,
       title: result.data.title,
       labels,
       body: result.data.body,
-      state: result.data.state
-    }
+      state: result.data.state,
+      createdAt: createdAt || undefined
+    },
+    warnings
   };
 }
 
@@ -403,6 +437,10 @@ async function main() {
   }
 
   const { issue } = issueResult;
+  // Carried onto every exit path below (#2539): an unestablished creation
+  // timestamp silently exempts the issue from the prior-art sweep, so the
+  // warning has to survive whichever envelope the caller receives.
+  const issueWarnings = issueResult.warnings || [];
 
   // Early exit check
   const earlyExit = checkEarlyExit(issue, args.force || false);
@@ -415,7 +453,7 @@ async function main() {
         message: `Issue #${args.issue} already reviewed (Review #${earlyExit.reviewCount}). Use --force to re-review.`
       },
       null,
-      []
+      issueWarnings
     );
     envelope.roundTrips = roundTrips;
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
@@ -436,7 +474,7 @@ async function main() {
         reviewNumber: computeReviewNumber(issue.body)
       },
       null,
-      []
+      issueWarnings
     );
     envelope.roundTrips = roundTrips;
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
@@ -468,7 +506,7 @@ async function main() {
   // Surface env-filter warnings in the envelope too (#2516) — the filter has
   // to be observable to a caller reading stdout, not only to a direct
   // loadCriteria() caller.
-  const allWarnings = [...extensionResult.warnings, ...(criteria.warnings || [])];
+  const allWarnings = [...issueWarnings, ...extensionResult.warnings, ...(criteria.warnings || [])];
 
   // Build context
   const context = {
@@ -503,6 +541,7 @@ module.exports = {
   parseArgs,
   computeReviewNumber,
   checkEarlyExit,
+  gatherIssueData,
   loadCriteria,
   resolveEnvironment,
   loadExtensions,

@@ -1,5 +1,5 @@
 ---
-version: "v0.94.0"
+version: "v0.95.0"
 description: Safely delete branch with confirmation (project)
 argument-hint: "[branch-name] [--force]"
 copyright: "Rubrical Works (c) 2026"
@@ -36,14 +36,14 @@ git rev-parse --verify "$BRANCH" 2>/dev/null
 
 <!-- USER-EXTENSION-START: pre-destroy -->
 ### Workstream Detection (Pre-Destroy)
-Before confirming destruction, check workstream plan:
-1. **Read from disk:** `loadWorkstreamsMetadata('.workstreams.json')` from `plan-workstreams.js`. Not found → skip.
+Before confirming, check workstream plan:
+1. **Read from disk:** `loadWorkstreamsMetadata('.workstreams.json')`. Not found → skip.
 2. **Check:** `preDestroyWorkstreamCheck(metadata, branchName)`. `isWorkstream: false` → skip.
 3. **Show expanded confirmation:**
    - `orphanWarning`: epics losing workstream assignment
    - `assignedEpics`: list with titles
    - `activeSiblings`: other active streams
-4. **Proceed to standard confirmation** (Phase 1) — informational, non-blocking
+4. **Proceed to Phase 1 confirmation** — informational, non-blocking
 <!-- USER-EXTENSION-END: pre-destroy -->
 
 ## Phase 1: Confirmation
@@ -54,15 +54,14 @@ Will permanently delete:
 - Remote: `origin/$BRANCH`
 - Artifacts: `Releases/[prefix]/[identifier]/`
 - Tracker issue (closed "not planned")
-### Step 1.1: Show What Will Be Destroyed
+### 1.1: Show What Will Be Destroyed
 ```bash
 git log main..$BRANCH --oneline 2>/dev/null || echo "No unmerged commits"
 ls -la Releases/*/$BRANCH/ 2>/dev/null || echo "No release artifacts found"
 ```
-### Step 1.2: Require Explicit Confirmation
+### 1.2: Require Explicit Confirmation
 **If `--force` NOT passed:**
-**ASK USER:** Type the full branch name to confirm destruction.
-Must type exactly: `$BRANCH`
+**ASK USER:** Type the branch name to confirm. Must be exactly `$BRANCH`.
 **If mismatch, ABORT.**
 
 <!-- USER-EXTENSION-START: post-confirm -->
@@ -76,7 +75,7 @@ Must type exactly: `$BRANCH`
 gh pmu branch current --json tracker 2>/dev/null
 ```
 ### 2.1.5: Remove Active Label
-If tracker found:
+If found:
 ```bash
 node .claude/scripts/shared/lib/active-label.js remove [TRACKER_NUMBER]
 ```
@@ -92,9 +91,8 @@ gh pmu branch close 2>/dev/null || echo "No branch to close"
 ```
 ---
 ## Phase 3: Delete Artifacts
-### 3.1: Identify Directory
-- `release/vX.Y.Z` → `Releases/release/vX.Y.Z/`
-- `patch/vX.Y.Z` → `Releases/patch/vX.Y.Z/`
+### 3.1: Identify Dir
+- `release|patch/vX.Y.Z` → `Releases/release|patch/vX.Y.Z/`
 - `feature/name` → `Releases/feature/name/` (if exists)
 ### 3.2: Delete
 ```bash
@@ -122,20 +120,22 @@ git push origin --delete "$BRANCH" 2>/dev/null || echo "Remote branch not found"
 ```bash
 git branch -D "$BRANCH"
 ```
-`-D` (force) since user confirmed abandoning unmerged work.
+`-D` (force) — user confirmed abandoning unmerged work.
 
 <!-- USER-EXTENSION-START: post-destroy -->
-### Workstream Metadata Update (Post-Destroy)
-After deletion, update workstream metadata if applicable:
-1. **Read from disk:** `loadWorkstreamsMetadata('.workstreams.json')`. Not found → skip.
-2. **Update:** `postDestroyWorkstreamUpdate(metadata, branchName)` — writes `updatedMetadata` back (status `"destroyed"`)
-3. **Commit:** `git add .workstreams.json && git commit -m "Update workstream metadata: $BRANCH destroyed"`
-4. **Epic reassignment:** If `orphanedEpics` non-empty, present `reassignmentOptions`:
-   - Each option shows a sibling branch and its epics
-   - User selects target or "leave unassigned"
-   - Target selected: `gh pmu move [epic#] --branch [target]` per epic
-5. **All destroyed:** No active streams remain → "No active workstreams remain. Consider removing `.workstreams.json`."
+<!-- Post-destroy: actions after branch deletion -->
 <!-- USER-EXTENSION-END: post-destroy -->
+
+### Workstream Metadata Update (Post-Destroy)
+After deletion, if applicable:
+1. **Read from disk:** `loadWorkstreamsMetadata('.workstreams.json')`. Not found → skip.
+2. **Report data:** `postDestroyWorkstreamUpdate(metadata, branchName)` returns `orphanedEpics` and `reassignmentOptions`. Despite the name it writes nothing; `plan-workstreams.js` never writes `.workstreams.json`.
+3. **Persist:** call `isWorkstreamBranch(branchName, metadata)` from `.claude/scripts/shared/lib/workstream-utils.js` first. `false` → skip to step 5, persisting and committing nothing (`updateStatus()` throws `Branch "X" not found`; destroying a non-workstream branch stays a no-op). `true` → `updateStatus(branchName, 'destroyed', '.')`. Do **NOT** write `.workstreams.json` with the Write tool — `updateStatus()` writes atomically (temp + rename) and enforces valid-transition rules, including the block on reviving a destroyed stream.
+4. **Commit:** only if step 3 persisted. `git add .workstreams.json && git commit -m "Update workstream metadata: $BRANCH destroyed"`
+5. **Epic reassignment:** If `orphanedEpics` non-empty, present `reassignmentOptions`:
+   - Each option shows a sibling branch and its epics; user selects a target or "leave unassigned"
+   - Target selected: `gh pmu move [epic#] --branch [target]` per epic
+6. **All destroyed:** No active streams remain → "No active workstreams remain. Consider removing `.workstreams.json`."
 
 ---
 ## Completion
@@ -146,11 +146,11 @@ Branch destroyed:
 - ✅ Remote deleted
 - ✅ Local deleted
 
-**This cannot be undone.** Unpushed commits are lost.
+**Cannot be undone.** Unpushed commits are lost.
 ---
 ## Recovery
-1. **Pushed before deletion:** Check teammate clones
+1. **Pushed:** check teammate clones
 2. **Local only:** `git reflog` within ~30 days
-3. **Artifacts:** Check backups or git history
+3. **Artifacts:** backups or git history
 ---
 **End of Destroy Branch**

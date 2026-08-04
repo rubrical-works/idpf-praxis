@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -9,7 +9,13 @@
  * Do not modify directly — changes will be overwritten on hub update.
  */
 
-const { execFile, execFileSync } = require('child_process');
+// The sync site routes through lib/exec.js (#2469). The two callback-form
+// execFile sites keep the raw import — lib/exec.js exposes promise wrappers, not
+// callback ones — and carry an explicit budget instead, which is the other half
+// of the contract. Both were unbounded: `gh pmu sub add` with no ceiling, and
+// bulk --add-ready multiplies the exposure by the number of issues.
+const { execFile } = require('child_process');
+const { execFileTimed: execFileSync, DEFAULT_TIMEOUT_MS } = require('./lib/exec.js');
 const { getAllOpenTrackers } = require('./lib/active-label.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 
@@ -43,7 +49,7 @@ function execSyncSafe(cmd) {
 
 async function execAsyncSafe(cmd, args) {
     return new Promise((resolve) => {
-        execFile(cmd, args, { encoding: 'utf-8' }, (err, stdout) => {
+        execFile(cmd, args, { encoding: 'utf-8', timeout: DEFAULT_TIMEOUT_MS }, (err, stdout) => {
             if (err) return resolve(null);
             resolve((stdout || '').trim());
         });
@@ -377,7 +383,7 @@ async function assignToBranch(issueNumber, branch, useCurrent = false) {
 async function linkToTracker(issueNumber, tracker) {
     return new Promise((resolve) => {
         execFile('gh', ['pmu', 'sub', 'add', String(tracker), String(issueNumber)],
-            { encoding: 'utf-8' }, (err, stdout, stderr) => {
+            { encoding: 'utf-8', timeout: DEFAULT_TIMEOUT_MS }, (err, stdout, stderr) => {
                 if (err) {
                     const errMsg = stderr || err.message || 'unknown error';
                     console.log(`    ⚠ Failed to link #${issueNumber} to tracker #${tracker}: ${errMsg}`);

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.94.0
+ * @framework-script 0.95.0
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the
@@ -24,6 +24,33 @@
 const MARKER_HEADING = '**Prior Art:**';
 
 /**
+ * Start-of-line anchored marker predicate (#2540).
+ *
+ * The single place either function decides a marker is present. It was an
+ * unanchored `indexOf`, so any occurrence of the literal counted — including
+ * one inside ordinary prose. A review note that merely *named* the marker
+ * classified as `complete`, `decideSweep` returned `pass`, and the sweep was
+ * skipped on an issue that had never been swept (observed on
+ * rubrical-worker/px-manager#1002).
+ *
+ * Derived from MARKER_HEADING rather than written out, so the literal lives in
+ * one place: MARKER_HEADING is pinned to prior-art-sweep.json `bodyFormat.heading`
+ * by test, and a second hand-written copy could drift out from under that pin —
+ * the same two-places-matching-on-different-rules defect this fix exists to close.
+ *
+ * Leading whitespace is allowed: an indented marker is still a marker line.
+ * A marker inside a fenced code block still matches; line-anchoring does not
+ * address that and #2540 does not claim it.
+ *
+ * Non-global on purpose — `exec` on a global regex carries `lastIndex` between
+ * calls, which would make these functions stateful across invocations.
+ */
+const MARKER_LINE = new RegExp(
+  `^[ \\t]*${MARKER_HEADING.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+  'm'
+);
+
+/**
  * Cutoff for the no-backport exemption (#2517).
  *
  * **Pinned at feature introduction and carried forward unchanged.** Deriving
@@ -41,23 +68,75 @@ const MARKER_HEADING = '**Prior Art:**';
 const PRIOR_ART_CUTOFF = '2026-08-01';
 
 /**
+ * Trailing text on the marker line that begins a COMPLETED sweep (#2542).
+ *
+ * Presence of a marker is not evidence a sweep ran. A marker line may equally
+ * record that nobody looked — observed in the wild on #2538, #2541 and #2535 —
+ * and such a line classified as `complete`, so `decideSweep` returned `pass`
+ * before any other check and the sweep was skipped on an issue never swept.
+ * /enhancement states the intended property directly: the marker's "absence
+ * means no sweep was performed", and omitting it on a nil result "would make
+ * 'nothing found' indistinguishable from 'nobody looked'."
+ *
+ * Recognised shapes, from prior-art-sweep.json `bodyFormat`:
+ *   - bare heading, nothing after it  → the found case; payload is a
+ *     `foundEntryFormat` table on the following lines
+ *   - `found …`      → `foundFormat`
+ *   - `none found …` → `noneFoundFormat`
+ *   - `PARTIAL …`    → `partialFormat`, handled separately below
+ *
+ * Hardcoded rather than read from that file, per the runtime dependency
+ * contract in the module header — this helper is symlinked into every user
+ * project and must stay dependency-free. Parity with the config is asserted in
+ * tests, exactly as MARKER_HEADING is.
+ *
+ * `foundFormat` did not exist in the config before #2542. Two genuinely-swept
+ * issues (#2531, #2532) write a found summary on the heading line, a shape the
+ * config never described — so an allowlist derived from the config as it stood
+ * would have reclassified real completed sweeps as unswept. The missing entry
+ * is why the vocabulary could not express the distinction in the first place.
+ *
+ * An allowlist, not a not-swept denylist: the observed phrasings already vary
+ * ("not swept —", "Not swept."), and matching known bad wording only defers the
+ * same defect to the next phrasing nobody predicted.
+ */
+const COMPLETED_SWEEP_PREFIXES = ['found', 'none found'];
+
+/**
  * Classify the prior-art marker in an issue or proposal body.
  *
  * `partial` is deliberately distinct from `complete`: a sweep that failed
  * halfway emits a marker that would otherwise read as finished, and any
  * consumer keying off mere presence would skip that issue forever.
  *
+ * `absent` covers two cases that are the same to every consumer: no marker at
+ * all, and a marker that does not record a completed sweep. Both mean the same
+ * thing — no evidence a sweep ran.
+ *
  * @param {string} body
  * @returns {'complete'|'partial'|'absent'}
  */
 function classifyMarker(body) {
   if (!body || typeof body !== 'string') return 'absent';
-  const index = body.indexOf(MARKER_HEADING);
-  if (index === -1) return 'absent';
+  const match = MARKER_LINE.exec(body);
+  if (!match) return 'absent';
 
-  // PARTIAL appears immediately after the heading on the same line.
-  const line = body.slice(index).split('\n', 1)[0];
-  return /\bPARTIAL\b/.test(line) ? 'partial' : 'complete';
+  const line = body.slice(match.index).split('\n', 1)[0];
+
+  // PARTIAL appears immediately after the heading on the same line. Tested
+  // first and against the whole line, preserving pre-#2542 behaviour exactly.
+  if (/\bPARTIAL\b/.test(line)) return 'partial';
+
+  // Everything after the heading, which is what distinguishes the shapes.
+  const trailing = line.slice(line.indexOf(MARKER_HEADING) + MARKER_HEADING.length).trim();
+
+  // Bare heading: the found case, with its entries in the table below it.
+  if (trailing === '') return 'complete';
+
+  const lower = trailing.toLowerCase();
+  const recognised = COMPLETED_SWEEP_PREFIXES.some((p) => lower.startsWith(p));
+
+  return recognised ? 'complete' : 'absent';
 }
 
 /**
@@ -109,11 +188,26 @@ function decideSweep({ body, createdAt, reviewSweep } = {}) {
     };
   }
 
+  if (marker === 'partial') {
+    return {
+      sweep: true,
+      status: 'fail',
+      reason: 'prior-art marker is PARTIAL — treated as absent, re-sweeping'
+    };
+  }
+
+  // `absent` covers two cases. Distinguished here only for the reason string:
+  // reporting "no marker present" for a body that visibly HAS one sends the
+  // reader looking for a missing line instead of at the line that is there.
+  // This issue exists because a message misrepresented whether a sweep ran;
+  // replacing one such message with another would be a poor trade (#2542).
+  const hasMarkerLine = MARKER_LINE.test(body || '');
+
   return {
     sweep: true,
     status: 'fail',
-    reason: marker === 'partial'
-      ? 'prior-art marker is PARTIAL — treated as absent, re-sweeping'
+    reason: hasMarkerLine
+      ? 'prior-art marker does not record a completed sweep — re-sweeping'
       : 'no prior-art marker present'
   };
 }
@@ -134,10 +228,15 @@ function decideSweep({ body, createdAt, reviewSweep } = {}) {
  */
 function insertPriorArtSection(body, section) {
   const base = typeof body === 'string' ? body : '';
-  const index = base.indexOf(MARKER_HEADING);
+  // Same predicate as classifyMarker (#2540). When the two disagreed, a prose
+  // mention read as `absent` but still took this replace branch, splicing the
+  // section over the middle of a sentence and discarding its tail.
+  const match = MARKER_LINE.exec(base);
 
-  if (index !== -1) {
-    // Replace the existing marker line (complete or PARTIAL) in place.
+  if (match) {
+    // Replace the existing marker line (complete or PARTIAL) in place,
+    // including any leading whitespace the anchor allowed.
+    const index = match.index;
     const before = base.slice(0, index);
     const after = base.slice(index);
     const restOfLine = after.indexOf('\n');
