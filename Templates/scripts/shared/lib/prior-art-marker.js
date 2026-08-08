@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.95.0
+ * @framework-script 0.96.0
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the
@@ -157,20 +157,84 @@ function isExemptFromSweep(createdAt) {
 }
 
 /**
+ * The four values `reviewSweep` may take (#2564).
+ *
+ * Ordered from most to least sweeping, which is the order the Praxis Hub
+ * Manager picker presents them in:
+ *   full      — sweep automatically at review time (pre-#2564 behaviour)
+ *   recommend — never sweep automatically; surface an advisory instead
+ *   flag-only — never sweep automatically, no advisory; `--prior-art` works
+ *   off       — as flag-only, and `--prior-art` is refused with a message
+ *
+ * `off` is the one mode that overrides an explicitly-typed flag. That inverts
+ * the pre-#2564 contract, which promised `--prior-art` swept regardless, and is
+ * deliberate: the refusal must be *reported*, never a silent no-op, or a user
+ * who typed the flag has no way to learn why nothing happened.
+ */
+const REVIEW_SWEEP_MODES = ['full', 'recommend', 'flag-only', 'off'];
+
+/**
+ * What an absent `reviewSweep` means (#2564).
+ *
+ * Absent used to mean `full`. It now means `recommend`: no command sweeps
+ * unless `--prior-art` is passed, but the recommendation is still surfaced.
+ * Both writers materialise the key rather than relying on this fallback, so it
+ * governs only the window before the first write.
+ */
+const DEFAULT_REVIEW_SWEEP_MODE = 'recommend';
+
+/**
+ * Coerce any accepted `reviewSweep` value to a mode string (#2564).
+ *
+ * Legacy booleans are migrated rather than rejected, so configs written before
+ * #2564 keep validating and keep their meaning:
+ *   true  → full       (it swept automatically, and still does)
+ *   false → flag-only  (NOT `off`)
+ *
+ * `false` maps to flag-only because that is what `false` has always meant —
+ * "gates automated sweeps only: an explicit --prior-art invocation sweeps
+ * regardless". Mapping it to `off` would silently take away a capability every
+ * opted-out project currently has, and would do so without an error surface.
+ *
+ * An unrecognised value falls back to the default rather than throwing: this is
+ * a read path reached during review, and the fallback is the safest mode
+ * (nothing sweeps, the advisory still appears). Write-time schema validation in
+ * framework-config.js is where a typo is meant to be caught.
+ *
+ * @param {string|boolean|undefined|null} value
+ * @returns {'full'|'recommend'|'flag-only'|'off'}
+ */
+function normalizeReviewSweep(value) {
+  if (value === true) return 'full';
+  if (value === false) return 'flag-only';
+  if (typeof value === 'string' && REVIEW_SWEEP_MODES.includes(value)) return value;
+  return DEFAULT_REVIEW_SWEEP_MODE;
+}
+
+/**
  * Decide whether a review-time sweep should run, and what the criterion reports.
  *
  * @param {object} input
  * @param {string} input.body - Current issue/proposal body
  * @param {string} [input.createdAt] - Issue creation timestamp
- * @param {boolean} [input.reviewSweep] - framework-config.json setting; absent means on
- * @returns {{sweep: boolean, status: 'pass'|'fail'|'skip'|'not-applicable', reason: string}}
+ * @param {string|boolean} [input.reviewSweep] - framework-config.json setting: one of
+ *   REVIEW_SWEEP_MODES, or a legacy boolean. Absent means `recommend` (#2564).
+ * @returns {{sweep: boolean, status: 'pass'|'fail'|'recommend'|'skip'|'not-applicable', reason: string}}
  */
 function decideSweep({ body, createdAt, reviewSweep } = {}) {
-  // Explicit opt-out reports skip, never fail. A fail here would combine with
-  // the scope-duplication recommendation rule to downgrade every review in a
-  // project that deliberately turned automated sweeping off.
-  if (reviewSweep === false) {
-    return { sweep: false, status: 'skip', reason: 'reviewSweep is off for this project' };
+  const mode = normalizeReviewSweep(reviewSweep);
+
+  // flag-only and off suppress automated sweeping outright, before any marker
+  // is inspected — exactly what the legacy `false` did, which is why `false`
+  // migrates to flag-only. Reported as skip, never fail: a fail here would
+  // combine with the scope-duplication recommendation rule to downgrade every
+  // review in a project that deliberately turned automated sweeping off.
+  if (mode === 'flag-only' || mode === 'off') {
+    return {
+      sweep: false,
+      status: 'skip',
+      reason: `reviewSweep mode "${mode}" — automated sweeping is off for this project`
+    };
   }
 
   const marker = classifyMarker(body);
@@ -188,28 +252,92 @@ function decideSweep({ body, createdAt, reviewSweep } = {}) {
     };
   }
 
-  if (marker === 'partial') {
-    return {
-      sweep: true,
-      status: 'fail',
-      reason: 'prior-art marker is PARTIAL — treated as absent, re-sweeping'
-    };
-  }
-
-  // `absent` covers two cases. Distinguished here only for the reason string:
+  // The diagnostic is computed once for both remaining modes (#2564). Only the
+  // *action* differs between `full` and `recommend`; what the reader needs to
+  // be told about the body does not. Deriving it twice is how the two would
+  // drift into disagreeing about the same body.
+  //
+  // `absent` covers two cases, distinguished here only for the reason string:
   // reporting "no marker present" for a body that visibly HAS one sends the
   // reader looking for a missing line instead of at the line that is there.
-  // This issue exists because a message misrepresented whether a sweep ran;
-  // replacing one such message with another would be a poor trade (#2542).
-  const hasMarkerLine = MARKER_LINE.test(body || '');
+  // #2542 exists because a message misrepresented whether a sweep ran;
+  // replacing one such message with another would be a poor trade.
+  const reason =
+    marker === 'partial'
+      ? 'prior-art marker is PARTIAL — treated as absent'
+      : MARKER_LINE.test(body || '')
+        ? 'prior-art marker does not record a completed sweep'
+        : 'no prior-art marker present';
 
+  // recommend: surface the advisory, sweep nothing. Deliberately NOT `fail` —
+  // since --prior-art is opt-in and rarely passed, most issues carry no marker,
+  // so a fail would downgrade nearly every review for a sweep that was never
+  // meant to run automatically.
+  if (mode === 'recommend') {
+    return { sweep: false, status: 'recommend', reason };
+  }
+
+  // mode === 'full' — the only mode that still sweeps automatically.
   return {
     sweep: true,
     status: 'fail',
-    reason: hasMarkerLine
-      ? 'prior-art marker does not record a completed sweep — re-sweeping'
-      : 'no prior-art marker present'
+    reason: reason === 'no prior-art marker present' ? reason : `${reason} — re-sweeping`
   };
+}
+
+/**
+ * Decide what an explicitly-typed `--prior-art` does under the current mode (#2564).
+ *
+ * Companion to `decideSweep`, which governs the *automatic* review-time path.
+ * This governs the *explicit* authoring path in /enhancement and /proposal, and
+ * exists for the same reason `decideSweep` does: the command specs delegate the
+ * decision rather than re-deriving it, so the two paths cannot drift into
+ * disagreeing about what a mode means.
+ *
+ * Only `off` refuses. That inverts the pre-#2564 contract — the schema and both
+ * command specs promised an explicit flag "sweeps regardless" — and the
+ * inversion is the point of the mode. What is *not* acceptable is a silent
+ * no-op: the user typed a flag, so a refusal must be reported and must name the
+ * setting to change, or there is no way to tell refusal from a sweep that found
+ * nothing.
+ *
+ * @param {object} [input]
+ * @param {string|boolean} [input.reviewSweep] - framework-config.json setting
+ * @returns {{sweep: boolean, refused: boolean, mode: string, message: string|null}}
+ */
+function decideFlagSweep({ reviewSweep } = {}) {
+  const mode = normalizeReviewSweep(reviewSweep);
+
+  if (mode === 'off') {
+    return {
+      sweep: false,
+      refused: true,
+      mode,
+      message:
+        'Prior-art sweeps are disabled for this project: framework-config.json ' +
+        'sets reviewSweep to "off", which refuses --prior-art. Change reviewSweep ' +
+        'to "flag-only", "recommend", or "full" to allow the flag to sweep.'
+    };
+  }
+
+  return { sweep: true, refused: false, mode, message: null };
+}
+
+/**
+ * The advisory shown when a sweep was not run under mode `recommend` (#2564 AC8).
+ *
+ * Names a command the reader can actually run. An advisory that only reports
+ * absence leaves them to work out what to do about it, which is how a
+ * recommendation degrades into noise that gets tuned out.
+ *
+ * @returns {string}
+ */
+function formatSweepAdvisory() {
+  return (
+    'Prior art was not swept for this issue. To run one, re-invoke the authoring ' +
+    'command with the flag: `/enhancement <title> --prior-art` or ' +
+    '`/proposal <title> --prior-art`.'
+  );
 }
 
 /**
@@ -258,6 +386,11 @@ function insertPriorArtSection(body, section) {
 module.exports = {
   PRIOR_ART_CUTOFF,
   MARKER_HEADING,
+  REVIEW_SWEEP_MODES,
+  DEFAULT_REVIEW_SWEEP_MODE,
+  normalizeReviewSweep,
+  decideFlagSweep,
+  formatSweepAdvisory,
   classifyMarker,
   isExemptFromSweep,
   decideSweep,

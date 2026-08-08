@@ -34,4 +34,12 @@ With `--prior-art`, the command searches the codebase, existing proposals, and i
 - If no search surface can be resolved, the sweep is reported as incomplete rather than as a clean result.
 - Findings that duplicate the request's scope are surfaced for a decision before the issue is created.
 
+### The `reviewSweep` setting can refuse the flag
+
+Your project's `reviewSweep` setting in `framework-config.json` has four values — `full`, `recommend`, `flag-only` and `off`. The first three all honour an explicit `--prior-art`. **Only `off` refuses it.**
+
+When the flag is refused, the command tells you so and names the setting responsible, then continues creating the issue. No `**Prior Art:**` section is written, so the absence correctly reads as "no sweep ran" rather than "swept and found nothing". A refusal is always reported — you typed a flag, so you learn why nothing happened and what to change.
+
+If `reviewSweep` is absent from your config, it means `recommend`, and `--prior-art` works.
+
 When you use the `enhancement:` trigger phrase instead of the slash command, flag-shaped tokens are extracted automatically.

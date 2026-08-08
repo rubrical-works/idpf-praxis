@@ -37,4 +37,12 @@ This is distinct from — and additional to — the existing-file check. That ch
 - If no search surface can be resolved, the sweep is reported as incomplete rather than as a clean result.
 - Prior work that duplicates the proposal's scope is surfaced for a decision before the document is written.
 
+### The `reviewSweep` setting can refuse the flag
+
+Your project's `reviewSweep` setting in `framework-config.json` has four values — `full`, `recommend`, `flag-only` and `off`. The first three all honour an explicit `--prior-art`. **Only `off` refuses it.**
+
+When refused, the command reports the refusal and names the setting responsible, then continues creating the proposal. No `**Prior Art:**` section is written, so the absence correctly reads as "no sweep ran" rather than "swept and found nothing".
+
+If `reviewSweep` is absent from your config, it means `recommend`, and `--prior-art` works.
+
 When you use the `proposal:` or `idea:` trigger phrase instead of the slash command, flag-shaped tokens are extracted automatically.

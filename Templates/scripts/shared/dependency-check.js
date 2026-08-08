@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.95.0
+ * @framework-script 0.96.0
  * @description Detect missing, partial, or stale node_modules at session startup. Stats node_modules/<name>/package.json for each declared package and compares package-lock.json mtime against node_modules/.package-lock.json. Read-only and advisory — performs no installation and spawns no npm subprocess.
  * @checksum sha256:placeholder
  *

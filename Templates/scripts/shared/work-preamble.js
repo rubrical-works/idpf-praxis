@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.95.0
+ * @framework-script 0.96.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -394,7 +394,7 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
 }
 
 /**
- * Parse processing order from epic body
+ * Parse processing order from an epic or branch tracker body (#2544)
  * @param {string|null} body
  * @param {number[]} subIssueNums - All sub-issue numbers
  * @returns {number[]} Ordered issue numbers
@@ -838,10 +838,9 @@ async function runSingleIssue(issueNum, options) {
     const statusResult = await checkSubIssueStatuses(subResult.subIssues);
     context.skipped = statusResult.skipped;
 
-    // Branch trackers always use ascending numeric order (no custom Processing Order)
-    const processingOrder = type === 'branch'
-      ? [...subNums].sort((a, b) => a - b)
-      : parseProcessingOrder(dataResult.issue.body, subNums);
+    // Epics and branch trackers both read **Processing Order:** from their own body,
+    // falling back to ascending numeric order when the section is absent (#2544).
+    const processingOrder = parseProcessingOrder(dataResult.issue.body, subNums);
     context.processingOrder = processingOrder;
 
     autoTask = buildEpicAutoTask(statusResult.active, processingOrder);

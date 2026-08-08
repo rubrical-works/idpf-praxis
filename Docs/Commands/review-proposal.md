@@ -31,8 +31,19 @@ Review a proposal document linked from a GitHub issue, with tracked history.
 
 ## Prior-Art Sweep
 
-If the proposal carries no prior-art marker, or carries one recording an incomplete sweep, the review performs the sweep and writes the findings into both the proposal document and the tracking issue body.
+Whether the review sweeps is governed by the `reviewSweep` setting in `framework-config.json`, which has four modes:
 
-Prior art that duplicates the proposal's scope is treated as blocking and lowers the recommendation to "Needs revision" or worse — a proposal for something that already exists should not reach implementation.
+| Mode | Behavior when the proposal has no complete marker |
+|------|--------------------------------------------------|
+| `full` | Performs the sweep and writes findings into both the proposal document and the tracking issue body |
+| `recommend` *(default)* | Does not sweep. Surfaces an advisory naming the command you can run |
+| `flag-only` | Does not sweep and shows no advisory |
+| `off` | Does not sweep, and additionally refuses an explicit `--prior-art` |
 
-If the sweep is switched off for the project, the criterion is reported as skipped rather than failed, so an opted-out project does not see every review downgraded. If the sweep configuration cannot be read, the review warns and continues rather than failing.
+**An absent setting means `recommend`,** so sweeping is opt-in rather than automatic. Under `flag-only` and `off` the criterion is reported as skipped rather than failed, so an opted-out project does not see every review downgraded.
+
+When a sweep does run, an incomplete marker is treated as absent and triggers a re-sweep. Prior art that duplicates the proposal's scope is treated as blocking and lowers the recommendation to "Needs revision" or worse — a proposal for something that already exists should not reach implementation.
+
+If the sweep configuration cannot be read, the review warns and continues rather than failing.
+
+If your project has no `reviewSweep` key yet, the first review writes one. A legacy `true`/`false` value keeps working and is not rewritten — `true` reads as `full`, `false` as `flag-only`.

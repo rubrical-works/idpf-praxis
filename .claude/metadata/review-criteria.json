@@ -165,7 +165,7 @@
         {
           "id": "prior-art-checked",
           "name": "Prior art checked",
-          "autoCheck": "Test for the literal '**Prior Art:**' marker defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading. Present and complete = pass. Absent, or PARTIAL (an incomplete sweep, treated as absent), = run the Step 2a-iv sweep. Issues created before the cutoff in .claude/scripts/shared/lib/prior-art-marker.js are not applicable rather than failing. When framework-config.json reviewSweep is false, report skip, not fail."
+          "autoCheck": "Delegate to decideSweep in .claude/scripts/shared/lib/prior-art-marker.js and report the status it returns; do not re-derive the rule here. The marker itself is the literal '**Prior Art:**' heading defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading; present and complete = pass. Issues created before the cutoff in that helper are not applicable rather than failing. Behaviour past that depends on framework-config.json reviewSweep, a 4-mode setting since #2564 (absent = 'recommend'): under 'full' an absent or PARTIAL marker reports fail and runs the Step 2a-iv sweep; under 'recommend' it reports the advisory status 'recommend' and runs NO sweep — this must NOT be reported as fail, because --prior-art is opt-in and rarely passed, so most issues carry no marker and a fail would downgrade nearly every review; under 'flag-only' and 'off' report skip, not fail, which would downgrade every review in a project that opted out."
         }
       ]
     },

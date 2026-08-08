@@ -42,6 +42,21 @@ Declaring the files an issue touches has a direct payoff — a declared path is 
 
 ## Prior-Art Sweep
 
-If the issue carries no prior-art marker, or carries one recording an incomplete sweep, the review performs the sweep and records the finding.
+Whether the review sweeps for prior art is governed by the `reviewSweep` setting in `framework-config.json`. It has four modes:
 
-Prior work that duplicates the issue's scope is treated as blocking and lowers the review verdict. If the sweep is switched off for the project, the criterion is reported as skipped rather than failed — reporting it as a failure would downgrade every review in a project that has deliberately opted out.
+| Mode | Behavior when the issue has no complete marker |
+|------|-----------------------------------------------|
+| `full` | Performs the sweep and writes the findings into the issue body |
+| `recommend` *(default)* | Does not sweep. Surfaces an advisory naming the command you can run |
+| `flag-only` | Does not sweep and shows no advisory |
+| `off` | Does not sweep, and additionally refuses an explicit `--prior-art` |
+
+**`recommend` is the default, and it does not sweep automatically.** An absent setting means `recommend`. Automatic sweeping is opt-in: you get an advisory pointing at the command rather than a silent no-op, and the criterion does not drag the review verdict down.
+
+Under `flag-only` and `off` the criterion is reported as skipped rather than failed — reporting it as a failure would downgrade every review in a project that has deliberately opted out.
+
+When a sweep does run, an incomplete marker is treated the same as an absent one and triggers a re-sweep. Prior work that duplicates the issue's scope is treated as blocking and lowers the review verdict.
+
+Issues predating the feature are exempt: marker absence carries no meaning for an issue that could never have been swept.
+
+If your project has no `reviewSweep` key yet, the first review writes one for you, so projects created before the setting existed converge without waiting to be reinstalled. A legacy `true`/`false` value keeps working and is not rewritten — `true` reads as `full`, `false` as `flag-only`.

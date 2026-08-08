@@ -396,11 +396,6 @@ Before you can `/work` an issue, it must be assigned to a branch:
 /assign-branch #60 #61 #62 release/v1.0.0
 ```
 
-Or assign all backlog issues:
-```
-/assign-branch --all release/v1.0.0
-```
-
 Or let the assistant detect the current branch:
 ```
 /assign-branch #60 #61 #62
@@ -412,6 +407,10 @@ Or assign all reviewed/ready issues at once:
 ```
 
 The `--add-ready` flag finds every issue in "Ready" status that isn't yet assigned to a branch and assigns them all to the current branch in one shot. This pairs well with any workflow that moves multiple issues to Ready at once — batch reviews via `/review-issue`, dragging cards to the Ready column on your project board, or backlog grooming. Once issues reach Ready status, `--add-ready` scoops them all up without listing or prompting.
+
+**Branch names are checked before anything is written.** If you name a branch that isn't an open branch tracker — a typo like `relese/v1.0.0`, or a branch that was already closed — the command rejects it and tells you it is not an open branch. It no longer accepts any slash-containing token on the assumption that it must be a branch name, which used to let a typo record silently and only surface later when the issue could not be found on the branch it was supposedly assigned to.
+
+Naming the same issue twice assigns it once, including when you list an issue explicitly *and* name an epic that already contains it.
 
 ---
 

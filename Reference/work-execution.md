@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.95.0
+**Version:** v0.96.0
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow.
 ## Execution Instructions
@@ -52,7 +52,7 @@ Evaluate whether design-decision/tech-debt doc is warranted. Re-read `.claude/sc
 Per AC: verifiable → `[x]`; unverifiable → auto-extract via Step 4a and apply its annotation **as emitted** — box stays **unchecked** (`- [ ]`) by design (Option A, #2472): the QA sub-issue is the gate (see Step 4b, `.claude/scripts/shared/lib/qa-config.json` `closurePath`). Do **NOT** mark a QA-extracted AC `[x]`. After all ACs resolved, update issue body via `.tmp-$ISSUE.md` flow (`gh pmu view --body-stdout` → edit → `gh pmu edit -F` → `rm`).
 **Out-of-phase ACs (#2508):** an AC whose condition resolves *after* this issue reaches `in_review` cannot honestly be checked here — checking is a false claim, leaving it bare deadlocks Step 5. Annotate per `phaseFeasibility.annotationFormat` (`.claude/metadata/ac-feasibility-prompts.json`): `- [ ] <acText> → GATE: review` / `→ GATE: release`. Box stays **unchecked** — same contract as QA. Only `review` and `release` are recognised. Work already owned by another command's checklist (CHANGELOG/tagging/release publication → `/prepare-release`) is **removed**, not annotated. Well-authored issues arrive pre-annotated; annotating here is the fallback for ACs predating the authoring gate.
 #### Step 4a: QA Extraction
-`node .claude/scripts/shared/qa-extract.js --issue $ISSUE`. Reads `.claude/scripts/shared/lib/qa-config.json`, matches unverifiable ACs against keywords, creates labeled QA sub-issues, returns `{matched:[{acText,subIssueNumber,annotation}]}`. Apply each annotation to parent body.
+**Compose the fill first (#2549).** Write a JSON map `acText` → `{steps, expectedResult}` to `.tmp-qa-fill-$ISSUE.json` from parent-issue + AC context (you hold it here; the script does not), then `node .claude/scripts/shared/qa-extract.js --issue $ISSUE --fill .tmp-qa-fill-$ISSUE.json`; `rm` after. Omit `--fill` only when nothing was composed. Reads `.claude/scripts/shared/lib/qa-config.json`, matches unverifiable ACs against keywords, creates labeled QA sub-issues, returns `{matched:[{acText,subIssueNumber,annotation,fillPath}]}`. Apply each annotation to parent body. **Skipping the fill is degraded, not neutral** — the script then derives from AC text alone (action clause → step 1, assertion clause → expected result): better than the old placeholder, weaker than a caller fill, since only the caller can supply setup and preconditions. `fillPath` reports the tier used (`caller`/`derived`/`degenerate`/`placeholder`).
 #### Step 4b: Force-Move Prohibition
 **NEVER** `gh pmu move --force` to bypass unchecked ACs on issues you implemented. Legitimate: epic parents, external closures, branch trackers, test-plan approvals, and the two **intentionally-open gate** annotations:
 | Marker | Meaning | Precedent |
@@ -83,7 +83,7 @@ Issue #$ISSUE: $TITLE — In Review
 Say "done" or run /done #$ISSUE to close.
 ```
 **(3) STOP.** Wait for "done". Do NOT close.
-**Autonomous Epic/Branch processing:** For `context.type=="epic"`/`"branch"`, process sub-issues in ascending numeric order (default) or custom **Processing Order:** from epic body. Skip sub-issues already in `in_review`/`done`.
+**Autonomous Epic/Branch processing:** For `context.type=="epic"`/`"branch"`, process sub-issues in ascending numeric order (default) or custom **Processing Order:** from the epic or branch tracker body. Skip sub-issues already in `in_review`/`done`.
 **Default mode:** each sub-issue → `in_progress` → Steps 3–4 → `in_review` → **STOP** per sub-issue → user "done" → next. The `in_progress` transition is **executed by the Step 3 Pre-Work Status Gate** as each sub-issue's turn begins — this line describes the lifecycle, it does not implement it (#2483).
 **`--nonstop` mode:** same cycle, **no STOP** between sub-issues. Report `Sub-issue #N: $TITLE → In Review (M/T processed)`. Ignored for standard issues. One commit/AC (`Refs #N`); push deferred to `/done`. Any test/AC/QA/`gh pmu` failure halts immediately — report sub-issue, completed count, resume instructions. **Post-compaction:** `TaskList` — `in_progress` sub-issue parent is primary resume signal; else fall back to `gh pmu sub list $ISSUE` and resume from first not in `in_review`/`done`. Final: `Nonstop Processing Complete` (processed/skipped/failed).
 #### Step 6a: Post-Nonstop Audit

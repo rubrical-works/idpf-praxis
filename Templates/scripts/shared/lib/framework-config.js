@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.95.0
+ * @framework-script 0.96.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -105,6 +105,43 @@ function write(cwd, config) {
 }
 
 /**
+ * Materialise an absent `reviewSweep` as the default mode (#2564).
+ *
+ * One of the two writers that keep the key present: Praxis Hub Manager writes
+ * it at install and upgrade, and the review commands call this on first
+ * encounter so projects that predate the setting converge without waiting to
+ * be reinstalled. Between them the absent case approaches zero, but
+ * `normalizeReviewSweep` still defines what absent means for the window before
+ * the first write.
+ *
+ * Routed through `write` rather than a raw `fs` call so the value is schema-
+ * validated before it lands — a mode string that the schema does not admit is
+ * rejected here rather than discovered later by a reader.
+ *
+ * A legacy boolean is deliberately NOT rewritten. Migration is a read-time
+ * concern handled by `normalizeReviewSweep`; rewriting the file would mutate a
+ * project's committed config as a side effect of running a review, which is a
+ * substantially larger promise than filling in a missing key. The migrated
+ * mode is still reported so the caller can act on it.
+ *
+ * @param {string} [cwd] - Project root
+ * @returns {{written: boolean, mode: string}} `written` false when the key was
+ *   already present (including as a legacy boolean); `mode` is the effective
+ *   normalised mode either way.
+ */
+function ensureReviewSweep(cwd = process.cwd()) {
+  const { normalizeReviewSweep, DEFAULT_REVIEW_SWEEP_MODE } = require('./prior-art-marker.js');
+  const config = read(cwd);
+
+  if (config.reviewSweep !== undefined && config.reviewSweep !== null) {
+    return { written: false, mode: normalizeReviewSweep(config.reviewSweep) };
+  }
+
+  write(cwd, { ...config, reviewSweep: DEFAULT_REVIEW_SWEEP_MODE });
+  return { written: true, mode: DEFAULT_REVIEW_SWEEP_MODE };
+}
+
+/**
  * Reset the cached validator. Test-only — exposed so unit tests can swap the
  * schema between cases without leaking cached state across test files.
  */
@@ -112,4 +149,12 @@ function _resetCache() {
   cachedValidator = null;
 }
 
-module.exports = { read, validate, write, _resetCache, CONFIG_FILENAME, SCHEMA_REL_PATH };
+module.exports = {
+  read,
+  validate,
+  write,
+  ensureReviewSweep,
+  _resetCache,
+  CONFIG_FILENAME,
+  SCHEMA_REL_PATH
+};

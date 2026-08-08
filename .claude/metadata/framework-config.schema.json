@@ -67,8 +67,17 @@
       "description": "Review mode configuration"
     },
     "reviewSweep": {
-      "type": "boolean",
-      "description": "Whether automated review-time prior-art sweeps run (#2514). Absent means on — there is no second copy of this value anywhere, and no fallback lookup into .claude/metadata/, which is a read-only hub junction downstream. Gates automated sweeps only: an explicit --prior-art invocation sweeps regardless. This is the only lever available between framework releases, since installed hub roots are frozen per version."
+      "description": "How prior-art sweeping behaves in this project (#2514, remodelled #2564). Four modes, most to least sweeping: 'full' sweeps automatically at review time; 'recommend' never sweeps automatically but surfaces an advisory naming the command to run; 'flag-only' never sweeps automatically and shows no advisory; 'off' additionally refuses an explicit --prior-art, reporting the refusal and naming this setting. Only 'full' sweeps automatically. Absent means 'recommend', and both writers (Praxis Hub Manager at install/upgrade, and the review commands on first encounter) materialise the key, so the fallback governs only the window before the first write. Legacy booleans still validate and are migrated by normalizeReviewSweep: true becomes 'full', false becomes 'flag-only' — false has always meant 'no automated sweeps, but --prior-art still works', so mapping it to 'off' would silently remove a capability opted-out projects have. There is no second copy of this value anywhere, and no fallback lookup into .claude/metadata/, which is a read-only hub junction downstream. This is the only lever available between framework releases, since installed hub roots are frozen per version.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["full", "recommend", "flag-only", "off"]
+        },
+        {
+          "type": "boolean",
+          "description": "Legacy pre-#2564 form. true migrates to 'full', false to 'flag-only'."
+        }
+      ]
     },
     "activeDomains": {
       "type": "array",

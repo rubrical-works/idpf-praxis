@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.95.0
+ * @framework-script 0.96.0
  *
  * Boundary-anchored issue-reference matching and name-status parsing (#2467).
  *

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.95.0
+ * @framework-script 0.96.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -433,7 +433,12 @@ async function main() {
 
     // Auto-detect: arguments starting with # are issues, prefix/name patterns are branches
     let branch = args.find(a => !a.startsWith('-') && !a.match(/^#?\d+$/) && a.includes('/'));
-    let issueNumbers = args.filter(a => a.match(/^#?\d+$/)).map(a => validateIssueNumber(a.replace('#', '')));
+    // Deduplicated: a repeated number is always the same issue, so a repeat can only
+    // produce a redundant second assignment — which the script then reports as a
+    // second issue assigned, overstating what it did (#2554).
+    let issueNumbers = [...new Set(
+        args.filter(a => a.match(/^#?\d+$/)).map(a => validateIssueNumber(a.replace('#', '')))
+    )];
     const userInput = args.find(a => !a.startsWith('-') && !a.includes('/') && !a.match(/^#?\d+$/));
 
     // Handle --remove mode
@@ -513,6 +518,20 @@ async function main() {
     if (!branch && currentBranch && (issueNumbers.length > 0 || addReady)) {
         branch = currentBranch;
         console.log(`Using current branch: ${branch}\n`);
+    }
+
+    // Step 3a: Validate the branch token against the open-tracker list (#2554)
+    // Branch detection is a shape heuristic ("contains a slash"), so any slash-bearing
+    // token that reaches args wins the find() — a slash-command name like /work
+    // forwarded from chat text is indistinguishable from a real branch by shape alone.
+    // Membership in getOpenBranches() is the only check that tells the two apart, and
+    // it runs before any mutation so a rejected token cannot be written to an issue.
+    if (branch && !branches.some(b => b.name === branch)) {
+        console.error(`Error: "${branch}" is not an open branch. No issues were assigned.`);
+        console.error(`Open branches: ${branches.map(b => b.name).join(', ')}`);
+        endTimer('total');
+        process.exit(1);
+        return;
     }
 
     // Step 4: Show help if no branch determined
@@ -636,8 +655,11 @@ async function main() {
     }
 
     // Step 5b: Expand epic issues into sub-issues
+    // Deduplicated again after expansion: parse-time dedup cannot see a sub-issue the
+    // user names explicitly *and* that expansion pulls in via its epic — those arrive
+    // as two distinct tokens and only collide once the epic is expanded (#2554).
     const { expanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers);
-    issueNumbers = expanded;
+    issueNumbers = [...new Set(expanded)];
 
     // Step 6: Confirm if large selection
     if (issueNumbers.length >= LARGE_SELECTION_THRESHOLD) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.95.0
+ * @framework-script 0.96.0
  * @description Shared epic-creation helper (#2408). Used by /add-story and
  * /split-story to create epics through a single, testable code path. Returns
  * the standard JSON envelope { ok, epicNumber, labelsVerified, branchAssigned,
