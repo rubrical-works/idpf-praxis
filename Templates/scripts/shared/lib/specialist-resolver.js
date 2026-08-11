@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.0
+ * @framework-script 0.96.1
  * Domain specialist resolution — shared by the startup hook and
  * /change-domain-expert.
  *

@@ -8,6 +8,77 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.96.1] - 2026-08-10
+
+Publication and CI-plumbing release. The distribution now publishes to two repositories instead
+of one, and four issues cut redundant work out of the release and branch-push pipelines. The
+through-line is that both changes were made by making a hidden assumption explicit: the deploy
+workflow had one hardcoded destination reachable only through a GitHub rename redirect nothing
+asserted, and `/prepare-release` waited twice on CI for a single verdict.
+
+**Upgrade notes:**
+
+- **Releases now publish to two targets** (#2561). `.github/dist-targets.json` is the single
+  definition of where a release goes; `deploy-dist.yml` matrixes over it, so adding a destination
+  is an entry in that file rather than a duplicated step block. Publication is **atomic** —
+  `fail-fast: true` with `preflight` as a separate job every pushing job waits on, so a target
+  that cannot be written to fails the release *before the first push*.
+- **A token expiring now blocks both targets.** That is the accepted cost of atomicity. Expiries
+  are tracked in `Transition/Runbook.md` §Distribution Token Rotation; `DIST_ORG_REPO_TOKEN`
+  expires **2027-08-11**. `DIST_REPO_TOKEN`'s expiry is still unrecorded and should be filled in.
+- **The `rubrical-works` rename redirect has been consumed.** `rubrical-works/idpf-praxis` is now
+  a real, org-owned repository rather than a redirect to the canonical path. Every functional
+  reference was repointed *before* the repo was created; the org path is now legitimate in exactly
+  one place, the target list.
+- **Pre-flight cannot verify a token's Workflows scope** — no API exposes it. Take that proof
+  deliberately when adding a target or rotating a token; the Runbook documents the procedure.
+
+### Added
+
+- Dual publication targets, parameterised through `.github/dist-targets.json`, with a pre-flight
+  access check preceding every push and the source-repo release hoisted out of the matrix so it
+  runs once regardless of target count (#2561)
+- Org-owned distribution target, seeded identical to canonical — 171 tags, 154 releases, 69
+  release assets, matching commit SHAs (#2561)
+- `tests/deployment/deploy-dist-dual-target.test.js` — asserts the deploy *mechanism*: one
+  parameterised definition, pre-flight ordering, single source-release, and a repo-wide sweep for
+  references to the consumed redirect (#2561)
+- `.claude/agents/framework-dev.md` — the repository's first subagent definition, carrying the
+  bootstrap context a fresh subagent lacks because `SessionStart` does not fire for one
+- Agent Architecture proposal, capturing the subagent constraints that are host-version-bound and
+  were previously written nowhere (#2576)
+- Design decision records for #2561, #2569, #2570 and #2571
+
+### Changed
+
+- Every functional reference to the `rubrical-works` redirect repointed to the canonical path
+  (#2561)
+- `Reference/Deployment-Awareness.md` and rule 04 document both publication targets, the token
+  each requires, the consumed redirect, and the deliberate Workflows-scope proof (#2561)
+- `Transition/Runbook.md` gains a token expiry/rotation table and the scope-proof procedure
+  (#2561)
+- `/prepare-release` keeps **one** pre-merge CI gate instead of two: the post-prepare wait is
+  gone, since that push and the PR land on the same SHA, and the duplicate Documentation
+  Freshness Check was removed from `post-pr-create` so any docs commit lands where `paths-ignore`
+  still applies (#2569)
+- The surviving CI gate is scoped to the branch with an explicit 900s timeout, rather than
+  accepting the newest run repo-wide (#2569)
+- Step 4.7's tag-time CI wait is scoped, and skipped in this repo where tag refs match no
+  `push.branches` and `verify-dist-deploy` already covers the deploy (#2570)
+- Push/PR double-fire deduplicated via directional concurrency keyed on the head SHA rather than
+  the bare `github.sha` (#2571)
+- Jest `maxWorkers` set explicitly; CI had been inheriting a single-worker default (#2574)
+
+### Fixed
+
+- `workflow-trigger` tests captured `process.stdout.write` while the hook emits via
+  `console.log` — connected only when Jest runs in band, so the suite passed for years and turned
+  red the moment it ran in a worker (#2574)
+
+### Deprecated
+
+- Phase 2m (Release Artifact Generation) in `prepare-release-validation.md`
+
 ## [0.96.0] - 2026-08-07
 
 Guard-hardening release. The theme is closing gaps where a check reported success without
@@ -1251,7 +1322,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.96.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.96.1` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -1544,7 +1615,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.96.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.96.1` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -1915,13 +1986,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.96.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.96.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.96.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.96.1` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.96.1` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.96.1` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.96.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.96.1` placeholder (#1479)
 
 ---
 
@@ -2619,15 +2690,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.96.0 placeholder after packaging
+- **#1059** - Skills retain v0.96.1 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.96.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.96.1 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.96.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.96.1"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -2787,7 +2858,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.96.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.96.1` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -2895,7 +2966,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.96.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.96.1` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -2926,8 +2997,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.96.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.96.0` placeholder
+- **#933** - v0.96.1 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.96.1` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -3068,7 +3139,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.96.0` placeholder
+  - Changed hardcoded version to `v0.96.1` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -3108,7 +3179,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.96.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.96.1` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -3185,10 +3256,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.96.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.96.1` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.96.0` placeholder
+- **#821** - README-DIST.md now uses `v0.96.1` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -3305,7 +3376,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.96.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.96.1 placeholder
 
 ---
 
@@ -3353,7 +3424,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.96.0 placeholders to 209 framework source files
+- Restored v0.96.1 placeholders to 209 framework source files
 
 ---
 
@@ -3421,12 +3492,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.96.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.96.1` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.96.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.96.1` format for consistent replacement
 
 ---
 
@@ -3495,7 +3566,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.96.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.96.1` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.96.0
+**Version:** v0.96.1
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
