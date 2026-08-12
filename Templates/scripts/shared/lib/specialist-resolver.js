@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.1
+ * @framework-script 0.96.2
  * Domain specialist resolution — shared by the startup hook and
  * /change-domain-expert.
  *
@@ -74,13 +74,31 @@ function resolveSpecialist({ cwd, frameworkPath = '.', domainSpecialist }) {
 
   const name = domainSpecialist;
 
+  // Every framework-relative path goes through here, so the arithmetic is stated
+  // once. path.resolve, not path.join: in hub-managed projects frameworkPath is
+  // an absolute hub root, and join concatenates it onto cwd instead of letting
+  // it win — the manifest read then failed and the resolver fell back to
+  // announce-only, so no specialist ever loaded in a deployed install (#2580).
+  // resolve returns an absolute frameworkPath unchanged and still resolves "."
+  // against cwd, so one form covers hub-managed and self-hosted alike.
+  //
+  // Centralised because the defect was duplicated: both call sites carried the
+  // same wrong arithmetic, and repairing the manifest read alone would only have
+  // moved the failure to "Specialist file was not found on disk".
+  const frameworkFile = (...segments) => path.resolve(cwd, frameworkPath, ...segments);
+
   // (2) Manifest allowlist — membership decided before any path is built.
-  const manifest = readJson(path.join(cwd, frameworkPath, 'framework-manifest.json'));
+  const manifestPath = frameworkFile('framework-manifest.json');
+  const manifest = readJson(manifestPath);
   if (!manifest) {
     return {
       ...base,
       status: 'rejected',
-      warning: `Specialist allowlist unavailable (framework-manifest.json unreadable) — "${name}" announced only, nothing loaded.`,
+      // Name the path that was tried, not just the filename. The path is what
+      // is wrong when this class of defect recurs, and without it the warning
+      // reports "unreadable" about a file that is sitting readable elsewhere
+      // (#2580).
+      warning: `Specialist allowlist unavailable (framework-manifest.json unreadable at ${manifestPath}) — "${name}" announced only, nothing loaded.`,
     };
   }
 
@@ -115,8 +133,10 @@ function resolveSpecialist({ cwd, frameworkPath = '.', domainSpecialist }) {
   // (4) Filesystem — reached only by a shape-safe, allowlisted, loadable name.
   // Base/ then Pack/: a name may live in either tree, and hardcoding Base/ is
   // the defect this order fixes for the switch path (#2504).
+  const searched = [];
   for (const dir of SPECIALIST_DIRS) {
-    const candidate = path.join(cwd, frameworkPath, 'System-Instructions', 'Domain', dir, `${name}.md`);
+    const candidate = frameworkFile('System-Instructions', 'Domain', dir, `${name}.md`);
+    searched.push(candidate);
     if (!fs.existsSync(candidate)) continue;
     try {
       return { ...base, status: 'loaded', path: candidate, content: fs.readFileSync(candidate, 'utf8') };
@@ -133,7 +153,10 @@ function resolveSpecialist({ cwd, frameworkPath = '.', domainSpecialist }) {
   return {
     ...base,
     status: 'missing',
-    warning: `Specialist file for "${name}" was not found on disk — announced only.`,
+    // Same reasoning as the manifest warning above: this is where a half-fix of
+    // #2580 lands, so the paths searched have to be visible from the session
+    // block alone.
+    warning: `Specialist file for "${name}" was not found on disk (searched ${searched.join(', ')}) — announced only.`,
   };
 }
 

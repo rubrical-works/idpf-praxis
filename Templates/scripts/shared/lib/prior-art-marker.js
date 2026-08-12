@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.1
+ * @framework-script 0.96.2
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the

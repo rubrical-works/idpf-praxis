@@ -1,6 +1,6 @@
 {
   "$schema": "./extension-points-schema.json",
-  "generatedAt": "2026-08-10T23:57:24.588Z",
+  "generatedAt": "2026-08-12T16:05:06.402Z",
   "version": "1.0.0",
   "commandCount": 19,
   "extensionPointCount": 80,

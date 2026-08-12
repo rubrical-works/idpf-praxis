@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.1
+ * @framework-script 0.96.2
  * @description Reads `.gh-pmu.json` and resolves the issue-creation assignee
  * (#2489). Replaces the `--assignee @me` literal that was copied across seven
  * command specs and `create-epic.js`.

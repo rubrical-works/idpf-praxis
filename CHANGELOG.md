@@ -8,6 +8,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.96.2] - 2026-08-12
+
+Corrective release. Two of its three issues undo something an earlier release got wrong: the
+domain specialist loader had been building framework paths in a way that could never resolve in a
+hub-managed project, and the second publication target introduced in v0.96.1 is retired one
+release later. The through-line is that both defects were invisible from inside this repository.
+Self-hosted, `frameworkPath` is `"."` — so the broken path arithmetic happened to produce the
+right answer, and a duplicate publication target read as redundancy rather than as cost.
+
+**Upgrade notes:**
+
+- **Domain specialists now load in hub-managed projects (#2580).** `resolveSpecialist()` built
+  paths with `path.join(cwd, frameworkPath, ...)`, which *concatenates* an absolute
+  `frameworkPath` onto the project directory rather than letting it win. Every hub install
+  therefore failed to find its specialist file and fell through to announce-only: the specialist
+  was named, but none of its content was ever loaded. Self-hosted repos were unaffected, which is
+  why this survived two releases undetected. **If you run a hub install, your configured
+  specialist begins taking effect on upgrade** — no action required, but responses will change.
+- **Releases now publish to a single repository (#2581).** `rubrical-works/idpf-praxis` is the
+  sole entry in `.github/dist-targets.json`. The retired `rubrical-worker/idpf-praxis` is
+  deliberately **left in place and unpublished-to**, not deleted: installed hub roots are frozen
+  per version and cannot be repointed retroactively, so deleting it would break existing installs
+  silently.
+- **Praxis Hub Manager still installs from the retired repository.** Until its install source is
+  repointed in `px-manager`, new installs resolve to a repository that no longer receives
+  releases. This is outside this repo's scope but is the change's real completion condition —
+  tracked in **#2583**.
+- **`DIST_REPO_TOKEN` is retired.** No workflow dereferences it, so its unrecorded expiry can no
+  longer take a release down. Finish the job by deleting the repository secret and revoking the
+  underlying PAT — a live token nobody dereferences has no rotation owner and no failure signal.
+  Procedure in `Transition/Runbook.md` §Distribution Token Rotation.
+
+### Changed
+
+- `.github/dist-targets.json` declares one publication target; removing the entry removed its
+  jobs, pushes, and `secrets[matrix.target.tokenSecret]` dereference together, with no workflow
+  edit — the same matrix property that made adding a target cheap, seen from the other side
+  (#2581)
+- `tests/deployment/deploy-dist-dual-target.test.js` re-aimed with its **polarity inverted**: the
+  repo-wide sweep now hunts `rubrical-worker/idpf-praxis`, where in v0.96.1 it protected the org
+  path. A reader assuming it still guards what it guarded in #2561 will misread a green run
+  (#2581)
+- `Reference/Deployment-Awareness.md`, rule 04, and `Transition/Runbook.md` record the retirement,
+  the single remaining token, and the reason the retired repository is kept (#2581)
+- `tests/fixtures/dist-ci-audit.json` refreshed from the org repository; the dev/dist audit gate
+  asymmetry (#2553) is unchanged in substance, only the repository it reads from moved (#2581)
+- `yaml` runtime dependency bumped 2.8.4 → 2.9.0, satisfying the `Transition/Runbook.md` §(a)
+  cadence policy that a declared-runtime-dep bump reach users within 30 days (#2439)
+
+### Removed
+
+- Two guard exemption categories that existed solely to protect the org path — *org-path
+  user-facing docs* and the narrow *target list* entry. They were removed rather than merged; what
+  remains is *historical records*, *self*, and *prose-only* (#2581)
+
+### Fixed
+
+- Domain specialist never loaded in hub-managed projects: framework paths now resolve through a
+  single `path.resolve`-based helper, so an absolute `frameworkPath` is honoured instead of
+  concatenated. Both call sites were centralised, because fixing one alone relocates the failure
+  rather than removing it (#2580)
+- Specialist resolution warnings now name the manifest path and every specialist path searched,
+  turning a silent announce-only fallback into a self-diagnosing one — the diagnosability gap that
+  let the defect survive two releases (#2580)
+- `Docs/01-Getting-Started/03-Workflow-Guide.md` Stage 4b rewritten against the current `/mockups`
+  spec, with all three UI design commands named in the Stage 4 handoff and same-class drift fixed
+  in the command quick reference (#2582)
+
 ## [0.96.1] - 2026-08-10
 
 Publication and CI-plumbing release. The distribution now publishes to two repositories instead
@@ -1322,7 +1390,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.96.1` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.96.2` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -1615,7 +1683,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.96.1` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.96.2` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -1986,13 +2054,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.96.1` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.96.1` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.96.1` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.96.2` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.96.2` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.96.2` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.96.1` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.96.2` placeholder (#1479)
 
 ---
 
@@ -2690,15 +2758,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.96.1 placeholder after packaging
+- **#1059** - Skills retain v0.96.2 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.96.1 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.96.2 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.96.1"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.96.2"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -2858,7 +2926,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.96.1` pattern
+  - All 52 framework JS files now use `@framework-script v0.96.2` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -2966,7 +3034,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.96.1` placeholder
+- **#951** - Replace hardcoded versions with `v0.96.2` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -2997,8 +3065,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.96.1 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.96.1` placeholder
+- **#933** - v0.96.2 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.96.2` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -3139,7 +3207,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.96.1` placeholder
+  - Changed hardcoded version to `v0.96.2` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -3179,7 +3247,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.96.1` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.96.2` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -3256,10 +3324,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.96.1` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.96.2` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.96.1` placeholder
+- **#821** - README-DIST.md now uses `v0.96.2` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -3376,7 +3444,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.96.1 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.96.2 placeholder
 
 ---
 
@@ -3424,7 +3492,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.96.1 placeholders to 209 framework source files
+- Restored v0.96.2 placeholders to 209 framework source files
 
 ---
 
@@ -3492,12 +3560,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.96.1` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.96.2` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.96.1` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.96.2` format for consistent replacement
 
 ---
 
@@ -3566,7 +3634,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.96.1` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.96.2` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

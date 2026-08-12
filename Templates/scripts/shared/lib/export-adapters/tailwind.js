@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.1
+ * @framework-script 0.96.2
  * @description Tailwind CSS export adapter. Translates DTCG tokens to a
  *   Tailwind config theme extension using CSS custom properties.
  * @checksum sha256:placeholder

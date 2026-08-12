@@ -223,6 +223,16 @@ Where `#42` is a proposal or enhancement issue.
    - **Negative Test Scenarios** — Intentionally invalid inputs or states
 3. For each category, the AI generates 2–5 candidate scenarios, then asks you to select which apply and add any it missed
 4. Consolidates the confirmed paths and writes a `## Path Analysis` section to the proposal document (or posts as an issue comment)
+5. On an **enhancement**, additionally generates acceptance criteria from the confirmed paths and appends them to the issue body — grouped by category once six or more paths are confirmed, with paths that duplicate existing criteria skipped
+
+**Useful flags:**
+
+| Flag | Effect |
+|------|--------|
+| `--quick` | Runs only the first three categories (Nominal, Alternative, Exception). |
+| `--dry-run` | Generates all candidates as a non-interactive summary — no prompts, no file changes. |
+| `--categories <ids>` | Re-runs selected categories only. Valid: `nominal`, `alternative`, `exception`, `edge`, `corner`, `negative`. |
+| `--from-code [path]` | Discovers paths from source code instead of the proposal text. |
 
 **Why use it:** Path analysis front-loads scenario thinking before the PRD stage. When `/create-prd` later generates acceptance criteria and test plans, the path analysis gives it a richer set of scenarios to draw from — reducing the chance of gaps in requirements.
 
@@ -230,42 +240,67 @@ Where `#42` is a proposal or enhancement issue.
 
 **Re-running:** If the proposal evolves, run `/paths` again. It detects an existing `## Path Analysis` section and loads it as a starting point — you can add, remove, or modify paths.
 
-**Next step:** For UI-heavy features, optionally run `/catalog-screens` and `/mockups` to design screens before the PRD. Otherwise, promote to PRD with `/create-prd #42`.
+**Next step:** For UI-heavy features, optionally run `/design-system`, `/catalog-screens`, and `/mockups` to design screens before the PRD. Otherwise, promote to PRD with `/create-prd #42`.
 
 ---
 
-## Stage 4b: UI Design (`/catalog-screens`, `/mockups`) — Optional
+## Stage 4b: UI Design (`/design-system`, `/catalog-screens`, `/mockups`) — Optional
 
-**What it does:** Discovers UI screen elements from existing source code and creates visual mockups. Most valuable when a proposal or enhancement involves user interface changes.
+**What it does:** Establishes a design foundation — tokens, screen specs, and reviewable mockups — before requirements are elaborated. Most valuable when a proposal or enhancement involves user interface changes.
 
-These two commands form a pipeline:
+These three commands form a pipeline:
 
 | Command | Purpose | Output |
 |---------|---------|--------|
-| `/catalog-screens` | Scans source code to discover screens and their interactive elements | Screen specs in `Mockups/{Name}/Specs/` |
-| `/mockups #42` | Creates visual mockups (ASCII text or interactive `.drawio.svg` diagrams) | Mockups in `Mockups/{Name}/AsciiScreens/` or `Screens/` |
+| `/design-system` | Defines or extracts your visual language | DTCG tokens in `Design-System/idpf-design.tokens.json` |
+| `/catalog-screens` | Creates screen specs — described manually, discovered from source, or extracted from screenshots | Screen specs in `Mockups/{Name}/Specs/`, registry in `Mockups/screen-catalog.json` |
+| `/mockups #42` | Creates reviewable mockups styled with your design tokens | Mockups in `Mockups/{Name}/Screens/` or `AsciiScreens/` |
 
 **Run:**
 ```
-/catalog-screens           ← Discover what exists in the codebase
+/design-system             ← Establish design tokens (once per project)
+/catalog-screens           ← Create or discover screen specs
 /mockups #42               ← Create mockups for the proposal/enhancement
 ```
 
 **What happens:**
 
-**`/catalog-screens`** is a discovery tool. It scans your project's UI source code (React, Vue, Electron, vanilla HTML, React Native), identifies screens and their interactive elements (inputs, buttons, selects), and produces structured screen specification documents. These specs serve as an "as-built" snapshot — what the UI looks like today.
+**`/design-system`** defines your visual language — palette, spacing scale, typography, border radius — and writes DTCG-compliant tokens. It can also extract tokens from an existing codebase (`--discover`) or from a reference image (`--from-screenshot`).
 
-**`/mockups`** is a design tool. It creates visual representations of screens — either ASCII text mockups or editable `.drawio.svg` diagrams. It can source screen content from:
-- Existing screen specs (produced by `/catalog-screens`)
-- Source code discovery
-- Manual description
-- An issue's description (`#NN`)
+**`/catalog-screens`** produces structured screen specs with element inventories (inputs, buttons, selects). It works in both directions: choose "Create new screen specs" to describe screens manually for greenfield work, or "Initialize full screen catalog" to bulk-discover them from existing source (React, Vue, Electron, vanilla HTML, React Native) as an "as-built" snapshot. Either way, every screen is registered in `Mockups/screen-catalog.json`.
 
-Both commands are fully interactive, asking questions via prompts to guide you through discovery and creation.
+**`/mockups`** creates the visual representation. Choose one of four output formats:
+
+- **Interactive HTML mockups** → `Screens/*.html` — self-contained pages you open in a browser, showing each UI state with implementation notes attached
+- **ASCII/text mockups** → `AsciiScreens/`
+- **Interactive UI mockups (drawio.svg)** → `Screens/`
+- **Both ASCII + drawio.svg** → written to both directories
+
+and one of six content sources:
+
+- From existing screen specs (produced by `/catalog-screens`)
+- From source code discovery
+- Describe screens manually
+- From issue `#NN` description (offered only when you passed `#NN`)
+- From screen catalog
+- From reference image
+
+When design tokens exist at `Design-System/idpf-design.tokens.json`, mockups are styled with your actual colors, typography, and spacing; without them, built-in defaults are used. The command reports which applied.
+
+All three commands are fully interactive, asking questions via prompts to guide you through discovery and creation.
+
+**Useful flags:**
+
+| Flag | Command | Effect |
+|------|---------|--------|
+| `--serve [{Name}]` | `/mockups` | Starts a local static server over `Mockups/` (or a single set) so you can browse the mockups in a browser. Add `--port <N>` to pin the port and `--open` to launch your browser automatically. |
+| `--showcase` | all three | Launches the Living Style Guide — a browser review surface where you Approve, Reject, or Annotate each item. Decisions are captured to `Design-System/showcase/decisions.json` and applied on the next run of the same command. |
+| `--apply-decisions` | all three | Applies pending showcase decisions without launching a browser. |
+| `--from-image <path>` | `/mockups` | Uses a reference image as the visual baseline for the mockup. |
 
 **When to use it:**
+- A proposal introduces new screens — run `/design-system` to establish tokens, `/catalog-screens` to describe the screens, then `/mockups` sourcing "From screen catalog"
 - An enhancement or proposal changes existing UI — run `/catalog-screens` first to establish the as-built baseline, then `/mockups` to design the changes
-- A proposal introduces new screens — run `/mockups` directly to design them
 - A bug report involves a screen — `/mockups` can visualize the current vs expected state
 
 **When to skip it:** For backend-only changes, API work, CLI tools, or features with no UI component.
@@ -274,12 +309,20 @@ Both commands are fully interactive, asking questions via prompts to guide you t
 
 **What it creates:**
 ```
-Mockups/{Name}/
-  ├── Specs/              ← Screen specs (from /catalog-screens)
-  ├── AsciiScreens/       ← Text mockups (from /mockups)
-  ├── Screens/            ← Interactive diagrams (from /mockups)
-  └── README.md           ← Auto-generated index
+Mockups/
+  ├── screen-catalog.json     ← Screen registry, shared across all sets
+  ├── NAVIGATION.md           ← Auto-generated navigation graph
+  └── {Name}/
+      ├── Specs/              ← Screen specs (from /catalog-screens)
+      ├── AsciiScreens/       ← Text mockups (from /mockups)
+      ├── Screens/            ← HTML and drawio.svg mockups (from /mockups)
+      ├── AC/                 ← Acceptance criteria JSON (when #NN was passed)
+      └── README.md           ← Auto-generated index
 ```
+
+`screen-catalog.json` and `NAVIGATION.md` live at the `Mockups/` root, not inside a set — they span every mockup set in the project.
+
+**Writeback and commit:** When you pass `#NN`, `/mockups` appends a `## Mockups` section listing the created files back to the proposal document, or to the enhancement or bug issue body. Before finishing it asks whether the mockups are satisfactory, then offers to stage and commit `Mockups/{Name}/` with a `Refs #NN` message.
 
 **Next step:** Promote to PRD with `/create-prd #42`. The screen specs and mockups provide concrete UI detail that enriches the PRD's acceptance criteria and test plan.
 
@@ -545,8 +588,9 @@ Here's a complete example of building a feature from idea to release:
 3.  /review-proposal #10                  ← Evaluate quality
 4.  /resolve-review #10                   ← Fix any concerns
 5.  /paths #10                            ← Discover scenarios (optional)
-5b. /catalog-screens                      ← Catalog existing UI (optional, UI projects)
-5c. /mockups #10                          ← Design screen mockups (optional, UI projects)
+5b. /design-system                        ← Establish design tokens (optional, UI projects)
+5c. /catalog-screens                      ← Create or discover screen specs (optional, UI projects)
+5d. /mockups #10                          ← Design screen mockups (optional, UI projects)
 6.  /create-prd #10                       ← Generate requirements + test plan
 7.  /review-test-plan #16                 ← Review test plan (exposes PRD gaps)
 8.  Close #16                             ← Approve test plan (check boxes + done)
@@ -699,8 +743,9 @@ This prevents issues from closing before they're truly complete.
 | Review | `/review-issue #N` | Evaluate issue quality |
 | Fix | `/resolve-review #N` | Apply review findings |
 | Path Analysis | `/paths #N` | Collaborative scenario discovery (optional) |
-| UI Discovery | `/catalog-screens` | Catalog screen elements from source code (optional) |
-| UI Mockups | `/mockups #N` | Create text or diagram mockups (optional) |
+| Design Tokens | `/design-system` | Define or extract DTCG design tokens (optional) |
+| UI Discovery | `/catalog-screens` | Create screen specs, manually or discovered from source (optional) |
+| UI Mockups | `/mockups #N` | Create HTML, ASCII, or drawio.svg mockups (optional) |
 | Requirements | `/create-prd #N` | Transform proposal into PRD |
 | Backlog | `/create-backlog #N` | Create epics + stories from PRD |
 | Branch | `/create-branch name` | Create branch + tracker |
