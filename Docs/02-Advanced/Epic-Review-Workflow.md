@@ -42,6 +42,42 @@ Placeholder detection treats sections as missing if body is under 20 characters 
 
 ---
 
+## Review Is Now Load-Bearing for `/work`
+
+Before this release, running `/review-issue` on an epic was advisory — nothing downstream checked whether it had happened. `/work` now classifies each issue's review state before the first acceptance criterion is worked, and again independently for **each sub-issue** as its turn begins:
+
+| Review state | Single interactive issue | Epic, branch tracker, or batch | `--nonstop` |
+|---|---|---|---|
+| Never reviewed | Stops and offers `/review-issue #N` | Warns and proceeds | Warns and proceeds |
+| Reviewed, findings unresolved | Stops and offers `/resolve-review #N` | Stops and offers `/resolve-review #N` | **Halts** |
+| Reviewed clean | Proceeds | Proceeds | Proceeds |
+| Indeterminate | Proceeds | Proceeds | Proceeds |
+
+Two asymmetries are deliberate. **Never-reviewed only warns on epics** because that is the normal state of sub-issues `/create-backlog` has just created — halting on it would stop nearly every epic run on its first sub-issue. **Unresolved findings halt under `--nonstop`** because working an issue whose criteria a reviewer already flagged is the same class of problem as a failing test, which `--nonstop` also halts on.
+
+The gate reads signals the review subsystem already writes — the `reviewed` / `pending` labels and the `**Reviews:** N` body marker this cascade produces. There is no separate state to maintain. Declining the offer changes nothing: no label, no status move, no body edit. Review stays advisory; the gate only makes its absence visible at the one moment it is still cheap to fix.
+
+An unreadable body, a contradictory `reviewed`+`pending` pair, or a `gh` outage all classify as *indeterminate*, and the gate proceeds. That is a deliberate fail-open — blocking would let an outage stop all work, and prompting on issues the classifier cannot read would train you to dismiss the gate.
+
+---
+
+## Proposed Work Order (`--nonstop` epics and branch trackers)
+
+Under `--nonstop`, `/work` derives a sub-issue order from declared scope and reports it against the current one before the first sub-issue is worked:
+
+```
+Proposed work order for #2587:
+  current:  #901 → #902
+  proposed: #902 → #901
+  #902 creates declared scope src/order-helper.js that #901 also declares — provider should precede consumer
+```
+
+If the orders differ you are asked to accept or keep the current one. **Accepting persists the order** into the tracker body's `**Processing Order:**` section, so it survives compaction and later runs; declining writes nothing.
+
+It proposes rather than applies because the derivation is deterministic but knowably incomplete — measured across a real epic it surfaced one of two genuine declared-scope collisions and reported 21 boilerplate shared-criteria matches. Since `--nonstop` removes the per-sub-issue stop where you would otherwise catch a bad order, a silent reorder would trade a knowably-wrong order for an unaccountably-wrong one, unattended.
+
+---
+
 ## Implicit vs Explicit Dependencies
 
 A common pattern in PRD-derived backlogs: the PRD's sequential story numbering (e.g., 1.1-1.7) implies an implementation order, but the GitHub issues don't formally encode this with `Blocks`/`Blocked by` relationships.

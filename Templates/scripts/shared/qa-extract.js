@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -36,6 +36,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
+const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 
 const CONFIG_PATH = path.join(__dirname, 'lib', 'qa-config.json');
 
@@ -68,12 +69,13 @@ function loadConfig(configPath = CONFIG_PATH) {
  */
 function extractUncheckedAcs(body) {
   if (!body) return [];
-  const acs = [];
-  for (const line of body.split('\n')) {
-    const m = line.match(/^\s*- \[ \] (.+)$/);
-    if (m) acs.push(m[1].trim());
-  }
-  return acs;
+  // #2600: reads through the shared fence-aware scanner. This path WRITES TO
+  // GITHUB — a fenced `- [ ]` here did not inflate a number, it filed a real QA
+  // sub-issue for a line that was never a criterion, leaving a durable artifact
+  // someone has to find and close.
+  return scanCheckboxes(body)
+    .filter((box) => !box.checked)
+    .map((box) => box.text);
 }
 
 /**

@@ -7,6 +7,7 @@ Add a new story to an epic with charter compliance validation and automatic test
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `[epic-number]` | No | Parent epic issue number (e.g., `42` or `#42`). Prompts with a list of open epics if not provided. |
+| `--assignee <value>` | No | GitHub login to assign the new story to. Omitted → `@me`. |
 
 ## Usage
 
@@ -25,6 +26,7 @@ Add a new story to an epic with charter compliance validation and automatic test
 - If the epic belongs to a PRD, automatically updates the PRD tracker issue and the PRD document file with the new story.
 - Optionally suggests and installs relevant skills based on technologies mentioned in the story.
 - Links the new story to its parent epic as a sub-issue.
+- On completion, reports the next steps in order: review the story (`/review-issue #N`), assign it to a branch (`/assign-branch #N`), work it, then check epic progress. Review and branch assignment now precede work in that sequence.
 
 ## Acceptance Criteria Feasibility Gate
 

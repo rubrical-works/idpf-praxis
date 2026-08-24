@@ -1,11 +1,12 @@
 # Session Startup Instructions
-**Version:** v0.96.2
+**Version:** v0.97.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
-`.claude/hooks/startup-hook.js` runs startup deterministically: gathers session info, runs four checks (upgrade, statusline, config-integrity, branch-sync) in parallel on a staged 15s/30s/45s/60s ladder, emits the **Session Initialized** block to:
+`.claude/hooks/startup-hook.js` runs startup deterministically: gathers session info, runs six checks (upgrade, statusline, config-integrity, branch-sync, dependency, task-tools) in parallel on a staged 15s/30s/45s/60s ladder, emits the **Session Initialized** block to:
 - **stderr** — colored copy for debug/transcript inspection. **Not** auto-surfaced in the Claude Code UI (hook exits 0; upstream docs cover stderr only for exit 2 — do not rely on it). Claude's echo is the only channel reaching the user.
 - **`additionalContext`** — plain text in Claude's context: the block plus a verbatim-echo instruction, and post-hook actions (charter read + summary when active, domain specialist load, `/charter` if pending). The charter summary **is** a post-hook content read: when `charterStatus` is `Active`, Claude reads `CHARTER.md` after echoing the block and emits a concise prose summary. The block carries only the `Charter Status:` line (#2484 reversed #2475's precomputed `Charter Vision:`/`Charter Focus:` lines, clipped at 200 chars).
+**Five of six run unconditionally; `upgrade` does not.** Registered only when `framework-config.json` `selfHosted` is not `true` — self-hosted runs five checks, a deployed project six. Condition is on **registration**, not output: a skipped check contributes **no row** to the block, not an empty or "skipped" one. Row count alone cannot distinguish skipped from failed-to-run — check `selfHosted` before concluding a check broke.
 ## Branch Sync Offer
 `behind` makes `additionalContext` carry an **offer**, not just a status line — `06-runtime-triggers.md` *offer, don't force*: the hook asks, never mutates.
 | Sync state | Post-hook action |

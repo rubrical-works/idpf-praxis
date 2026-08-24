@@ -1,5 +1,5 @@
 ---
-version: "v0.96.2"
+version: "v0.97.0"
 description: Resolve review findings for an issue (project)
 argument-hint: "#issue"
 copyright: "Rubrical Works (c) 2026"
@@ -86,7 +86,7 @@ Report:
 ```
 If user declined all: `"No changes made. Review findings remain unresolved."` → **STOP**
 
-**Post-Complete Cleanup:** After emitting the closing report, clear the task list (mirrors `/work`'s Post-STOP Cleanup). Clear BOTH `/resolve-review` tasks AND the transient re-review tasks created by the nested `Skill("review-issue")` call — all transient resolution-cycle state, not user work. Without this, the next command inherits stale tasks plus re-review's preamble/evaluate/finalize/closing tasks, and compaction recovery misreads them as incomplete work.
+**Post-Complete Cleanup:** After emitting the closing report, clear the task list (mirrors `/work`'s Post-STOP Cleanup). Clear BOTH `/resolve-review` tasks AND the transient re-review tasks created by the nested `Skill("review-issue")` call — all transient resolution-cycle state, not user work. Without this, the next command inherits stale tasks plus re-review's preamble/evaluate/finalize/closing tasks, and compaction recovery misreads them as incomplete work. **The child now cleans up after itself (#2610):** `/review-issue` prunes its own tasks unconditionally, so this sweep of re-review tasks is redundancy rather than the sole mechanism. Keep it — already-deleted deletes as a no-op, and it covers paths where the child exits early. The `/resolve-review` tasks have no other owner.
 ---
 ## Error Handling
 | Situation | Response |

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Parse git commits since the last semver tag and categorize by conventional commit type (feat, fix, chore, etc.). Extracts type, scope, breaking change flags, and issue references. Used by /prepare-release and piped into generate-changelog.js.
  * @checksum sha256:placeholder
  *
@@ -14,6 +14,10 @@
 const { execTimed: execSync, execFileTimed: execFileSync } = require('./lib/exec.js');
 const { classifyCommit } = require('./lib/deployment-scope');
 const { validateTag } = require('./lib/input-validation');
+// #2603: the single maintained conventional-commit parser. This file used to
+// carry its own copy, which drifted from the lib version in four ways and
+// silently undercounted every one of them at the release version gate.
+const { parseConventionalCommit } = require('./lib/git.js');
 
 /**
  * Build validated `git log` array-args for the commit range since lastTag.
@@ -26,22 +30,6 @@ const { validateTag } = require('./lib/input-validation');
 function buildLogArgs(lastTag) {
   const safeTag = validateTag(lastTag);
   return ['log', `${safeTag}..HEAD`, '--pretty=format:%H|%s'];
-}
-
-function parseConventionalCommit(message) {
-    // Split into two patterns to avoid nested quantifiers flagged by safe-regex
-    const withScope = message.match(/^(\w+)\(([\w-]+)\)(!)?: (.+)/);
-    if (withScope) {
-        const [, type, scope, bang, msg] = withScope;
-        return { type, scope, message: msg, breaking: !!bang || message.includes('BREAKING CHANGE') };
-    }
-    const withoutScope = message.match(/^(\w+)(!)?: (.+)/);
-    if (!withoutScope) {
-        return { type: 'other', scope: null, message, breaking: false };
-    }
-    const [, type, bang, msg] = withoutScope;
-    const breaking = !!bang || message.includes('BREAKING CHANGE');
-    return { type, scope: null, message: msg, breaking };
 }
 
 async function main() {
@@ -118,4 +106,6 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { buildLogArgs };
+// main is exported so the summary path is testable end-to-end (#2603); the
+// require.main guard above still keeps a plain require() from running it.
+module.exports = { buildLogArgs, main };

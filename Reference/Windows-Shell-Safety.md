@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.96.2
+**Version:** v0.97.0
 **Source:** Reference/Windows-Shell-Safety.md
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
@@ -185,7 +185,8 @@ rm -rf out
 rm -rf dist
 ```
 **Symlinked Directories and Glob:** Glob does NOT follow symlinks. Files inside symlinked directories are invisible to Glob.
-**Affected dirs in user projects:** `.claude/metadata/`, `.claude/rules/`, `.claude/scripts/shared/`, `.claude/skills/` -- symlinked to hub.
+**Affected dirs in user projects:** `.claude/metadata/`, `.claude/rules/`, `.claude/hooks/`, `.claude/recipes/`, `.claude/scripts/shared/` -- symlinked to hub.
+**Not affected:** `.claude/skills/`, `.claude/commands/`, `.claude/extensions/` are **copied**, not symlinked -- real dirs, Glob works. See `Reference/Deployment-Awareness.md`.
 **Rules:**
 1. **Known paths -> Read tool directly.** Do NOT use Glob to check existence first.
 2. **Discovery in symlinked dirs -> Bash `ls`.** Use `ls .claude/metadata/` instead of Glob.

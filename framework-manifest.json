@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.96.2",
+  "version": "0.97.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -10,6 +10,7 @@
   "runtimeNpmDependencies": {
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
+    "serve": "^14.2.6",
     "yaml": "^2.8.3"
   },
   "domainSpecialists": [
@@ -274,6 +275,7 @@
           "review-finalize.js",
           "review-interdependence.js",
           "review-ac-checkoff.js",
+          "review-state.js",
           "paths-preamble.js",
           "resolve-preamble.js",
           "reset-issue-preamble.js",
@@ -282,6 +284,7 @@
           "branch-sync-check.js",
           "config-integrity-check.js",
           "dependency-check.js",
+          "task-tools-check.js",
           "mockup-detect-framework.js",
           "mockup-element-extractor.js",
           "mockup-ac-generator.js",
@@ -306,6 +309,7 @@
         "files": [
           "active-label.js",
           "bulk-discover-screens.js",
+          "checkbox-scan.js",
           "classify-changed-files.js",
           "code-review-manifest-schema.json",
           "debug.js",
@@ -747,6 +751,16 @@
           "name": "screen-kinds-schema",
           "source": ".claude/metadata/screen-kinds.schema.json",
           "description": "JSON Schema for screen-kinds.json (#2355)"
+        },
+        {
+          "name": "commit-checkpoint-signals",
+          "source": ".claude/metadata/commit-checkpoint-signals.json",
+          "description": "Thresholds and prompt contract for the mid-AC commit checkpoint in /work Step 3 (#2557)"
+        },
+        {
+          "name": "commit-checkpoint-signals-schema",
+          "source": ".claude/metadata/commit-checkpoint-signals-schema.json",
+          "description": "JSON schema (Draft 2020-12) for commit-checkpoint-signals.json (#2557)"
         }
       ]
     }

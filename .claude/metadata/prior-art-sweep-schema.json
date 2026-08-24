@@ -31,9 +31,11 @@
       "properties": {
         "projectRoots": {
           "type": "array",
-          "description": "Candidate source roots, in priority order. Generic across project shapes because this file is read verbatim from the hub by projects with no framework layout.",
+          "description": "Candidate source roots, in priority order. Generic across project shapes because this file is read verbatim from the hub by projects with no framework layout. An entry is either a literal directory name (`src`) or a glob pattern whose FIRST path segment contains a wildcard (`*/src`, `pkg-*/docs`). Patterns exist so multi-root and monorepo layouts, whose code sits one level down, resolve a surface at all instead of PARTIAL-ing every sweep (#2555). Depth is bounded to two segments with the wildcard confined to the first: `*/src` is expanded, `*/*/src` and `src/*` are not, and an out-of-bound pattern is reported in `skipped` rather than silently ignored. Literal entries resolve exactly as they always have.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "description": "A literal directory name, or a single-level glob (wildcard in the first of exactly two segments)."
           },
           "minItems": 1
         },

@@ -1,5 +1,5 @@
 ---
-version: "v0.96.2"
+version: "v0.97.0"
 description: Start working on issues with validation and auto-task extraction (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -32,9 +32,18 @@ Follow `.claude/rules/08-work-execution.md` (auto-loaded at session start). That
 - Phase 1 / Phase 2 task creation
 - Step 1: preamble via `work-preamble.js`
 - Steps 1a, 1b, 2, 2a, 3, 3b, 4, 4a, 4b, 4c, 5, 6, 6a
-- Pre-Agent / Sub-Agent / Commit-per-AC gates
+- Review-State / Pre-Work Status / Sub-Agent / Commit-per-AC gates
 - Autonomous epic & branch tracker processing (default vs. `--nonstop`)
 - STOP boundary and post-STOP cleanup
+
+---
+## Review-State Gate
+Before the first acceptance criterion of an issue is worked — and independently for each sub-issue of an epic or branch tracker — `/work` classifies that issue's review state via `review-state.js` and acts:
+- **Never reviewed** → STOP, offer `/review-issue #N`. Batch, epic, branch tracker, `--nonstop`: warn and proceed.
+- **Reviewed, findings unresolved** → STOP, offer `/resolve-review #N`. `--nonstop` **halts on `findings-pending`** per its existing failure semantics.
+- **Reviewed clean, or indeterminate** → proceed without prompting.
+
+**Declining proceeds to work unchanged** — the gate mutates nothing on decline: no label change, no status move, no body edit. Review stays advisory; the gate only makes its absence visible at the one moment it is still free to fix. Full state matrix and rationale: `.claude/rules/08-work-execution.md` Step 3.
 
 ---
 ## Error Handling

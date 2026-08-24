@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  *
  * Zero-dependency static file server for /mockups --serve (#2377).
  *
@@ -27,7 +27,11 @@ const fs = require('fs');
 const path = require('path');
 const lib = require('./lib/local-server.js');
 // Shared request-safety primitives (#2468) — one implementation, both servers.
-const { resolveSafe, isLoopbackHost } = lib;
+// decodePathname is the same guarded percent-decode resolveSafe runs; the
+// directory listing (#2590) needs the URL form to build hrefs, and decoding
+// privately here would put an unguarded decode back in a request handler —
+// the exact divergence local-server-call-sites.test.js exists to catch.
+const { resolveSafe, decodePathname, isLoopbackHost } = lib;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -49,6 +53,110 @@ function contentTypeFor(filePath) {
   return MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
 }
 
+function sendFile(filePath, res) {
+  res.statusCode = 200;
+  res.setHeader('Content-Type', contentTypeFor(filePath));
+  fs.createReadStream(filePath).pipe(res);
+}
+
+function sendNotFound(what, res) {
+  res.statusCode = 404;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.end('404 Not Found: ' + what);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Render a directory listing.
+ *
+ * hrefs are absolute (rooted at the served root), not relative: a request for
+ * `/Card-Groups` and one for `/Card-Groups/` must produce the same working
+ * links, and relative hrefs resolve differently between the two. Absolute
+ * hrefs make the trailing slash irrelevant instead of requiring a redirect.
+ *
+ * Only `urlDir` and entry names are rendered — never the filesystem path, which
+ * would leak the served root's location into every listing.
+ */
+function renderListing(urlDir, entries) {
+  const sorted = entries.slice().sort((a, b) => {
+    const ad = a.isDirectory() ? 0 : 1;
+    const bd = b.isDirectory() ? 0 : 1;
+    if (ad !== bd) return ad - bd;
+    return a.name.localeCompare(b.name);
+  });
+
+  const items = sorted.map((entry) => {
+    const isDir = entry.isDirectory();
+    const href = urlDir + encodeURIComponent(entry.name) + (isDir ? '/' : '');
+    const label = entry.name + (isDir ? '/' : '');
+    return `    <li><a href="${escapeHtml(href)}">${escapeHtml(label)}</a></li>`;
+  });
+
+  // Root has no parent to offer; anywhere else, strip the last segment.
+  const parent = urlDir === '/'
+    ? null
+    : urlDir.slice(0, urlDir.lastIndexOf('/', urlDir.length - 2) + 1);
+  if (parent) items.unshift(`    <li><a href="${escapeHtml(parent)}">../</a></li>`);
+
+  const heading = escapeHtml(urlDir);
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '  <meta charset="utf-8">',
+    `  <title>Mockups: ${heading}</title>`,
+    '  <style>',
+    '    body { font-family: system-ui, sans-serif; margin: 2rem; }',
+    '    ul { list-style: none; padding: 0; }',
+    '    li { padding: 0.15rem 0; }',
+    '  </style>',
+    '</head>',
+    '<body>',
+    `  <h1>${heading}</h1>`,
+    '  <ul>',
+    items.join('\n'),
+    '  </ul>',
+    '</body>',
+    '</html>',
+    '',
+  ].join('\n');
+}
+
+/**
+ * Serve a directory: its index.html when present, otherwise a generated listing.
+ *
+ * index-first keeps the pre-#2590 contract intact — resolveSafe maps `/` to
+ * `/index.html`, and a tree that ships one still gets it.
+ */
+function serveDirectory(dirAbs, pathname, res) {
+  const urlDir = pathname.endsWith('/') ? pathname : pathname + '/';
+  const indexPath = path.join(dirAbs, 'index.html');
+
+  fs.stat(indexPath, (indexErr, indexStat) => {
+    if (!indexErr && indexStat.isFile()) {
+      sendFile(indexPath, res);
+      return;
+    }
+    fs.readdir(dirAbs, { withFileTypes: true }, (readErr, entries) => {
+      if (readErr) {
+        sendNotFound(urlDir, res);
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(renderListing(urlDir, entries));
+    });
+  });
+}
+
 function handleRequest(root, req, res) {
   // DNS-rebinding defence (#2468): without this, a malicious page resolving to
   // 127.0.0.1 becomes same-origin and can read arbitrary files from the served
@@ -60,22 +168,32 @@ function handleRequest(root, req, res) {
     res.end('403 Forbidden: non-loopback Host');
     return;
   }
-  const filePath = resolveSafe(root, req.url || '/');
+  const rawUrl = req.url || '/';
+  const filePath = resolveSafe(root, rawUrl);
   if (!filePath) {
     res.statusCode = 400;
     res.end('400 Bad Request');
     return;
   }
+  const pathname = decodePathname(rawUrl);
   fs.stat(filePath, (err, stat) => {
-    if (err || !stat.isFile()) {
-      res.statusCode = 404;
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.end('404 Not Found: ' + (req.url || '/'));
+    if (!err && stat.isFile()) {
+      sendFile(filePath, res);
       return;
     }
-    res.statusCode = 200;
-    res.setHeader('Content-Type', contentTypeFor(filePath));
-    fs.createReadStream(filePath).pipe(res);
+    if (!err && stat.isDirectory()) {
+      serveDirectory(filePath, pathname, res);
+      return;
+    }
+    // The root is the one path resolveSafe rewrites (`/` -> `/index.html`), so
+    // a missing root index arrives here as ENOENT on a file that was never
+    // requested. Before #2590 that returned 404 — the reported bug, since
+    // /mockups writes README.md and never an index.html.
+    if (pathname === '/') {
+      serveDirectory(path.resolve(root), '/', res);
+      return;
+    }
+    sendNotFound(rawUrl, res);
   });
 }
 

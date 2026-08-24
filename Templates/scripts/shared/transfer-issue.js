@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Transfer an issue between branches or remove it from branch assignment. Validates source and target branches, updates gh pmu branch field, and reports the transfer. Used by /transfer-issue command.
  * @checksum sha256:placeholder
  *
@@ -138,4 +138,13 @@ function main() {
     console.log(`  /transfer-issue #${issueNumber} --remove-branch`);
 }
 
-main();
+// #2615: guarded so requiring this module does not perform or print
+// issue-transfer work.
+if (require.main === module) {
+    main();
+}
+
+module.exports = {
+    getIssueDetails,
+    getOpenBranches
+};

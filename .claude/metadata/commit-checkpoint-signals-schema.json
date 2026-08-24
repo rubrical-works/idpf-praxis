@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "commit-checkpoint-signals-schema.json",
+  "title": "Commit Checkpoint Signals",
+  "description": "Contract for the mid-AC commit checkpoint in /work Step 3 (#2557). The checkpoint fires DURING an acceptance criterion, independent of the commit-per-deliverable gate, which only has a trigger at AC boundaries.",
+  "type": "object",
+  "required": ["version", "checkpoint", "distinctFromNonstopAudit"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": {
+      "type": "object",
+      "description": "Provenance. Not read at runtime.",
+      "additionalProperties": true
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": ["id", "description", "appliesTo", "blocking", "onDecline", "trigger", "prompt", "reset"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "appliesTo": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Run shapes the checkpoint applies to. MUST include 'standard': the motivating incident was a standard single-issue /work run, which nonstop-audit.js does not cover.",
+          "items": { "enum": ["standard", "batch", "epic", "branch", "nonstop"] },
+          "contains": { "const": "standard" }
+        },
+        "blocking": {
+          "const": false,
+          "description": "Always false. Per 06-runtime-triggers.md 'offer, don't force' — a hard gate mid-investigation would interrupt exactly the flow it protects."
+        },
+        "onDecline": { "type": "string", "minLength": 1 },
+        "trigger": {
+          "type": "object",
+          "required": ["measurement", "combinator", "thresholds"],
+          "additionalProperties": false,
+          "properties": {
+            "measurement": {
+              "type": "string",
+              "description": "The mechanical source of the signal. Must be something /work can already run — the checkpoint adds no new instrumentation."
+            },
+            "combinator": {
+              "enum": ["any", "all"],
+              "description": "'any' = either threshold crossing arms the prompt."
+            },
+            "thresholds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["metric", "comparison", "value", "rationale"],
+                "additionalProperties": false,
+                "properties": {
+                  "metric": { "enum": ["changedFiles", "insertions", "deletions"] },
+                  "comparison": { "const": "gte" },
+                  "value": { "type": "integer", "minimum": 1 },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Why this number. Required: these values ship to every project, so a future tuner needs the reasoning, not just the digit."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "prompt": {
+          "type": "object",
+          "required": ["namesMilestone", "text", "why"],
+          "additionalProperties": false,
+          "properties": {
+            "namesMilestone": {
+              "const": true,
+              "description": "Always true. The delta decides when to ask; the answer supplies what the commit message says. A trigger without the naming half leaves the bad-attribution half of the incident unaddressed."
+            },
+            "text": { "type": "string", "minLength": 1 },
+            "why": { "type": "string", "minLength": 1 }
+          }
+        },
+        "reset": { "type": "string", "minLength": 1 }
+      }
+    },
+    "distinctFromNonstopAudit": {
+      "type": "object",
+      "description": "Why this threshold and nonstop-audit.js audit (1) differ. Recorded rather than reconciled: they measure incompatible units (#2557 AC5).",
+      "required": ["reconcilable", "thisMeasures", "auditMeasures", "auditSource", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "reconcilable": {
+          "const": false,
+          "description": "Always false. Volume-within-an-AC and commits-per-AC are different units; no single number satisfies both."
+        },
+        "thisMeasures": { "type": "string", "minLength": 1 },
+        "auditMeasures": { "type": "string", "minLength": 1 },
+        "auditSource": { "type": "string", "minLength": 1 },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

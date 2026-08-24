@@ -193,6 +193,8 @@ These checks could be automated in a pre-merge or CI step:
 
 7. **The anti-hallucination rules already cover this** — "NEVER assume CHANGELOG is complete without verifying against commits" generalizes to "NEVER assume stories are complete without verifying against diffs." The model didn't follow its own rules.
 8. **STOP boundaries help.** If each story had been implemented in its own `/work` → `/done` cycle with STOP boundaries between them, the shortcut would have been caught at the per-story review gate.
+9. **The mid-AC commit checkpoint closes the window this incident used.** The commit-per-deliverable rule only fires at acceptance-criterion boundaries, so a long investigative stretch — source reading, repeated build-and-verify cycles, design pivots — can run for many turns with nothing prompting a commit, until a later commit sweeps all of it up under a message naming the wrong issue. `/work` now measures the uncommitted delta during an AC and, once it crosses a declared threshold, asks you to name the verified milestone reached and commit it. Naming the milestone is half the mechanism: the size of the delta decides *when* to ask, and the answer supplies *what the message says*. A trigger on volume alone would fix the uncommitted-work half and leave the misattribution untouched — which is the half this incident turned on.
+10. **Commit attribution is load-bearing infrastructure, not bookkeeping.** Three separate gates key off the set of commits carrying `Refs #N` — the scope-drift check, the changed-files log written back to the issue, and the post-run commit-density audit. One misattributed commit degrades all three at once, and each degrades quietly: a gate that inspects the wrong commit set reports clean.
 
 ---
 

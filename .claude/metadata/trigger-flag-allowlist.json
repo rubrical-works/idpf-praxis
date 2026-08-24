@@ -3,8 +3,8 @@
   "version": 1,
   "commands": {
     "/review-issue": ["--with", "--mode", "--force"],
-    "/bug": [],
-    "/enhancement": [],
-    "/proposal": []
+    "/bug": ["--assignee"],
+    "/enhancement": ["--assignee"],
+    "/proposal": ["--assignee"]
   }
 }

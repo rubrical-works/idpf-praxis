@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -298,6 +298,25 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       // a transient condition, not an identity assertion like config-integrity,
       // and a ✅ line on every session is noise in the overwhelmingly common case.
     }
+    if (r.name === 'task-tools') {
+      const tools = r.parsed?.data;
+      // The remedy is carried in full on the row itself. This is the one line
+      // the user may ever see about the condition — the offer below reaches
+      // Claude, but a row pointing at a fix without naming it leaves a reader
+      // who ignores the prompt with nothing to act on.
+      if (tools?.state === 'disabled') {
+        lines.push(`- Task Tools: ${e('⚠️ Not enabled locally — /work step tracking degrades to an inline checklist and compaction recovery is not guaranteed. To enable, add CLAUDE_CODE_ENABLE_TODO_TOOLS=true to ~/.claude/settings.json env, then relaunch.')}`);
+      } else if (tools?.state === 'remote-gate-only') {
+        // Deliberately not phrased as "unavailable". The remote flag may be on
+        // right now; what the check knows is that nothing local pins it.
+        lines.push(`- Task Tools: ${w('⚠️ No local override — availability rides a remote flag that can change between sessions, and compaction recovery is not guaranteed if it flips off. To pin it on, add CLAUDE_CODE_ENABLE_TODO_TOOLS=true to ~/.claude/settings.json env, then relaunch.')}`);
+      } else if (r.error === 'timeout') {
+        lines.push(`- Task Tools: ${e('⚠️ check timed out')}`);
+      } else if (r.status === 'error') {
+        lines.push(`- Task Tools: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      }
+      // enabled-locally → omit, matching dependency's healthy.
+    }
   }
 
   // Charter status
@@ -324,7 +343,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 
   // Check failures (other than the checks rendered inline above, which already
   // emit their own timeout/error lines — listing one here too double-reports it)
-  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency']);
+  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools']);
   const failedOther = checkResults.filter((r) =>
     r.status === 'error' && !INLINE_RENDERED.has(r.name)
   );
@@ -457,6 +476,38 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
     );
   }
 
+  // Task tools: offer the local override, never write it (#2593).
+  //
+  // Same "offer, don't force" contract as the two offers above. The asymmetry
+  // worth noting is that this one's remedy is a WRITE to the user's own
+  // dotfiles, which is why the write lives behind an explicit --enable
+  // invocation of the check rather than anywhere in the hook: the hook that
+  // detects a condition must not also be the thing that mutates it.
+  const taskTools = checkResults.find((r) => r && r.name === 'task-tools');
+  const tools = taskTools?.parsed?.data;
+
+  if (tools && tools.state !== 'enabled-locally') {
+    if (tools.settingsParse === 'malformed') {
+      // Tolerating a malformed file for DETECTION and rewriting one are
+      // different acts. Rewriting discards whatever the user was midway
+      // through writing, so the safe move is to report and let them fix it.
+      instructions.push(
+        `The task-tool local override is not set, and \`~/.claude/settings.json\` exists but does not parse as JSON. Report that and make no offer to change it — rewriting a file in that state would discard whatever the user was midway through writing. Leave the file untouched.`
+      );
+    } else {
+      // Phrasing constraint: never assert the tools are unavailable. The check
+      // cannot know that — `remote-gate-only` means the remote flag may well be
+      // on right now, and a confident wrong claim here is worse than no line.
+      const stake = tools.state === 'remote-gate-only'
+        ? 'Nothing local pins the task tools on: their availability rides a remote flag that can flip between sessions with no local change, and if it flips off, `/work` step tracking degrades to an inline checklist and the TaskList-based compaction-recovery guarantee stops holding'
+        : 'Nothing local pins the task tools on, so `/work` step tracking may be degrading to an inline checklist and the TaskList-based compaction-recovery guarantee may not be holding';
+
+      instructions.push(
+        `${stake}. Offer to set the override: ask via \`AskUserQuestion\` with enabling recommended and leaving it off as the alternative, and on acceptance run \`node .claude/scripts/shared/task-tools-check.js --enable\` and report the result. Say plainly that the change takes effect on relaunch and does not repair the current session. Declining writes no file and records nothing durable — the offer recurs next session. Do not run the enable command without asking.`
+      );
+    }
+  }
+
   // Charter pending instruction goes LAST so the user sees the full block first.
   if (info.charterStatus !== 'Active') {
     instructions.push('Charter is missing or template — invoke /charter as the FINAL action of startup, after displaying the Session Initialized block.');
@@ -501,6 +552,7 @@ async function main() {
   checks.push({ name: 'config-integrity', script: '.claude/scripts/shared/config-integrity-check.js' });
   checks.push({ name: 'branch-sync', script: '.claude/scripts/shared/branch-sync-check.js' });
   checks.push({ name: 'dependency', script: '.claude/scripts/shared/dependency-check.js' });
+  checks.push({ name: 'task-tools', script: '.claude/scripts/shared/task-tools-check.js' });
 
   // Filter to existing scripts (graceful degradation)
   const validChecks = checks.filter((c) => fs.existsSync(path.join(cwd, c.script)));

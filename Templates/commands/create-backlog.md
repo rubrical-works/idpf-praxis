@@ -1,5 +1,5 @@
 ---
-version: "v0.96.2"
+version: "v0.97.0"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -12,11 +12,14 @@ Create GitHub epics and stories from an approved PRD with embedded TDD test case
 
 ## Arguments
 
-`<prd-issue-number>` — PRD tracking issue (`151` or `#151`).
+| Argument | Description |
+|----------|-------------|
+| `<prd-issue-number>` | PRD tracking issue (`151` or `#151`). |
+| `--assignee <value>` | GitHub login for created stories. Omitted → `@me`. |
 
 ## Execution
 
-Use `TaskCreate` to create tasks from phases below; mark `in_progress` → `completed`. Phases: 1 fetch/validate → 1c PRD review gate → 2 test plan approval gate → 3 parse PRD → 4 load test cases → 5 epics → 6 stories → 7 update PRD status.
+Use `TaskCreate` to create tasks from phases below; mark `in_progress` → `completed`. Phases: 1 fetch/validate → 1c PRD review gate → 2 test plan approval gate → 3 parse PRD → 4 load test cases → 5 epics → 6 stories → 7 update PRD status. On completion, prune every task this invocation created — see Output Summary and Cleanup part (2); unconditional, since the Phase 1c review gate and Phase 2 approval gate both exit early.
 
 ## Prerequisites
 
@@ -186,8 +189,10 @@ For each story:
 
 ```bash
 gh pmu create --title "Story: {Story Title}" --label "story" --status backlog \
-  --priority {prd_priority} -F .tmp-story-body.md
+  --priority {prd_priority} --assignee {assignee} -F .tmp-story-body.md
 ```
+
+**Assignee:** substitute `{assignee}` from `node .claude/scripts/shared/lib/gh-pmu-config.js --assignee <value>` — pass the user's `--assignee` value, omit when none given. Helper returns that login, else `@me`; reads no config file. NEVER hardcode a login or drop the flag (omitted `--assignee` silently creates an unassigned issue). Unresolvable login → `gh pmu` exits 1 and creates nothing; report the error, do NOT retry without the flag. Stories here previously passed no `--assignee` at all and arrived unassigned.
 
 **Priority rule:** Story = PRD-specified priority; PRD default if none.
 
@@ -297,8 +302,9 @@ gh issue comment $issue_num --body "## Backlog Created
 
 PRD remains open until `/complete-prd` verifies all stories Done.
 
-## Output Summary
-
+## Output Summary and Cleanup
+Two parts in order; the prune is **part of** this step, not a trailing step a reader can stop before.
+**(1) Emit the output summary:**
 ```
 Backlog created from PRD: PRD/{name}/PRD-{name}.md
 
@@ -318,6 +324,7 @@ Next steps:
 1. Assign issues to branch: /assign-branch #epic #story... branch/name
 2. Start work: work #{story}
 ```
+**(2) Prune the task list** (unconditional — every path, including the Phase 1c review-gate and Phase 2 approval-gate early-exit paths, where those tasks were created up front and the later phases never ran): `TaskList` to enumerate, then `TaskUpdate status=deleted` for every task owned by this `/create-backlog` invocation (the `Phase N:` tasks created up front). Do **not** delete tasks created outside this invocation (user TODOs).
 
 ## Error Handling
 

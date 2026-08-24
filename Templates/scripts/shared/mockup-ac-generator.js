@@ -1,9 +1,15 @@
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Extracts acceptance criteria from issue bodies, generates structured
  *   AC JSON files for mockup sets, and handles merge behavior on re-runs.
  *   Used by /mockups command when an issue reference (#NN) is provided.
  */
+
+// #2600: this file was NOT among the six scanners the issue enumerated, but its
+// own @description says it extracts acceptance criteria from issue bodies, so
+// AC6 covers it — "every framework code path", not "the six listed". It was
+// fence-blind like the rest.
+const { extractAcceptanceCriteria: sharedExtractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
 
 /**
  * Extract acceptance criteria checkbox items from an issue body.
@@ -14,44 +20,16 @@
  * @returns {Array<{text: string, checked: boolean}>}
  */
 function extractAC(body) {
-  if (!body) return [];
-
-  const criteria = [];
-  const lines = body.split('\n');
-  let inAC = false;
-
-  for (const line of lines) {
-    // Detect AC section — markdown heading or bold text
-    if (/^(?:#+\s*|\*\*)\s*Acceptance\s*Criteria/i.test(line)) {
-      inAC = true;
-      continue;
-    }
-
-    // End of AC section at next heading (but not another AC heading)
-    if (inAC && /^#+\s/.test(line) && !/acceptance\s*criteria/i.test(line)) {
-      inAC = false;
-      continue;
-    }
-
-    // End of AC section at next bold section header (e.g., **Reviews:** or **Scope:**)
-    if (inAC && /^\*\*[A-Z]/.test(line) && !/acceptance\s*criteria/i.test(line)) {
-      inAC = false;
-      continue;
-    }
-
-    // Parse checkbox items
-    if (inAC) {
-      const match = line.match(/^\s*-\s*\[([ xX])\]\s*(.+)/);
-      if (match) {
-        criteria.push({
-          text: match[2].trim(),
-          checked: match[1].toLowerCase() === 'x'
-        });
-      }
-    }
-  }
-
-  return criteria;
+  // #2616: one section anchor, not three. This file used to accept ANY #+ level
+  // plus any bold line matching "acceptance criteria", and terminate on any line
+  // starting `**` followed by a capital — the last of which was the #2613 defect
+  // (an inline bold lead-in ended the section and returned zero criteria).
+  //
+  // #2613 fixed the terminator by importing isBoldMarker; this completes the
+  // move by delegating the whole anchor. What was a local rule "consumers depend
+  // on" turned out to be depended on by nothing: 0 headings outside the three
+  // shared forms across the measured corpus.
+  return sharedExtractAcceptanceCriteria(body).items;
 }
 
 /**

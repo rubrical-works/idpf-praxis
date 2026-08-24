@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  *
  * Shared 127.0.0.1 server infrastructure used by /mockups --serve (#2377) and
  * /design-system --showcase (#2429, Story 1.1). Provides:
@@ -249,14 +249,19 @@ function attachGracefulShutdown(server, onShutdown) {
  * @param {string} urlPath Raw request path (may contain query/hash/encoding)
  * @returns {string|null} Absolute path inside root, or null if unsafe/undecodable
  */
-function resolveSafe(root, urlPath) {
-  let p;
+function decodePathname(urlPath) {
   try {
-    p = decodeURIComponent(String(urlPath == null ? '' : urlPath).split('?')[0].split('#')[0]);
+    const p = decodeURIComponent(String(urlPath == null ? '' : urlPath).split('?')[0].split('#')[0]);
+    return p === '' ? '/' : p;
   } catch (_e) {
     return null; // malformed percent-encoding — caller should answer 400
   }
-  if (p === '/' || p === '') p = '/index.html';
+}
+
+function resolveSafe(root, urlPath) {
+  let p = decodePathname(urlPath);
+  if (p === null) return null;
+  if (p === '/') p = '/index.html';
 
   const rootAbs = path.resolve(root);
   const resolved = path.resolve(rootAbs, '.' + p);
@@ -314,6 +319,7 @@ module.exports = {
   openBrowserCrossPlatform,
   attachGracefulShutdown,
   resolveSafe,
+  decodePathname,
   isLoopbackHost,
   // exposed for tests / introspection
   DEFAULT_HOST,

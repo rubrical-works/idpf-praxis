@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const { execFileTimedAsync } = require('./lib/exec.js');
+const { extractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
 
 // Every spawn here goes through the timed wrapper (#2469). These are /work's
 // Step 1 critical path — including the `gh pmu move --status in_progress` calls —
@@ -129,6 +130,11 @@ function parseArgs(args) {
   // Detect boolean modifier flags (combinable with any mode)
   const hasAssign = args.includes('--assign');
   const hasWait = args.includes('--wait');
+  // #2622. --nonstop was previously rule-level only. The preamble needs it
+  // because the ordering derivation it gates has to run before the status
+  // transition this script issues — a decision the rule cannot make after the
+  // envelope is already built.
+  const hasNonstop = args.includes('--nonstop');
 
   const issueFlag = findFlag(args, 'issue');
   if (issueFlag) {
@@ -146,6 +152,7 @@ function parseArgs(args) {
     const result = { mode: 'single', issues: [num] };
     if (hasAssign) result.assign = true;
     if (hasWait) result.wait = true;
+    if (hasNonstop) result.nonstop = true;
     return result;
   }
 
@@ -164,6 +171,7 @@ function parseArgs(args) {
     const result = { mode: 'batch', issues: nums };
     if (hasAssign) result.assign = true;
     if (hasWait) result.wait = true;
+    if (hasNonstop) result.nonstop = true;
     return result;
   }
 
@@ -176,6 +184,7 @@ function parseArgs(args) {
     const result = { mode: 'status', status };
     if (hasAssign) result.assign = true;
     if (hasWait) result.wait = true;
+    if (hasNonstop) result.nonstop = true;
     return result;
   }
 
@@ -292,23 +301,71 @@ function isBranchTracker(issueData) {
 // ─── Acceptance Criteria Parsing ───
 
 /**
- * Parse checkbox items from issue body
+ * Parse acceptance criteria from an issue body (#2600).
+ *
+ * Previously a bare `/^- \[([ x])\] (.+)$/gm` over the whole body: no fence
+ * tracking, no section anchor. It returned every checkbox anywhere, including
+ * ones quoted inside code fences and ones belonging to other sections, and
+ * reported `source: 'acceptance_criteria'` for all of them — so a caller could
+ * not tell a real criterion from a quoted example.
+ *
+ * `/work` builds its per-AC subtasks, its commit-per-AC gate and its Step 4
+ * verification from this list, while `gh pmu move --status in_review` validates
+ * the same body correctly. The two silently disagreed, and because `gh pmu` was
+ * the right one the `in_review` transition always succeeded — so nothing ever
+ * surfaced the overcount.
+ *
+ * `sectionFound` is additive: `source` keeps its value, because the /work rule
+ * and two existing suites branch on that literal.
+ *
  * @param {string|null|undefined} body
- * @returns {{ source: string, items: Array<{ text: string, checked: boolean }> }}
+ * @returns {{ source: string, items: Array<{ text: string, checked: boolean }>, sectionFound: boolean }}
  */
 function parseAcceptanceCriteria(body) {
-  const result = { source: 'acceptance_criteria', items: [] };
-  if (!body) return result;
+  const { items, sectionFound } = extractAcceptanceCriteria(body);
+  return { source: 'acceptance_criteria', items, sectionFound };
+}
 
-  const regex = /^- \[([ x])\] (.+)$/gm;
-  let match;
-  while ((match = regex.exec(body)) !== null) {
-    result.items.push({
-      text: match[2].trim(),
-      checked: match[1] === 'x'
-    });
-  }
-  return result;
+/**
+ * Turn an empty acceptance-criteria result into a reportable warning.
+ *
+ * #2600 added `sectionFound` so a caller could tell "this issue has no
+ * acceptance-criteria section" from "it has one that parsed to nothing", and
+ * #2614 is the consumer: nothing read the flag, so the distinction it exists to
+ * draw never reached anyone.
+ *
+ * Why it matters that the two are distinguishable: a silent zero passes every
+ * downstream gate VACUOUSLY. No per-AC subtasks are created, Step 4 has nothing
+ * to verify, Step 4b finds no unchecked boxes, Step 6a's checkbox audit reports
+ * clean. An overcount announces itself; a vacuous pass does not. Naming which
+ * of the two happened makes a failed parse visible at the one moment it is
+ * still cheap to notice — before any criterion is worked.
+ *
+ * Reporting only, never blocking. A proposal issue correctly has no
+ * acceptance-criteria section, so blocking would halt a legitimate and common
+ * case. Same fail-open-but-visible choice /work's Review-State Gate makes for
+ * `indeterminate`.
+ *
+ * Silent for the epic/branch `sub_issues` shape, which carries no
+ * `sectionFound` and must not be described as a missing AC section.
+ *
+ * @param {{source?: string, items?: Array, sectionFound?: boolean}|null} autoTask
+ * @param {number} issueNum
+ * @returns {{code: string, message: string}|null}
+ */
+function buildAcSectionWarning(autoTask, issueNum) {
+  if (!autoTask || autoTask.source !== 'acceptance_criteria') return null;
+  if (Array.isArray(autoTask.items) && autoTask.items.length > 0) return null;
+
+  return autoTask.sectionFound
+    ? {
+        code: 'EMPTY_ACCEPTANCE_CRITERIA_SECTION',
+        message: `Issue #${issueNum} has an acceptance-criteria section, but no criteria were parsed from it. Verify the section before working the issue — an empty list satisfies every downstream AC gate without checking anything.`
+      }
+    : {
+        code: 'NO_ACCEPTANCE_CRITERIA_SECTION',
+        message: `Issue #${issueNum} has no acceptance-criteria section — working as a single unit, no auto-tasks. Expected for a proposal issue; unexpected for a story, bug or enhancement.`
+      };
 }
 
 // ─── Epic Sub-Issue Loading ───
@@ -340,8 +397,18 @@ async function loadSubIssues(issueNum) {
 /**
  * Check statuses of sub-issues and classify as skipped or active.
  * Parallelizes status checks for all sub-issues.
+ *
+ * Active entries carry `body` and `labels` (#2622). `gh pmu sub list` returns
+ * number/title/state only, so before this the ordering decision was made from
+ * issue NUMBERS while the content that should drive it sat in the bodies,
+ * unread. The fields ride along on the status query that already runs once per
+ * sub-issue, so bodies cost zero additional round trips.
+ *
+ * Skipped entries stay `{ number, status }`. They feed a report line rather than
+ * the ordering pass, and two existing suites assert that exact shape.
+ *
  * @param {Array<{ number: number, title: string }>} subIssues
- * @returns {Promise<{ skipped: Array<{ number: number, status: string }>, active: Array<{ number: number, title: string }> }>}
+ * @returns {Promise<{ skipped: Array<{ number: number, status: string }>, active: Array<{ number: number, title: string, body: string, labels: string[] }> }>}
  */
 async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
   const skipped = [];
@@ -369,11 +436,14 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
       Promise.all(
         subIssues.map(async (sub) => {
           try {
-            const { stdout } = await execFileAsync('gh', ['pmu', 'view', String(sub.number), '--json=status'], EXEC_OPTS);
+            const { stdout } = await execFileAsync('gh', ['pmu', 'view', String(sub.number), '--json=status,body,labels'], EXEC_OPTS);
             const data = JSON.parse(stdout.trim());
-            return { sub, status: data.status };
+            return { sub, status: data.status, body: data.body, labels: data.labels };
           } catch (_e) {
-            return { sub, status: null };
+            // Fail-open: an unreadable sub-issue stays in the work list. Body and
+            // labels normalize below, so a fetch failure degrades the ordering
+            // signal rather than dropping the sub-issue.
+            return { sub, status: null, body: null, labels: null };
           }
         })
       ),
@@ -383,11 +453,17 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
     clearTimeout(timeoutHandle);
   }
 
-  for (const { sub, status } of statusResults) {
+  for (const { sub, status, body, labels } of statusResults) {
     if (status && skipStatuses.includes(status.toLowerCase())) {
       skipped.push({ number: sub.number, status });
     } else {
-      active.push(sub);
+      // Normalize to '' / [] rather than passing null through. Every downstream
+      // body consumer stays total, instead of each one guarding separately.
+      active.push({
+        ...sub,
+        body: typeof body === 'string' ? body : '',
+        labels: Array.isArray(labels) ? labels : []
+      });
     }
   }
   return { skipped, active };
@@ -424,6 +500,159 @@ function parseProcessingOrder(body, subIssueNums) {
   }
 
   return orderedNums;
+}
+
+/**
+ * Render a **Processing Order:** section (#2622).
+ *
+ * Pure string builder, deliberately separate from any write: the caller shows
+ * the user exactly what would be persisted before anything is. The format is
+ * the one `parseProcessingOrder` already reads — this issue changes what WRITES
+ * a Processing Order, not what reads one, so an accepted order is durable
+ * through the existing #2544 parser with no new state store.
+ *
+ * @param {number[]} order
+ * @returns {string} section text, newline-terminated
+ */
+function buildProcessingOrderSection(order) {
+  const lines = order.map((num, i) => `${i + 1}. #${num}`);
+  return `**Processing Order:**\n${lines.join('\n')}\n`;
+}
+
+/**
+ * Return a copy of `body` carrying `order` as its **Processing Order:** section.
+ *
+ * Replaces an existing section in place rather than appending a second — two
+ * sections would leave `parseProcessingOrder` reading whichever came first,
+ * which is not necessarily the accepted one.
+ *
+ * Pure: the input string is never mutated and nothing is written anywhere.
+ * Persisting is the caller's separate, explicit step (#2622 AC7).
+ *
+ * @param {string} body
+ * @param {number[]} order
+ * @returns {string}
+ */
+function applyProcessingOrder(body, order) {
+  const section = buildProcessingOrderSection(order);
+  const text = typeof body === 'string' ? body : '';
+  const lines = text.split('\n');
+
+  const headerIdx = lines.findIndex(l => l.trim() === '**Processing Order:**');
+  if (headerIdx === -1) {
+    const sep = text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
+    return text + sep + section;
+  }
+
+  // The section ends where parseProcessingOrder stops reading: the first blank
+  // line or `##` heading after the header. Keeping the two definitions aligned
+  // is what makes the round-trip hold.
+  let end = headerIdx + 1;
+  while (end < lines.length && lines[end].trim() !== '' && !lines[end].startsWith('##')) {
+    end++;
+  }
+
+  const replacement = section.replace(/\n$/, '').split('\n');
+  return [...lines.slice(0, headerIdx), ...replacement, ...lines.slice(end)].join('\n');
+}
+
+/**
+ * Derive a proposed processing order from sub-issue CONTENT (#2622).
+ *
+ * Wires two pieces that already existed but were never connected:
+ * `parseProcessingOrder` reads a **Processing Order:** the author wrote by hand,
+ * and `review-interdependence.js` derives an order from issue bodies — but only
+ * inside `/review-issue`, and its `suggestedOrder` was persisted nowhere. This
+ * consumes the engine as it stands rather than adding a second implementation.
+ *
+ * Returns a PROPOSAL. Nothing here writes to an issue: `differs` tells the
+ * caller whether the proposal changes anything, and persistence is a separate,
+ * explicitly-invoked step. The engine's measured miss rate on #2614–#2620 is
+ * why — an unattended reorder would replace a knowably-wrong order with an
+ * unaccountably-wrong one.
+ *
+ * Sub-issues the engine cannot analyze (ineligible labels, no body) are not
+ * dropped: they keep their existing relative position after the ordered ones,
+ * so a derivation failure degrades to the current order rather than losing work.
+ *
+ * @param {Array<{ number: number, title: string, body?: string, labels?: string[] }>} activeSubIssues
+ * @param {number[]} processingOrder - the order in effect today
+ * @returns {{ order: number[], differs: boolean, rationale: Array<object>, warning?: object }}
+ */
+function deriveProposedOrder(activeSubIssues, processingOrder) {
+  const current = processingOrder.filter(n => activeSubIssues.some(s => s.number === n));
+
+  if (activeSubIssues.length < 2) {
+    return { order: current, differs: false, rationale: [] };
+  }
+
+  let engine;
+  try {
+    engine = require('./review-interdependence.js');
+  } catch (e) {
+    // Fail-open: no ordering proposal is strictly better than halting /work.
+    return {
+      order: current,
+      differs: false,
+      rationale: [],
+      warning: {
+        code: 'ORDER_DERIVATION_UNAVAILABLE',
+        message: `Could not load the interdependence engine — proposing no reorder: ${e.message}`
+      }
+    };
+  }
+
+  const eligible = activeSubIssues.filter(s =>
+    engine.isEligibleForInterdependence(s.labels || [])
+  );
+
+  if (eligible.length < 2) {
+    return {
+      order: current,
+      differs: false,
+      rationale: [],
+      warning: {
+        code: 'ORDER_DERIVATION_SKIPPED',
+        message: `Fewer than 2 sub-issues are eligible for interdependence analysis (${eligible.length} of ${activeSubIssues.length}) — proposing no reorder.`
+      }
+    };
+  }
+
+  let result;
+  try {
+    result = engine.analyzeInterdependence(eligible.map(s => ({
+      number: s.number,
+      title: s.title,
+      type: (s.labels || [])[0],
+      labels: s.labels || [],
+      body: s.body || ''
+    })));
+  } catch (e) {
+    return {
+      order: current,
+      differs: false,
+      rationale: [],
+      warning: {
+        code: 'ORDER_DERIVATION_FAILED',
+        message: `Interdependence analysis threw — proposing no reorder: ${e.message}`
+      }
+    };
+  }
+
+  // Ordered sub-issues first, then anything the engine did not rank, each in its
+  // existing relative position.
+  const ranked = result.suggestedOrder.filter(n => current.includes(n));
+  const order = [...ranked, ...current.filter(n => !ranked.includes(n))];
+
+  const rationale = result.findings
+    .filter(f => f.dimension === 'ordering')
+    .map(f => ({ issues: f.issues, source: f.source || 'body-mention', evidence: f.evidence }));
+
+  return {
+    order,
+    differs: order.length !== current.length || order.some((n, i) => n !== current[i]),
+    rationale
+  };
 }
 
 /**
@@ -778,32 +1007,20 @@ async function runSingleIssue(issueNum, options) {
   const type = detectIssueType(dataResult.issue);
   const frameworkConfig = readFrameworkConfig();
 
-  // 4. Ensure in_progress. Prior status comes from gatherAllData above — no extra
-  //    round trip — so movedToInProgress can report a real transition (#2483).
-  roundTrips++;
-  const moveResult = await moveToInProgress(issueNum, dataResult.branch && dataResult.branch.status);
-  const gates = {
-    assigned: assignGate,
-    movedToInProgress: moveResult.moved,
-    alreadyInProgress: moveResult.alreadyInProgress,
-    prdTrackerMoved: false
-  };
-  if (moveResult.error) {
-    return buildErrorEnvelope([moveResult.error]);
-  }
-
-  // 5. PRD tracker auto-move
-  const prdTrackerNum = parsePrdTracker(dataResult.issue.body);
-  if (prdTrackerNum) {
-    roundTrips++;
-    const prdResult = await movePrdTracker(prdTrackerNum);
-    gates.prdTrackerMoved = prdResult.moved;
-    if (prdResult.warning) {
-      warnings.push(prdResult.warning);
-    }
-  }
-
-  // 6. Type-specific data gathering
+  // 4. Type-specific data gathering.
+  //
+  // This runs BEFORE the status transition below (#2622). The ordering
+  // derivation `--nonstop` depends on consumes sub-issue bodies, and `--nonstop`
+  // is precisely the mode that removes the per-sub-issue STOP where a human
+  // would otherwise catch a wrong order — so the proposal has to exist before
+  // the run starts mutating state, not after.
+  //
+  // Two consequences of the reorder, both deliberate:
+  //   - a failure to load sub-issues now returns before the tracker is moved to
+  //     in_progress, rather than leaving it moved with nothing derived;
+  //   - `moveToInProgress` still reads `dataResult.branch.status` captured in
+  //     step 2, so the reorder cannot stale the prior-status comparison that
+  //     makes `movedToInProgress` report a real transition (#2483).
   let autoTask;
   const context = {
     issue: dataResult.issue,
@@ -838,12 +1055,35 @@ async function runSingleIssue(issueNum, options) {
     const statusResult = await checkSubIssueStatuses(subResult.subIssues);
     context.skipped = statusResult.skipped;
 
+    // Surface the bodies fetched above on context.subIssues (#2622, AC1).
+    // context.subIssues stays the FULL list — active plus skipped — because two
+    // callers count it; only the active entries gain body/labels, which is
+    // exactly the set the ordering pass consumes.
+    const enrichedByNumber = new Map(statusResult.active.map(s => [s.number, s]));
+    context.subIssues = subResult.subIssues.map(s => enrichedByNumber.get(s.number) || s);
+
     // Epics and branch trackers both read **Processing Order:** from their own body,
     // falling back to ascending numeric order when the section is absent (#2544).
     const processingOrder = parseProcessingOrder(dataResult.issue.body, subNums);
     context.processingOrder = processingOrder;
 
     autoTask = buildEpicAutoTask(statusResult.active, processingOrder);
+
+    // Derive a proposed order from sub-issue CONTENT (#2622, AC6). Gated on
+    // --nonstop: default mode's per-sub-issue STOP already gives a human the
+    // chance to reorder, so paying for the derivation there buys nothing.
+    //
+    // `proposedOrder` sits ALONGSIDE `processingOrder`, never replacing it. The
+    // caller reports the difference and persists only on acceptance; silently
+    // swapping the order here would be exactly the unattended reorder this
+    // issue rules out, and the derivation's measured miss rate is why.
+    if (options && options.nonstop) {
+      const derived = deriveProposedOrder(statusResult.active, processingOrder);
+      context.proposedOrder = derived.order;
+      context.orderDiffers = derived.differs;
+      context.orderRationale = derived.rationale;
+      if (derived.warning) warnings.push(derived.warning);
+    }
 
     // Branch tracker with all sub-issues complete: suggest next step
     if (type === 'branch' && subNums.length > 0 && statusResult.active.length === 0) {
@@ -855,6 +1095,35 @@ async function runSingleIssue(issueNum, options) {
   } else {
     // Standard flow: parse acceptance criteria
     autoTask = parseAcceptanceCriteria(dataResult.issue.body);
+    // #2614: report which empty case this is, before Step 3 begins.
+    const acWarning = buildAcSectionWarning(autoTask, issueNum);
+    if (acWarning) warnings.push(acWarning);
+  }
+
+  // 5. Ensure in_progress. Prior status comes from gatherAllData in step 2 — no
+  //    extra round trip — so movedToInProgress reports a real transition (#2483).
+  //    Runs AFTER the ordering derivation above; see the note on step 4.
+  roundTrips++;
+  const moveResult = await moveToInProgress(issueNum, dataResult.branch && dataResult.branch.status);
+  const gates = {
+    assigned: assignGate,
+    movedToInProgress: moveResult.moved,
+    alreadyInProgress: moveResult.alreadyInProgress,
+    prdTrackerMoved: false
+  };
+  if (moveResult.error) {
+    return buildErrorEnvelope([moveResult.error]);
+  }
+
+  // 6. PRD tracker auto-move
+  const prdTrackerNum = parsePrdTracker(dataResult.issue.body);
+  if (prdTrackerNum) {
+    roundTrips++;
+    const prdResult = await movePrdTracker(prdTrackerNum);
+    gates.prdTrackerMoved = prdResult.moved;
+    if (prdResult.warning) {
+      warnings.push(prdResult.warning);
+    }
   }
 
   const envelope = buildSuccessEnvelope(context, gates, autoTask, warnings);
@@ -946,6 +1215,10 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
 
   const type = detectIssueType(issueResult.issue);
   const autoTask = parseAcceptanceCriteria(issueResult.issue.body);
+  // #2614: same reporting on the batch path — a vacuous pass is no more visible
+  // in a batch than alone, and a batch offers less opportunity to notice it.
+  const acWarning = buildAcSectionWarning(autoTask, issueNum);
+  if (acWarning) warnings.push(acWarning);
 
   const context = {
     issue: issueResult.issue,
@@ -1003,6 +1276,73 @@ async function runBatch(issueNums, options) {
 
 // ─── Main Entry Point ───
 
+/**
+ * The --schema envelope reference.
+ *
+ * Extracted from main() in #2614. The autoTask description had gone stale —
+ * it still described the pre-#2600 shape and omitted sectionFound — for the
+ * same structural reason #2624 found in the options mapping: it lived inline
+ * in main(), where no test could address it. A description nothing can assert
+ * against drifts from the envelope silently, which is the exact failure this
+ * issue is about, one level up.
+ *
+ * @returns {Object<string, {name: string, type: string, description: string}>}
+ */
+function buildSchema() {
+  return {
+    context: {
+      name: 'context',
+      type: 'object',
+      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order.'
+    },
+    gates: {
+      name: 'gates',
+      type: 'object',
+      description: 'Boolean gate results: assigned, movedToInProgress, alreadyInProgress, prdTrackerMoved. movedToInProgress reports a real state change — it is false when the issue was already in_progress (see alreadyInProgress), not merely when the move command failed.'
+    },
+    autoTask: {
+      name: 'autoTask',
+      type: 'object',
+      description: 'Auto-generated task list. Standard: { source: "acceptance_criteria", items: [{ text, checked }], sectionFound }. sectionFound distinguishes "no acceptance-criteria section" (false) from "a section that parsed to nothing" (true); an empty items list alone cannot. Epic/Branch: { source: "sub_issues", items: [{ number, title }] }.'
+    },
+    warnings: {
+      name: 'warnings',
+      type: 'array',
+      description: 'Non-blocking warnings (e.g., NO_SUB_ISSUES, ALL_SUB_ISSUES_COMPLETE). Each has code and message.'
+    }
+  };
+}
+
+/**
+ * Map parsed CLI args onto the options object runSingleIssue/runBatch consume.
+ *
+ * Extracted in #2624. main() previously mapped the modifier flags inline, and
+ * mapped only two of the three: --nonstop was parsed at every parseArgs return
+ * site and gated the #2622 ordering derivation in runSingleIssue, but nothing
+ * carried it between them. Both endpoints had tests; the wire between them was
+ * unreachable from any test, so the derivation was inert from the CLI while the
+ * suite stayed green.
+ *
+ * A function rather than a third inline `if`: the defect was that the mapping
+ * lived somewhere no test could address, and another unguarded line reproduces
+ * that exposure for the next flag added.
+ *
+ * Absent flags are omitted, not set false — same convention parseArgs uses.
+ * Callers gate on truthiness either way, but an envelope reporting wait:false
+ * describes a decision nobody made.
+ *
+ * @param {{assign?: boolean, wait?: boolean, nonstop?: boolean}} parsed parseArgs output
+ * @returns {{assign?: boolean, wait?: boolean, nonstop?: boolean}}
+ */
+function buildOptions(parsed) {
+  const options = {};
+  if (!parsed) return options;
+  if (parsed.assign) options.assign = true;
+  if (parsed.wait) options.wait = true;
+  if (parsed.nonstop) options.nonstop = true;
+  return options;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const parsed = parseArgs(args);
@@ -1015,36 +1355,13 @@ async function main() {
   }
 
   if (parsed.mode === 'schema') {
-    const schema = {
-      context: {
-        name: 'context',
-        type: 'object',
-        description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order.'
-      },
-      gates: {
-        name: 'gates',
-        type: 'object',
-        description: 'Boolean gate results: assigned, movedToInProgress, alreadyInProgress, prdTrackerMoved. movedToInProgress reports a real state change — it is false when the issue was already in_progress (see alreadyInProgress), not merely when the move command failed.'
-      },
-      autoTask: {
-        name: 'autoTask',
-        type: 'object',
-        description: 'Auto-generated task list. Standard: { source: "acceptance_criteria", items: [{ text, checked }] }. Epic/Branch: { source: "sub_issues", items: [{ number, title }] }.'
-      },
-      warnings: {
-        name: 'warnings',
-        type: 'array',
-        description: 'Non-blocking warnings (e.g., NO_SUB_ISSUES, ALL_SUB_ISSUES_COMPLETE). Each has code and message.'
-      }
-    };
+    const schema = buildSchema();
     process.stdout.write(JSON.stringify(schema, null, 2) + '\n');
     process.exit(0);
     return;
   }
 
-  const options = {};
-  if (parsed.assign) options.assign = true;
-  if (parsed.wait) options.wait = true;
+  const options = buildOptions(parsed);
 
   if (parsed.mode === 'single') {
     const result = await runSingleIssue(parsed.issues[0], options);
@@ -1111,7 +1428,13 @@ module.exports = {
   runSingleIssue,
   loadSubIssues,
   checkSubIssueStatuses,
+  buildSchema,
+  buildAcSectionWarning,
+  buildOptions,
   parseProcessingOrder,
+  deriveProposedOrder,
+  buildProcessingOrderSection,
+  applyProcessingOrder,
   buildEpicAutoTask,
   resolveStatusIssues,
   runBatch,

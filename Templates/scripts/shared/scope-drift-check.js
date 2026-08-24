@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -25,6 +25,11 @@ const path = require('path');
 // so call sites are unchanged.
 const { execFileTimed: execFileSync } = require('./lib/exec.js');
 const { issueRefGrepPattern, collectTouchedPaths } = require('./lib/issue-ref-match.js');
+// #2600: extractSection and the fence loop that used to live in this file are
+// now the shared scanner. This file was the ONLY place fence awareness existed
+// under .claude/scripts/shared/ — twice, exported from neither — so lifting it
+// here is what let five other scripts stop being fence-blind.
+const { extractSection, hasHeader } = require('./lib/checkbox-scan.js');
 
 // Vendored glob matcher (#2418). The framework root ships without a populated
 // node_modules in deployed projects, so external `require()` calls crash
@@ -129,49 +134,10 @@ function parseDeclaredScope(body) {
   return { paths: [], source: 'none', warnings };
 }
 
-// Line-based section extraction (#2409). Replaces a single regex with
-// `[\s\S]*?` plus an alternation whose branches share prefixes
-// (`\n##` vs `\n###`), which the safe-regex2 heuristic flags as catastrophic-
-// backtracking risk. Behavior is identical to the prior regex on every existing
-// test fixture.
-// `isTerminator` receives (line, index, lines) so a rule can look ahead; the
-// extra arguments are ignored by single-argument terminators.
-//
-// `options.fenceAware` skips header matches inside ``` / ~~~ fences, and
-// `options.pickBest` selects among multiple matches — both added in #2523,
-// where a body that *discusses* the header format shadowed its own declaration.
-// Defaults reproduce the original first-match, fence-blind behavior exactly.
-function extractSection(body, isHeader, isTerminator, options = {}) {
-  const { fenceAware = false, pickBest = null } = options;
-  if (!body || typeof body !== 'string') return '';
-  const lines = body.split('\n');
-
-  const starts = [];
-  let inFence = false;
-  for (let i = 0; i < lines.length; i++) {
-    if (fenceAware && /^\s*(?:```|~~~)/.test(lines[i])) {
-      inFence = !inFence;
-      continue;
-    }
-    if (!inFence && isHeader(lines[i])) starts.push(i);
-  }
-  if (starts.length === 0) return '';
-
-  const sections = starts.map((start) => {
-    const collected = [];
-    for (let j = start + 1; j < lines.length; j++) {
-      if (isTerminator(lines[j], j, lines)) break;
-      collected.push(lines[j]);
-    }
-    return collected.join('\n');
-  });
-
-  if (pickBest) {
-    const chosen = sections.find(pickBest);
-    if (chosen !== undefined) return chosen;
-  }
-  return sections[0];
-}
+// extractSection (#2409, #2523) now lives in ./lib/checkbox-scan.js and is
+// imported above. It was lifted rather than reimplemented: this file held the
+// only fence-aware section extraction in the deployed tree, and five other
+// scripts needed exactly it (#2600).
 
 // Returns { paths, sectionFound } — the caller needs to tell "no declaration"
 // apart from "a declaration that parsed to nothing" (#2523 Mode 3).
@@ -209,19 +175,13 @@ function extractFilesToModifySection(body) {
 }
 
 function hasFilesToModifyHeader(body) {
-  if (!body || typeof body !== 'string') return false;
-  const lines = body.split('\n');
-  let inFence = false;
-  for (const line of lines) {
-    if (/^\s*(?:```|~~~)/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
+  // #2600: the duplicate fence loop that used to be inlined here is retired —
+  // hasHeader() is the same scan, shared. Two fence implementations in one file
+  // was how they drifted apart in the first place.
+  return hasHeader(body, (line) => {
     const t = line.trim().toLowerCase();
-    if (t === '**files:**' || t === '**files to modify:**') return true;
-  }
-  return false;
+    return t === '**files:**' || t === '**files to modify:**';
+  });
 }
 
 function extractFilesToModify(body) {

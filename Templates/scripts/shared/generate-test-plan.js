@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Generate a test plan skeleton markdown file from the issues assigned to the current git branch. Auto-detects version from branch name or accepts version parameter. Outputs to Construction/Test-Plans/ directory. Used by /prepare-release test plan generation.
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,10 @@
 // Spawns bounded via lib/exec.js (#2469) — aliased to the original names
 // so call sites are unchanged.
 const { execTimed: execSync } = require('./lib/exec.js');
+// #2600: a seventh scanner, not among the six the issue enumerated. AC6 says
+// "every framework code path extracting checkboxes from an issue body", and
+// this is one — it was fence-blind like the rest.
+const { extractAcceptanceCriteria: sharedExtractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -113,39 +117,18 @@ function getBranchIssues() {
  * @returns {Array<Object>} Array of criteria objects {text, checked}
  */
 function extractAcceptanceCriteria(body) {
-  if (!body) return [];
-
-  const criteria = [];
-  const lines = body.split('\n');
-
-  let inAcceptanceCriteria = false;
-
-  for (const line of lines) {
-    // Check for acceptance criteria section header
-    if (/^#+\s*(acceptance\s*criteria|criteria|requirements)/i.test(line)) {
-      inAcceptanceCriteria = true;
-      continue;
-    }
-
-    // Check for next section header (end of acceptance criteria)
-    if (inAcceptanceCriteria && /^#+\s/.test(line) && !/acceptance|criteria|requirements/i.test(line)) {
-      inAcceptanceCriteria = false;
-      continue;
-    }
-
-    // Parse checkbox items (only when inside acceptance criteria section)
-    if (inAcceptanceCriteria) {
-      const checkboxMatch = line.match(/^\s*-\s*\[([ xX])\]\s*(.+)/);
-      if (checkboxMatch) {
-        criteria.push({
-          text: checkboxMatch[2].trim(),
-          checked: checkboxMatch[1].toLowerCase() === 'x',
-        });
-      }
-    }
-  }
-
-  return criteria;
+  // #2616: one section anchor, not three. This file used to accept bare
+  // "criteria" and "requirements" headings that no other parser did, and #2600
+  // left that divergence in place while unifying fences and checkboxes.
+  //
+  // The extra vocabulary is DELETED rather than pushed into the shared module:
+  // measured across ~300 recent issue bodies plus CommandsSrc/, Templates/ and
+  // tests/fixtures/, neither form had ever been used — 0 occurrences against
+  // 230 acceptance-criteria headings. Widening the shared default would have
+  // handed that tolerance to work-preamble.js, whose count drives three gates.
+  //
+  // Delegating also gains the bold form, which this file never accepted.
+  return sharedExtractAcceptanceCriteria(body).items;
 }
 
 /**

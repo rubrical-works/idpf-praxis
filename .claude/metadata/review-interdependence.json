@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Configuration for multi-issue interdependence analysis in /review-issue",
   "typeFilter": {
-    "eligible": ["bug", "enhancement", "prd", "test-plan"],
+    "eligible": ["bug", "enhancement", "story", "prd", "test-plan"],
     "excluded": ["proposal", "epic"]
   },
   "dimensions": {
@@ -59,6 +59,31 @@
       ],
       "severity": "info",
       "similarityThreshold": 0.6
+    },
+    "declaredScope": {
+      "enabled": true,
+      "description": "Detect ordering dependencies from declared Files to modify: sections, using glob-aware path matching rather than body mentions",
+      "signals": [
+        "Two issues declare the same path under Files to modify:",
+        "One issue's declared glob covers a path another issue declares",
+        "One issue declares creating a path another issue also declares"
+      ],
+      "severity": "warning",
+      "creationTerms": [
+        "create",
+        "creates",
+        "creating",
+        "add",
+        "adds",
+        "adding",
+        "new file",
+        "introduce",
+        "introduces",
+        "provide",
+        "provides",
+        "export",
+        "exports"
+      ]
     }
   }
 }

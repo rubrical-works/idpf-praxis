@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Delete expired GitHub Actions artifacts with throttled API calls to avoid rate limits. Supports age-based filtering (default 30 days) and --dry-run mode. Used by /prepare-release cleanup phase.
  * @checksum sha256:placeholder
  *
@@ -310,4 +310,18 @@ async function main() {
     process.exit(errors.length > 0 ? 1 : 0);
 }
 
-main();
+// #2615: main() ends in process.exit(), so a bare call here terminated the
+// importing process — and reached the GitHub API and the delete path first. It
+// skipped deletion only when the artifact count happened to sit below the
+// threshold; above it, importing this module deleted artifacts.
+if (require.main === module) {
+    main();
+}
+
+module.exports = {
+    isRateLimitError,
+    listArtifacts,
+    getArtifactCount,
+    deleteArtifact,
+    sleep
+};

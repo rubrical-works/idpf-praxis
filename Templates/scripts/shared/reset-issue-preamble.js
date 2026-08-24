@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Analyze an issue to determine what /issue-reset would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
  * @checksum sha256:placeholder
  *
@@ -15,6 +15,7 @@ const { execTimedAsync } = require('./lib/exec.js');
 const fs = require('fs');
 const path = require('path');
 const { bodyMentionsIssue } = require('./lib/issue-ref-match.js');
+const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 
 const execAsync = execTimedAsync;
 const SCHEMA_VERSION = 1;
@@ -60,8 +61,15 @@ function parseArgs() {
 // ─── Analysis ───
 
 function analyzeBody(body) {
-  const checkedBoxes = (body.match(/\[x\]/gi) || []).length;
-  const uncheckedBoxes = (body.match(/\[ \]/g) || []).length;
+  // #2600: previously `/\[x\]/gi` and `/\[ \]/g` — not line-anchored at all, so
+  // `[x]` or `[ ]` appearing inline in prose or inside a markdown table counted
+  // as a checkbox, fenced or not. A different defect class from the other five
+  // scanners, and a deliberate behaviour change rather than a pure fix:
+  // totalBoxes drops on any body that mentions `[x]` inline. Accepted because
+  // the numbers become the numbers the field names already claim.
+  const boxes = scanCheckboxes(body);
+  const checkedBoxes = boxes.filter((b) => b.checked).length;
+  const uncheckedBoxes = boxes.filter((b) => !b.checked).length;
   const reviewsMatch = body.match(/\*\*Reviews:\*\*\s*(\d+)/);
   const reviewCount = reviewsMatch ? parseInt(reviewsMatch[1], 10) : 0;
 
@@ -203,9 +211,18 @@ async function main() {
   }));
 }
 
-main().catch(err => {
-  console.log(JSON.stringify({
-    ok: false, version: SCHEMA_VERSION,
-    errors: [{ code: 'UNEXPECTED', message: err.message }]
-  }));
-});
+// #2600: guarded so the module can be required without running. Previously a
+// plain `require()` executed main() and fired a `gh` call at import time, which
+// is why the existing suite could only assert this file's SOURCE TEXT. AC10
+// asks for the changed counts to be asserted rather than left incidental, and
+// that needs the function itself.
+if (require.main === module) {
+  main().catch(err => {
+    console.log(JSON.stringify({
+      ok: false, version: SCHEMA_VERSION,
+      errors: [{ code: 'UNEXPECTED', message: err.message }]
+    }));
+  });
+}
+
+module.exports = { analyzeBody };

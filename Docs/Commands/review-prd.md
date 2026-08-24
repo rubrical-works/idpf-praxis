@@ -1,6 +1,6 @@
 # /review-prd
 
-Review a PRD document linked from a GitHub issue, with tracked history and AC check-off.
+Review a PRD document linked from a GitHub issue, with tracked review history.
 
 ## Arguments
 
@@ -26,5 +26,5 @@ Review a PRD document linked from a GitHub issue, with tracked history and AC ch
 - Subjective criteria are presented interactively in `team`/`enterprise` mode; skipped in `solo` mode
 - Recommendations: "Ready for backlog creation", "Ready with minor revisions", "Needs revision", or "Needs major rework"
 - Updates the `**Reviews:** N` field and appends a row to the `## Review Log` table directly in the PRD file; never edits existing rows
-- When recommendation starts with "Ready for", automatically runs AC check-off on the issue; status transition to backlog is owned by `/create-backlog`
-- Self-contained: handles document update, finalize script, and AC check-off without delegating to a calling orchestrator
+- **AC check-off is deliberately skipped on PRD trackers.** A PRD tracker's checklist is a short lifecycle gate, not the ~20 review criteria, so checking boxes positionally would tick whichever gate happened to line up with a passing criterion. The command reports the skip rather than a count. Status transition to backlog is owned by `/create-backlog`, which also owns "Ready for backlog creation".
+- Self-contained: handles the document update and the finalize script without delegating to a calling orchestrator

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Shared epic-creation helper (#2408). Used by /add-story and
  * /split-story to create epics through a single, testable code path. Returns
  * the standard JSON envelope { ok, epicNumber, labelsVerified, branchAssigned,
@@ -17,7 +17,8 @@
  *
  * CLI:
  *   node create-epic.js --theme "<text>" [--source-issue N]
- *                       [--priority p0|p1|p2] [--assign-branch] [--schema]
+ *                       [--priority p0|p1|p2] [--assignee <login>]
+ *                       [--assign-branch] [--schema]
  *
  * Output: JSON envelope on stdout. Exit 0 when ok, 1 on hard failure
  * (createIssue threw or post-create label check failed).
@@ -28,7 +29,8 @@ const path = require('path');
 // Spawns bounded via lib/exec.js (#2469) — aliased to the original names
 // so call sites are unchanged.
 const { execFileTimed: execFileSync } = require('./lib/exec.js');
-// #2489: assignee comes from .gh-pmu.json defaults.assignee, not a literal.
+// #2599: assignee comes from the --assignee override, else a JS constant.
+// No configuration file is consulted (see lib/gh-pmu-config.js).
 const { resolveAssignee, DEFAULT_ASSIGNEE } = require('./lib/gh-pmu-config.js');
 
 const VALID_PRIORITIES = ['p0', 'p1', 'p2'];
@@ -50,6 +52,7 @@ function parseArgs(argv) {
     theme: null,
     sourceIssue: null,
     priority: 'p2',
+    assignee: undefined,
     assignBranch: false,
     schema: false
   };
@@ -69,6 +72,8 @@ function parseArgs(argv) {
         return { error: `Invalid --priority "${p}" (must be one of ${VALID_PRIORITIES.join(', ')}).` };
       }
       out.priority = p;
+    } else if (a === '--assignee' && i + 1 < argv.length) {
+      out.assignee = argv[++i];
     } else if (a === '--assign-branch') {
       out.assignBranch = true;
     }
@@ -165,10 +170,10 @@ function parseCreatedIssueNumber(text) {
 // ─── Pure Pipeline ──────────────────────────────────────────
 
 /**
- * @param {{theme:string, sourceIssue?:number, priority?:string, assignBranch?:boolean}} args
+ * @param {{theme:string, sourceIssue?:number, priority?:string, assignee?:string, assignBranch?:boolean}} args
  * @param {object} deps - Injected I/O for testability.
  *   readCharter()           → string|null
- *   createIssue({theme, body, priority}) → { number, labels, rawOutput }
+ *   createIssue({theme, body, priority, assignee}) → { number, labels, rawOutput }
  *   verifyLabels(number)    → label[]
  *   currentBranch()         → string|null
  *   assignBranch(number, branch) → { ok }
@@ -193,7 +198,7 @@ function run(args, deps) {
   const body = buildEpicBody({ theme, sourceIssue: args.sourceIssue });
   let created;
   try {
-    created = deps.createIssue({ theme, body, priority });
+    created = deps.createIssue({ theme, body, priority, assignee: args.assignee });
   } catch (e) {
     errors.push(`gh pmu create failed: ${e.message}`);
     return {
@@ -267,7 +272,9 @@ function readCharterReal() {
  *
  * The assignee is always emitted — never omitted when empty. Dropping the flag
  * would silently create an unassigned issue, which is exactly the failure mode
- * gh-pmu v1.5.1 replaced with a hard abort (#2489).
+ * gh-pmu v1.5.1 replaced with a hard abort (#2489). The value reaching here has
+ * already been resolved from the caller's --assignee override or the constant
+ * (#2599); the `|| DEFAULT_ASSIGNEE` guard covers a direct call that passes none.
  *
  * @param {{theme: string, priority: string, assignee: string, bodyFile: string}} opts
  * @returns {string[]} argv for execFile('gh', argv)
@@ -284,7 +291,7 @@ function buildCreateArgs({ theme, priority, assignee, bodyFile }) {
   ];
 }
 
-function createIssueReal({ theme, body, priority }) {
+function createIssueReal({ theme, body, priority, assignee }) {
   const tmp = `.tmp-epic-body-${process.pid}.md`;
   fs.writeFileSync(tmp, body, 'utf-8');
   try {
@@ -294,7 +301,7 @@ function createIssueReal({ theme, body, priority }) {
     const raw = execFileSync('gh', buildCreateArgs({
       theme,
       priority,
-      assignee: resolveAssignee(),
+      assignee: resolveAssignee(assignee),
       bodyFile: tmp
     }), { encoding: 'utf-8' });
     const number = parseCreatedIssueNumber(raw);

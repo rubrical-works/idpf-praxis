@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs two audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
@@ -20,6 +20,7 @@
 
 const { execSync } = require('child_process');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
+const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 
 function parseArgs(argv) {
   const out = { issue: null };
@@ -84,24 +85,21 @@ function isIntentionallyOpenGate(line) {
   return /→\s*QA:\s*#\d+/.test(line) || GATE_ANNOTATION.test(line);
 }
 
+// #2600: both counts read through the shared fence-aware scanner. This audit
+// returns status "fail" and BLOCKS the epic in_review move, so a fenced
+// checkbox did not merely miscount here — it halted an epic on a quotation.
+// The gate annotation lives in the criterion text, so testing box.text is
+// equivalent to testing the whole line.
 function countUncheckedAcs(body) {
   if (!body) return 0;
-  let count = 0;
-  for (const line of body.split('\n')) {
-    if (!/^\s*- \[ \] /.test(line)) continue;
-    if (isIntentionallyOpenGate(line)) continue;
-    count++;
-  }
-  return count;
+  return scanCheckboxes(body)
+    .filter((box) => !box.checked && !isIntentionallyOpenGate(box.text))
+    .length;
 }
 
 function countTotalAcs(body) {
   if (!body) return 0;
-  let count = 0;
-  for (const line of body.split('\n')) {
-    if (/^\s*- \[[ xX]\] /.test(line)) count++;
-  }
-  return count;
+  return scanCheckboxes(body).length;
 }
 
 function auditCommitDensity(totalCommits, totalAcs) {

@@ -1,5 +1,5 @@
 ---
-version: "v0.96.2"
+version: "v0.97.0"
 description: View, create, or manage project charter
 argument-hint: "[update|refresh|validate|--create-domain-entities]"
 copyright: "Rubrical Works (c) 2026"
@@ -37,11 +37,16 @@ Pattern: `/{[a-z][a-z0-9-]*}/`. ANY placeholder → template. No placeholders �
    - **COMPLETE:** Display summary (name, vision, focus, tech stack). Mention `/charter update` and `/charter validate`.
 3. **No charter OR template:** Charter mandatory. Has code → extraction; empty → inception. Proceed directly (no skip).
 ### Extraction Mode
-1. Load `{frameworkPath}/Skills/codebase-analysis/SKILL.md`
+1. Verify `{frameworkPath}/Skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**
 2. Analyze codebase (tech stack, architecture, tests, NFRs)
 3. Present findings, ask user to confirm/adjust
 4. Generate CHARTER.md and Inception/ artifacts
+**Artifact voice — extraction:** artifacts here are **observations**. "detected" / "found via `<file>`" claims are permitted *because a file was read*; each must be traceable to the file supporting it.
 ### Inception Mode
+**Artifact voice — inception (#2591):** no code exists on this path (Process step 1 creates the tree against an empty project), so **no artifact here may assert a detection.** Every Inception/ artifact is a **declaration of intent** — what the project *will* use, sourced from answers, never from a filesystem read.
+- **`Inception/Tech-Stack.md` is intent voice from the Q3 (technology) answer.** It must not contain "detected", "found", or "via `<file>`" claims, nor name a technology, framework, or version the answers did not supply. No manifest was consulted; none exists yet.
+- **`TBD` is required for any stack detail no answer supplied** (version, package manager, runtime, build tool). Distinct from Process step 6's unanswered-question rule: that covers questions the user skipped, this covers detail **unobservable** at inception because nothing is installed. A stack answered at Q3 but not yet scaffolded falls here — expanding one short answer into a version-pinned table is fabrication, not a default.
+- Restated inline on purpose: extraction gets this from the `codebase-analysis` skill it loads; inception loads no skill, so without it the guard is absent exactly where a greenfield artifact is written.
 #### Essential Questions
 | # | Question | Maps To |
 |---|----------|---------|
@@ -137,11 +142,13 @@ What review mode should be used for this project?
 **Step 4 (`/charter refresh`):** Re-evaluate vs auto-detection from updated tech stack.
 **Step 5 (`/charter update`):** Allow add/remove via multi-select.
 #### Artifact Generation
+**Answer-to-Artifact Mapping:**
 | Answer | Primary Artifact |
 |--------|------------------|
 | What building? | CHARTER.md → Vision |
 | What problem? | Inception/Charter-Details.md → Problem Statement |
-| What technology? | CHARTER.md → Tech Stack |
+| What technology? (Q3) | CHARTER.md → Tech Stack |
+| What technology? (Q3) | Inception/Tech-Stack.md → whole artifact, intent voice, `TBD` for anything Q3 did not supply |
 | What's in scope? | CHARTER.md → In Scope |
 | Testing framework? | Inception/Test-Strategy.md → Framework |
 | Review mode? | framework-config.json → reviewMode |
@@ -149,10 +156,10 @@ What review mode should be used for this project?
 **Process:**
 1. Create lifecycle dirs: `mkdir -p Inception Construction/Test-Plans Construction/Design-Decisions Construction/Tech-Debt Transition`
 2. Generate CHARTER.md (Vision, Tech Stack, In Scope, Status: Draft). **Required (#2379):** title exactly `# Project Charter: {name}`; include `## Key Entities` table `| Entity | Count | Location |` with ≥1 row (use `TBD` for unknown Count). Wrong title or missing section → generator returns structured `{error, hint}` / `{warning, entities:{}}`.
-3. Generate Inception/ artifacts (Charter-Details, Tech-Stack, Scope-Boundaries, Constraints, Architecture, Test-Strategy, Milestones)
+3. Generate Inception/ artifacts (Charter-Details, Tech-Stack, Scope-Boundaries, Constraints, Architecture, Test-Strategy, Milestones) — **in intent voice per the Artifact voice rule at the head of Inception Mode.** `Tech-Stack.md` is sourced from the Q3 answer alone.
 4. Construction/ structure with .gitkeep and README.md
 5. Transition/ artifacts (Deployment-Guide, Runbook, User-Documentation)
-6. Use "TBD" where unanswered
+6. Use "TBD" where unanswered. **Separately**, use `TBD` for detail no answer supplied that cannot be observed because nothing is installed yet (see Artifact voice). Skipped question and unobservable detail are distinct cases.
 7. Generate `domain-entities.json`:
    ```javascript
    const { generateFromCharter } = require('.claude/scripts/shared/generate-domain-entities.js');
@@ -173,7 +180,7 @@ What review mode should be used for this project?
 4. If Tech Stack modified: trigger skill/recipe suggestions (NEW only). Detect new default skills not in `projectSkills` (from `skill-keywords.json` `defaultSkills`) — copy from `{frameworkPath}/.claude/skills/`, add additively.
 4b. If Deployment Target changed: remove old deployment skill, copy new from `{frameworkPath}/.claude/skills/<skill-name>/`. Update `deploymentTarget` and `projectSkills`. No prior target → fresh install.
 ### /charter refresh
-1. Load `{frameworkPath}/Skills/codebase-analysis/SKILL.md`
+1. Verify `{frameworkPath}/Skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**
 2. Analyze codebase
 3. Compare with Inception/ artifacts, identify differences
 4. Present diff, ask for confirmation
@@ -232,4 +239,12 @@ After skill selection, suggest relevant recipes.
 | Extension point has content | Skip: "{point} already configured" |
 | No release commands | Skip: "Extension recipes require release commands" |
 | All installed | Report: "Extension recipes are up to date" |
+### Closing Cleanup
+Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
+**(1) Emit the closing output** described by the final step above.
+**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+1. `TaskList` — enumerate all tasks.
+2. For every task owned by this `/charter` invocation, `TaskUpdate status=deleted`.
+3. Do **not** delete tasks created outside this invocation (user TODOs).
+
 **End of /charter Command**

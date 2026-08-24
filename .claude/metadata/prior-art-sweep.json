@@ -15,7 +15,13 @@
       "Reference",
       "Overview",
       "Proposal",
-      "System-Instructions"
+      "System-Instructions",
+      "*/src",
+      "*/lib",
+      "*/app",
+      "*/tests",
+      "*/test",
+      "*/docs"
     ],
     "issueHistory": {
       "enabled": true,

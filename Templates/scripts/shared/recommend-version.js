@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
- * @description Recommend semver bump based on commit types. Classifies commits via conventional commit prefixes (feat:, fix:) with fallback to issue label lookup via GitHub API. Returns major/minor/patch recommendation with rationale. Used by /prepare-release version determination.
+ * @framework-script 0.97.0
+ * @description Recommend semver bump based on commit types. Classifies commits via conventional commit prefixes (feat:, fix:) with fallback to issue label lookup via GitHub API. Returns major/minor/patch recommendation with rationale. Used by /prepare-release version determination, and by /prepare-beta with --prerelease for prerelease lines.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -13,16 +13,122 @@
 // so call sites are unchanged.
 const { execTimed: execSync } = require('./lib/exec.js');
 
+/** Semver prerelease/build identifier characters. */
+const PRERELEASE_IDENTIFIER = /^[0-9A-Za-z-]+$/;
+
+/**
+ * Parse a version tag into its components.
+ *
+ * The prerelease segment is **captured**, not discarded (#2585). The previous
+ * regex was unanchored and had no prerelease group, so `v0.20.0-beta.4` reduced
+ * to `0.20.0` with no warning and a beta line was indistinguishable from the
+ * stable release it descends from.
+ *
+ * Anchoring alone would have been the wrong fix: with no capture group, `$`
+ * returns null for every prerelease tag, and main() exits 1 on null — that
+ * hard-fails /prepare-release and /prepare-beta in any repo whose newest tag is
+ * a beta. Capture and anchor together, or neither.
+ *
+ * @param {string} tag - Version tag, with or without the `v` prefix
+ * @returns {{major:number,minor:number,patch:number,prerelease:string|null}|null}
+ */
 function parseVersion(tag) {
-    const match = tag.replace(/^v/, '').match(/^(\d+)\.(\d+)\.(\d+)/);
+    // Build metadata is stripped before matching, and the optional prerelease
+    // segment is a separate flat pattern rather than `(?:-…+)?`. A `?` wrapping
+    // a `+` is star height 2, which `security/detect-unsafe-regex` rejects as an
+    // error in this repo. The `?` makes catastrophic backtracking unreachable —
+    // it matches at most once, so there is no ambiguity to explore — but the
+    // rule is a hard CI gate, so the pattern is kept flat instead of suppressed.
+    const core = String(tag).replace(/^v/, '').split('+')[0];
+    const stable = core.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    const prerelease = stable ? null : core.match(/^(\d+)\.(\d+)\.(\d+)-([0-9A-Za-z.-]+)$/);
+    const match = stable || prerelease;
     if (!match) return null;
-    return { major: parseInt(match[1]), minor: parseInt(match[2]), patch: parseInt(match[3]) };
+    return {
+        major: parseInt(match[1]),
+        minor: parseInt(match[2]),
+        patch: parseInt(match[3]),
+        prerelease: match[4] || null
+    };
 }
 
 function incVersion(v, type) {
     if (type === 'major') return `${v.major + 1}.0.0`;
     if (type === 'minor') return `${v.major}.${v.minor + 1}.0`;
     return `${v.major}.${v.minor}.${v.patch + 1}`;
+}
+
+/**
+ * Produce the next prerelease version.
+ *
+ * Two distinct cases, both in the script's remit (#2585 AC3):
+ * - **Continuing a line.** The last tag already carries the requested
+ *   identifier, so the core is held and the counter advances:
+ *   `v0.20.0-beta.4` → `v0.20.0-beta.5`. A counterless segment (`-beta`) is
+ *   treated as counter 0, which is also its semver ordering.
+ * - **Opening a line.** The last tag is stable, or carries a different
+ *   identifier. From a stable tag the core is bumped by `type` first, so the
+ *   beta precedes the release it leads to: `v0.20.0` + minor →
+ *   `v0.21.0-beta.1`. From a different identifier the core is held —
+ *   `v0.20.0-alpha.3` → `v0.20.0-beta.1` — because alpha and beta are stages of
+ *   one release, not successive releases.
+ *
+ * @param {{major:number,minor:number,patch:number,prerelease:string|null}} v
+ * @param {'major'|'minor'|'patch'} type - Bump type, used only when opening a line from a stable tag
+ * @param {string} [identifier='beta'] - Prerelease identifier
+ * @returns {string} Version string without the `v` prefix
+ */
+function incPrerelease(v, type, identifier = 'beta') {
+    const core = v.prerelease
+        ? `${v.major}.${v.minor}.${v.patch}`
+        : incVersion(v, type);
+
+    if (v.prerelease) {
+        // Split rather than `(?:\.(\d+))?` — same flat-pattern reason as
+        // parseVersion. A counterless segment (`-beta`) is counter 0, which is
+        // also its semver ordering against `-beta.1`.
+        const withCounter = v.prerelease.match(/^([0-9A-Za-z-]+)\.(\d+)$/);
+        const bare = withCounter ? null : v.prerelease.match(/^[0-9A-Za-z-]+$/);
+        const name = withCounter ? withCounter[1] : (bare ? bare[0] : null);
+        if (name === identifier) {
+            const counter = withCounter ? parseInt(withCounter[2], 10) : 0;
+            return `${core}-${identifier}.${counter + 1}`;
+        }
+    }
+
+    return `${core}-${identifier}.1`;
+}
+
+/**
+ * Determine prerelease context from the caller's arguments (#2585 AC4).
+ *
+ * The caller decides, not the last tag. Inference from git state cannot resolve
+ * the case that matters most — last tag stable, operator opening a beta line —
+ * because nothing in the repository distinguishes it from an ordinary release.
+ * `/prepare-beta` knows; the script does not.
+ *
+ * @param {string[]} argv - Arguments after the script name
+ * @returns {{prerelease:boolean, identifier:string|null}}
+ * @throws {Error} If the identifier is not a valid semver identifier
+ */
+function parsePrereleaseArg(argv = []) {
+    const index = argv.findIndex(a => a === '--prerelease' || a.startsWith('--prerelease='));
+    if (index === -1) return { prerelease: false, identifier: null };
+
+    let identifier = 'beta';
+    const token = argv[index];
+    if (token.startsWith('--prerelease=')) {
+        identifier = token.slice('--prerelease='.length);
+    } else {
+        const next = argv[index + 1];
+        // A following flag is an adjacent argument, not this flag's value.
+        if (next && !next.startsWith('-')) identifier = next;
+    }
+
+    if (!PRERELEASE_IDENTIFIER.test(identifier)) {
+        throw new Error(`Invalid prerelease identifier: ${String(identifier).substring(0, 30)}`);
+    }
+    return { prerelease: true, identifier };
 }
 
 /**
@@ -88,9 +194,14 @@ function classifyCommit(message, lookupLabels) {
     if (!message) return 'other';
 
     // 1. Check for breaking changes
-    if (message.includes('BREAKING CHANGE') || /^\w+!:/.test(message)) {
-        return 'breaking';
-    }
+    // Split into two patterns rather than one optional-scope pattern (#2603).
+    // /^\w+(\([^)]*\))?!:/ is rejected by security/detect-unsafe-regex, and so
+    // are the non-capturing and bounded-type variants -- it is the optionality
+    // the rule objects to, not the capture or the unbounded \w+. lib/git.js
+    // already splits for the same reason, under the same comment.
+    if (message.includes('BREAKING CHANGE')) return 'breaking';
+    if (/^\w+!:/.test(message)) return 'breaking';
+    if (/^\w+\([^)]*\)!:/.test(message)) return 'breaking';
 
     // 2. Check for conventional commit prefixes
     if (/^feat[(:]/i.test(message)) return 'feature';
@@ -136,6 +247,8 @@ function lookupIssueLabels(issueNumber) {
 
 async function main() {
     try {
+        const { prerelease, identifier } = parsePrereleaseArg(process.argv.slice(2));
+
         // Get last semantic version tag (v*.*.*), ignoring branch names
         let lastTag;
         try {
@@ -147,10 +260,13 @@ async function main() {
                 throw new Error('No version tags found');
             }
         } catch {
+            // Degenerate case of opening a prerelease line: there is no tag to
+            // bump from, so the identifier is appended to the initial version.
+            const initial = prerelease ? `v0.1.0-${identifier}.1` : 'v0.1.0';
             console.log(JSON.stringify({
                 success: true,
-                message: 'No previous version. Recommend v0.1.0 or v1.0.0.',
-                data: { recommendedVersion: 'v0.1.0', reason: 'initial-release' }
+                message: `No previous version. Recommend ${initial}${prerelease ? '' : ' or v1.0.0'}.`,
+                data: { recommendedVersion: initial, reason: 'initial-release' }
             }));
             return;
         }
@@ -190,13 +306,35 @@ async function main() {
             reason = 'fixes and maintenance';
         }
 
-        const next = incVersion(current, bump);
+        const next = prerelease
+            ? incPrerelease(current, bump, identifier)
+            : incVersion(current, bump);
         const recommendedVersion = `v${next}`;
+
+        // The discarded segment is reported rather than swallowed. Stable
+        // recommendation from a prerelease tag is unchanged (#2585 AC6) — what
+        // changes is that the operator is told, instead of having to notice.
+        const warnings = [];
+        if (!prerelease && current.prerelease) {
+            warnings.push(
+                `Last tag ${lastTag} is a prerelease. Recommending a stable version from its ` +
+                `${current.major}.${current.minor}.${current.patch} core; the -${current.prerelease} ` +
+                `segment does not affect the bump. Pass --prerelease to continue the prerelease line.`
+            );
+        }
 
         console.log(JSON.stringify({
             success: true,
             message: `Recommend ${recommendedVersion} (${bump}): ${reason}`,
-            data: { recommendedVersion, bumpType: bump, reason, lastTag }
+            warnings,
+            data: {
+                recommendedVersion,
+                bumpType: bump,
+                reason,
+                lastTag,
+                lastTagPrerelease: current.prerelease,
+                prerelease: prerelease ? identifier : null
+            }
         }));
 
     } catch (err) {
@@ -216,6 +354,8 @@ if (require.main === module) {
 module.exports = {
     parseVersion,
     incVersion,
+    incPrerelease,
+    parsePrereleaseArg,
     extractIssueNumbers,
     classifyByKeywords,
     classifyByIssueLabels,

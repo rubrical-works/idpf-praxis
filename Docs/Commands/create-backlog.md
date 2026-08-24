@@ -7,6 +7,7 @@ Create GitHub epics and stories from an approved PRD, with TDD test case skeleto
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `<issue-number>` | Yes | PRD tracker issue number (e.g., `151` or `#151`) |
+| `--assignee <value>` | No | GitHub login to assign every created epic and story to. Omitted → `@me`. |
 
 ## Usage
 

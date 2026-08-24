@@ -1,0 +1,46 @@
+{
+  "$schema": "./commit-checkpoint-signals-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Thresholds and prompt contract for the mid-AC commit checkpoint in /work Step 3 (#2557). Externalized so the values can be tuned without a spec edit (#2318 precedent).",
+    "issue": 2557
+  },
+  "checkpoint": {
+    "id": "mid-ac-commit-checkpoint",
+    "description": "Fires DURING an acceptance criterion, before its deliverable is complete. The commit-per-deliverable gate has no trigger mid-AC, so a long investigative phase accumulates uncommitted work until the next commit sweeps it up under a message attributing it to the wrong issue.",
+    "appliesTo": ["standard", "batch", "epic", "branch", "nonstop"],
+    "blocking": false,
+    "onDecline": "proceed with work unchanged; do not re-prompt for the same accumulation without further delta",
+    "trigger": {
+      "measurement": "git diff --numstat HEAD (working tree against the last commit)",
+      "combinator": "any",
+      "thresholds": [
+        {
+          "metric": "changedFiles",
+          "comparison": "gte",
+          "value": 8,
+          "rationale": "Routine single-AC work touches 1-3 files. Eight is well clear of that, so the prompt stays rare in the common case."
+        },
+        {
+          "metric": "insertions",
+          "comparison": "gte",
+          "value": 300,
+          "rationale": "The motivating incident reached 591 insertions in one uncommitted session, so this fires roughly midway through work of that shape. Deliberately late rather than chatty: a prompt that fires too often is felt in every deployed project."
+        }
+      ]
+    },
+    "prompt": {
+      "namesMilestone": true,
+      "text": "You have accumulated {changedFiles} changed file(s) and {insertions} insertion(s) since the last commit, still inside the current AC. Name the verified milestone reached so far and commit it now, or decline to continue.",
+      "why": "The delta decides WHEN to ask; the answer supplies WHAT the commit message says. A mechanical trigger alone would catch the uncommitted-work half of the incident and leave the bad-commit-message half untouched."
+    },
+    "reset": "Any commit clears the accumulation; the next evaluation measures from the new HEAD."
+  },
+  "distinctFromNonstopAudit": {
+    "reconcilable": false,
+    "thisMeasures": "volume accumulated within one AC - changedFiles and insertions since the last commit",
+    "auditMeasures": "commits per AC across a completed run - Math.ceil(acCount / 3)",
+    "auditSource": ".claude/scripts/shared/nonstop-audit.js",
+    "note": "Different units, so no single number satisfies both. This checkpoint is live and fires during work; the audit is post-hoc, warning-only, and scoped to epic/--nonstop runs. The audit is deliberately left unchanged (#2557 AC5)."
+  }
+}

@@ -1,5 +1,5 @@
 ---
-version: "v0.96.2"
+version: "v0.97.0"
 description: Add story to epic with charter compliance (project)
 argument-hint: "[epic-number] (e.g., 42 or #42)"
 copyright: "Rubrical Works (c) 2026"
@@ -11,6 +11,7 @@ Add a story to an epic with charter compliance and test plan updates.
 | Argument | Description |
 |----------|-------------|
 | `[epic-number]` | Parent epic (e.g., `42` or `#42`). Prompts if omitted. |
+| `--assignee <value>` | GitHub login for the new issue. Omitted → `@me`. |
 ## Execution Instructions
 **REQUIRED:**
 1. **Create Tasks:** Use `TaskCreate` to bulk-create tasks from phases below.
@@ -98,7 +99,7 @@ gh pmu create --repo {repository} \
   --priority {priority} \
   --assignee {assignee}
 ```
-**Assignee:** substitute `{assignee}` from `node .claude/scripts/shared/lib/gh-pmu-config.js --assignee` — `.gh-pmu.json` `defaults.assignee`, else `@me`. NEVER hardcode a login or drop the flag (omitted `--assignee` silently creates an unassigned issue). Unresolvable configured login → `gh pmu` exits 1 and creates nothing; report the error, do NOT retry without the flag.
+**Assignee:** substitute `{assignee}` from `node .claude/scripts/shared/lib/gh-pmu-config.js --assignee <value>` — pass the user's `--assignee` value, omit when none given. Helper returns that login, else `@me`; reads no config file. NEVER hardcode a login or drop the flag (omitted `--assignee` silently creates an unassigned issue). Unresolvable login → `gh pmu` exits 1 and creates nothing; report the error, do NOT retry without the flag.
 **Story Body Template:**
 > **⚠️ ATOMIC TEMPLATE — All sections below are REQUIRED.**
 > Every story MUST include ALL sections. No section may be omitted.
@@ -269,8 +270,10 @@ PRD tracker: {Updated #{prd_num}|Not PRD-derived}
 PRD document: {Updated {prd_file}|Not found|Not PRD-derived}
 
 Next steps:
-1. Work the story: work #{story_num}
-2. View epic progress: gh pmu sub list #{epic_num}
+1. Review the story: /review-issue #{story_num}
+2. Assign to a branch: /assign-branch #{story_num}
+3. Work the story: work #{story_num}
+4. View epic progress: gh pmu sub list #{epic_num}
 ```
 ## Error Handling
 | Situation | Response |
@@ -283,5 +286,13 @@ Next steps:
 | No charter, user declines | "Story creation cancelled." |
 | Charter concern, user declines | "Story creation cancelled due to scope concerns." |
 | Test plan not found | Proceed without test plan update |
+### Closing Cleanup
+Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
+**(1) Emit the closing output** described by the final step above.
+**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+1. `TaskList` — enumerate all tasks.
+2. For every task owned by this `/add-story` invocation, `TaskUpdate status=deleted`.
+3. Do **not** delete tasks created outside this invocation (user TODOs).
+
 
 **End of /add-story Command**

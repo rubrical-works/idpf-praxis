@@ -1,5 +1,5 @@
 ---
-version: "v0.96.2"
+version: "v0.97.0"
 description: Split story into smaller stories (project)
 argument-hint: "<story-number> (e.g., 123)"
 copyright: "Rubrical Works (c) 2026"
@@ -12,23 +12,13 @@ Split a story into smaller stories while maintaining charter compliance and test
 | Argument | Description |
 |----------|-------------|
 | `<story-number>` | Story to split (e.g., `123` or `#123`) |
+| `--assignee <value>` | GitHub login for the new issue. Omitted → `@me`. |
 ---
 ## Execution
 **REQUIRED:**
 1. `TaskCreate` from phases below
 2. Mark `in_progress` → `completed`
 3. Interrupted → tasks show resume point
-
-**Example:**
-```
-- [ ] Phase 1: Fetch and validate
-- [ ] Phase 2: Determine split criteria
-- [ ] Phase 3: Charter compliance check
-- [ ] Phase 4: Create new stories
-- [ ] Phase 5: Update original
-- [ ] Phase 6: Update test plan
-- [ ] Phase 7: Report completion
-```
 ---
 ## Phase 1: Fetch and Validate
 **Step 1: Parse**
@@ -117,7 +107,7 @@ gh pmu create --repo {repository} \
   --priority {priority} \
   --assignee {assignee}
 ```
-**Assignee:** substitute `{assignee}` from `node .claude/scripts/shared/lib/gh-pmu-config.js --assignee` — `.gh-pmu.json` `defaults.assignee`, else `@me`. NEVER hardcode a login or drop the flag (omitted `--assignee` silently creates an unassigned issue). Unresolvable configured login → `gh pmu` exits 1 and creates nothing; report the error, do NOT retry without the flag.
+**Assignee:** substitute `{assignee}` from `node .claude/scripts/shared/lib/gh-pmu-config.js --assignee <value>` — pass the user's `--assignee` value, omit when none given. Helper returns that login, else `@me`; reads no config file. NEVER hardcode a login or drop the flag (omitted `--assignee` silently creates an unassigned issue). Unresolvable login → `gh pmu` exits 1 and creates nothing; report the error, do NOT retry without the flag.
 **Body template:**
 ```markdown
 ## Story: {Title}
@@ -280,8 +270,10 @@ Test plan: {Updated|Not applicable}
 PRD tracker: {Updated #{prd_num}|Not PRD-derived}
 
 Next steps:
-1. Work a split story: work #{new_story_1}
-2. View epic progress: gh pmu sub list #{epic_num}
+1. Review a split story: /review-issue #{new_story_1}
+2. Assign to a branch: /assign-branch #{new_story_1}
+3. Work a split story: work #{new_story_1}
+4. View epic progress: gh pmu sub list #{epic_num}
 ```
 ---
 ## Error Handling
@@ -294,5 +286,13 @@ Next steps:
 | Charter concern declined | "Story split cancelled due to scope concerns." |
 | No test plan | Proceed without update (note in output) |
 | Already closed | "Story #N is already closed. Cannot split closed stories." |
+### Closing Cleanup
+Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
+**(1) Emit the closing output** described by the final step above.
+**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+1. `TaskList` — enumerate all tasks.
+2. For every task owned by this `/split-story` invocation, `TaskUpdate status=deleted`.
+3. Do **not** delete tasks created outside this invocation (user TODOs).
+
 ---
 **End of /split-story Command**

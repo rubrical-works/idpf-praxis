@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
- * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/changes-requested), and propagates review labels to parent epics.
+ * @framework-script 0.97.0
+ * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/pending), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -19,7 +19,25 @@ const EXEC_OPTS = { encoding: 'utf-8' };
 
 // ─── Shared Constants ───
 
-const { EMOJI, SECTION_HEADERS } = require('./lib/review-format');
+const { EMOJI, SECTION_HEADERS, REVIEW_TYPES } = require('./lib/review-format');
+
+// Header verb per review type, inverted from REVIEW_TYPES rather than copied
+// (#2594). REVIEW_TYPES is the same table REVIEW_HEADER_PATTERN's alternation
+// is built from, so deriving the verb here means the header we *write* and the
+// header /resolve-review *reads* cannot drift apart. A second hand-maintained
+// copy would reintroduce exactly the divergence this fixes.
+const REVIEW_VERBS = Object.fromEntries(
+  Object.entries(REVIEW_TYPES).map(([verb, type]) => [type, verb])
+);
+
+// Every issue-shaped type (bug/enhancement/story/epic/generic) and any
+// unrecognized or absent value resolves here — which is the header every
+// review carried before this change, so existing behaviour is preserved.
+const DEFAULT_REVIEW_VERB = 'Issue';
+
+function reviewVerb(type) {
+  return (typeof type === 'string' && REVIEW_VERBS[type]) || DEFAULT_REVIEW_VERB;
+}
 
 const TYPE_LABELS = {
   bug: 'Bug',
@@ -27,6 +45,9 @@ const TYPE_LABELS = {
   story: 'Story',
   epic: 'Epic',
   generic: 'Generic',
+  // prd / proposal / test-plan draw their label from the same inverted table
+  // that drives the header, so `**Type:**` and the header verb cannot disagree.
+  ...REVIEW_VERBS,
 };
 
 // ─── Argument Parsing ───
@@ -238,7 +259,7 @@ function formatReviewComment(findings) {
     : 'None';
 
   const lines = [];
-  lines.push(`## Issue Review #${findings.reviewNumber} — ${date}`);
+  lines.push(`## ${reviewVerb(findings.type)} Review #${findings.reviewNumber} — ${date}`);
   lines.push('');
   lines.push(`**Issue:** #${findings.issue} — ${findings.title}`);
   lines.push(`**Type:** ${typeLabel}`);
@@ -321,16 +342,26 @@ async function execSafe(cmd) {
 }
 
 /**
- * Build context-aware closing notification based on issue status.
+ * Build context-aware closing notification based on review outcome and issue status.
+ *
+ * Outcome takes precedence over status: unresolved findings block progress
+ * regardless of where the issue sits on the board, so a 'pending' review routes
+ * to /resolve-review even from in_progress/in_review. Omitting `outcome` yields
+ * the pre-#2565 status-only behavior.
+ *
  * @param {number} issue - Issue number
  * @param {string} title - Issue title
  * @param {string} status - Normalized status (e.g., 'in_progress', 'backlog')
+ * @param {string} [outcome] - Review outcome label from determineLabel ('pending'|'reviewed')
  * @returns {string} Closing notification text
  */
-function buildClosingNotification(issue, title, status) {
+function buildClosingNotification(issue, title, status, outcome) {
   const header = `---\nReview complete: #${issue} — ${title}`;
   const footer = '---';
 
+  if (outcome === 'pending') {
+    return `${header}\nRun /resolve-review #${issue} to address the findings.\n${footer}`;
+  }
   if (status === 'in_progress' || status === 'in_review') {
     return `${header}\nSay "done" or run /done #${issue} to close this issue.\n${footer}`;
   }
@@ -446,8 +477,9 @@ async function main() {
     } catch (_e) { /* fall through to default */ }
   }
 
-  // Build closing notification
-  const closingNotification = buildClosingNotification(issue, findings.title, issueStatus);
+  // Build closing notification — `label` carries the review outcome, so a
+  // pending review routes to /resolve-review rather than the status-derived arm.
+  const closingNotification = buildClosingNotification(issue, findings.title, issueStatus, label);
 
   const result = buildSuccessResult({
     bodyUpdated,
@@ -480,6 +512,7 @@ module.exports = {
   validateFindings,
   updateBodyReviewCount,
   formatReviewComment,
+  reviewVerb,
   determineLabel,
   buildClosingNotification,
   buildSuccessResult,

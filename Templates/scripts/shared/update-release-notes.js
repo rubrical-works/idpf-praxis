@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -24,6 +24,25 @@ const { validateVersion } = require('./lib/input-validation.js');
  */
 function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Determine whether a version string carries a semver prerelease segment.
+ *
+ * Anchored on the version itself so the hyphen must directly follow
+ * MAJOR.MINOR.PATCH. An unanchored alternation over the identifier names
+ * (alpha|beta|rc) was rejected: it matches the identifier anywhere in the
+ * string and misses prerelease segments outside that alternation.
+ *
+ * Detection is on the version, not on the caller — `/prepare-beta` and
+ * `/prepare-release` both route through this script, and keying on the command
+ * would leave the same hole open for any third caller added later (#2584).
+ *
+ * @param {string} version - Version tag, with or without the `v` prefix
+ * @returns {boolean} - True when the version is a prerelease
+ */
+function isPrereleaseVersion(version) {
+    return /^v?\d+\.\d+\.\d+-/.test(String(version));
 }
 
 /**
@@ -60,18 +79,25 @@ function sleep(ms) {
  * @param {number} retryDelayMs - Delay between retries in ms (default: 2000)
  */
 async function updateOrCreateRelease(version, notesFile, maxRetries = 3, retryDelayMs = 2000) {
+    const prerelease = isPrereleaseVersion(version);
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             if (releaseExists(version)) {
-                // Release exists - update it
-                execFileSync('gh', ['release', 'edit', version, '--notes-file', notesFile], {
+                // Release exists - update it. The flag is passed in both
+                // directions so a re-run converges on the correct state rather
+                // than leaving a wrong flag in place (#2584).
+                execFileSync('gh', ['release', 'edit', version, '--notes-file', notesFile,
+                    prerelease ? '--prerelease' : '--prerelease=false'], {
                     encoding: 'utf8',
                     stdio: ['pipe', 'pipe', 'pipe']
                 });
                 return { action: 'updated' };
             } else {
-                // Release doesn't exist - create it
-                execFileSync('gh', ['release', 'create', version, '--title', `Release ${version}`, '--notes-file', notesFile], {
+                // Release doesn't exist - create it. Stable versions pass no
+                // flag at all, so GitHub's default "latest" handling applies.
+                execFileSync('gh', ['release', 'create', version, '--title', `Release ${version}`, '--notes-file', notesFile,
+                    ...(prerelease ? ['--prerelease'] : [])], {
                     encoding: 'utf8',
                     stdio: ['pipe', 'pipe', 'pipe']
                 });
@@ -120,6 +146,12 @@ function getRepoUrl() {
 
 /**
  * Get previous tag before the current one
+ *
+ * The filter admits an optional semver prerelease segment. Excluding it meant
+ * a beta tag was never found in the list, so `getPreviousTag` returned null and
+ * every beta release page shipped without a Full Changelog link (#2584). Still
+ * anchored on `v<major>.<minor>.<patch>`, so non-version tags — `skill/<name>/v*`
+ * among them — remain excluded.
  */
 function getPreviousTag(currentTag) {
     try {
@@ -127,7 +159,9 @@ function getPreviousTag(currentTag) {
         const tags = execSync('git tag --sort=-v:refname', { encoding: 'utf8' })
             .trim()
             .split('\n')
-            .filter(t => t.match(/^v\d+\.\d+\.\d+$/));
+            // Two flat patterns rather than `(?:-…+)?`: a `?` wrapping a `+` is
+            // star height 2 and `security/detect-unsafe-regex` errors on it.
+            .filter(t => /^v\d+\.\d+\.\d+$/.test(t) || /^v\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(t));
 
         const currentIndex = tags.indexOf(currentTag);
         if (currentIndex >= 0 && currentIndex < tags.length - 1) {
@@ -370,6 +404,7 @@ async function main() {
 
 // Export for testing
 module.exports = {
+    isPrereleaseVersion,
     releaseExists,
     getPreviousTag,
     countCategoryItems,

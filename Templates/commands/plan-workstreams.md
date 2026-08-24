@@ -1,5 +1,5 @@
 ---
-version: "v0.96.2"
+version: "v0.97.0"
 description: Plan concurrent workstreams for parallel epic development
 argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--cancel]"
 copyright: "Rubrical Works (c) 2026"
@@ -189,5 +189,13 @@ Execute each command from generated list.
 | Epic not open | "Epic #N is [state], not open." → STOP |
 | Missing epic label | "Issue #N is not an epic." → STOP |
 | Unknown flag | "Unknown flag: --X. Usage: ..." → STOP |
+### Closing Cleanup
+Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
+**(1) Emit the closing output** described by the final step above.
+**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+1. `TaskList` — enumerate all tasks.
+2. For every task owned by this `/plan-workstreams` invocation, `TaskUpdate status=deleted`.
+3. Do **not** delete tasks created outside this invocation (user TODOs).
+
 
 **End of /plan-workstreams Command**

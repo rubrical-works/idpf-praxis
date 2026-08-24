@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Analyze interdependence between multiple issues.
  * Detects overlap, ordering dependencies, conflicts, and shared criteria
  * using config-driven evaluation dimensions.
@@ -10,8 +10,30 @@
 
 const fs = require('fs');
 const path = require('path');
+const { scanCheckboxes } = require('./lib/checkbox-scan.js');
+// Reused, not reimplemented (#2622). scope-drift-check.js holds the only
+// declared-scope parser and glob matcher in the deployed tree, and both live
+// under .claude/scripts/shared/, so the relative require satisfies the runtime
+// dependency contract. A second path matcher here would drift from the one the
+// Step 4c gate enforces, and the two disagreeing is worse than either being
+// imperfect.
+const { parseDeclaredScope, matchesAny } = require('./scope-drift-check.js');
 
 const CONFIG_PATH = path.resolve(__dirname, '../../metadata/review-interdependence.json');
+
+// Mirrors declaredScope.creationTerms in review-interdependence.json (#2622).
+// Held in code as well as config because an empty term list does not fail — it
+// silently degrades every declared-scope finding to "no directional signal",
+// which reads exactly like a pair with no real dependency. A default that
+// disappears when the config does is worse than no default at all.
+const DEFAULT_CREATION_TERMS = [
+  'create', 'creates', 'creating',
+  'add', 'adds', 'adding',
+  'new file',
+  'introduce', 'introduces',
+  'provide', 'provides',
+  'export', 'exports'
+];
 
 /**
  * Load interdependence configuration.
@@ -19,17 +41,23 @@ const CONFIG_PATH = path.resolve(__dirname, '../../metadata/review-interdependen
  */
 function loadConfig() {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    // A file that parses but carries no dimensions is as unusable as one that
+    // does not parse — treat it the same rather than letting callers reach into
+    // `undefined.overlap`.
+    if (parsed && parsed.dimensions) return parsed;
   } catch {
-    return {
-      dimensions: {
-        overlap: { enabled: true, severity: 'warning' },
-        ordering: { enabled: true, severity: 'info', orderingPatterns: {} },
-        conflicts: { enabled: true, severity: 'error', conflictPatterns: {} },
-        sharedCriteria: { enabled: true, severity: 'info', similarityThreshold: 0.6 }
-      }
-    };
+    // fall through to the built-in defaults
   }
+  return {
+    dimensions: {
+      overlap: { enabled: true, severity: 'warning' },
+      ordering: { enabled: true, severity: 'info', orderingPatterns: {} },
+      conflicts: { enabled: true, severity: 'error', conflictPatterns: {} },
+      sharedCriteria: { enabled: true, severity: 'info', similarityThreshold: 0.6 },
+      declaredScope: { enabled: true, severity: 'warning', creationTerms: DEFAULT_CREATION_TERMS }
+    }
+  };
 }
 
 /**
@@ -58,13 +86,12 @@ function extractTokens(text) {
   const wordPattern = /\b[a-z][a-z-]{4,}\b/g;
   const words = [...new Set((lower.match(wordPattern) || []).filter(w => !stopWords.has(w)))];
 
-  // Extract acceptance criteria lines
-  const acPattern = /- \[[ x]\] (.+)/g;
-  const acs = [];
-  let match;
-  while ((match = acPattern.exec(text)) !== null) {
-    acs.push(match[1].trim().toLowerCase());
-  }
+  // Extract acceptance criteria lines. #2600: reads through the shared
+  // fence-aware scanner, so criteria a body merely *quotes* no longer enter
+  // cross-issue overlap comparison and report two unrelated issues as
+  // interdependent. The old pattern was not even line-anchored, so a `- [ ]`
+  // appearing mid-sentence matched too.
+  const acs = scanCheckboxes(text).map((box) => box.text.toLowerCase());
 
   return { files, words, acs };
 }
@@ -262,6 +289,140 @@ function detectSharedCriteria(issues, tokens, config) {
   return findings;
 }
 
+// ─── Declared-Scope Ordering (#2622) ───
+
+/**
+ * Test whether two declared scopes intersect.
+ *
+ * Checked in both directions because a glob may be declared by either side: an
+ * issue declaring `CommandsSrc/*.md` collides with one declaring
+ * `CommandsSrc/fw-gap-analysis.md` regardless of which is listed first. This is
+ * the exact pair the engine missed when it compared body mentions instead —
+ * `CommandsSrc/*.md` never appears as prose in the other issue.
+ *
+ * @param {string[]} pathsA
+ * @param {string[]} pathsB
+ * @returns {string[]} concrete paths on which the two scopes intersect
+ */
+function intersectDeclaredScopes(pathsA, pathsB) {
+  const hits = new Set();
+  for (const p of pathsA) {
+    if (matchesAny(p, pathsB)) hits.add(p);
+  }
+  for (const p of pathsB) {
+    if (matchesAny(p, pathsA)) hits.add(p);
+  }
+  return [...hits].sort();
+}
+
+/**
+ * Test whether an issue's body claims to CREATE one of the shared paths.
+ *
+ * Line-scoped on purpose: a creation verb anywhere in a long body says nothing
+ * about the shared file specifically. Requiring the verb and the path on the
+ * same line keeps the signal deterministic and reviewable, at the cost of
+ * missing creations phrased across a line break — the conservative direction,
+ * since a missed provider yields "no directional signal" rather than a
+ * confidently wrong order.
+ *
+ * @param {string} body
+ * @param {string[]} sharedPaths
+ * @param {string[]} creationTerms
+ * @returns {boolean}
+ */
+function declaresCreationOf(body, sharedPaths, creationTerms) {
+  if (!body || creationTerms.length === 0) return false;
+  const lines = body.split('\n');
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (!creationTerms.some(t => lower.includes(t))) continue;
+    for (const p of sharedPaths) {
+      if (line.includes(p) || matchesAny(p, [line.trim()])) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Detect ordering dependencies from DECLARED scope rather than body mentions.
+ *
+ * Emits `dimension: 'ordering'` so the findings feed computeSuggestedOrder,
+ * tagged `source: 'declared-scope'` so a report can tell them apart from the
+ * prose-derived ones.
+ *
+ * Direction is derived only when one issue claims to create a shared path and
+ * the other does not — provider before consumer. With no such signal the
+ * collision is still reported, and the evidence says the direction was not
+ * derivable rather than presenting the numeric tie-break as a dependency.
+ * Given the measured miss rate of the surrounding engine, an ordering asserted
+ * with more confidence than the evidence supports is worse than one that
+ * declines to assert.
+ *
+ * @param {Array<{number: number, body?: string}>} issues - sorted by number
+ * @param {object} config
+ * @returns {Array<object>} ordering findings
+ */
+function detectDeclaredScopeOrdering(issues, config) {
+  const dimension = (config && config.dimensions && config.dimensions.declaredScope) || {};
+  if (dimension.enabled === false) return [];
+
+  const severity = dimension.severity || 'warning';
+  // Falls back to the built-in list rather than to []. An empty list does not
+  // error; it turns every pair into "no directional signal", which is
+  // indistinguishable from a genuine absence of dependency.
+  const configured = Array.isArray(dimension.creationTerms) && dimension.creationTerms.length > 0
+    ? dimension.creationTerms
+    : DEFAULT_CREATION_TERMS;
+  const creationTerms = configured.map(t => t.toLowerCase());
+
+  // parseDeclaredScope reads `**Files to modify:**` / `**Files:**`, falling back
+  // to a prior `### Files Changed` history. An issue that declares nothing
+  // contributes nothing: absence of a declaration is not evidence of disjoint
+  // scope, and inferring a collision from prose is what the other dimensions do.
+  const scopes = issues.map(i => parseDeclaredScope(i.body || '').paths);
+
+  const findings = [];
+  for (let i = 0; i < issues.length; i++) {
+    for (let j = i + 1; j < issues.length; j++) {
+      if (scopes[i].length === 0 || scopes[j].length === 0) continue;
+
+      const shared = intersectDeclaredScopes(scopes[i], scopes[j]);
+      if (shared.length === 0) continue;
+
+      const aCreates = declaresCreationOf(issues[i].body, shared, creationTerms);
+      const bCreates = declaresCreationOf(issues[j].body, shared, creationTerms);
+
+      const pathList = shared.join(', ');
+      if (aCreates && !bCreates) {
+        findings.push({
+          dimension: 'ordering',
+          source: 'declared-scope',
+          issues: [issues[i].number, issues[j].number],
+          severity,
+          evidence: `#${issues[i].number} creates declared scope ${pathList} that #${issues[j].number} also declares — provider should precede consumer`
+        });
+      } else if (bCreates && !aCreates) {
+        findings.push({
+          dimension: 'ordering',
+          source: 'declared-scope',
+          issues: [issues[j].number, issues[i].number],
+          severity,
+          evidence: `#${issues[j].number} creates declared scope ${pathList} that #${issues[i].number} also declares — provider should precede consumer`
+        });
+      } else {
+        findings.push({
+          dimension: 'ordering',
+          source: 'declared-scope',
+          issues: [issues[i].number, issues[j].number],
+          severity,
+          evidence: `#${issues[i].number} and #${issues[j].number} both declare ${pathList} — collision on declared scope, no directional signal (order shown is the numeric tie-break, not a derived dependency)`
+        });
+      }
+    }
+  }
+  return findings;
+}
+
 /**
  * Compute suggested ordering from ordering findings.
  * Uses a simple topological hint: issues that should come first appear earlier.
@@ -291,13 +452,23 @@ function computeSuggestedOrder(issues, orderingFindings) {
 /**
  * Check whether an issue's labels make it eligible for interdependence analysis.
  * Reads typeFilter from config. Excluded labels take precedence over eligible.
+ *
+ * Eligibility is evaluated against the issue's OWN labels (#2622). That is what
+ * lets an epic's sub-issues be analyzed while the epic itself stays out: a
+ * sub-issue carries `story`/`bug`/`enhancement`, the tracker carries `epic`, and
+ * `excluded` still wins. Admitting `story` therefore needs no change to
+ * `excluded` — removing `epic` from it would make epics analyzable as SUBJECTS,
+ * which is the one thing the sub-issue ordering path must not do.
+ *
  * @param {string[]} labels - Array of label names from the issue
  * @returns {boolean} true if the issue is eligible
  */
 function isEligibleForInterdependence(labels) {
   if (!labels || labels.length === 0) return false;
   const config = loadConfig();
-  const typeFilter = config.typeFilter || { eligible: ['bug', 'enhancement', 'prd', 'test-plan'], excluded: ['proposal', 'epic'] };
+  // Keep this fallback in sync with review-interdependence.json — a config that
+  // fails to load must not silently narrow the filter back.
+  const typeFilter = config.typeFilter || { eligible: ['bug', 'enhancement', 'story', 'prd', 'test-plan'], excluded: ['proposal', 'epic'] };
   // Excluded takes precedence
   if (labels.some(l => typeFilter.excluded.includes(l))) return false;
   // Must have at least one eligible label
@@ -343,6 +514,11 @@ function analyzeInterdependence(issues) {
   if (config.dimensions.sharedCriteria && config.dimensions.sharedCriteria.enabled !== false) {
     findings.push(...detectSharedCriteria(sorted, tokens, config));
   }
+  // Declared scope (#2622). Runs unconditionally unless explicitly disabled —
+  // unlike the four above, an absent config entry still enables it, so a
+  // deployed project on an older config file gains the dimension rather than
+  // silently losing the collision detection it was added for.
+  findings.push(...detectDeclaredScopeOrdering(sorted, config));
 
   // Compute suggested order
   const orderingFindings = findings.filter(f => f.dimension === 'ordering');
@@ -355,4 +531,8 @@ function analyzeInterdependence(issues) {
   };
 }
 
-module.exports = { analyzeInterdependence, isEligibleForInterdependence };
+// extractTokens is exported for #2600 AC9: the criterion is that quoted
+// criteria stop entering overlap comparison, and only the token extractor can
+// show that directly. Asserting it through analyzeInterdependence would prove
+// a similarity score changed, not which inputs produced it.
+module.exports = { analyzeInterdependence, isEligibleForInterdependence, extractTokens };

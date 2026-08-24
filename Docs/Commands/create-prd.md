@@ -10,6 +10,7 @@ Transform a proposal document into an Agile PRD with user stories, acceptance cr
 | `extract` | No | Extract a PRD from existing codebase (requires `codebase-analysis` skill) |
 | `extract <directory>` | No | Extract from a specific directory |
 | *(none)* | No | Interactive mode — prompts for issue number or extraction |
+| `--assignee <value>` | No | GitHub login to assign the PRD tracker issue to. Omitted → `@me`. |
 
 ## Usage
 

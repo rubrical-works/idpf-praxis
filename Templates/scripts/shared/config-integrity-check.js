@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.96.2
+ * @framework-script 0.97.0
  * @description Check .gh-pmu.json config integrity via gh pmu config verify.
  * Gates on gh-pmu >= 1.3.1 (config verify was introduced in that version).
  * Non-blocking; used during session startup.
@@ -161,4 +161,15 @@ function main() {
   }
 }
 
-main();
+// #2615: guarded so requiring this module does not run the integrity check and
+// print its envelope. Exports the pure helpers, which is what lets them be
+// asserted behaviourally instead of by source text.
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  compareSemver,
+  getPmuVersion,
+  parseCriticalFields
+};

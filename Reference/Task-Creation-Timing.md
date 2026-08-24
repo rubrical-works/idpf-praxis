@@ -1,6 +1,13 @@
 # Task Creation Timing for Routed Commands
-**Version:** v0.96.2
+**Version:** v0.97.0
 **Purpose:** Prevent orphaned tasks when commands have routing decisions.
+## Availability Precondition
+**Task tools may not exist in the session.** `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate` are gated by remote flag `tengu_rosy_wren` (default off); local override `CLAUDE_CODE_ENABLE_TODO_TOOLS=true` in `~/.claude/settings.json` `env`. Server-side rollout — availability differs between sessions with no local change, which reads as intermittent breakage rather than a feature flag.
+**Probe before Phase 1.** Call `TaskList` once. Succeeds → follow this document as written. Tool absent:
+1. Track steps with an **inline checklist** — same steps, same order, same one-per-step discipline.
+2. **State explicitly, once, that the `TaskList`-based compaction-recovery guarantee does not hold.** Everything below treats the task list as the recovery point; an inline checklist lives in the context window, which is exactly what compaction discards.
+3. Resuming after compaction: re-read the command spec and re-derive position from issue state, commits, and checked ACs — not from a checklist that may no longer be present.
+Saying so is the load-bearing part: a silently absent step machine is indistinguishable from one that was never needed, and surfaces later as work resumed from the wrong step. The startup hook reports this on its `Task Tools:` row when not enabled locally (#2593).
 ## Two-Phase Task Creation
 ### Phase 1: Preamble Task Only
 Before routing logic, create **only** the preamble/setup task:

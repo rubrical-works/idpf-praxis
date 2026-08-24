@@ -139,6 +139,10 @@
     "selfHosted": {
       "type": "boolean",
       "description": "Whether this project self-hosts the framework (true only for idpf-praxis-dev itself)"
+    },
+    "testCoverageAudit": {
+      "type": "object",
+      "description": "Project-level override for the tdd-refactor-coverage-audit skill, read by its test-coverage-audit.js and merged over the bundled conventions. Deliberately loosely-typed: the authoritative shape is defined in that skill, at resources/test-coverage-conventions-schema.json, which ships from idpf-praxis-skills and declares JSON Schema 2020-12 while this file declares draft-07 — so a $ref cannot span the two, and restating the shape here is the cross-repo coupling that produced #2596. Shape validation is therefore deferred to the skill, which is admissible only because the failure is loud rather than silent: a block that does not match is reported as \"framework-config.json -> testCoverageAudit failed schema validation\", not ignored. This schema guarantees only that the key is permitted and is an object."
     }
   }
 }

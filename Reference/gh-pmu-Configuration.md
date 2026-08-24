@@ -1,5 +1,5 @@
 # gh-pmu Configuration Reference
-**Version:** v0.96.2
+**Version:** v0.97.0
 **Source:** Reference/gh-pmu-Configuration.md
 **Load on demand** for `.gh-pmu.json` schema, release config, or `gh pmu` CLI operations.
 ## .gh-pmu.json Schema
@@ -9,7 +9,6 @@ repositories: [{owner}/{repo}]
 defaults:                                     # Applied when none given
     priority: p2
     status: backlog
-    assignee: "@me"                           # Optional. Issue-creation commands
 fields:
     status:
         field: Status
@@ -21,11 +20,16 @@ fields:
 **Derived:** Repository = `repositories[0]`. Board = `https://github.com/users/{project.owner}/projects/{project.number}/views/1`.
 Use the **alias** (left side) in commands: `gh pmu move 90 --status in_progress`
 **Labels vs Project Fields:** labels are issue metadata (`bug`, `enhancement`, `pm-tracked`) set via `gh issue edit --add-label`; project fields are board columns (Status, Priority) set via `gh pmu move [number] --status [value]` and defined under `fields:`.
-### Defaults — Issue Assignee
-**Resolution order:** `defaults.assignee` when a non-empty string → `@me` otherwise. Nothing else.
-**No `project.owner` fallback, deliberately.** It is the *board* owner and may be an organisation login, which does not resolve as an assignee. Since gh-pmu v1.5.1 an unresolvable `--assignee` aborts issue creation with exit 1 *before* the createIssue mutation, so the fallback would convert a working default into a hard failure.
-**Read by the framework, not by `gh pmu`** — gh-pmu has no config-defaults behaviour for assignee and ignores the key. Commands resolve it via `node .claude/scripts/shared/lib/gh-pmu-config.js --assignee`. Consumers: `/add-story`, `/bug`, `/create-prd` (×2), `/enhancement`, `/fw-gap-analysis`, `/proposal`, `/split-story`, `create-epic.js`.
-**Degradation:** absent, empty, or non-string → `@me`; the flag is never omitted, because an omitted `--assignee` silently creates an unassigned issue. An unresolvable configured login is gh-pmu's error to raise — commands surface the exit-1 abort rather than retrying without the flag.
+### Issue Assignee — Constant Plus Flag
+**Not a `.gh-pmu.json` setting.** No `defaults.assignee` key exists; adding one has no effect (#2599).
+**Resolution order:** the invocation's `--assignee <value>` when a non-empty string → the `DEFAULT_ASSIGNEE` constant (`@me`) otherwise. No file is read.
+```bash
+node .claude/scripts/shared/lib/gh-pmu-config.js --assignee           # prints @me
+node .claude/scripts/shared/lib/gh-pmu-config.js --assignee octocat   # prints octocat
+```
+Consumers — each documenting `--assignee <value>` and passing it through: `/add-story`, `/bug`, `/create-backlog`, `/create-prd` (×2), `/enhancement`, `/fw-gap-analysis`, `/proposal`, `/split-story`, `create-epic.js`. `/bug`, `/enhancement`, `/proposal` also declare it in `.claude/metadata/trigger-flag-allowlist.json`, so `bug: login fails --assignee octocat` binds the login to the flag, not the title.
+**Why the key was removed (#2599).** `.gh-pmu.json` is owned by `gh pmu`, which does not recognise `defaults.assignee` — the framework read it, not `gh pmu` — so any re-serialisation dropped it. One drop is enough: every later issue resolved from a missing key, indistinguishable from a deliberately-unset one, so the helper degraded silently to `@me` — rerouting every new issue on a project configured with another login, with no error. Reverses part of #2489 deliberately: the constant returns, the escape hatch becomes per-invocation. **Trade accepted** — a standing non-`@me` assignee must be named each time.
+**No `project.owner` fallback, deliberately.** It is the *board* owner and may be an organisation login, which does not resolve as an assignee. Since gh-pmu v1.5.1 an unresolvable `--assignee` aborts creation with exit 1 *before* the createIssue mutation, so the fallback would convert a working default into a hard failure. Same reason the flag is **never omitted**: an omitted `--assignee` silently creates an unassigned issue, a bad login fails loudly — surface the exit-1 abort, never retry without the flag.
 **Editing `.gh-pmu.json` changes the seal.** Regenerate `.gh-pmu.checksum` and commit both — `verify` also compares against git HEAD, and `gh pmu config` exposes only `verify`:
 ```bash
 node -e "const c=require('crypto'),f=require('fs');f.writeFileSync('.gh-pmu.checksum',c.createHash('sha256').update(f.readFileSync('.gh-pmu.json')).digest('hex'))"

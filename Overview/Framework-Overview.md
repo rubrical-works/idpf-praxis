@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.96.2
+**Version:** v0.97.0
 Comprehensive reference for AI assistants (Claude/Claude Code) and framework development. Change history: git log and CHANGELOG.md.
 **Framework Purpose and Scope**
 Supports AI-assisted software development across multiple methodologies and platforms. System Instructions are **REQUIRED** for all framework operation.

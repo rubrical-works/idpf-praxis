@@ -8,6 +8,7 @@ Create a proposal document (`Proposal/[Name].md`) and a tracking issue with the 
 |----------|----------|-------------|
 | `<title>` | No | Proposal title (e.g., `Dark Mode Support`) |
 | `--prior-art` | No | Run a prior-art sweep before composing the proposal. Absent means no sweep. |
+| `--assignee <value>` | No | GitHub login to assign the new issue to. Omitted → `@me`. |
 
 ## Usage
 

@@ -7,6 +7,7 @@ Split a story issue into two or more smaller, focused stories.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `<story-number>` | Yes | Story issue number to split (e.g., `123` or `#123`) |
+| `--assignee <value>` | No | GitHub login to assign the new stories to. Omitted → `@me`. |
 
 ## Usage
 
@@ -24,3 +25,4 @@ Split a story issue into two or more smaller, focused stories.
 - Closes the original story with a split notice comment listing the new issue numbers
 - If the epic has a linked test plan, redistributes test cases into per-story sections and commits the updated test plan file
 - Comments on the PRD tracker issue (if present) with a split summary; silently skips this step for non-PRD-derived epics
+- On completion, reports the next steps in order: review a split story (`/review-issue #N`), assign it to a branch (`/assign-branch #N`), work it, then check epic progress.

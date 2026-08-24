@@ -14,7 +14,7 @@
     "issue": { "type": "number", "description": "Issue number (e.g., 42)" },
     "title": { "type": "string", "description": "Issue title text" },
     "reviewNumber": { "type": "number", "description": "Review sequence number (1, 2, ...)" },
-    "type": { "type": "string", "enum": ["bug", "enhancement", "story", "epic", "generic"] },
+    "type": { "type": "string", "enum": ["bug", "enhancement", "story", "epic", "generic", "prd", "proposal", "test-plan"] },
     "findings": {
       "autoEvaluated": [
         { "id": "string", "criterion": "string", "status": "pass|warn|fail|skip", "evidence": "string" }
@@ -36,6 +36,7 @@
   },
   "notes": [
     "findings.userEvaluated is empty [] in solo review mode",
-    "type must match the issue type from preamble context"
+    "type must match the issue type from preamble context",
+    "type drives the review comment header verb in review-finalize.js formatReviewComment(); prd/proposal/test-plan are tracker-shaped and additionally suppress positional AC check-off in review-ac-checkoff.js (#2594)"
   ]
 }
