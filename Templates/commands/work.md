@@ -1,5 +1,5 @@
 ---
-version: "v0.97.0"
+version: "v0.98.0"
 description: Start working on issues with validation and auto-task extraction (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -31,10 +31,20 @@ copyright: "Rubrical Works (c) 2026"
 Follow `.claude/rules/08-work-execution.md` (auto-loaded at session start). That rule defines:
 - Phase 1 / Phase 2 task creation
 - Step 1: preamble via `work-preamble.js`
-- Steps 1a, 1b, 2, 2a, 3, 3b, 4, 4a, 4b, 4c, 5, 6, 6a
+- Steps 1a, 1b, 1c, 2, 2a, 3, 3b, 4, 4a, 4b, 4c, 5, 6, 6a
 - Review-State / Pre-Work Status / Sub-Agent / Commit-per-AC gates
 - Autonomous epic & branch tracker processing (default vs. `--nonstop`)
 - STOP boundary and post-STOP cleanup
+
+---
+## Branch Sync
+After the preamble and before the first commit, `/work` runs `branch-sync-check.js` once per invocation — the same check the startup hook runs, at the moment integrating another developer's push is cheapest (#2635):
+- **Behind, no conflicting paths** → offer `git pull --ff-only`; declining leaves the tree untouched.
+- **Behind, conflicting paths present** → no pull offer; report the paths, ask whether to continue or stop.
+- **Diverged** → report and STOP — the previous `/done` did not push, or another session committed here.
+- **Ahead, up-to-date, no upstream** → no action.
+
+Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. The matching guard before push is `/done` Step 2.
 
 ---
 ## Review-State Gate

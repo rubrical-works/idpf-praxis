@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.97.0
+**Version:** v0.98.0
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow.
 ## Execution Instructions
@@ -30,6 +30,16 @@ Parse JSON: `ok:false` → report `errors[]`, STOP. `ok:true` → extract `conte
 Trigger: `context.wait==true`. `node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 300`. 0=pass continue; 1=fail/bad args/gh unavailable after retries **STOP**; 2=timeout, no jobs running **STOP**; 3=no runs for this branch/commit continue; 5=timeout with jobs still running at 10-min cap **STOP**. Gate is scoped to the passed branch/commit — a green run on an unrelated branch no longer satisfies it (#2464).
 ### Step 1b: Epic Complexity Assessment
 Trigger: `context.type=="epic"` and `--nonstop`. `node .claude/scripts/shared/epic-complexity.js $ISSUE`. `classification=="functional"` → `strictTDD=true`. Signals: `.claude/metadata/epic-complexity-signals.json`.
+### Step 1c: Branch Sync
+Trigger: always — once per invocation, after Step 1 (and 1a under `--wait`), before any commit; not repeated per sub-issue (sub-issues share the branch). `node .claude/scripts/shared/branch-sync-check.js` → `data`: `status`, `ahead`, `behind`, `fetched`, `conflictingPaths`, `upstreamSha`. Same helper and offer table as `03-startup.md` §Branch Sync Offer, at the cheap moment: between the last `/done` and this `/work` local usually has nothing unpushed, so a fast-forward integrates another developer's push before any `Refs #N` commit lands on a stale tip (#2635).
+| `status` | Action |
+|---|---|
+| `behind`, `conflictingPaths` empty | Offer `git pull --ff-only` via `AskUserQuestion` (pull recommended; "continue on current tip" alternative). Accept → run, report. Decline → continue, tree untouched. Pull failure → report git's error verbatim, continue — no retry, no non-fast-forward merge fallback. |
+| `behind`, conflicting paths present | **No pull offer** — a fast-forward would abort. Report paths; `AskUserQuestion`: continue on the stale base or STOP. Never stash, discard, or revert for the user. |
+| `diverged` | Report `ahead`/`behind` and **STOP**. Previous `/done` did not push, or another session committed here. Recovery: `/done` the issue still in review (its push runs the Step 2 rebase guard) or push by hand, then re-run `/work`. Rebase-vs-merge is `/done` Step 2's decision. |
+| `ahead`, `up-to-date`, `no-upstream` | No action; `ahead` reported in one line, work proceeds. |
+`fetched: false` → count from cached ref: say "possibly low", act anyway. `success: false` → warn, continue.
+> **Why here, not per AC (#2635):** nothing is pushed until `/done`; a fetch per commit costs a network call and gains nothing. The window left open — commits accumulating while the remote moves — is closed by `/done` Step 2's rebase guard. Keyed to the moment, not the mechanism: fires identically inline or via spawned Agent.
 ### Step 2: Framework Methodology Dispatch
 Load `{frameworkPath}/{framework}/` core from `framework-config.json`. Missing → warn, continue.
 ### Step 2a: Load TDD Checklist
@@ -71,8 +81,9 @@ Trigger is the **workflow moment**, not the actor or mechanism (#2483): fires id
 **Pre-Work Status Gate (mandatory, every issue — compaction-recovery safeguard + sub-issue transition):** **Before the first AC of any issue is worked**, verify `in_progress` via `gh pmu view $ISSUE --json=status --jq='.status'`. Not in progress → `gh pmu move $ISSUE --status in_progress` before proceeding. Two failure modes: **compaction** between Step 1 preamble and start of work losing the transition; and — epics/branch trackers — the preamble having moved only the tracker, never the sub-issues.
 Trigger is the **workflow moment**, NOT the mechanism: fires identically inline (direct-work) or via spawned implementation Agent. Applies to **every** issue and **each sub-issue** of an epic/branch tracker as its turn begins. **NOT** satisfied by Step 1 preamble having run — for epics/branch trackers the preamble moves only the tracker, and `gh pmu branch start` creates trackers already `in_progress`, so that call is a no-op (#2483). Does NOT apply to research/review/Explore Agents.
 > **Why keyed to the moment, not the actor (#2483):** this gate previously triggered on spawning an implementation Agent. Keying it to the *mechanism* meant the direct-work path — explicitly sanctioned below — bypassed it, and sub-issues were worked without ever reaching `in_progress`. Keep the trigger phrased as a workflow moment; an actor-keyed rephrasing reintroduces the defect under a new name.
-For each AC (or batch): mark `in_progress` → TDD cycle → run tests **scoped to the touched directory tree** (e.g., `.claude/scripts/shared/lib/*.js` → `npx jest tests/scripts/shared/lib --no-coverage`; command spec → `tests/metadata/` or `tests/commands/`) — all scoped tests must pass → mark `completed` → **COMMIT** `Refs #$ISSUE — <description>`.
-**Full-suite verification** runs once per sub-issue between Step 4c and Step 5 (`npx jest --no-coverage`). Catches cross-cutting regressions scoped runs miss. Failure blocks `in_review`; commit a fix and re-run.
+For each AC (or batch): mark `in_progress` → TDD cycle → run the project's tests **scoped to the touched directory tree** — all scoped tests must pass → mark `completed` → **COMMIT** `Refs #$ISSUE — <description>`.
+**Scoping is expressed in the project's own terms.** Take `testCommand` from `framework-config.json` and narrow it to the touched tree **however that runner expresses narrowing** — path argument, filter flag, package selector. No way to narrow, or narrowing not obvious → run the declared command unnarrowed: a slower correct run beats a faster invented one. Scoping optimises feedback speed; the gate is Step 4f, which is not optional.
+**Full-suite verification** runs once per sub-issue between Step 4c and Step 5, invoking the declared `testCommand` (Step 4f). Catches cross-cutting regressions scoped runs miss. Failure blocks `in_review`; commit a fix and re-run.
 **Commit-per-deliverable gate:** Commit when each AC's deliverable is complete. ACs that decompose a single deliverable (schema + its enums; validator + its reject path; helper's public API + error contract) ship in one commit. ACs that introduce independent deliverables ship separately. **Gate:** do not start the next AC until the previous deliverable is committed.
 **Mid-AC commit checkpoint (#2557):** the gate above fires only at AC boundaries. A long investigative phase (source reading, repeated build/deploy/verify cycles, design pivots) reaches no boundary for many tool-turns, so nothing prompts a commit and work accumulates until a later commit sweeps it up under a message attributing it to the wrong issue. This checkpoint fires **during** an AC, before its deliverable is complete.
 **Re-read `.claude/metadata/commit-checkpoint-signals.json`** from disk for thresholds and prompt contract — metadata, not prose, so tunable without a spec edit. Measure via `git diff --numstat HEAD`; no new instrumentation. Any declared threshold crossed (currently `changedFiles >= 8` **or** `insertions >= 300` — read the file, do not trust these digits) → **ask** the session to name the verified milestone reached and commit it.
@@ -114,7 +125,17 @@ Gate layer is the **second** line of defence. An out-of-phase AC should usually 
 `node .claude/scripts/shared/log-changed-files.js --issue $ISSUE`. Prints `### Files Changed` section to stdout (empty → caller skips append). Append (when non-empty) via `gh pmu view --body-stdout` → edit → `gh pmu edit -F`.
 **State-drift gate (#2404):** After body update, `node .claude/scripts/shared/scope-drift-check.js --issue $ISSUE`. Compares `Refs #$ISSUE` commit files against (1) body `Files to modify:`/`**Files:**` section ∪ prior `### Files Changed`, and (2) `.claude/metadata/scope-drift-protected-paths.json`. Exit 0 = continue (blocking-no-violations OR advisory); Exit 1 = **HALT** (blocking + violations) — do not proceed to Step 4d/5. Resolutions: add paths to body `Files to modify:` + re-run; `git revert` + re-run; or `Scope-Override: <reason>` in latest commit message or issue comment + re-run (echoed in next report). Always-protected (halt even with no declared scope): `framework-config.json`, `framework-manifest.json`, `.claude/metadata/**`, `.gh-pmu.json`, `.gh-pmu.checksum`, `CHARTER.md`. Gate is additive — `log-changed-files.js` still runs regardless.
 #### Step 4f: Full-Suite Regression Sweep
-After Step 4c, run `npx jest --no-coverage` before Step 5. All tests must pass. Failure blocks `in_review` — commit a fix (`Refs #$ISSUE`) and re-run. Complements per-AC scoped tests with a cross-cutting regression check at the sub-issue boundary.
+After Step 4c, run the project's full test suite before Step 5. All tests must pass. Failure blocks `in_review` — commit a fix (`Refs #$ISSUE`) and re-run. Complements per-AC scoped tests with a cross-cutting regression check at the sub-issue boundary.
+**The command comes from the project, never from this rule.** Read `testCommand` from `framework-config.json` and invoke it verbatim.
+**No `testCommand` declared → report the gap; do not substitute one.** Emit:
+```
+No testCommand is declared in framework-config.json, so the full-suite
+sweep was NOT run. The in_review move proceeds unverified — declare
+testCommand to restore this gate.
+```
+Then continue to Step 5. The absence is reported, never silently skipped: a gate that quietly does nothing is indistinguishable from one that passed, the more dangerous of the two.
+> **Why no fallback (#2595):** the obvious default is the package-manager test script — correct for Node, silently wrong for Go, Rust, .NET and Python, which is this defect reintroduced one layer down. A rule naming *any* runner is wrong for some ecosystem, so this one names none. Declaration is the mechanism; detection and install-time seeding are separate questions (the latter is Praxis Hub Manager's).
+> **Why it degrades rather than halts:** an undeclared `testCommand` is every project's normal state until someone declares one, so halting would block `/work` everywhere on a key no installer writes yet. Fails open and says so — as the Review-State Gate does for `indeterminate` and Step 3 for an empty AC section.
 ### Step 5: Move to in_review
 `gh pmu move $ISSUE --status in_review`
 If the only unchecked ACs are intentionally-open gates — `- [ ] … → QA: #N`, `→ GATE: review`, `→ GATE: release` — the plain move fails checkbox validation; use `--force` (permitted by the Step 4b exceptions — valid only when *every* unchecked AC carries one of those markers): `gh pmu move $ISSUE --status in_review --force`. If even one unchecked AC lacks a marker, do **not** force: that is genuinely unfinished work and Step 4b applies in full.

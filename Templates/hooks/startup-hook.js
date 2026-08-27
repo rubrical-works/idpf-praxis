@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.97.0
+ * @framework-script 0.98.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -229,6 +229,25 @@ async function runChecksParallel(checks, stages = TIMEOUT_STAGES) {
 // Render Session Initialized block
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Name the tree a dependency finding is about (#2639).
+ *
+ * `checkDependencies()` resolves a scope before doing anything else and
+ * returns it, but every consumer here ignored it. In a PHM-deployed project
+ * `scope` is `framework` and `root` is the hub framework root — never the cwd,
+ * which is where an unqualified `npm ci` lands. One session read the warning,
+ * offered `npm ci`, installed 478 packages into the project tree, and the
+ * flagged condition was still there: the install was harmless and could not
+ * possibly have resolved it.
+ *
+ * The dev repo is the single configuration where the omission was harmless —
+ * `frameworkPath` is `.` and cwd IS the checked root — which is exactly why
+ * this stayed invisible to the sessions most likely to notice it.
+ */
+function dependencyScopeLabel(scope) {
+  return scope === 'framework' ? 'the framework root' : 'the project root';
+}
+
 function renderBlock(info, checkResults, opts = { color: true }) {
   const h = opts.color ? heading : (s) => s;
   const e = opts.color ? error : (s) => s;
@@ -283,12 +302,16 @@ function renderBlock(info, checkResults, opts = { color: true }) {
     }
     if (r.name === 'dependency') {
       const dep = r.parsed?.data;
+      // #2639: name the tree. A bare remedy leaves a hub-installed project's
+      // reader to infer which of two trees the line is about, and the wrong
+      // inference is the destructive one.
+      const where = dependencyScopeLabel(dep?.scope);
       if (dep?.state === 'missing') {
-        lines.push(`- Dependencies: ${e('⚠️ node_modules not installed — run npm ci')}`);
+        lines.push(`- Dependencies: ${e(`⚠️ node_modules not installed in ${where} — run npm ci`)}`);
       } else if (dep?.state === 'partial') {
-        lines.push(`- Dependencies: ${e(`⚠️ ${dep.missing.length} of ${dep.total} packages missing — run npm ci`)}`);
+        lines.push(`- Dependencies: ${e(`⚠️ ${dep.missing.length} of ${dep.total} packages missing in ${where} — run npm ci`)}`);
       } else if (dep?.state === 'stale') {
-        lines.push(`- Dependencies: ${w('⚠️ node_modules stale vs lockfile')}`);
+        lines.push(`- Dependencies: ${w(`⚠️ node_modules stale vs lockfile in ${where}`)}`);
       } else if (r.error === 'timeout') {
         lines.push(`- Dependencies: ${e('⚠️ check timed out')}`);
       } else if (r.status === 'error') {
@@ -391,8 +414,20 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
   // CHARTER.md yields full prose and can surface observations the clipped lines
   // could not (e.g. a Current Focus naming a version the working branch has
   // moved past). Listed first so the summary lands right after the block.
+  //
+  // #2637: the observation half existed; the handoff to the repair path did
+  // not. `/charter refresh` runs verifyEntityCounts() and offers consent-gated
+  // correction, so a reported-and-dropped mismatch — or one resolved by a hand
+  // edit that bypasses that consent flow — was the only available outcome.
+  //
+  // Conditional on an actual observation, deliberately. An unconditional
+  // "run /charter refresh" would print on every clean startup and train the
+  // reader to ignore it, the same reason the Review-State Gate never prompts
+  // on `reviewed-clean` (#2577). Recommend, never mutate: `06-runtime-triggers`
+  // *offer, don't force*, and /charter's own "never auto-modify the charter
+  // without user consent" contract.
   if (info.charterStatus === 'Active') {
-    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus. Note any mismatch you observe between the charter and current repository state.');
+    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus. Note any mismatch you observe between the charter and current repository state. If you observe a mismatch, recommend that the user run `/charter refresh`, which re-verifies entity counts and offers consent-gated repair — recommend only, never make the change yourself.');
   }
 
   // #2503: the specialist is INJECTED, not pointed at. The former
@@ -462,17 +497,34 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
   const deps = dependency?.parsed?.data;
 
   if (deps && deps.state !== 'healthy') {
+    // #2639: the scope was computed, returned, and in scope at this very line,
+    // and none of the three detail strings used it. All were scope-free, so a
+    // fix applied to one state would have looked complete.
+    const root = deps.root || process.cwd();
+    const where = `${dependencyScopeLabel(deps.scope)} \`${root}\``;
+
     const detail = {
-      missing: 'no packages are installed',
-      partial: `${deps.missing?.length} of ${deps.total} declared packages are missing (${(deps.missing || []).join(', ')})`,
-      stale: 'the lockfile is newer than the installed tree',
+      missing: `no packages are installed in ${where}`,
+      partial: `${deps.missing?.length} of ${deps.total} declared packages are missing from ${where} (${(deps.missing || []).join(', ')})`,
+      stale: `the lockfile in ${where} is newer than the installed tree`,
     }[deps.state];
+
+    // Target the tree explicitly only when it is not the one an unqualified
+    // `npm ci` would reach. The dev repo, where cwd IS the root, keeps the
+    // original wording verbatim rather than gaining a redundant flag.
+    let sameTree;
+    try {
+      sameTree = path.resolve(root) === path.resolve(process.cwd());
+    } catch (_e) {
+      sameTree = false;
+    }
+    const command = sameTree ? 'npm ci' : `npm ci --prefix "${root}"`;
 
     // Naming the downstream failure matters: without it the user hits a jest
     // error at the first acceptance criterion and reads it as a broken test
     // rather than as dependencies that were never installed.
     instructions.push(
-      `Dependencies are not fully installed — ${detail}. Offer to run \`npm ci\`: ask the user, and on acceptance run it and report the result. Declining leaves the tree untouched; note that test-running gates (\`/work\` Step 3 scoped runs and Step 4f's full sweep) will fail until it is installed. Do not run \`npm ci\` without asking.`
+      `Dependencies are not fully installed — ${detail}. Offer to run \`${command}\`: ask the user, and on acceptance run it and report the result. Declining leaves the tree untouched; note that test-running gates (\`/work\` Step 3 scoped runs and Step 4f's full sweep) will fail until it is installed. Do not run \`npm ci\` without asking.`
     );
   }
 

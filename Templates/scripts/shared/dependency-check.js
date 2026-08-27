@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.97.0
+ * @framework-script 0.98.0
  * @description Detect missing, partial, or stale node_modules at session startup. Stats node_modules/<name>/package.json for each declared package and compares package-lock.json mtime against node_modules/.package-lock.json. Read-only and advisory — performs no installation and spawns no npm subprocess.
  * @checksum sha256:placeholder
  *
@@ -65,16 +65,29 @@ function resolveScope(projectDir) {
 /**
  * A single `npm install` writes package-lock.json and
  * node_modules/.package-lock.json moments apart, in an order npm does not
- * guarantee. Measured on this repo: package-lock.json landed 17 ms after the
- * installed copy. A strict `a > b` comparison therefore reports `stale` on a
+ * guarantee. A strict `a > b` comparison therefore reports `stale` on a
  * correctly-installed tree — a warning on every session, which trains the
  * reader to ignore the line that matters.
  *
- * The tolerance separates same-install skew (milliseconds) from a genuine
- * change (a human edits package.json and reinstalls, or a pull brings a new
- * lockfile — always seconds to days later). No real staleness is missed.
+ * The tolerance separates same-install skew from a genuine change (a human
+ * edits package.json and reinstalls, or a pull brings a new lockfile — always
+ * seconds to days later). No real staleness is missed: a lockfile that changed
+ * because of an edit or a pull is never 30 s from its install.
+ *
+ * Sized from a PHM-deployed hub framework root (framework_root_0.97.0), where
+ * npm wrote package-lock.json 3279 ms after the installed copy while all four
+ * declared runtime deps resolved (#2638). The earlier 17 ms figure came from
+ * this repo's own install and did not generalise — a framework root installs a
+ * different dependency set on a different machine profile, and the window sized
+ * from the dev measurement produced exactly the every-session warning the
+ * paragraph above names as the cost of getting it wrong.
+ *
+ * Measure before narrowing this. The relative-to-constant cases in
+ * `tests/scripts/shared/dependency-check.test.js` stay green for any value;
+ * the literal 3.3 s case is the one that fails if the window shrinks back
+ * under a real install's skew.
  */
-const STALE_TOLERANCE_MS = 2000;
+const STALE_TOLERANCE_MS = 30000;
 
 /**
  * Lockfile meaningfully newer than the installed tree's copy means npm ci has

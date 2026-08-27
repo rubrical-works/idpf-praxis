@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.97.0
+ * @framework-script 0.98.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 60-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 10-minute hard cap. Returns structured JSON with
@@ -196,17 +196,70 @@ function matchesFilter(run, { branch, commit }) {
 }
 
 /**
+ * Conclusions meaning the workflow never executed (#2627).
+ *
+ * GitHub reports these on runs that were created and then did nothing — a
+ * `pull_request_target` workflow whose job-level conditions excluded it, for
+ * instance. Such a run carries no information about the tree, so it must not
+ * supply the verdict.
+ *
+ * `cancelled` is deliberately NOT here. A cancelled run did start, and the
+ * push/pull_request concurrency dedup (#2571) cancels on purpose — that is a
+ * real signal about a real run, and a different question from this one.
+ */
+const NON_EXECUTING_CONCLUSIONS = new Set(['skipped', 'neutral']);
+
+/**
+ * Whether a run completed without ever executing.
+ * @param {object} run
+ * @returns {boolean}
+ */
+function isNonExecuting(run) {
+    return run.status === 'completed' && NON_EXECUTING_CONCLUSIONS.has(run.conclusion);
+}
+
+/**
  * Pick the run the verdict should be keyed to.
+ *
+ * Runs that never executed are not candidates (#2627). Before this, the newest
+ * matching run won outright: a Dependabot labeler that concluded `skipped` in
+ * seconds displaced an `in_progress` `Tests` run and the gate exited 1 —
+ * "CI workflow failed: skipped" — on a tree it had not examined.
+ *
+ * This narrows the candidate set a second time. #2464 narrowed it from
+ * repo-wide to branch-scoped; branch scoping decides WHICH BRANCH answers and
+ * cannot decide WHICH WORKFLOW answers, which is why that fix did not prevent
+ * this one.
+ *
  * @param {Array<object>} runs
  * @param {{branch: string|null, commit: string|null}} filter
- * @returns {object|null} the newest matching run, or null when none match
+ * @returns {object|null} the newest matching run that executed, or null
  */
 function selectRun(runs, filter) {
     if (!runs || runs.length === 0) {
         return null;
     }
 
-    return runs.find(r => matchesFilter(r, filter)) || null;
+    const candidates = runs.filter(r => matchesFilter(r, filter) && !isNonExecuting(r));
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    // A run still in flight outranks a completed one, regardless of age.
+    //
+    // Dropping the skipped run alone is NOT enough, and gets this exact
+    // incident wrong in the opposite direction: on the observed four-run SHA
+    // (skipped / success / in_progress / success) the next-newest candidate is
+    // a green Semgrep, so the gate would exit 0 — reporting a PASS while the
+    // real Tests run was still executing. That trades a spurious halt for a
+    // spurious pass on the release merge gate, which is worse.
+    //
+    // Waiting is always safe here: the caller polls until the selected run
+    // completes or the timeout fires, and both outcomes already have codes.
+    // Same defect class as #2541, where a sibling gate drew its verdict from
+    // the wrong run set and reported success while another workflow failed.
+    const inFlight = candidates.find(r => r.status !== 'completed');
+    return inFlight || candidates[0];
 }
 
 // --- Main ---
@@ -269,6 +322,24 @@ async function run(argv = [], deps = {}) {
                 const scope = parsed.branch || parsed.commit
                     ? ` for ${parsed.commit ? `commit ${parsed.commit}` : `branch ${parsed.branch}`}`
                     : '';
+                // Runs matched the filter but every one of them was non-executing.
+                // Same exit code — there is still nothing to gate on — but the
+                // operator needs to tell "nothing ran" from "nothing exists",
+                // since only the first means a real run may still be coming.
+                const nonExecuting = (runs || []).filter(r => matchesFilter(r, filter));
+                if (nonExecuting.length > 0) {
+                    console.log(JSON.stringify({
+                        success: false,
+                        message: `No CI runs executed${scope} (${nonExecuting.length} run(s) matched but concluded ${[...new Set(nonExecuting.map(r => r.conclusion))].join('/')})`,
+                        data: {
+                            status: 'no_executing_runs',
+                            branch: parsed.branch,
+                            commit: parsed.commit,
+                            nonExecutingRunIds: nonExecuting.map(r => r.databaseId)
+                        }
+                    }));
+                    return EXIT_CODES.NO_RUNS;
+                }
                 console.log(JSON.stringify({
                     success: false,
                     message: `No CI runs found${scope}`,
@@ -390,6 +461,8 @@ module.exports = {
     buildRunListCommand,
     selectRun,
     matchesFilter,
+    isNonExecuting,
+    NON_EXECUTING_CONCLUSIONS,
     defaultFetchRuns,
     checkRunningJobs,
     getAdaptiveTimeout,

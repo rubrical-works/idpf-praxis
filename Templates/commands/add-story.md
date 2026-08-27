@@ -1,5 +1,5 @@
 ---
-version: "v0.97.0"
+version: "v0.98.0"
 description: Add story to epic with charter compliance (project)
 argument-hint: "[epic-number] (e.g., 42 or #42)"
 copyright: "Rubrical Works (c) 2026"
@@ -118,7 +118,7 @@ As a {user type}, I want {capability} so that {benefit}.
 **If projectSkills configured:**
 - {skill-name} - {description}
 
-Load skill: `read {frameworkPath}/Skills/{skill-name}/SKILL.md`
+Load skill: `read .claude/skills/{skill-name}/SKILL.md`
 
 **If no projectSkills:** Run `/charter` to set up project-specific skills.
 ### Acceptance Criteria
@@ -286,13 +286,12 @@ Next steps:
 | No charter, user declines | "Story creation cancelled." |
 | Charter concern, user declines | "Story creation cancelled due to scope concerns." |
 | Test plan not found | Proceed without test plan update |
-### Closing Cleanup
-Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
-**(1) Emit the closing output** described by the final step above.
-**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+### Phase 7: Closing Cleanup
+The prune is **part of** this step, and this step is **numbered** — what makes the claim hold. `One task per numbered step` now covers it, so an unpruned list surfaces as an unfinished task like any other step. The same claim as prose alone was overridden by the rules beside it (#2641).
+
+**Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
 1. `TaskList` — enumerate all tasks.
 2. For every task owned by this `/add-story` invocation, `TaskUpdate status=deleted`.
 3. Do **not** delete tasks created outside this invocation (user TODOs).
-
 
 **End of /add-story Command**

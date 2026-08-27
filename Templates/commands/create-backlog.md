@@ -1,5 +1,5 @@
 ---
-version: "v0.97.0"
+version: "v0.98.0"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -302,7 +302,7 @@ gh issue comment $issue_num --body "## Backlog Created
 
 PRD remains open until `/complete-prd` verifies all stories Done.
 
-## Output Summary and Cleanup
+## Phase 8: Output Summary and Cleanup
 Two parts in order; the prune is **part of** this step, not a trailing step a reader can stop before.
 **(1) Emit the output summary:**
 ```

@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.97.0
+ * @framework-script 0.98.0
  *
  * Living Style Guide `--apply-decisions` runtime helper (#2433, Story 1.4).
  *

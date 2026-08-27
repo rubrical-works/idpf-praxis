@@ -1,5 +1,5 @@
 ---
-version: "v0.97.0"
+version: "v0.98.0"
 description: Audit project command specs for LLM processing reliability (project)
 argument-hint: "[all|<command-name>|<group description>]"
 copyright: "Rubrical Works (c) 2026"
@@ -95,6 +95,12 @@ Audit Complete
   Issues created: N
   Severity breakdown: N High, N Medium, N Low
 ```
+### Step 6: Closing Cleanup
+The prune is **part of** this step, and this step is **numbered** — what makes the claim hold. `One task per numbered step` now covers it, so an unpruned list surfaces as an unfinished task like any other step. The same claim as prose alone was overridden by the rules beside it (#2641).
+**Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+1. `TaskList` — enumerate all tasks.
+2. For every task owned by this `/audit-commands` invocation, `TaskUpdate status=deleted`.
+3. Do **not** delete tasks created outside this invocation (user TODOs).
 **STOP.** Do not implement fixes — audit-only.
 ## Error Handling
 | Situation | Response |
@@ -105,13 +111,4 @@ Audit Complete
 | Skill not loaded | "Warning: command-spec-audit skill not found. Using inline criteria." → continue |
 | `gh pmu create` fails | "Failed to create issue: {error}" → report, continue |
 | Managed command requested | "Managed by hub, cannot be audited." → skip |
-### Closing Cleanup
-Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
-**(1) Emit the closing output** described by the final step above.
-**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
-1. `TaskList` — enumerate all tasks.
-2. For every task owned by this `/audit-commands` invocation, `TaskUpdate status=deleted`.
-3. Do **not** delete tasks created outside this invocation (user TODOs).
-
-
 **End of /audit-commands Command**

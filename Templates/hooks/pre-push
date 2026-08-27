@@ -1,12 +1,32 @@
 #!/bin/bash
-# **Version:** v0.97.0
+# **Version:** v0.98.0
 #
 # Pre-push hook: Prevents unauthorized version tag pushes
 #
-# This hook ensures version tags (v*) can only be pushed through
-# the /prepare-release process, which creates an authorization marker.
+# When enabled, this hook blocks a version tag (v*) push unless an
+# authorization marker is present, so tags ship through /prepare-release
+# rather than by hand. See the marker caveat under Installation below.
 #
-# Installation: Copied to .git/hooks/pre-push by hub installer
+# Installation: OPT-IN. Nothing installs this hook automatically — not the hub,
+#   not Praxis Hub Manager, not any installer past or present. Git runs
+#   `.git/hooks/<name>` or `core.hooksPath`, and neither points here by default,
+#   so until a project opts in this file is inert. To enable the gate:
+#
+#       git config core.hooksPath .claude/hooks
+#
+#   WARNING — read before running that. `core.hooksPath` REPLACES
+#   `.git/hooks/` wholesale rather than merging with it, so any hooks you
+#   installed yourself stop running, silently.
+#
+#   The marker this hook demands is written by /prepare-release (Step 4.6) and
+#   /prepare-beta (Step 4.2), which create it immediately before the tag push
+#   and remove it afterwards whether or not the push succeeded (#2601). Opting
+#   in therefore costs a released project nothing: tags pushed through those
+#   commands are authorized, and tags pushed by hand are not, which is the
+#   whole point of the gate.
+#
+#   Rationale and rejected alternatives:
+#   Construction/Design-Decisions/2026-08-25-pre-push-hook-installation.md (#2611)
 
 # Authorization marker file
 MARKER_FILE=".release-authorized"
@@ -30,14 +50,20 @@ while read local_ref local_sha remote_ref remote_sha; do
             echo "  to ensure all validations pass before deployment."
             echo ""
             echo "  To release:"
-            echo "    1. Run /prepare-release"
+            echo "    1. Run /prepare-release  (or /prepare-beta for a beta tag)"
             echo "    2. Follow the release process"
             echo "    3. The tag will be pushed automatically"
             echo ""
-            echo "  If you need to push this tag manually (emergency):"
-            echo "    echo 'emergency-override' > .release-authorized"
-            echo "    git push --tags"
-            echo "    rm .release-authorized"
+            echo "  Those commands write the authorization marker themselves and"
+            echo "  remove it after the push, so no manual step is needed."
+            echo ""
+            echo "  To authorize a tag push outside that flow, record why:"
+            echo "    echo \"\$TAG_NAME | <reason> | \$(git rev-parse HEAD)\" > .release-authorized"
+            echo "    git push origin $TAG_NAME"
+            echo "    rm -f .release-authorized"
+            echo ""
+            echo "  This hook echoes the marker verbatim and never parses it, so"
+            echo "  whatever is written above becomes that tag's audit line."
             echo ""
             echo "============================================================"
             exit 1
@@ -49,8 +75,11 @@ while read local_ref local_sha remote_ref remote_sha; do
         echo "  Tag: $TAG_NAME"
         echo "  Marker: $MARKER_CONTENT"
 
-        # Clean up marker after successful validation
-        # (actual deletion happens after push completes - see post-push or manual cleanup)
+        # The marker is NOT deleted here. This hook runs before the push, so
+        # removing it now would leave nothing to authorize a retry, and git
+        # offers no after-push hook to do it later. Deletion belongs to
+        # whoever created the marker: /prepare-release and /prepare-beta each
+        # run `rm -f` after their push, on both the success and failure paths.
     fi
 done
 

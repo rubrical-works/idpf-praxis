@@ -1,5 +1,5 @@
 ---
-version: "v0.97.0"
+version: "v0.98.0"
 description: Evaluate tests for charter alignment and functional authenticity (project)
 argument-hint: "[--full] [--status]"
 copyright: "Rubrical Works (c) 2026"
@@ -216,13 +216,12 @@ Next run will skip N approved+unchanged tests.
 | Manifest malformed | "Manifest corrupted. Running full review." -> continue with --full |
 | Test file unreadable | Warn and skip, continue |
 | Bug issue creation fails | Warn, include in report, continue |
-### Closing Cleanup
-Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
-**(1) Emit the closing output** described by the final step above.
-**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+### Step 11: Closing Cleanup
+The prune is **part of** this step, and this step is **numbered** — what makes the claim hold. `One task per numbered step` now covers it, so an unpruned list surfaces as an unfinished task like any other step. The same claim as prose alone was overridden by the rules beside it (#2641).
+
+**Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
 1. `TaskList` — enumerate all tasks.
 2. For every task owned by this `/bad-test-review` invocation, `TaskUpdate status=deleted`.
 3. Do **not** delete tasks created outside this invocation (user TODOs).
-
 
 **End of /bad-test-review Command**

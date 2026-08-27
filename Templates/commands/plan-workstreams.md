@@ -1,5 +1,5 @@
 ---
-version: "v0.97.0"
+version: "v0.98.0"
 description: Plan concurrent workstreams for parallel epic development
 argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--cancel]"
 copyright: "Rubrical Works (c) 2026"
@@ -189,13 +189,12 @@ Execute each command from generated list.
 | Epic not open | "Epic #N is [state], not open." → STOP |
 | Missing epic label | "Issue #N is not an epic." → STOP |
 | Unknown flag | "Unknown flag: --X. Usage: ..." → STOP |
-### Closing Cleanup
-Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
-**(1) Emit the closing output** described by the final step above.
-**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+### Step 8: Closing Cleanup
+The prune is **part of** this step, and this step is **numbered** — what makes the claim hold. `One task per numbered step` now covers it, so an unpruned list surfaces as an unfinished task like any other step. The same claim as prose alone was overridden by the rules beside it (#2641).
+
+**Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
 1. `TaskList` — enumerate all tasks.
 2. For every task owned by this `/plan-workstreams` invocation, `TaskUpdate status=deleted`.
 3. Do **not** delete tasks created outside this invocation (user TODOs).
-
 
 **End of /plan-workstreams Command**

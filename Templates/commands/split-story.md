@@ -1,5 +1,5 @@
 ---
-version: "v0.97.0"
+version: "v0.98.0"
 description: Split story into smaller stories (project)
 argument-hint: "<story-number> (e.g., 123)"
 copyright: "Rubrical Works (c) 2026"
@@ -117,7 +117,7 @@ As a {user type}, I want {capability} so that {benefit}.
 
 ### Relevant Skills
 <!-- Read framework-config.json projectSkills; lookup descriptions from .claude/metadata/skill-registry.json -->
-**If configured:** list `{skill} - {description}`. Load: `read {frameworkPath}/Skills/{skill}/SKILL.md`
+**If configured:** list `{skill} - {description}`. Load: `read .claude/skills/{skill}/SKILL.md`
 **If none:** "No project skills configured. Run `/charter` to set up."
 
 ### Acceptance Criteria
@@ -286,10 +286,10 @@ Next steps:
 | Charter concern declined | "Story split cancelled due to scope concerns." |
 | No test plan | Proceed without update (note in output) |
 | Already closed | "Story #N is already closed. Cannot split closed stories." |
-### Closing Cleanup
-Two parts, in order. The prune is **part of** this step, not a trailing step a reader can stop before — the closing output makes a run *feel* finished, so a prune placed after it never runs.
-**(1) Emit the closing output** described by the final step above.
-**(2) Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
+### Phase 9: Closing Cleanup
+The prune is **part of** this step, and this step is **numbered** — what makes the claim hold. `One task per numbered step` now covers it, so an unpruned list surfaces as an unfinished task like any other step. The same claim as prose alone was overridden by the rules beside it (#2641).
+
+**Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
 1. `TaskList` — enumerate all tasks.
 2. For every task owned by this `/split-story` invocation, `TaskUpdate status=deleted`.
 3. Do **not** delete tasks created outside this invocation (user TODOs).

@@ -1,10 +1,11 @@
 {
   "$schema": "./imported-skills-schema.json",
-  "lastUpdated": "2026-04-22T15:43:06.860Z",
-  "count": 15,
+  "lastUpdated": "2026-08-27T14:25:27.129Z",
+  "count": 16,
   "skills": [
     "ci-cd-pipeline-design",
     "code-path-discovery",
+    "codebase-analysis",
     "command-spec-audit",
     "common-errors",
     "drawio-generation",
@@ -35,6 +36,7 @@
     "code-path-discovery": "edb4b4a1f7aa2ce9c846def8a5c9e792218e272b",
     "hal-2026": "dc1ec97d8157a1db792fb7f7924855077c017059",
     "engage-exocortex": "3cc81cc6f482a6a3e1cf9cab5d4a3cc91fbbde68",
-    "tdd-refactor-coverage-audit": "3fff9461f022f5bb67457b17342d825a0dd48b80"
+    "tdd-refactor-coverage-audit": "3fff9461f022f5bb67457b17342d825a0dd48b80",
+    "codebase-analysis": "4c2be47511b30351cf270e7619270f5c14e057d1"
   }
 }

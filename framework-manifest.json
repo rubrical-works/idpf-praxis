@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.97.0",
+  "version": "0.98.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -347,6 +347,7 @@
           "navigation-graph.js",
           "output.js",
           "paths-ac-generator.js",
+          "paths-marker.js",
           "prior-art-marker.js",
           "prior-art-surfaces.js",
           "qa-config-schema.json",

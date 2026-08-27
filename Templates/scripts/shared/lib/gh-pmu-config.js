@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.97.0
+ * @framework-script 0.98.0
  * @description Resolves the issue-creation assignee for `gh pmu create`
  * (#2489, rewritten in #2599). Holds the default in JS and takes a
  * per-invocation override; reads no configuration file.

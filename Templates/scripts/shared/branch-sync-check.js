@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.97.0
+ * @framework-script 0.98.0
  * @description Check branch sync status with upstream. Detects behind, ahead,
- *   diverged, and no-upstream states. Non-blocking; used during session startup.
+ *   diverged, and no-upstream states, and reports the post-fetch upstream tip.
+ *   Non-blocking; used during session startup, /work Step 1c, and /done Step 2.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -152,9 +153,29 @@ function detectConflictingPaths() {
 }
 
 /**
+ * Resolve the upstream tip after the fetch (#2635).
+ *
+ * /done Step 2 pins this before rebasing and pushing, and /work Step 1c
+ * reports it. Resolved via `@{upstream}` rather than a hand-built
+ * `remote/branch` name for the same reason fetchUpstream reads git config:
+ * branch names contain slashes. Best-effort — the status is the load-bearing
+ * answer, so a failure here yields null, never a thrown error.
+ *
+ * @returns {string|null} Full SHA of the upstream ref, or null
+ */
+function resolveUpstreamSha() {
+  try {
+    const sha = execSync('git rev-parse @{upstream}', EXEC_OPTS).trim();
+    return sha || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Detect the sync status of the current branch with its upstream.
  * @returns {{ branch: string, status: string, ahead: number, behind: number,
- *   fetched: boolean, conflictingPaths: string[] } | null}
+ *   fetched: boolean, conflictingPaths: string[], upstreamSha: string|null } | null}
  */
 function detectBranchSync() {
   let branch;
@@ -165,7 +186,7 @@ function detectBranchSync() {
   }
 
   const fetched = fetchUpstream(branch);
-  const base = { branch, fetched, conflictingPaths: [] };
+  const base = { branch, fetched, conflictingPaths: [], upstreamSha: null };
   const noUpstream = { ...base, status: 'no-upstream', ahead: 0, behind: 0 };
 
   let parsed;
@@ -183,7 +204,7 @@ function detectBranchSync() {
   // the empty array, so the envelope shape stays stable for consumers.
   const conflictingPaths = parsed.status === 'behind' ? detectConflictingPaths() : [];
 
-  return { ...base, ...parsed, conflictingPaths };
+  return { ...base, ...parsed, conflictingPaths, upstreamSha: resolveUpstreamSha() };
 }
 
 // ======================================
@@ -225,6 +246,7 @@ module.exports = {
   parsePorcelainPaths,
   fetchUpstream,
   detectConflictingPaths,
+  resolveUpstreamSha,
   detectBranchSync,
   FETCH_TIMEOUT_MS
 };
