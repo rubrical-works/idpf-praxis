@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.98.0
+ * @framework-script 0.99.0
  * @description Shared workstream metadata operations for branch lifecycle management. Exports loadWorkstreams(), isWorkstreamBranch(), getSiblings(), getOrphanedEpics(), updateStatus(), allResolved(), and checkStaleWorktrees(). updateStatus() is the single persistence path for .workstreams.json and is called by /merge-branch and /destroy-branch; every other export is read-only.
  * @checksum sha256:placeholder
  *

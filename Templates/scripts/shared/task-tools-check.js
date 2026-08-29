@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.98.0
+ * @framework-script 0.99.0
  * @description Detect whether the Claude Code task tools (TaskCreate/TaskGet/TaskList/TaskUpdate) are locally enabled at session startup. Reads CLAUDE_CODE_ENABLE_TODO_TOOLS from process env and from the user and project settings tiers, and notes whether the gate cache mentions the remote flag. Detection is read-only; the only write path is the explicit --enable invocation.
  * @checksum sha256:placeholder
  *

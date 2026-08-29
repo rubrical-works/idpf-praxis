@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.98.0
+ * @framework-script 0.99.0
  *
  * Zero-dependency static file server for /mockups --serve (#2377).
  *

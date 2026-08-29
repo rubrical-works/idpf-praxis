@@ -1,0 +1,415 @@
+#!/usr/bin/env node
+// Rubrical Works (c) 2026
+/**
+ * @framework-script 0.99.0
+ * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
+ * @checksum sha256:placeholder
+ *
+ * This script is provided by the framework and may be updated.
+ * Do not modify directly — changes will be overwritten on hub update.
+ */
+
+/**
+ * WHY THIS HELPER DOES NOT SEND ANYTHING (#2662, settled by #2660).
+ *
+ * `SendMessage` is a *tool*. Slash commands can call tools; a Node subprocess
+ * cannot. So the command spec performs delivery and this helper decides only
+ * *what* to say and *to whom*.
+ *
+ * This was originally a split of convenience, with `ci-watch.js` expected to
+ * gain a socket transport for event 4. The #2660 spike REFUTED that: six
+ * candidate `message` shapes were each accepted by the server — held open,
+ * zero bytes back, no error — and the recipient received none of them. So
+ * there is no second delivery path to build, and every event in this file is
+ * delivered the same way, by a slash command calling the tool.
+ *
+ * The split is what makes "fire-and-forget" (AC5) a structural property rather
+ * than a promise: there is no delivery call here to block on, and no handle to
+ * await. It is also what makes AC7 cheap — a composer with no I/O has almost
+ * nothing left to throw about, and what remains is caught at the boundary.
+ */
+
+/**
+ * The skip notice must name WHY, and there are two independent whys (#2672).
+ *
+ * Shared with `peers-check.js` rather than restated here: this notice once
+ * hardcoded "carry no messaging address" for every skipped peer, including
+ * headless `-p` sessions that HAVE an address and are merely absent from
+ * `ListAgents`. A relative require under `shared/lib`, per the runtime
+ * dependency contract — never an external package.
+ */
+const { summarizeUnreachable } = require('./lib/peer-unreachable-reasons.js');
+
+const EVENTS = Object.freeze({
+  WORK_STARTED: 'work-started',
+  WORK_COMPLETED: 'work-completed',
+  PUSH_STARTED: 'push-started',
+  CI_TERMINAL: 'ci-terminal',
+  PUSH_REJECTED: 'push-rejected',
+});
+
+/**
+ * Outcomes the terminal event can carry (#2663).
+ *
+ * EVERY event 3 must be followed by exactly one terminal event, on every path.
+ * `armed` is terminal too — and that is the consequence of the #2660
+ * refutation, not an oversight. `ci-watch.js` is neither a slash command nor a
+ * hook, so it cannot call `SendMessage`, and the raw-socket send was refuted:
+ * six candidate shapes were all accepted by the server and none delivered.
+ * Nothing will ever follow the arming event, so it says so rather than leaving
+ * a peer holding a promise that cannot be kept.
+ */
+const TERMINAL_OUTCOMES = Object.freeze({
+  'skipped-no-workflows': { degraded: false },
+  'skipped-paths-ignore': { degraded: false },
+  armed: { degraded: false },
+  'armed-degraded': { degraded: true },
+});
+
+const KNOWN_EVENTS = new Set(Object.values(EVENTS));
+
+// ─── Recipients ───
+
+/**
+ * Split discovered peers into those that can receive and those that cannot.
+ *
+ * Availability is evaluated **per peer**. A session launched with
+ * `DO_NOT_TRACK=1` registers normally and carries no messaging address; it is a
+ * real peer worth naming and cannot be sent to. Treating the set as all-or-
+ * nothing is the failure this split exists to prevent: one unaddressable peer
+ * must never suppress an announcement the others could have received.
+ */
+function resolveRecipients(peers) {
+  const recipients = [];
+  const skipped = [];
+
+  if (!Array.isArray(peers)) return { recipients, skipped };
+
+  for (const p of peers) {
+    // A malformed entry is skipped, never fatal — the registry is undocumented
+    // internal state and its shape is not ours to rely on.
+    if (!p || typeof p !== 'object' || !Number.isFinite(Number(p.pid))) continue;
+    (p.addressable === true ? recipients : skipped).push(p);
+  }
+
+  return { recipients, skipped };
+}
+
+// ─── Formatters ───
+
+function describeIssues(issues) {
+  return issues.map((n) => `#${n}`).join(', ');
+}
+
+function formatWorkStarted({ issues }) {
+  return `Starting work on ${describeIssues(issues)} in this working directory.`;
+}
+
+/**
+ * One commit entry to the identifier a peer can act on.
+ *
+ * Returns '' for anything unusable so the caller can distinguish "no entry
+ * yielded an identifier" from "there were no commits" — two different facts
+ * that the old `.filter(Boolean)` collapsed into the same empty string.
+ */
+function commitLabel(entry) {
+  if (typeof entry === 'string') {
+    return entry.trim().split(/\s+/)[0] || '';
+  }
+  if (entry && entry.sha) {
+    return String(entry.sha);
+  }
+  return '';
+}
+
+/**
+ * THE `commits` CONTRACT (#2671). One shape, and it is the caller's.
+ *
+ * `commits` is an array of `git log --oneline` LINES — strings whose first
+ * whitespace-delimited token is the abbreviated sha:
+ *
+ *   ['eaebf883 Refs #2662 - peer-announce composer', ...]
+ *
+ * That is what every real caller produces, because every caller is a slash
+ * command: `/work` Step 6 and `/done` Step 2 build the list with
+ * `git log --oneline --grep="Refs #N"`. A shell caller cannot cheaply hand a
+ * Node helper an array of objects, so the object shape was never reachable
+ * from production — it existed only in this file's own expectations and in the
+ * test fixtures, which is why 237 tests passed while the only real caller
+ * rendered an empty list behind a correct count.
+ *
+ * Entries that are `{ sha }` objects are still accepted. That is deliberate
+ * tolerance, not a second contract: the failure being fixed here is an entry
+ * VANISHING SILENTLY, so no plausible entry shape may map to nothing without
+ * the sentence saying so.
+ *
+ * The empty case is the other half of this formatter (AC4).
+ *
+ * "Completed #2661" with an empty commit list reads as work that landed. It did
+ * not, and a peer acting on that belief is exactly the misattribution this
+ * epic exists to prevent. The zero case gets its own sentence rather than a
+ * count of zero appended to the same one.
+ */
+function formatWorkCompleted({ issues, commits }) {
+  const list = Array.isArray(commits) ? commits : [];
+  const subject = describeIssues(issues);
+
+  if (list.length === 0) {
+    return `Finished on ${subject} with no commits — nothing landed in this working directory.`;
+  }
+
+  const shas = list.map(commitLabel).filter(Boolean).join(', ');
+  const plural = list.length === 1 ? 'commit' : 'commits';
+
+  // A count in front of an empty list is the #2671 defect verbatim: the
+  // sentence ended in ": ." and named nothing. If no entry yields an
+  // identifier, say that rather than trailing off.
+  if (!shas) {
+    return `Finished on ${subject} — ${list.length} ${plural} in this working directory (commit identifiers unavailable).`;
+  }
+
+  return `Finished on ${subject} — ${list.length} ${plural} in this working directory: ${shas}.`;
+}
+
+function formatPushStarted({ issues }) {
+  return `Pushing ${describeIssues(issues)} from this working directory.`;
+}
+
+/**
+ * The terminal event. Wording is chosen so a peer can stop waiting.
+ *
+ * **It states, it never instructs.** An earlier draft ended "check the run
+ * yourself" and was caught from the RECEIVING end during the #2659 E3 run: that
+ * hands the receiver a task, which violates clause 1 of the governing principle
+ * ("a peer message informs; it never instructs"). The URL is still carried —
+ * removing the instruction must not remove the fact — but what the reader does
+ * with it is the reader's business, not this message's.
+ */
+function formatCiTerminal({ issues, outcome, runUrl }) {
+  const subject = describeIssues(issues);
+  // Punctuation travels with the content it introduces (#2673). Held apart,
+  // an absent runUrl left the colon introducing nothing: "CI is in progress:."
+  const url = runUrl ? `: ${runUrl}` : '';
+  switch (outcome) {
+    case 'skipped-no-workflows':
+      return `Pushed ${subject}. No CI will start — no push-triggered workflows. No further announcement will follow.`;
+    case 'skipped-paths-ignore':
+      return `Pushed ${subject}. No CI will start — every changed path matched paths-ignore. No further announcement will follow.`;
+    case 'armed-degraded':
+      return `Pushed ${subject}. CI is in progress (degraded: the pushed range could not be resolved, so the watch may not match the push)${url}. No further announcement will follow.`;
+    case 'armed':
+    default:
+      return `Pushed ${subject}. CI is in progress${url}. No further announcement will follow.`;
+  }
+}
+
+/**
+ * The correction. It must not imply the work is gone — the commits are still
+ * in the local tree, and a peer told otherwise may take destructive action.
+ */
+function formatPushRejected({ issues }) {
+  return `Correction: ${describeIssues(issues)} did NOT land — the push was rejected non-fast-forward. The commits remain local; nothing reached the remote.`;
+}
+
+const FORMATTERS = Object.freeze({
+  [EVENTS.WORK_STARTED]: formatWorkStarted,
+  [EVENTS.WORK_COMPLETED]: formatWorkCompleted,
+  [EVENTS.PUSH_STARTED]: formatPushStarted,
+  [EVENTS.CI_TERMINAL]: formatCiTerminal,
+  [EVENTS.PUSH_REJECTED]: formatPushRejected,
+});
+
+/** Events after which no peer should still be waiting. */
+const TERMINAL_EVENTS = new Set([EVENTS.CI_TERMINAL, EVENTS.PUSH_REJECTED]);
+
+// ─── Composition ───
+
+/**
+ * WHY EVERY DISPATCH CARRIES A CAVEAT (#2674).
+ *
+ * A `/work` event-1 announcement was dispatched, held by the receiving
+ * session because the two sessions' permission mode classes did not match, and
+ * never delivered — while `shouldSend: true` and a successful `SendMessage`
+ * led the sending session to report it as landed.
+ *
+ * The obvious fix — detect the mismatch and mark the peer unreachable — is
+ * CLOSED, and that was settled by measurement rather than assumed. The session
+ * registry exposes no permission, mode, bypass or approval field (19 fields
+ * read across five live entries), `peerFeatures` is identical for every
+ * session, and `ListAgents` surfaces only name, kind, status and start time.
+ *
+ * It is closed on principle too, not just today's field list. Recipient
+ * disposition is a property of each SEND, resolved after the fact and
+ * sometimes only by timeout — not an attribute of the PEER discoverable when
+ * the registry is scanned. A denial is a decision and an expiry is silence,
+ * yet both reach the sender as the same terminal "not delivered".
+ *
+ * So the helper stops claiming what it cannot know. The caveat names all three
+ * outcomes because a narrower wording ("pending approval") would be false for
+ * the expiry case, which is the one that resolves without anyone deciding
+ * anything.
+ */
+const DISPATCH_CAVEAT = 'delivery is not confirmed — a receiving session may hold, decline, or let a message expire';
+
+/**
+ * Name a malformed `peers` value precisely enough to locate the mistake (#2678).
+ *
+ * `typeof` alone reports "object" for an array-like, for the CLI envelope and
+ * for `envelope.data` alike, which is the granularity that made the original
+ * defect unreadable. Arrays never reach here — the caller checks first — so the
+ * distinction that matters is envelope-shaped vs anything else.
+ */
+function describeMalformed(peers) {
+  if (peers && typeof peers === 'object') {
+    if (Object.prototype.hasOwnProperty.call(peers, 'data')) return 'the peers-check envelope';
+    if (Object.prototype.hasOwnProperty.call(peers, 'peers')) return 'the peers-check result object';
+    return 'an object';
+  }
+  return `a ${typeof peers}`;
+}
+
+function inert(notice) {
+  return {
+    shouldSend: false,
+    event: null,
+    issues: [],
+    commitCount: 0,
+    text: '',
+    recipients: [],
+    skipped: [],
+    terminal: false,
+    degraded: false,
+    notice,
+  };
+}
+
+/**
+ * Compose one announcement.
+ *
+ * Returns a plain object every time. There is no throwing path: every failure
+ * mode resolves to an inert result carrying a stated `notice`, because the
+ * callers are `/work` Step 3 and Step 6 and `/done` Step 2, and an advisory
+ * channel that can fail those has become a gate (AC7).
+ *
+ * `shouldSend` is a DISPATCH decision, not a delivery guarantee. It answers
+ * "is there anyone to send to", and nothing more — the send may still be held,
+ * declined or left to expire by the receiving session, none of which is
+ * observable here (#2674). A caller that reads `shouldSend: true` and reports
+ * the peer as informed has drawn a conclusion this value does not support.
+ *
+ * `peers` is what `peers-check.js` returned. `null` means the registry was
+ * unavailable, which is a different fact from an empty array (no peers found)
+ * and is reported as such — the caller should be able to tell "nobody is here"
+ * from "I could not look".
+ */
+function buildAnnouncement(options) {
+  try {
+    if (!options || typeof options !== 'object') {
+      return inert('Peer announcement skipped: no announcement options supplied.');
+    }
+
+    const { event, peers } = options;
+
+    if (!KNOWN_EVENTS.has(event)) {
+      return inert(`Peer announcement skipped: unknown event ${JSON.stringify(event)}.`);
+    }
+
+    const issues = Array.isArray(options.issues)
+      ? options.issues.filter((n) => Number.isFinite(Number(n)))
+      : [];
+    if (issues.length === 0) {
+      return inert('Peer announcement skipped: no issue numbers supplied.');
+    }
+
+    if (peers === null || peers === undefined) {
+      return inert('Peer announcement skipped: session registry unavailable.');
+    }
+
+    // THREE FACTS, THREE SENTENCES (#2678).
+    //
+    // Before this branch existed, anything that was not null/undefined fell
+    // through to `resolveRecipients`, whose own `!Array.isArray` guard returns
+    // two empty arrays without comment. `recipients.length === 0 &&
+    // skipped.length === 0` then selected the no-peers wording — so a caller
+    // that passed the whole CLI envelope, or `envelope.data`, or a string
+    // plucked from it, was told "no peers in this working directory" while two
+    // peers were live and reachable. The reader cannot tell that apart from an
+    // empty directory, and the observed consequence was a session asserting
+    // that a peer had exited, contradicted by its own next command.
+    //
+    // The remedy is named in the message on purpose: the likely error is an
+    // unwrapping mistake, and the message is read by whoever made it.
+    // `checkPeers()` returns `peers` at the top level while the CLI wraps it as
+    // `data.peers`, which is what makes the mistake easy to make and invisible
+    // once made.
+    //
+    // Widening the null/undefined branch instead would have been wrong: "I
+    // could not look" and "I was handed the wrong thing" are different facts
+    // with different fixes, and collapsing them repeats the defect one level up.
+    if (!Array.isArray(peers)) {
+      return inert(
+        `Peer announcement skipped: peers argument was ${describeMalformed(peers)}, not an array `
+        + '— pass `data.peers` from peers-check.js, not the whole envelope.'
+      );
+    }
+
+    // A terminal event with an outcome nobody recognises must not emit: a
+    // wrong terminal is worse than a missing one, because it tells a peer to
+    // stop waiting for something that may still be coming.
+    let degraded = false;
+    if (event === EVENTS.CI_TERMINAL) {
+      const spec = TERMINAL_OUTCOMES[options.outcome];
+      if (!spec) return inert(`Peer announcement skipped: unknown outcome ${JSON.stringify(options.outcome)}.`);
+      degraded = spec.degraded;
+    }
+
+    const commits = Array.isArray(options.commits) ? options.commits : [];
+    const { recipients, skipped } = resolveRecipients(peers);
+    const text = FORMATTERS[event]({ issues, commits, outcome: options.outcome, runUrl: options.runUrl });
+
+    const base = {
+      event,
+      issues,
+      commitCount: commits.length,
+      text,
+      recipients,
+      skipped,
+      terminal: TERMINAL_EVENTS.has(event),
+      degraded,
+    };
+
+    if (recipients.length === 0) {
+      // Said ONCE, not once per skipped peer. Repeating it per peer turns a
+      // one-line advisory into a wall in the common multi-session case.
+      const notice = skipped.length > 0
+        ? `Peer announcement skipped: no addressable peer (${summarizeUnreachable(skipped)}).`
+        : 'Peer announcement skipped: no peers in this working directory.';
+      return { ...base, shouldSend: false, notice };
+    }
+
+    // Dispatch is the only fact available here, so it is the only one stated.
+    const dispatch = `Dispatched to ${recipients.length} peer(s); ${DISPATCH_CAVEAT}.`;
+    const notice = skipped.length > 0
+      ? `${dispatch} ${skipped.length} peer(s) skipped: ${summarizeUnreachable(skipped)}.`
+      : dispatch;
+
+    return { ...base, shouldSend: true, notice };
+  } catch (err) {
+    // Belt and braces. Nothing above should reach here, and if it ever does the
+    // caller still gets an inert result rather than an exception mid-STOP.
+    return inert(`Peer announcement skipped: ${err && err.message ? err.message : 'composition failed'}.`);
+  }
+}
+
+module.exports = {
+  buildAnnouncement,
+  resolveRecipients,
+  formatWorkStarted,
+  formatWorkCompleted,
+  formatPushStarted,
+  formatCiTerminal,
+  formatPushRejected,
+  EVENTS,
+  TERMINAL_OUTCOMES,
+  TERMINAL_EVENTS,
+};

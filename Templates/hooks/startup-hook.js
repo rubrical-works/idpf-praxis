@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.98.0
+ * @framework-script 0.99.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -340,6 +340,24 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       }
       // enabled-locally → omit, matching dependency's healthy.
     }
+    if (r.name === 'peers') {
+      const peers = r.parsed?.data;
+      // The row carries the helper's own rendering verbatim. Re-deriving it
+      // here would put the "seen vs reachable" distinction in two places, and
+      // the copy that drifts is the one the user actually reads.
+      if (peers?.state === 'peers') {
+        lines.push(`- Peers: ${w(peers.row)}`);
+      } else if (peers?.state === 'unavailable') {
+        lines.push(`- Peers: ${w('⚠️ session registry unavailable — peer discovery inactive')}`);
+      } else if (r.error === 'timeout') {
+        lines.push(`- Peers: ${e('⚠️ check timed out')}`);
+      } else if (r.status === 'error') {
+        lines.push(`- Peers: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      }
+      // none → omit, matching dependency's healthy and task-tools' enabled.
+      // A lone session is the overwhelmingly common case; a line every startup
+      // announcing it is noise in a block of short factual status lines.
+    }
   }
 
   // Charter status
@@ -366,7 +384,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 
   // Check failures (other than the checks rendered inline above, which already
   // emit their own timeout/error lines — listing one here too double-reports it)
-  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools']);
+  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers']);
   const failedOther = checkResults.filter((r) =>
     r.status === 'error' && !INLINE_RENDERED.has(r.name)
   );
@@ -605,6 +623,7 @@ async function main() {
   checks.push({ name: 'branch-sync', script: '.claude/scripts/shared/branch-sync-check.js' });
   checks.push({ name: 'dependency', script: '.claude/scripts/shared/dependency-check.js' });
   checks.push({ name: 'task-tools', script: '.claude/scripts/shared/task-tools-check.js' });
+  checks.push({ name: 'peers', script: '.claude/scripts/shared/peers-check.js' });
 
   // Filter to existing scripts (graceful degradation)
   const validChecks = checks.filter((c) => fs.existsSync(path.join(cwd, c.script)));

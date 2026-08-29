@@ -8,6 +8,124 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.99.0] - 2026-08-29
+
+Feature release, built around cross-session peer awareness — and, unavoidably, around the same
+mistake made five times while building it. A session can now see other Claude Code sessions working
+in the same directory, and announce when it starts an issue, finishes one, pushes, and reaches a CI
+verdict. Every bug fixed along the way was a value that asserted more than had been observed: a peer
+reported *reachable* whose announcement was held and never delivered, a skip notice naming a cause it
+had not determined, a malformed argument read as "no peers in this working directory", an empty
+commit list rendered as though nothing had landed. The four standalone fixes share the shape — a
+`platformOnly` flag declared but enforced nowhere, a guard matching two tool names and missing every
+other write path, a schema requiring a field its only writer had stopped emitting, a Jest flag
+removed in Jest 30 that turned every hook run into a false test failure. In each case the value was
+present, well-formed, and stronger than whatever produced it.
+
+Two of this epic's stories are spikes that **refuted their own acceptance criteria**, and are recorded
+as refutations rather than closed as passing. Outbound routing to a spawned peer was tried in six
+shapes and none worked (#2660); a container without `XDG_RUNTIME_DIR` was expected to yield a null
+messaging address and did not (#2669). Both results are load-bearing — the second is the reason a
+session without logind is no longer misread as unreachable.
+
+**Upgrade notes:**
+
+- **Sessions sharing a working directory are visible at startup (#2661).** A `Peers:` row now names
+  other sessions in the *same* `cwd` and how many can actually be messaged. Scope is deliberately one
+  machine, one user, one working directory: a sibling worktree, a second clone, another user, or
+  another machine is **not** discoverable, and those are not limitations awaiting a fix. The row is
+  advisory — it never blocks startup and never touches the tree. A lone session prints no row at all.
+
+- **Liveness is platform-specific and says which basis it used (#2661).** Linux checks PID existence
+  *and* `/proc/<pid>/stat` field 22 against the registry's `procStart`; win32 checks PID existence
+  only, because Node exposes no process creation time there and reading a FILETIME means spawning
+  PowerShell inside a startup check. The weaker basis is reported as `WIN32_LIVENESS_PID_ONLY` rather
+  than passed off as the stronger one.
+
+- **`/work` and `/done` announce lifecycle events to peers (#2662, #2663).** Five events:
+  work-started and work-completed from `/work`, push-started and a terminal event (CI verdict or push
+  rejection) from `/done`. **Every event 3 is followed by exactly one terminal event on every path**,
+  including both CI-skip paths, which `/done` emits itself. Announcements are fire-and-forget: nothing
+  awaits delivery or acknowledgement, and a failed send is reported while work proceeds. An advisory
+  channel that can fail a command has become a gate.
+
+- **Reachable is not delivered, and nothing now claims it is (#2674).** A peer's reachability is a
+  *discovery-time* fact; whether a dispatched message arrives is a *per-send* outcome the receiver
+  decides afterwards. An announcement was observed held on a permission-mode-class mismatch while the
+  sender's row correctly read the peer reachable — it was reachable, it was simply not delivered to.
+  This is **not** a third unreachable reason and must not become one: the registry exposes no
+  permission or approval field, so it is undetectable in advance, and a denial and an expiry reach the
+  sender as the same terminal silence. `peer-announce.js` now states that a dispatch happened and
+  names the outcomes it cannot distinguish.
+
+- **`platformOnly` gates rule *generation*, not rule *loading* (#2650).** `CLAUDE.md` described
+  `05-windows-shell.md` as Windows-only; nothing enforced that. The file is committed to git, so every
+  checkout has it and nothing filters `.claude/rules/` by platform at load time. Deployed user
+  projects genuinely differ — Praxis Hub Manager generates rules at install and does honour the flag.
+  The documentation now describes what happens rather than what was intended.
+
+- **`framework-config.json` no longer requires `platform` (#2664).** The schema required a field
+  Praxis Hub Manager had stopped writing, so the validating writer threw on every PHM-managed project.
+  `platform` remains declared and is now optional.
+
+- **`test-on-change.js` runs on Jest 30 (#2651).** It invoked `--findRelatedTests`, removed in Jest
+  30, so the hook reported test failures that had not occurred. It now uses `--testPathPatterns`, is
+  covered against the real Jest runner rather than a stub, and the Jest >= 30 floor is recorded at the
+  invocation it constrains.
+
+- **Bash writes to `.claude/commands/` are caught (#2648).** The generated-output guard matched only
+  `Edit|Write`, so a shell redirect or `sed -i` walked straight past it. The guard is tool-scoped by
+  design, and now says so — including what it does not see and where the real check lives.
+
+### Added
+
+- Peer discovery at session startup: `peers-check.js` (registry read, exact-`cwd` match, per-peer
+  addressability, platform-honest liveness) and the `Peers` row in the Session Initialized block
+  (#2661)
+- `peer-announce.js` and the five lifecycle events, wired into `/work` (events 1–2) and `/done`
+  (events 3–4) (#2662, #2663)
+- `peer-unreachable-reasons.js` — the skip notice names *why* a peer could not be reached, not just
+  how many were skipped (#2672)
+
+### Fixed
+
+- Peer reachability model ignored permission-mode-class mismatch, so held announcements were reported
+  as sent (#2674)
+- Peer announcement skip notice reported every unreachable peer as having no messaging address (#2672)
+- `peer-announce` read a malformed `peers` argument as an empty one, asserting live peers absent
+  (#2678)
+- `formatWorkCompleted` expected `{sha}` objects while the rule instructed `git log --oneline`, so
+  commit lists rendered empty and read as "nothing landed" (#2671)
+- `formatCiTerminal` left a dangling colon when `runUrl` was absent (#2673)
+- `platformOnly` was documented as gating rule loading; it gates generation only (#2650)
+- `framework-config.schema.json` required `platform`, which Praxis Hub Manager no longer writes, so
+  the validating writer threw on every PHM-managed project (#2664)
+- `test-on-change.js` used `--findRelatedTests`, removed in Jest 30, producing false test failures
+  (#2651)
+- `guard-commands-src.js` matched only `Edit|Write`, so Bash writes to `.claude/commands/` bypassed it
+  (#2648)
+- `.claude/skills/` gitignore made every skill import a future red CI run; the guard now asserts
+  skills are tracked, not merely present on disk (#2649)
+
+### Documentation
+
+- PRD Cross-Session Peer Awareness reviewed and advanced to Backlog Created (#2647); its test plan
+  synced to the review-1 resolution and approved (#2646)
+- Spike exit reports recorded for outbound-routing discovery (#2660) and for both native POSIX host
+  verifications (#2669, #2680) — including two refuted acceptance criteria
+- Proposals added: Pluggable Tracker Provider (#2655), Configurable Sub-Main Branch (#2656), Command
+  Argument Cleanup (#2666)
+- Design decisions recorded for peer messages being advisory only, win32 liveness by PID existence,
+  the `DO_NOT_TRACK` divergence, "no logind is not no messaging address", host-snapshot fields in
+  `framework-config.json`, the documented-not-fixed `peers-check.js` shape divergence, peer-announce
+  fixtures mirroring caller shapes, the `platformOnly` rule gate, the skill-import tracked-vs-
+  `projectSkills` guard, the `guard-commands-src` shell-write scope, and the Jest flag rename
+- Tech debt logged for the ambiguous `outputHash` on `env: both` rule sources, commits carried as a
+  raw string, peer events carrying no correlation id, `register-helper.js` missing the CHARTER
+  in-scope count, and `test-on-change.js` basename overmatch
+
+---
+
 ## [0.98.0] - 2026-08-27
 
 Feature release. Where 0.97.0 was about signals nothing consumed, this one is about **mechanisms
@@ -1640,7 +1758,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.98.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.99.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -1933,7 +2051,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.98.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.99.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -2304,13 +2422,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.98.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.98.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.98.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.99.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.99.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.99.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.98.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.99.0` placeholder (#1479)
 
 ---
 
@@ -3008,15 +3126,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.98.0 placeholder after packaging
+- **#1059** - Skills retain v0.99.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.98.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.99.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.98.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.99.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -3176,7 +3294,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.98.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.99.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -3284,7 +3402,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.98.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.99.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -3315,8 +3433,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.98.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.98.0` placeholder
+- **#933** - v0.99.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.99.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -3457,7 +3575,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.98.0` placeholder
+  - Changed hardcoded version to `v0.99.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -3497,7 +3615,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.98.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.99.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -3574,10 +3692,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.98.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.99.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.98.0` placeholder
+- **#821** - README-DIST.md now uses `v0.99.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -3694,7 +3812,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.98.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.99.0 placeholder
 
 ---
 
@@ -3742,7 +3860,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.98.0 placeholders to 209 framework source files
+- Restored v0.99.0 placeholders to 209 framework source files
 
 ---
 
@@ -3810,12 +3928,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.98.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.99.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.98.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.99.0` format for consistent replacement
 
 ---
 
@@ -3884,7 +4002,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.98.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.99.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

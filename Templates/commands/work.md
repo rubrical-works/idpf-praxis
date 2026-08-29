@@ -1,5 +1,5 @@
 ---
-version: "v0.98.0"
+version: "v0.99.0"
 description: Start working on issues with validation and auto-task extraction (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -55,6 +55,16 @@ Before the first acceptance criterion of an issue is worked — and independentl
 
 **Declining proceeds to work unchanged** — the gate mutates nothing on decline: no label change, no status move, no body edit. Review stays advisory; the gate only makes its absence visible at the one moment it is still free to fix. Full state matrix and rationale: `.claude/rules/08-work-execution.md` Step 3.
 
+---
+## Peer Announcements (#2662)
+Tells other sessions in this working directory when `/work` starts and finishes an issue, so two sessions committing into one tree is visible rather than surfacing as misattributed `Refs #N` commits.
+| Event | When |
+|---|---|
+| 1 — started | Step 3, **after** both gates pass; per **sub-issue** under `--nonstop` |
+| 2 — completed | Inside the Step 6 STOP sequence, **before** the STOP directive, carrying the `Refs #N` commits |
+Peers from `peers-check.js`, payloads from `peer-announce.js`, delivery via `SendMessage` — the helper composes and resolves recipients, it cannot send.
+**Advisory, never a gate.** Fire-and-forget; availability is **per peer** (skips named by reason — no messaging address, or registered but not tool-reachable — stated once for the set, never abandoned wholesale); a throwing helper does not abort the enclosing sequence; event 2 with zero commits says nothing landed. Rules: `.claude/rules/08-work-execution.md` Steps 3 and 6.
+**Dispatched is not delivered (#2674).** `shouldSend` and a successful `SendMessage` mean *dispatched*, never received: the receiver may hold, decline, or let it expire, none of it visible here. Detection is closed — no permission-mode field in the registry or `ListAgents` — and closed on principle: recipient disposition belongs to each **send**, resolved after the fact, not to the **peer** found at scan time. The notice states the dispatch and names the three outcomes it cannot tell apart.
 ---
 ## Error Handling
 **STOP errors:** Issue not found, no branch assignment, `gh pmu` failure, `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch`), `BRANCH_TRACKER_NOT_ASSIGNABLE` (target is a branch tracker — assign sub-issues instead).
