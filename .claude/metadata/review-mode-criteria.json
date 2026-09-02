@@ -20,111 +20,182 @@
   "criteria": {
     "title-clear": {
       "name": "Title clear?",
-      "modes": ["solo", "team", "enterprise"],
+      "modes": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Verify title is specific (>3 words), contains actionable context, not generic like 'Fix bug' or 'Update code'",
       "description": "Issue title is clear and descriptive"
     },
     "description-sufficient": {
       "name": "Description sufficient?",
-      "modes": ["team", "enterprise"],
+      "modes": [
+        "team",
+        "enterprise"
+      ],
       "type": "subjective",
       "description": "Issue description provides enough context",
       "header": "Description",
       "question": "Does the description provide enough context for someone unfamiliar with this area?",
       "options": [
-        { "label": "Sufficient", "description": "Context is clear, someone could start work from this description" },
-        { "label": "Needs detail", "description": "Generally understandable but missing some context" },
-        { "label": "Insufficient", "description": "Not enough context to understand the problem or solution" }
+        {
+          "label": "Sufficient",
+          "description": "Context is clear, someone could start work from this description"
+        },
+        {
+          "label": "Needs detail",
+          "description": "Generally understandable but missing some context"
+        },
+        {
+          "label": "Insufficient",
+          "description": "Not enough context to understand the problem or solution"
+        }
       ]
     },
     "ac-present-testable": {
       "name": "AC present and testable?",
-      "modes": ["solo", "team", "enterprise"],
+      "modes": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Check for `- [ ]` checkbox items in issue body; verify each contains a measurable/verifiable statement",
       "description": "Acceptance criteria exist and are testable"
     },
     "labels-correct": {
       "name": "Labels correct?",
-      "modes": ["solo", "team", "enterprise"],
+      "modes": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Verify issue has at least one type label (bug/enhancement/story/epic) matching its content",
       "description": "Issue has appropriate labels"
     },
     "story-sizing": {
       "name": "Story sized appropriately?",
-      "modes": ["team", "enterprise"],
+      "modes": [
+        "team",
+        "enterprise"
+      ],
       "type": "subjective",
       "description": "Story points or size estimate is appropriate",
       "header": "Sizing",
       "question": "Is this appropriately sized for a single iteration?",
       "options": [
-        { "label": "Good size", "description": "Fits within a single iteration with reasonable effort" },
-        { "label": "Too large", "description": "Should be broken down into smaller stories" },
-        { "label": "Too small", "description": "Could be combined with related work" }
+        {
+          "label": "Good size",
+          "description": "Fits within a single iteration with reasonable effort"
+        },
+        {
+          "label": "Too large",
+          "description": "Should be broken down into smaller stories"
+        },
+        {
+          "label": "Too small",
+          "description": "Could be combined with related work"
+        }
       ]
     },
     "priority-set": {
       "name": "Priority set?",
-      "modes": ["team", "enterprise"],
+      "modes": [
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Check if priority field is set in project board via `gh pmu view --json=priority`",
       "description": "Priority level is assigned (P0/P1/P2)"
     },
     "dependencies-identified": {
       "name": "Dependencies identified?",
-      "modes": ["team", "enterprise"],
+      "modes": [
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Check for `Refs #`, `Depends on #`, `Blocks #`, or `**Refs:**` patterns in body; verify referenced issues exist",
       "description": "Dependencies on other issues are documented"
     },
     "effort-estimate": {
       "name": "Effort estimate present?",
-      "modes": ["enterprise"],
+      "modes": [
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Check for estimate/effort section or field in body (e.g., `**Estimate:**`, story points, time estimate)",
       "description": "Time/effort estimation is documented"
     },
     "risk-assessment": {
       "name": "Risk assessment documented?",
-      "modes": ["enterprise"],
+      "modes": [
+        "enterprise"
+      ],
       "type": "subjective",
       "description": "Technical and business risks are identified",
       "header": "Risks",
       "question": "Are technical and business risks adequately identified?",
       "options": [
-        { "label": "Adequate", "description": "Risks are identified with mitigation strategies" },
-        { "label": "Some gaps", "description": "Some risks mentioned but incomplete coverage" },
-        { "label": "Missing", "description": "No risk assessment documented" }
+        {
+          "label": "Adequate",
+          "description": "Risks are identified with mitigation strategies"
+        },
+        {
+          "label": "Some gaps",
+          "description": "Some risks mentioned but incomplete coverage"
+        },
+        {
+          "label": "Missing",
+          "description": "No risk assessment documented"
+        }
       ]
     },
     "scope-boundaries": {
       "name": "Scope boundaries defined?",
-      "modes": ["solo", "team", "enterprise"],
+      "modes": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Check for in-scope / out-of-scope sections or explicit boundary statements",
       "description": "Issue or document defines what is and is not in scope"
     },
     "success-criteria-measurable": {
       "name": "Success criteria measurable?",
-      "modes": ["solo", "team", "enterprise"],
+      "modes": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Check for quantitative language, thresholds, or verifiable outcomes in AC or success criteria",
       "description": "Success criteria contain measurable, verifiable statements"
     },
     "actionable": {
       "name": "Issue actionable?",
-      "modes": ["solo", "team", "enterprise"],
+      "modes": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
       "autoCheck": "Check for concrete next steps, clear requirements, or defined acceptance criteria",
       "description": "Issue contains enough information to begin work"
     },
     "test-coverage-proportionate": {
       "name": "Test coverage proportionate to change scope?",
-      "modes": ["solo", "team", "enterprise"],
+      "modes": [
+        "solo",
+        "team",
+        "enterprise"
+      ],
       "type": "objective",
-      "autoCheck": "Read issue body and linked resources to determine change scope. Classify change type (single-path fix, multi-path refactor, new feature, behavior change). Scan ACs for test-related requirements (test, unit test, e2e, coverage, regression test). Compare inferred scope against test ACs and report proportionality with evidence.",
+      "autoCheck": "Read issue body and linked resources to determine change scope. Classify change type (single-path fix, multi-path refactor, new feature, behavior change). Scan ACs for test-related requirements (test, unit test, e2e, coverage, regression test). Compare inferred scope against test ACs and report proportionality with evidence. Then report WHICH TEST FILES the change implicates: infer the source paths from the body's `**Files to modify:**` section and the ACs, and pair each against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` (the single pairing authority — do not apply a second set of rules here; project overrides live in framework-config.json testCoverageAudit). Name each implicated test file and whether it already exists on disk. Where no pairing resolves — the language is absent from the conventions file, or no source path could be inferred — state that none could be resolved and why, rather than reporting nothing: silence here is indistinguishable from nobody having looked. Advisory: this reporting does not block the review or any status transition.",
       "description": "ACs include requirements for new/expanded tests when the change modifies or adds code paths"
     }
   },

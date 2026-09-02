@@ -1,0 +1,57 @@
+{
+  "$schema": "./test-plan-approval-gates-schema.json",
+  "version": "1.0",
+  "gates": [
+    {
+      "id": "ac-test-coverage",
+      "text": "All PRD acceptance criteria have test cases",
+      "criteria": ["ac-coverage", "story-to-test-mapping"],
+      "autoCheckable": true
+    },
+    {
+      "id": "edge-and-error-conditions",
+      "text": "Edge cases and error conditions identified",
+      "criteria": [
+        "error-scenarios-present",
+        "boundary-conditions-tested",
+        "failure-modes-covered"
+      ],
+      "autoCheckable": true
+    },
+    {
+      "id": "integration-points",
+      "text": "Integration points between epics mapped",
+      "criteria": [
+        "integration-points-mapped",
+        "component-interactions-verified",
+        "data-flow-boundaries-tested"
+      ],
+      "autoCheckable": true
+    },
+    {
+      "id": "e2e-coverage",
+      "text": "E2E scenarios cover critical journeys",
+      "criteria": ["e2e-critical-journeys", "e2e-happy-and-error-paths", "e2e-map-to-prd"],
+      "autoCheckable": true
+    },
+    {
+      "id": "coverage-targets",
+      "text": "Coverage targets are realistic",
+      "criteria": ["coverage-targets-realistic", "test-coverage-proportionate"],
+      "autoCheckable": true
+    },
+    {
+      "id": "no-aspirational-mechanism",
+      "text": "No AC names an aspirational verification mechanism (#2424 gate — all named mechanisms already in use in this repo; see `.claude/metadata/ac-feasibility-prompts.json`)",
+      "criteria": ["ac-verification-mechanism-feasible"],
+      "autoCheckable": false
+    }
+  ],
+  "_meta": {
+    "issue": "#2710 (epic #2693)",
+    "purpose": "The single declaration of the test-plan approval gate set. Both rendered surfaces — the `## Approval Checklist` in Templates/artifacts/test-plan-template.md and the `## Review Checklist` in the approval issue written by /create-prd Phase 6.6 — are rendered from the `text` values here, in this order. Before this file existed the two surfaces were independently worded restatements that had already diverged: six items against five.",
+    "textIsCanonical": "`text` is the rendered string, not a label. Editing it changes both surfaces, and tests/metadata/test-plan-approval-gates.test.js fails if either surface stops matching. Gate `no-aspirational-mechanism` additionally has its wording pinned by tests/commands/test-plan-template-ac-feasibility-line.test.js (#2425), whose regex requires the phrase 'aspirational verification mechanism', the '#2424' reference and the ac-feasibility-prompts.json path to survive together.",
+    "autoCheckable": "Whether the gate can be resolved by the deterministic rollup over review findings (#2711) rather than needing human confirmation (#2712). The first five gates map onto objective criteria that each carry an autoCheckMethod, so a finding set determines them. `no-aspirational-mechanism` is deliberately false: its backing criterion can grep for a mechanism's existing usage, but deciding whether an AC *names a verification mechanism at all* is a reading of prose, and a gate that claims to be computed while resting on that judgment would report false confidence. False here means 'always needs a human', not 'not yet implemented'.",
+    "criteriaCoverage": "Every gate names at least one backing criterion — the defect this file closes was gate `no-aspirational-mechanism` shipping with none, leaving it checked on judgment or skipped silently. The converse does not hold and is not asserted: `test-framework-specified`, `test-levels-defined` and `framework-consistent` back no gate, because they describe how the plan declares its framework rather than any approval gate. A criterion without a gate is still evaluated during review; a gate without a criterion had no evaluator at all."
+  }
+}

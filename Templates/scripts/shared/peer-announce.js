@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *
@@ -46,6 +46,16 @@ const EVENTS = Object.freeze({
   PUSH_STARTED: 'push-started',
   CI_TERMINAL: 'ci-terminal',
   PUSH_REJECTED: 'push-rejected',
+  // The review half of the workflow (#2695). The five events above cover
+  // /work -> /done -> CI, so a peer could see an issue being IMPLEMENTED
+  // but not REVIEWED — even though a review rewrites the labels and body
+  // markers that /work Step 3 Review-State Gate reads before it starts.
+  REVIEW_STARTED: 'review-started',
+  REVIEW_RESOLVED: 'review-resolved',
+  // The review half's only CLOSER (#2722). The two events above are
+  // non-terminal on purpose and stay that way; this one describes the one
+  // review outcome that is settled rather than open-ended.
+  REVIEW_PASSED: 'review-passed',
 });
 
 /**
@@ -171,6 +181,49 @@ function formatWorkCompleted({ issues, commits }) {
   return `Finished on ${subject} — ${list.length} ${plural} in this working directory: ${shas}.`;
 }
 
+/**
+ * Review lifecycle (#2695). Both state, never instruct — the receiver is
+ * given a fact, not a task.
+ *
+ * Neither is terminal. A terminal event promises that nothing follows, and
+ * these promise nothing either way: a review may be followed by
+ * /resolve-review, by work, or by nothing at all. Marking them terminal
+ * would assert a completeness the sender cannot know — clause 5.
+ */
+function formatReviewStarted({ issues }) {
+  return `Reviewing ${describeIssues(issues)} in this working directory.`;
+}
+
+function formatReviewResolved({ issues }) {
+  return `Resolving review findings on ${describeIssues(issues)} in this working directory.`;
+}
+
+/**
+ * The review half's terminal event (#2722).
+ *
+ * The two formatters above are non-terminal because their outcome is
+ * unknown, and that reasoning is correct for what they describe. It leaves
+ * one outcome unannounced that is NOT open-ended: a review ending `Ready for
+ * work`. There, something specific is true — the issue is available — and
+ * without this event no peer is told, so the only way to learn it was to ask
+ * the holding session and wait for a human-paced reply.
+ *
+ * Terminal, and it SAYS so. A `terminal: true` flag no reader of the message
+ * ever sees is not a closer; the sentence is what lets a peer stop waiting.
+ *
+ * There is deliberately NO counterpart for the `pending` outcome. `pending`
+ * genuinely is open-ended — it may be followed by /resolve-review, by
+ * abandonment, or by nothing — which is exactly the case the non-terminal
+ * wording above was written for. Adding one would assert a completeness the
+ * sender cannot have.
+ *
+ * States, never instructs: availability is a fact about the issue, not a
+ * task handed to the receiver. This event confers no claim and no ownership.
+ */
+function formatReviewPassed({ issues }) {
+  return `Review passed on ${describeIssues(issues)} — Ready for work; available to be picked up in this working directory. No further announcement will follow.`;
+}
+
 function formatPushStarted({ issues }) {
   return `Pushing ${describeIssues(issues)} from this working directory.`;
 }
@@ -195,11 +248,22 @@ function formatCiTerminal({ issues, outcome, runUrl }) {
       return `Pushed ${subject}. No CI will start — no push-triggered workflows. No further announcement will follow.`;
     case 'skipped-paths-ignore':
       return `Pushed ${subject}. No CI will start — every changed path matched paths-ignore. No further announcement will follow.`;
+    // Clause 5 (#2679). This event fires at ARMING time, before any run is
+    // known to exist — ci-watch.js has exit code 3 precisely for "no CI run
+    // triggered", so the paths-ignore pre-check is a heuristic, not a
+    // guarantee. With no URL the only fact available is that a watch was
+    // armed; asserting a running build there is a dispatch decision rendered
+    // as a claim about the world, the same shape as #2674. A URL means a run
+    // demonstrably exists, so the stronger claim is earned rather than assumed.
     case 'armed-degraded':
-      return `Pushed ${subject}. CI is in progress (degraded: the pushed range could not be resolved, so the watch may not match the push)${url}. No further announcement will follow.`;
+      return runUrl
+        ? `Pushed ${subject}. CI is in progress (degraded: the pushed range could not be resolved, so the watch may not match the push)${url}. No further announcement will follow.`
+        : `Pushed ${subject}. A CI watch is armed (degraded: the pushed range could not be resolved, so the watch may not match the push); whether a run started is not known yet. No further announcement will follow.`;
     case 'armed':
     default:
-      return `Pushed ${subject}. CI is in progress${url}. No further announcement will follow.`;
+      return runUrl
+        ? `Pushed ${subject}. CI is in progress${url}. No further announcement will follow.`
+        : `Pushed ${subject}. A CI watch is armed; whether a run started is not known yet. No further announcement will follow.`;
   }
 }
 
@@ -217,10 +281,20 @@ const FORMATTERS = Object.freeze({
   [EVENTS.PUSH_STARTED]: formatPushStarted,
   [EVENTS.CI_TERMINAL]: formatCiTerminal,
   [EVENTS.PUSH_REJECTED]: formatPushRejected,
+  [EVENTS.REVIEW_STARTED]: formatReviewStarted,
+  [EVENTS.REVIEW_RESOLVED]: formatReviewResolved,
+  [EVENTS.REVIEW_PASSED]: formatReviewPassed,
 });
 
-/** Events after which no peer should still be waiting. */
-const TERMINAL_EVENTS = new Set([EVENTS.CI_TERMINAL, EVENTS.PUSH_REJECTED]);
+/**
+ * Events after which no peer should still be waiting.
+ *
+ * REVIEW_PASSED joins the CI/push terminals; REVIEW_STARTED and
+ * REVIEW_RESOLVED deliberately do not (#2722). The asymmetry is the feature:
+ * making all three review events agree would delete the only closer the
+ * review half has.
+ */
+const TERMINAL_EVENTS = new Set([EVENTS.CI_TERMINAL, EVENTS.PUSH_REJECTED, EVENTS.REVIEW_PASSED]);
 
 // ─── Composition ───
 
@@ -409,6 +483,9 @@ module.exports = {
   formatPushStarted,
   formatCiTerminal,
   formatPushRejected,
+  formatReviewStarted,
+  formatReviewResolved,
+  formatReviewPassed,
   EVENTS,
   TERMINAL_OUTCOMES,
   TERMINAL_EVENTS,

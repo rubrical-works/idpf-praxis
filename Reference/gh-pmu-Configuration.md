@@ -1,5 +1,5 @@
 # gh-pmu Configuration Reference
-**Version:** v0.99.0
+**Version:** v0.100.0
 **Source:** Reference/gh-pmu-Configuration.md
 **Load on demand** for `.gh-pmu.json` schema, release config, or `gh pmu` CLI operations.
 ## .gh-pmu.json Schema

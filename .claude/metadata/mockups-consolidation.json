@@ -1,0 +1,132 @@
+{
+  "$schema": "./mockups-consolidation-schema.json",
+  "version": 1,
+  "description": "Decision sequence for /mockups --consolidate (#2589). Externalized per the AC48 line-count guardrail: the ordered prompt procedure is spec-specific reference content, which is exactly what that budget exists to force out of CommandsSrc/mockups.md. The command spec keeps the contract statements and directs the reader here for the sequence. Re-read from disk at use time; never paraphrase from memory.",
+  "oneQuestionAtATime": true,
+  "neverBatchDecisions": true,
+  "decisions": [
+    {
+      "order": 1,
+      "id": "discover",
+      "interactive": false,
+      "summary": "Discover candidate mockup sets.",
+      "rules": [
+        "Reuse Step 1b discovery to scan Mockups/ for {Name}/ sets, inventorying Specs/, Screens/, AsciiScreens/ and AC/ per set.",
+        "Mockups/Deprecated/ is never a candidate.",
+        "Fewer than two sets found - report and STOP; there is nothing to consolidate."
+      ]
+    },
+    {
+      "order": 2,
+      "id": "per-set-selection",
+      "interactive": true,
+      "multiSelect": true,
+      "summary": "For each discovered set, one question listing that set's mockup files.",
+      "rules": [
+        "One listing per source set (Mockups/{Name}/) - never a single flattened list across sets, so the origin of every pick stays visible.",
+        "Skipping an entire set is a valid answer."
+      ]
+    },
+    {
+      "order": 3,
+      "id": "target-name",
+      "interactive": true,
+      "multiSelect": false,
+      "summary": "Name the consolidated set.",
+      "rules": [
+        "Pre-fill a suggested directory name; the user may override it.",
+        "A name colliding with an existing set is re-prompted, never overwritten."
+      ]
+    },
+    {
+      "order": 4,
+      "id": "supersession-resolution",
+      "interactive": true,
+      "multiSelect": false,
+      "summary": "Resolve competing renditions of the same screen.",
+      "rules": [
+        "Fires when two or more selections resolve to the same screen name.",
+        "List options as {set}/{file} with dates.",
+        "Losers are recorded as superseded, not copied."
+      ]
+    },
+    {
+      "order": 5,
+      "id": "write-consolidated-set",
+      "interactive": false,
+      "summary": "Write Mockups/{Target}/ as a normal mockup set.",
+      "rules": [
+        "Standard subdirectories: Specs/, Screens/, AsciiScreens/, AC/.",
+        "Each carried-forward mockup gains a `**Supersedes:**` header line beside `**Screen Spec:**`, naming source set and source file.",
+        "The set's README.md (Step 5) gains a `## Consolidation` section recording source set, source file, superseded renditions, and date.",
+        "Screen specs travel with their mockups: Specs/ moves too and each entry's canonicalSpec is repointed at the new path.",
+        "Rewrite stale `## Related Artifacts` cross-references to the consolidated paths, reusing Step 4's rewrite. Specs move, so not rewriting guarantees stale links."
+      ]
+    },
+    {
+      "order": 6,
+      "id": "completion-confirmation",
+      "interactive": true,
+      "multiSelect": false,
+      "summary": "Explicit question: is the consolidation complete?",
+      "rules": [
+        "No pre-existing file is moved before this answer.",
+        "Everything before this point writes only into the new target set."
+      ]
+    },
+    {
+      "order": 7,
+      "id": "deprecation-target",
+      "interactive": true,
+      "multiSelect": false,
+      "summary": "Name the deprecation destination.",
+      "rules": [
+        "Suggest Mockups/Deprecated/{suggested}; the user may override it."
+      ]
+    },
+    {
+      "order": 8,
+      "id": "move-sources",
+      "interactive": false,
+      "summary": "Retire every affected pre-existing mockup.",
+      "rules": [
+        "Affected means carried forward or superseded.",
+        "Deprecation is a move, never a delete.",
+        "Prefer `git mv` so file history follows the file.",
+        "Fall back to a plain move only when git mv is unavailable or fails, and report which was used."
+      ]
+    },
+    {
+      "order": 9,
+      "id": "reconcile-derived-state",
+      "interactive": false,
+      "summary": "Bring screen-catalog.json and NAVIGATION.md back in line with the new paths.",
+      "rules": [
+        "Update Mockups/screen-catalog.json via loadCatalog / upsertScreen / saveCatalog (.claude/scripts/shared/lib/screen-catalog.js).",
+        "Set moved entries to status: \"deprecated\" - a value screen-catalog-schema.json's enum already permits.",
+        "Point consolidated entries at their new paths.",
+        "upsertScreen is pure: thread its return value into saveCatalog or the upsert is silently discarded (#2380).",
+        "Regenerate Mockups/NAVIGATION.md via renderNavigationMarkdown (.claude/scripts/shared/lib/navigation-graph.js) after paths change."
+      ]
+    },
+    {
+      "order": 10,
+      "id": "report-and-commit",
+      "interactive": true,
+      "multiSelect": false,
+      "summary": "Report the result and offer a commit.",
+      "rules": [
+        "Reuse Step 8b's commit offer.",
+        "Refs #NN only when issue context happens to exist; a plain descriptive message otherwise."
+      ]
+    }
+  ],
+  "exclusions": {
+    "deprecatedDir": "Mockups/Deprecated/",
+    "rules": [
+      "Mockups/Deprecated/ is excluded from the --serve tree.",
+      "status: deprecated entries are filtered out of the showcase bundle.",
+      "Absent status is not deprecation - entries predating this feature carry no status field and must keep rendering."
+    ]
+  }
+}

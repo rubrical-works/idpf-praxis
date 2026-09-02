@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Analyze interdependence between multiple issues.
  * Detects overlap, ordering dependencies, conflicts, and shared criteria
  * using config-driven evaluation dimensions.
@@ -460,19 +460,41 @@ function computeSuggestedOrder(issues, orderingFindings) {
  * `excluded` — removing `epic` from it would make epics analyzable as SUBJECTS,
  * which is the one thing the sub-issue ordering path must not do.
  *
- * @param {string[]} labels - Array of label names from the issue
+ * Accepts BOTH label shapes (#2682): plain strings (`['story']`) and the
+ * `{name}` objects `review-preamble.js` emits (`[{name:'story'}]`). The object
+ * shape is what `/review-issue` Step 3a's documented source actually produces,
+ * and the original identity comparison silently returned `false` for it — a
+ * value indistinguishable from a correct `proposal`/`epic` exclusion, so every
+ * multi-issue review skipped Step 3a and reported nothing rather than erroring.
+ *
+ * @param {Array<string|{name: string}>} labels - Label names, or `{name}` objects
  * @returns {boolean} true if the issue is eligible
  */
 function isEligibleForInterdependence(labels) {
   if (!labels || labels.length === 0) return false;
+  const names = labels
+    .map(l => (typeof l === 'string' ? l : l && typeof l.name === 'string' ? l.name : null))
+    .filter(Boolean);
+  if (names.length === 0) {
+    // Unreadable input is NOT the same as "excluded", and a bare boolean cannot
+    // carry that distinction. The warn is the side-channel that makes the
+    // difference detectable; without it this reproduces the reported defect one
+    // level down, with `false` again standing for two unrelated answers.
+    // `[]` never reaches here — no labels is a question with a real answer.
+    console.warn(
+      '[review-interdependence] isEligibleForInterdependence: no readable label ' +
+      'names in input; returning false. Expected string[] or {name:string}[].'
+    );
+    return false;
+  }
   const config = loadConfig();
   // Keep this fallback in sync with review-interdependence.json — a config that
   // fails to load must not silently narrow the filter back.
   const typeFilter = config.typeFilter || { eligible: ['bug', 'enhancement', 'story', 'prd', 'test-plan'], excluded: ['proposal', 'epic'] };
   // Excluded takes precedence
-  if (labels.some(l => typeFilter.excluded.includes(l))) return false;
+  if (names.some(n => typeFilter.excluded.includes(n))) return false;
   // Must have at least one eligible label
-  return labels.some(l => typeFilter.eligible.includes(l));
+  return names.some(n => typeFilter.eligible.includes(n));
 }
 
 /**

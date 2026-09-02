@@ -1,5 +1,5 @@
 ---
-version: "v0.99.0"
+version: "v0.100.0"
 description: Start working on issues with validation and auto-task extraction (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -61,8 +61,12 @@ Tells other sessions in this working directory when `/work` starts and finishes 
 | Event | When |
 |---|---|
 | 1 — started | Step 3, **after** both gates pass; per **sub-issue** under `--nonstop` |
-| 2 — completed | Inside the Step 6 STOP sequence, **before** the STOP directive, carrying the `Refs #N` commits |
+| 2 — completed | Inside the Step 6 STOP sequence, after the report and **before** the STOP directive where one exists, carrying the `Refs #N` commits; per **sub-issue** under `--nonstop` as each reaches `in_review`, not once at the end |
 Peers from `peers-check.js`, payloads from `peer-announce.js`, delivery via `SendMessage` — the helper composes and resolves recipients, it cannot send.
+**Every event 1 is matched by exactly one event 2 (#2699).** Both fire per sub-issue under `--nonstop`, so a peer holding an event 1 with no event 2 knows one is still due rather than lost. Event 2's cadence is a **workflow moment**, not a position relative to the STOP directive `--nonstop` removes for all but the final sub-issue — anchoring to the STOP alone leaves two conforming readings a receiver cannot tell apart, and `issues: [$ISSUE]` stays singular by design.
+**Gated by project config (#2702).** Resolve **once per invocation**, before event 1, and reuse for event 2: `node .claude/scripts/shared/lib/cross-session-config.js`. `groups.work` false → events 1 and 2 **emit nothing** — no `SendMessage`, **no skip notice**; both Step 3 gates still run and Step 6 still prunes, reports and STOPs. `notices` false → dispatch unchanged, the dispatch-caveat and skip-reason lines not printed. Absent object, or any omitted key → enabled.
+**Read the resolver; never re-derive the default inline** — six consumers share the absence rule, and a second copy in each is how they drift: five would get the `discovery: false` implication right and the sixth would not.
+**A disabled group prints no per-invocation skip notice, deliberately.** The suppression is the user's own choice, so restating it every run is the noise the setting exists to remove. Discoverability lives in the startup `Peers:` row and `/x-session-config` instead — the deliberate exception to *a gate that quietly does nothing is indistinguishable from one that passed*, since here the silence **is** the requested behaviour.
 **Advisory, never a gate.** Fire-and-forget; availability is **per peer** (skips named by reason — no messaging address, or registered but not tool-reachable — stated once for the set, never abandoned wholesale); a throwing helper does not abort the enclosing sequence; event 2 with zero commits says nothing landed. Rules: `.claude/rules/08-work-execution.md` Steps 3 and 6.
 **Dispatched is not delivered (#2674).** `shouldSend` and a successful `SendMessage` mean *dispatched*, never received: the receiver may hold, decline, or let it expire, none of it visible here. Detection is closed — no permission-mode field in the registry or `ListAgents` — and closed on principle: recipient disposition belongs to each **send**, resolved after the fact, not to the **peer** found at scan time. The notice states the dispatch and names the three outcomes it cannot tell apart.
 ---

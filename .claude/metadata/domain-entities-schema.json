@@ -4,7 +4,12 @@
   "title": "Domain Entities Schema",
   "description": "Schema for domain-entities.json — machine-readable companion to CHARTER.md capturing bounded context, entities, relationships, scope boundaries, and drift signals",
   "type": "object",
-  "required": ["boundedContext", "entities", "scopeBoundaries", "driftSignals"],
+  "required": [
+    "boundedContext",
+    "entities",
+    "scopeBoundaries",
+    "driftSignals"
+  ],
   "properties": {
     "$schema": {
       "type": "string"
@@ -27,7 +32,11 @@
     },
     "boundedContext": {
       "type": "object",
-      "required": ["name", "purpose", "boundary"],
+      "required": [
+        "name",
+        "purpose",
+        "boundary"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -49,7 +58,9 @@
       "description": "Entity definitions keyed by entity identifier (kebab-case)",
       "additionalProperties": {
         "type": "object",
-        "required": ["description"],
+        "required": [
+          "description"
+        ],
         "properties": {
           "description": {
             "type": "string",
@@ -77,7 +88,9 @@
               },
               "exclude": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "Patterns to exclude from count"
               }
             },
@@ -85,17 +98,23 @@
           },
           "instances": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Named instances when count is small and stable"
           },
           "subtypes": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Classification subtypes for multi-tier entities"
           },
           "locations": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "File paths or directories where instances live"
           },
           "managedIn": {
@@ -106,11 +125,32 @@
             "type": "string",
             "description": "Tool or application that manages this entity"
           },
+          "repo": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
+            "description": "Companion repository identity as owner/name. The key a gh --repo invocation needs; locations holds only a bare display name."
+          },
+          "board": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+/[0-9]+$",
+            "description": "Companion project board as owner/number, when the companion has one."
+          },
+          "searchable": {
+            "type": "boolean",
+            "description": "This companion may be swept for prior art and cross-referenced. Separate from fileIssues: searchable-but-not-filable is the common case."
+          },
+          "fileIssues": {
+            "type": "boolean",
+            "description": "Issues may be filed against this companion from this project."
+          },
           "relationships": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["type", "target"],
+              "required": [
+                "type",
+                "target"
+              ],
               "properties": {
                 "type": {
                   "type": "string",
@@ -141,10 +181,19 @@
             "type": "object",
             "description": "Explicit min/max range override for count validation",
             "properties": {
-              "min": { "type": "integer", "description": "Minimum expected count" },
-              "max": { "type": "integer", "description": "Maximum expected count" }
+              "min": {
+                "type": "integer",
+                "description": "Minimum expected count"
+              },
+              "max": {
+                "type": "integer",
+                "description": "Maximum expected count"
+              }
             },
-            "required": ["min", "max"],
+            "required": [
+              "min",
+              "max"
+            ],
             "additionalProperties": false
           },
           "addedInVersion": {
@@ -163,7 +212,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["layer", "technology"],
+        "required": [
+          "layer",
+          "technology"
+        ],
         "properties": {
           "layer": {
             "type": "string",
@@ -185,11 +237,22 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["heading"],
+            "required": [
+              "heading"
+            ],
             "properties": {
-              "heading": { "type": "string", "description": "Subsection heading" },
-              "description": { "type": "string", "description": "Brief summary of subsection content" },
-              "diagram": { "type": "string", "description": "ASCII diagram from code block, if present" }
+              "heading": {
+                "type": "string",
+                "description": "Subsection heading"
+              },
+              "description": {
+                "type": "string",
+                "description": "Brief summary of subsection content"
+              },
+              "diagram": {
+                "type": "string",
+                "description": "ASCII diagram from code block, if present"
+              }
             },
             "additionalProperties": false
           },
@@ -199,11 +262,30 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["parentHeading", "columns", "rows"],
+            "required": [
+              "parentHeading",
+              "columns",
+              "rows"
+            ],
             "properties": {
-              "parentHeading": { "type": "string", "description": "Subsection heading this table appeared under" },
-              "columns": { "type": "array", "items": { "type": "string" }, "description": "Column headers" },
-              "rows": { "type": "array", "items": { "type": "object" }, "description": "Table rows as objects keyed by column name" }
+              "parentHeading": {
+                "type": "string",
+                "description": "Subsection heading this table appeared under"
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Column headers"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "Table rows as objects keyed by column name"
+              }
             },
             "additionalProperties": false
           },
@@ -213,11 +295,22 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "properties": {
-              "name": { "type": "string", "description": "Component name" },
-              "role": { "type": "string", "description": "Component role" },
-              "inferredFrom": { "type": "string", "description": "Source subsection" }
+              "name": {
+                "type": "string",
+                "description": "Component name"
+              },
+              "role": {
+                "type": "string",
+                "description": "Component role"
+              },
+              "inferredFrom": {
+                "type": "string",
+                "description": "Source subsection"
+              }
             },
             "additionalProperties": false
           },
@@ -229,21 +322,30 @@
     },
     "currentFocus": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Current focus areas from charter, used for scope alignment checks"
     },
     "scopeBoundaries": {
       "type": "object",
-      "required": ["inScope", "outOfScope"],
+      "required": [
+        "inScope",
+        "outOfScope"
+      ],
       "properties": {
         "inScope": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "What is in scope for this project"
         },
         "outOfScope": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "What is explicitly out of scope"
         }
       },
@@ -251,13 +353,19 @@
     },
     "driftSignals": {
       "type": "object",
-      "required": ["entityOutOfBounds", "scopeExpansion"],
+      "required": [
+        "entityOutOfBounds",
+        "scopeExpansion"
+      ],
       "properties": {
         "entityOutOfBounds": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["signal", "severity"],
+            "required": [
+              "signal",
+              "severity"
+            ],
             "properties": {
               "signal": {
                 "type": "string",
@@ -265,7 +373,10 @@
               },
               "severity": {
                 "type": "string",
-                "enum": ["error", "warning"],
+                "enum": [
+                  "error",
+                  "warning"
+                ],
                 "description": "Severity: error for out-of-bounds, warning for scope expansion"
               }
             },
@@ -277,7 +388,10 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["signal", "severity"],
+            "required": [
+              "signal",
+              "severity"
+            ],
             "properties": {
               "signal": {
                 "type": "string",
@@ -285,7 +399,10 @@
               },
               "severity": {
                 "type": "string",
-                "enum": ["error", "warning"],
+                "enum": [
+                  "error",
+                  "warning"
+                ],
                 "description": "Severity: typically warning for scope expansion"
               }
             },
@@ -300,11 +417,18 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["type", "description"],
+        "required": [
+          "type",
+          "description"
+        ],
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["count-range", "location-exists", "relationship-target-valid"],
+            "enum": [
+              "count-range",
+              "location-exists",
+              "relationship-target-valid"
+            ],
             "description": "Type of runtime validation check"
           },
           "entity": {

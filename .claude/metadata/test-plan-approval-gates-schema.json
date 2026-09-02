@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "test-plan-approval-gates-schema.json",
+  "title": "Test-Plan Approval Gates",
+  "description": "The single declaration of the test-plan approval gate set (#2710, epic #2693). Both the test plan template's Approval Checklist and the /create-prd approval issue's Review Checklist are rendered from `text`, in declared order.",
+  "type": "object",
+  "required": ["gates"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string" },
+    "gates": {
+      "type": "array",
+      "description": "Approval gates in the order both surfaces render them. Order is data, not incidental: the rendered checklists are compared element-wise.",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/gate" }
+    },
+    "_meta": {
+      "type": "object",
+      "description": "Human-facing notes. Not read by any consumer.",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Stable identifier. Referenced by the rollup (#2711) and the confirmation phase (#2712), so it outlives any wording change to `text`."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The canonical rendered string. This is the checklist line itself, not a label for it — both surfaces must reproduce it verbatim."
+        },
+        "criteria": {
+          "type": "array",
+          "description": "Ids of the backing criteria in test-plan-review-criteria.json that evaluate this gate. Every id must resolve; an unresolvable id means a renamed criterion has orphaned its gate.",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "autoCheckable": {
+          "type": "boolean",
+          "description": "Whether the deterministic rollup over review findings can resolve this gate without human confirmation.",
+          "default": false
+        }
+      }
+    }
+  }
+}

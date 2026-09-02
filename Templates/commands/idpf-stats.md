@@ -1,5 +1,5 @@
 ---
-version: "v0.99.0"
+version: "v0.100.0"
 description: Generate session statistics report with development velocity metrics
 argument-hint: "[--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save]"
 copyright: "Rubrical Works (c) 2026"
@@ -102,6 +102,7 @@ Categorize via `labelCategories` from `.claude/metadata/stats-config.json`:
 **`gh` not installed:** skip issue metrics. Report: "Issue breakdown unavailable (gh CLI not found)." `.gh-pmu.json` is NOT required — `gh` uses global auth (`~/.config/gh/hosts.yml`).
 
 ### Step 3: Render Output
+**Volume is SPACE *Activity*, and the caveat travels with the heading (#2676).** Render the `volume` section under its configured `title` ("Activity (SPACE)") and print its `caveat` from `stats-config.json` beneath. Activity counts output, not value — a high count is not a good outcome. SPACE is explicit that one dimension read alone misleads; the other four (Satisfaction, Performance, Communication, Efficiency) are **not** collected. The caveat lives in config so the renderer can see it; one only a spec reader meets never reaches the report.
 
 ASCII box-drawing tables from script output.
 
@@ -173,6 +174,20 @@ Issue Breakdown by Category
 - **Testing:** always render (zeros if no tests)
 - **Velocity Assessment:** render only if `throughput` not null
 
+**Unavailable metrics are NEVER rendered as `0` (#2675).** The collector emits `null` for any probe that could not run, plus an `unavailable` map of metric → reason. `0` now means the probe ran and the answer was zero.
+
+| Value | Render as |
+|---|---|
+| a number (incl. `0`) | the number — a measured answer |
+| `null` | `unavailable` (or `—`), never `0` |
+
+After any table holding a `null`, report the reasons once:
+```
+Some metrics were unavailable:
+  filesChanged — git log failed: fatal: not a git repository
+```
+`unavailable` is present-and-empty on a healthy run, so an empty map means every probe answered, not that the field is missing. **Do NOT substitute `0` for `null`** — these metrics reported zeros on Windows for as long as the helper existed and nobody noticed, because a plausible number hides a broken probe in a way an explicit `unavailable` cannot.
+
 ### Step 3a: Multi-Repo Rendering (`--repos` used)
 
 When output has `perRepo`:
@@ -209,15 +224,26 @@ Velocity Assessment
 │ Lines added/hour │ ~{N}   │ 🟢/🟡/🔴  │
 │ Issues/hour      │ ~{N}   │ 🟢/🟡/🔴  │
 └──────────────────┴────────┴────────────┘
-Estimated throughput: ~{multiplier}x typical developer velocity
-Assumptions: median human benchmarks — {commits median} commits/hr, {lines median} lines/hr,
-{issues median} issues/hr (configurable in stats-config.json velocityBenchmarks)
+Deviation from this repository's trailing baseline: {N}x the median of {activeDays} active
+day(s) over the last {windowDays} days (`computeTrailingBaseline()`)
+Assumptions: {commits median} commits/hr, {lines median} lines/hr, {issues median} issues/hr
+Population: {population}   Source: {source}
 ```
 
 Ratings: 🟢 above `high`, 🟡 between `low` and `high`, 🔴 below `low`.
 
-**Assumptions disclosure is mandatory.** Always show benchmark medians and source. If `stats-config.json` has custom `velocityBenchmarks`, note "custom benchmarks" instead of "default benchmarks".
+**Assumptions disclosure is mandatory, and satisfiable since #2676.** Show each benchmark's `median`, `population` and `source` — all three ship in `stats-config.json` and return on `assessVelocity()`'s `benchmarks` key. Before #2676 the rule demanded a source that existed nowhere.
+**Where a set is `validated: false`, say so.** The three throughput bands are unvalidated internal heuristics with no published citation; presenting them as "median human benchmarks" stated as fact was the defect removed. A labelled heuristic is usable with scepticism; an uncited one is not.
+**The "~Nx typical developer velocity" line is gone and must not return.** It divided this repository's rates by an uncited median and reported the quotient as a fact about developers. The replacement compares against **this repository's own** trailing history. `assessVelocity()` no longer returns `multiplier`; a test asserts its absence.
+**Insufficient history reports not-collected, never 0.** Fewer active days than `baseline.minDataPoints` → `computeTrailingBaseline()` returns `null` with a reason; render the reason. A median over two days is not a baseline.
 
+### Step 3b-i: DORA Metrics (#2676)
+**Trigger:** always attempted; each metric renders its own not-collected reason when absent.
+Call `collectDora()` from `stats-collect.js` → `measured`, `proxies`, `tierPlacement`, `tierSource`, `unavailable`. Render deployment frequency, lead time, change failure rate ‡ and time to restore ‡ with their tier, and head the table with `tierSource.source` + `reportYear`.
+**The two proxies must be labelled wherever they appear (‡).** Change failure rate and time to restore derive from issue labels and timestamps, not deployment telemetry. They arrive under `proxies` rather than `measured` and each carries `isProxy: true` — render the marker. A proxy shown as measured invites a tier comparison the data does not support.
+**Attribution rule for both proxies.** A `bug` issue attributes to the **most recent release tag preceding its `createdAt`**. Issues predating the first tag in range are **excluded**, not attributed to it — attributing them would blame the first release for every bug that already existed.
+**Never render a missing metric as 0.** Every `unavailable` entry carries a reason; show it in place of the value. "No releases in range" is not a deployment frequency of zero, and rendering it as zero places the repo in the Low tier on a measurement that never happened.
+**Cite the tier source.** DORA band boundaries move between annual reports, so a placement is only as current as `reportYear`. Refreshing it and surfacing staleness is #2677.
 ### Step 3b-ii: File Type Breakout
 
 **Trigger:** `byExtension` from `parseNumstat` has entries.
@@ -278,7 +304,8 @@ Do not render empty tables.
 | `--until` before `--since` | "End date must be after start date." STOP. |
 | No commits in range | "No activity found" message |
 | `gh` CLI unavailable | Skip issue breakdown, show other tables |
-| No test files | Testing table with zeros |
+| No test files | Testing table with zeros — a readable tree with no tests is a measured zero |
+| A probe could not run | Value is `null`; render `unavailable`, never `0`, and report `unavailable[metric]` (#2675) |
 | Script execution fails | Report failure, continue with available data |
 
 **End of /idpf-stats Command**

@@ -8,6 +8,201 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.100.0] - 2026-09-01
+
+Feature release, and the recurring shape this time is a **declaration that drifted from what was
+actually wired**. Where 0.99.0 was about values asserting more than had been observed, this range is
+about documents and registries that described a mechanism correctly while nothing compared the
+description to the code. A rule table named five commands applying an AC-feasibility gate; two
+applied it, and the suite guarding that gate tested its *data* exhaustively while asking nothing
+about its *call sites*, so it stayed green for eighteen issues. A command spec restated an
+eligible-type set that had since diverged from the JSON owning it. Startup prose stated a check count
+no test pinned to the hook's registrations. A registrar updated one of the two places a helper count
+lives. A comment said twenty-six where the change had left twenty-five. In each case the written
+claim was plausible, load-bearing, and unverified — and the gap was invisible precisely because
+something adjacent was well tested.
+
+The release itself demonstrated the same failure three more times. `/prepare-release` validation
+found `/x-session-config` — added this cycle in #2702 — registered in `framework-manifest.json`
+`deploymentFiles` but absent from `constants.js` `INSTALLED_FILES_MANIFEST.commands`, absent from the
+top-level `managedCommands` classification array, and carrying an accepted `minimize-targets.json`
+compression override that `validate-minimization.js` could not see because that gate reads its own
+hardcoded exceptions list. Three separate blocking gates, one command, four registrations required to
+add it. Those are recorded here rather than smoothed over, because they are the same defect class the
+rest of the release is about.
+
+Alongside that: cross-session messaging gains project-level configuration and reaches the review half
+of the workflow, the test-plan approval gate is computed rather than asserted, and `/idpf-stats`
+reports against labelled DORA and SPACE populations with provenance instead of bare numbers.
+
+**Upgrade notes:**
+
+- **Cross-session messaging is configurable per project (#2702).** `framework-config.json` gains a
+  `crossSessionMessaging` object with seven levers, read through `resolveCrossSessionConfig()`, and
+  `/x-session-config` writes it. **Absence means enabled at every level** — no object, `{}`, or any
+  omitted key. Turning `discovery` off implies all three announcement groups off, because announcing
+  to peers never discovered is not meaningful; the resolver *reports* that implication rather than
+  applying it silently. A disabled group prints no per-invocation skip notice: the suppression is the
+  point of the setting. Effective state surfaces in exactly two places — the startup `Peers:` row and
+  `/x-session-config`'s opening display.
+
+- **Peer announcements now cover the review half (#2695, #2722).** `review-started` and
+  `review-resolved` join the five work/push events; both are deliberately **non-terminal**, since a
+  review that has merely started may be followed by resolution, by work, or by nothing.
+  `review-passed` is the exception and **is** terminal: a review ending *Ready for work* settles
+  something actionable. It fires on the label, never the recommendation string, and only from
+  `/review-issue` — `/review-prd`, `/review-proposal` and `/review-test-plan` share the gap exactly
+  but have wider recommendation enums, which need a stricter predicate rather than a copied trigger.
+
+- **`/work` event 2 fires per sub-issue under `--nonstop` (#2699).** An end-of-run completion left
+  every finished sub-issue carrying an unmatched event 1 for the rest of the run, so silence stopped
+  distinguishing *not sent* from *not delivered* — observed, with a peer writing "held, declined or
+  expired" into its user's summary about a message that had never been sent. Every opener now has
+  exactly one closer.
+
+- **The TDD RED gate has a host-process carve-out (#2556).** `verificationMode: "host-process"` in
+  `framework-config.json` covers code that cannot execute outside a live host — Unity, embedded,
+  plugins. It is **not** "no automated tests exist": a project that could write tests and has not
+  stays strict. The gate is not removed, it demands different evidence — the verification method must
+  be **named** and its **captured output quoted**, and the deviation disclosed in the commit or issue.
+  Absent, unreadable, or unrecognised values all resolve to `automated-tests`, so a typo cannot
+  silently relax a gate.
+
+- **The `phaseFeasibility` AC gate now reaches all five authoring commands (#2726).** It shipped wired
+  into two while the anti-hallucination rule and a design decision both named five. The rule's
+  consumer table is now parsed by `tests/metadata/ac-phase-feasibility.test.js`, so a consumer whose
+  row claims the block while its spec does not reference it fails CI. A `→ GATE: review` or
+  `→ GATE: release` annotation must now **name the event that resolves it**; a token that cannot is
+  not a gate, and the AC is either unfinished work or work another command owns.
+
+- **Startup reports an unverified fetch for every stale-able status (#2687).** Previously only
+  `behind` carried the caveat, so `up-to-date` — the one status that otherwise emits nothing — could
+  report a clean bill of health derived from a cached ref. `fetched: false` is the *absence* of
+  information. `no-upstream` is excluded deliberately: it always carries `fetched: false`, so a caveat
+  there would report configuration as fetch failure.
+
+- **Startup checks GitHub token scopes (#2689).** `gh pmu` warns to stderr and **exits 0** on missing
+  scopes, so board reads return empty and every `gh pmu move` fails while startup says healthy.
+  Required scopes derive from `.gh-pmu.json`, never hardcoded; a `project` block implies **write**
+  `project`, since `gh pmu move` writes board fields. `undeterminable` is kept strictly distinct from
+  `missing-scopes` — a fine-grained PAT exposes no scope information at all, and collapsing "told
+  nothing" into "told none" would fail a correctly-privileged token.
+
+- **The mid-session upstream monitor names a recovery path on `diverged` (#2668, #2719).** Startup
+  and the monitor were reporting one repository state with different advice minutes apart; the
+  monitor's own `surfacing.inheritsFrom` had declared it inherits the startup contract, which #2668
+  changed underneath it. Both now name *where* the divergence resolves — `/done`'s Step 2 sync guard,
+  or a manual push — and neither names a git command or asks for a rebase-vs-merge strategy.
+
+- **`isEligibleForInterdependence` accepted the wrong label shape (#2682).** It silently returned
+  `false` for every issue when passed the `{name}` objects the review preamble actually emits, so
+  multi-issue interdependence analysis never ran. It now accepts both shapes and warns on input it
+  cannot read rather than returning a bare `false`.
+
+- **`/review-proposal` never finalized (#2688).** It ran to completion and wrote nothing — no review
+  comment, no label, no count increment. `/review-proposal` and `/review-prd` also never applied
+  `security-finding`. **Anyone relying on proposal review history before this release should treat it
+  as absent rather than clean.**
+
+### Added
+
+- Project-level cross-session messaging configuration: `crossSessionMessaging` in
+  `framework-config.json`, `cross-session-config.js` with `resolveCrossSessionConfig()`, and the
+  `/x-session-config` command; six consumers read the resolver rather than re-deriving defaults
+  (#2702)
+- `review-started`, `review-resolved` and terminal `review-passed` peer events, gated as one
+  `groups.review` unit (#2695, #2722)
+- `verificationMode: "host-process"` — TDD RED/GREEN carve-out for code that cannot run outside a live
+  host, requiring a named verification method, quoted output, and explicit disclosure (#2556)
+- GitHub token scope verification at session startup, deriving requirements from `.gh-pmu.json` and
+  distinguishing `undeterminable` from `missing-scopes` (#2689)
+- Background upstream-push monitor for shared branches, with transition-only emission and a
+  `divergedRecovery` pointer (#2667, #2719)
+- Test-plan approval gate automation: a single declared gate set rendering both checklists, a
+  deterministic rollup over review findings, and the confirmation phase in `/review-test-plan`
+  (#2693, #2710, #2711, #2712)
+- DORA and SPACE reporting in `/idpf-stats` with labelled benchmark populations and provenance, plus
+  `/fw-audit-idpf-stats` to refresh benchmark data and surface staleness (#2676, #2677)
+- `/mockups --consolidate` — merge mockup sets with supersession notes and deprecation (#2589)
+- Companion repository and board registration in the charter, with cross-repo search and issue filing
+  (#2665)
+- Candidate test paths resolved at `/add-story` authoring time into `**Files to modify:**`, so planned
+  test files are declared scope rather than drift; `test-coverage-*` review criteria report which test
+  files a change implicates (#2727)
+- Acceptance criteria included in epics at `/create-backlog` time (#2697); `/create-backlog` offers to
+  assign the PRD tracker to the current branch (#2696)
+- Branch auto-assignment for test-plan and PRD issues during review, so they are visible to the branch
+  tracker (#2657)
+- A fifth governing clause for peer messages — never state more than the data supports (#2679)
+- Anti-hallucination rule requiring a skill-registry disk lookup before writing new automation, since
+  `disable-model-invocation` skills are absent from the session-visible list by construction (#2558)
+- Rule-exempt compression accounting for auto-loaded rules, which the ratio band was the wrong metric
+  for (#2606)
+
+### Fixed
+
+- `phaseFeasibility` was wired into 2 of the 5 authoring commands its own rule table named, and the
+  guarding suite tested the block's data while asserting nothing about its call sites (#2726)
+- `isEligibleForInterdependence` returned `false` for every issue when given the label shape the
+  review preamble emits, silently disabling interdependence analysis (#2682)
+- `/review-issue` Step 3a restated the interdependence eligible-type set and had drifted from
+  `review-interdependence.json` (#2683)
+- `/review-proposal` never finalized — no comment, no label, no count; `/review-proposal` and
+  `/review-prd` never applied `security-finding` (#2688)
+- `/review-prd` left the PRD tracker's "PRD reviewed" box unchecked, so `/create-backlog` gated a
+  reviewed PRD (#2694)
+- `review-finalize` silently discarded `findings.suggestions`, so non-criterion findings survived a
+  clean re-review; `/resolve-review` now reports them without asserting a severity the reviewer never
+  expressed (#2717)
+- `/resolve-review` Step 3a captured the title-rewording prompt, putting an action inside a
+  no-action step (#2720)
+- `done-preamble` skipped the epic move silently while `/done` Step 1a instructed a step it could not
+  perform; the refusal is now reported and the epic close is explicit (#2670)
+- `/work` peer announcement event 2 had no `--nonstop` behaviour, making "not sent" indistinguishable
+  from "not delivered" (#2699)
+- Startup branch-sync reported `up-to-date` when the upstream fetch had failed (#2687)
+- Prior-art marker detection accepted only the bold inline form, so heading-form sections reported as
+  absent (#2700)
+- `stats-collect.js` shell pipelines failed under `cmd.exe`, emitting false zeros for `filesChanged`
+  and every Testing metric (#2675)
+- `navigation-graph` counted a child's parent back-reference as an in-edge, so 9 of 21 catalog entries
+  rendered in no section (#2701)
+- `register-helper.js` updated the CHARTER `Scripts` row but not the In Scope prose line, with no test
+  asserting it (#2713)
+- `tdd-refactor-coverage-audit` expected colocated tests and reported coverage 0 against this repo's
+  `tests/` mirror layout; its dead self-exclusion guard, missing undetermined verdict, and override
+  schema requiring a discarded field are also fixed (#2714, #2723)
+- No test pinned the startup check-count prose to the hook's actual registrations (#2715)
+- `task-cleanup-parity` NOT_AUDITED comment said twenty-six where #2610 had left twenty-five (#2721)
+- Reference recorded `DO_NOT_TRACK=1` as the cause of `no-messaging-address`; re-measurement on
+  WSL2 2.1.251 leaves `messagingSocketPath` non-null, so the 2.1.247 recording was stale and the
+  platform was never the outlier (#2685)
+- `/resolve-review` prompts now name the issue under review, since finding text alone left nothing
+  tying an answer to an issue while others were in flight (#2698)
+- Dependabot configuration is no longer deployed to dist targets, where a merged PR was erased by the
+  next deploy; the retired target's archive state is recorded (#2708)
+- Release validation registry drift for `/x-session-config`: missing from `constants.js`
+  `INSTALLED_FILES_MANIFEST.commands`, missing from the top-level `managedCommands` classification
+  array, and its accepted `minimize-targets.json` compression override invisible to
+  `validate-minimization.js`'s hardcoded exceptions list
+
+### Changed
+
+- `/review-issue.md` rewritten as a thin orchestrator (#1809)
+- Startup now offers navigation rather than a strategy on a diverged branch — naming where the
+  divergence resolves, without naming a git command (#2668)
+
+### Documentation
+
+- Proposals added: Pre-built Design Foundations with Proof Sheet Output (#2075), Web Application
+  Blueprints (#2133), Construction Artifact Sweep (#2612)
+- Design decisions recorded for the gate annotation naming its resolving event, candidate test paths
+  at authoring time, and the upstream monitor's diverged behaviour
+- The anti-hallucination rule's `phaseFeasibility` consumer table now records that it was false from
+  #2508 until #2726, and is parsed by CI rather than read by hand (#2726)
+
+---
+
 ## [0.99.0] - 2026-08-29
 
 Feature release, built around cross-session peer awareness — and, unavoidably, around the same
@@ -1758,7 +1953,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.99.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.100.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -2051,7 +2246,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.99.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.100.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -2422,13 +2617,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.99.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.99.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.99.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.100.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.100.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.100.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.99.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.100.0` placeholder (#1479)
 
 ---
 
@@ -3126,15 +3321,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.99.0 placeholder after packaging
+- **#1059** - Skills retain v0.100.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.99.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.100.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.99.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.100.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -3294,7 +3489,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.99.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.100.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -3402,7 +3597,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.99.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.100.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -3433,8 +3628,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.99.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.99.0` placeholder
+- **#933** - v0.100.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.100.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -3575,7 +3770,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.99.0` placeholder
+  - Changed hardcoded version to `v0.100.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -3615,7 +3810,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.99.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.100.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -3692,10 +3887,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.99.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.100.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.99.0` placeholder
+- **#821** - README-DIST.md now uses `v0.100.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -3812,7 +4007,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.99.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.100.0 placeholder
 
 ---
 
@@ -3860,7 +4055,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.99.0 placeholders to 209 framework source files
+- Restored v0.100.0 placeholders to 209 framework source files
 
 ---
 
@@ -3928,12 +4123,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.99.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.100.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.99.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.100.0` format for consistent replacement
 
 ---
 
@@ -4002,7 +4197,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.99.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.100.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

@@ -113,6 +113,14 @@
       "description": "Assess whether test plan depth is proportionate to PRD scope",
       "type": "objective",
       "autoCheckMethod": "Assess whether the test plan's depth is proportionate to the PRD's scope. For each PRD story that adds or modifies code paths, verify the test plan includes tests at the appropriate level (unit for logic, integration for component interaction, E2E for user journeys). Flag stories with complex scope (multiple files, refactoring, new modules) that only have shallow test coverage (e.g., only 'existing tests pass' assertions)."
+    },
+    {
+      "id": "ac-verification-mechanism-feasible",
+      "name": "AC verification mechanisms are feasible",
+      "description": "Apply the verificationGate prompt from .claude/metadata/ac-feasibility-prompts.json to the test plan's OWN acceptance criteria. Every AC naming a verification mechanism (test, parity check, comparison, assertion) must name one already in use in this repo; otherwise it is aspirational and must be rewritten to an existing mechanism, backed by a feasibility spike with an issue number, or downgraded to an honest weaker mechanism.",
+      "type": "objective",
+      "autoCheckMethod": "For each AC naming a verification mechanism, search tests/ for an existing test using that mechanism — report any mechanism with no existing usage. The search is mechanical; deciding whether an AC names a mechanism at all is a reading of prose, which is why the gate it backs is autoCheckable: false.",
+      "priority": "P0"
     }
   ],
   "subjective": [
@@ -122,9 +130,18 @@
       "question": "Are the edge cases and error scenarios thorough enough for the project's risk profile?",
       "header": "Edge Cases",
       "options": [
-        { "label": "Thorough", "description": "Error scenarios, boundary conditions, and failure modes well covered" },
-        { "label": "Minor gaps", "description": "Most error cases covered but some stories missing boundary tests" },
-        { "label": "Significant gaps", "description": "Many stories lack error scenarios or failure mode testing" }
+        {
+          "label": "Thorough",
+          "description": "Error scenarios, boundary conditions, and failure modes well covered"
+        },
+        {
+          "label": "Minor gaps",
+          "description": "Most error cases covered but some stories missing boundary tests"
+        },
+        {
+          "label": "Significant gaps",
+          "description": "Many stories lack error scenarios or failure mode testing"
+        }
       ],
       "partialReviewNote": "Partial reviews are valid — if user declines to answer, record as '⊘ Skipped' and continue."
     },
@@ -134,9 +151,18 @@
       "question": "Is the overall test strategy appropriate for this project's scope and complexity?",
       "header": "Strategy",
       "options": [
-        { "label": "Appropriate", "description": "Coverage targets realistic, test level balance makes sense for the scope" },
-        { "label": "Needs refinement", "description": "Strategy exists but coverage targets or level balance could improve" },
-        { "label": "Inappropriate", "description": "Strategy misaligned with project scope or missing key considerations" }
+        {
+          "label": "Appropriate",
+          "description": "Coverage targets realistic, test level balance makes sense for the scope"
+        },
+        {
+          "label": "Needs refinement",
+          "description": "Strategy exists but coverage targets or level balance could improve"
+        },
+        {
+          "label": "Inappropriate",
+          "description": "Strategy misaligned with project scope or missing key considerations"
+        }
       ],
       "partialReviewNote": "Partial reviews are valid — if user declines to answer, record as '⊘ Skipped' and continue."
     }

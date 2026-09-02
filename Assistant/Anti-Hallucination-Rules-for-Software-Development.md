@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Software Development
-**Version:** v0.99.0
+**Version:** v0.100.0
 **Core Principle:** Verification over assumption. Project state over training memory. Observable actions over confident-sounding answers.
 Every rule names a *condition* and an *observable action*. Rules that cannot be checked from a session log do not belong here.
 ---
@@ -19,6 +19,7 @@ Skipping 1–3 because 4 *feels* sufficient is a hallucination risk, not efficie
 - **V6 — Re-read externalized file after compaction or unrelated edits.** Trigger: about to act on contents of a JSON config, schema, or rule file read earlier. Action: Read again from disk. Do not paraphrase or reconstruct from memory. After compaction, every externalized file reference is a fresh read.
 - **V7 — Read file before editing.** Trigger: about to call Edit/Write on existing file. Action: Read current content first. The Edit tool enforces this for individual files; the rule extends it to bulk operations — enumerate files first, read each before modifying.
 - **V8 — Verify external UI/docs by fetching, not remembering.** Trigger: user references a web page, installer wizard, or third-party UI you cannot see. Action: WebFetch the page or ask the user to describe what they see. Never describe navigation paths, button labels, or wizard options from memory. If you cannot verify, say so.
+- **V9 — Verify existing skill coverage before writing new automation.** Trigger: about to propose a new script, command, or skill for a task. Action: Read `.claude/metadata/skill-registry.json` and list `.claude/skills/` on disk. A filesystem lookup, not a review of what you already hold — skills marked `disable-model-invocation: true` are absent from the session-visible skill list by construction, so introspection over context never surfaces them; only a disk read does. Registry absent (a self-hosted framework repo, where that is by design) → warn and skip.
 ---
 **NEVER Invent:** (each is a hallucination class with an observable test — "did the model output X without first running the corresponding V-procedure?")
 - API methods, function signatures, class names, property names → V1 + read source

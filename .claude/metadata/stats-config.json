@@ -1,17 +1,86 @@
 {
   "$schema": "./stats-config-schema.json",
   "metrics": [
-    { "id": "commits", "name": "Commits", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --oneline | wc -l", "aggregation": "count" },
-    { "id": "files-changed", "name": "Files changed", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --name-only | sort -u | grep -v '^$' | wc -l", "aggregation": "count" },
-    { "id": "lines-added", "name": "Lines added", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --numstat", "aggregation": "sum", "field": "added" },
-    { "id": "lines-removed", "name": "Lines removed", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --numstat", "aggregation": "sum", "field": "removed" },
-    { "id": "net-lines", "name": "Net lines", "category": "volume", "aggregation": "delta", "sources": ["lines-added", "lines-removed"] },
-    { "id": "issue-references", "name": "Issues closed/worked", "category": "volume", "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format:\"%s %b\" | grep -oE '#[0-9]+' | sort -u", "aggregation": "count" },
-    { "id": "test-files", "name": "Test files", "category": "testing", "aggregation": "count" },
-    { "id": "test-cases", "name": "Test cases", "category": "testing", "aggregation": "count" },
-    { "id": "commits-per-hour", "name": "Commits/hour", "category": "throughput", "aggregation": "rate", "source": "commits" },
-    { "id": "lines-per-hour", "name": "Lines added/hour", "category": "throughput", "aggregation": "rate", "source": "lines-added" },
-    { "id": "issues-per-hour", "name": "Issues/hour", "category": "throughput", "aggregation": "rate", "source": "issue-references" }
+    {
+      "id": "commits",
+      "name": "Commits",
+      "category": "volume",
+      "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --oneline | wc -l",
+      "aggregation": "count"
+    },
+    {
+      "id": "files-changed",
+      "name": "Files changed",
+      "category": "volume",
+      "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --name-only | sort -u | grep -v '^$' | wc -l",
+      "aggregation": "count"
+    },
+    {
+      "id": "lines-added",
+      "name": "Lines added",
+      "category": "volume",
+      "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --numstat",
+      "aggregation": "sum",
+      "field": "added"
+    },
+    {
+      "id": "lines-removed",
+      "name": "Lines removed",
+      "category": "volume",
+      "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format: --numstat",
+      "aggregation": "sum",
+      "field": "removed"
+    },
+    {
+      "id": "net-lines",
+      "name": "Net lines",
+      "category": "volume",
+      "aggregation": "delta",
+      "sources": [
+        "lines-added",
+        "lines-removed"
+      ]
+    },
+    {
+      "id": "issue-references",
+      "name": "Issues closed/worked",
+      "category": "volume",
+      "command": "git log --after=\"{{since}}\" --until=\"{{until}}\" --pretty=format:\"%s %b\" | grep -oE '#[0-9]+' | sort -u",
+      "aggregation": "count"
+    },
+    {
+      "id": "test-files",
+      "name": "Test files",
+      "category": "testing",
+      "aggregation": "count"
+    },
+    {
+      "id": "test-cases",
+      "name": "Test cases",
+      "category": "testing",
+      "aggregation": "count"
+    },
+    {
+      "id": "commits-per-hour",
+      "name": "Commits/hour",
+      "category": "throughput",
+      "aggregation": "rate",
+      "source": "commits"
+    },
+    {
+      "id": "lines-per-hour",
+      "name": "Lines added/hour",
+      "category": "throughput",
+      "aggregation": "rate",
+      "source": "lines-added"
+    },
+    {
+      "id": "issues-per-hour",
+      "name": "Issues/hour",
+      "category": "throughput",
+      "aggregation": "rate",
+      "source": "issue-references"
+    }
   ],
   "labelCategories": {
     "bug": "Bug fixes",
@@ -36,19 +105,197 @@
     "python": "^\\s*def test_"
   },
   "reportSections": [
-    { "id": "volume", "title": "Volume", "metrics": ["commits", "issue-references", "files-changed", "lines-added", "lines-removed", "net-lines"] },
-    { "id": "testing", "title": "Testing", "metrics": ["test-files", "test-cases"] },
-    { "id": "throughput", "title": "Throughput", "metrics": ["commits-per-hour", "lines-per-hour", "issues-per-hour"] },
-    { "id": "issue-breakdown", "title": "Issue Breakdown by Category" }
+    {
+      "id": "volume",
+      "title": "Activity (SPACE)",
+      "metrics": [
+        "commits",
+        "issue-references",
+        "files-changed",
+        "lines-added",
+        "lines-removed",
+        "net-lines"
+      ],
+      "caveat": "SPACE dimension: Activity. Activity counts output, not value — a high count is not a good outcome and a low one is not a bad one. SPACE is explicit that a single dimension read alone misleads; the other four (Satisfaction, Performance, Communication, Efficiency) are not collected here."
+    },
+    {
+      "id": "testing",
+      "title": "Testing",
+      "metrics": [
+        "test-files",
+        "test-cases"
+      ]
+    },
+    {
+      "id": "throughput",
+      "title": "Throughput",
+      "metrics": [
+        "commits-per-hour",
+        "lines-per-hour",
+        "issues-per-hour"
+      ]
+    },
+    {
+      "id": "issue-breakdown",
+      "title": "Issue Breakdown by Category"
+    }
   ],
   "extensionCategories": {
-    "Code": [".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx", ".svelte", ".vue", ".py", ".go", ".rs", ".java", ".rb", ".php", ".sh", ".bash", ".zsh", ".ps1", ".css", ".scss", ".less", ".html", ".htm"],
-    "Documentation": [".md", ".mdx", ".txt", ".rst", ".adoc"],
-    "Config": [".json", ".yaml", ".yml", ".toml", ".ini", ".env", ".cfg", ".conf", ".xml"]
+    "Code": [
+      ".js",
+      ".ts",
+      ".mjs",
+      ".cjs",
+      ".jsx",
+      ".tsx",
+      ".svelte",
+      ".vue",
+      ".py",
+      ".go",
+      ".rs",
+      ".java",
+      ".rb",
+      ".php",
+      ".sh",
+      ".bash",
+      ".zsh",
+      ".ps1",
+      ".css",
+      ".scss",
+      ".less",
+      ".html",
+      ".htm"
+    ],
+    "Documentation": [
+      ".md",
+      ".mdx",
+      ".txt",
+      ".rst",
+      ".adoc"
+    ],
+    "Config": [
+      ".json",
+      ".yaml",
+      ".yml",
+      ".toml",
+      ".ini",
+      ".env",
+      ".cfg",
+      ".conf",
+      ".xml"
+    ]
   },
   "velocityBenchmarks": {
-    "commitsPerHour": { "low": 1, "high": 3, "median": 1.5 },
-    "linesPerHour": { "low": 50, "high": 200, "median": 75 },
-    "issuesPerHour": { "low": 0.5, "high": 2, "median": 0.75 }
+    "commitsPerHour": {
+      "low": 1,
+      "high": 3,
+      "median": 1.5,
+      "population": "Unspecified. No population was recorded when these figures were introduced, so it is not known which developers, languages, or task mix they describe.",
+      "source": "Unvalidated internal heuristic. Introduced with no citation and retained only as a rough band; NOT derived from published research. Treat as a smell test, not a measurement.",
+      "validated": false,
+      "refreshedAt": "2026-08-31"
+    },
+    "linesPerHour": {
+      "low": 50,
+      "high": 200,
+      "median": 75,
+      "population": "Unspecified. No population was recorded when these figures were introduced, so it is not known which developers, languages, or task mix they describe.",
+      "source": "Unvalidated internal heuristic. Introduced with no citation and retained only as a rough band; NOT derived from published research. Treat as a smell test, not a measurement.",
+      "validated": false,
+      "refreshedAt": "2026-08-31"
+    },
+    "issuesPerHour": {
+      "low": 0.5,
+      "high": 2,
+      "median": 0.75,
+      "population": "Unspecified. No population was recorded when these figures were introduced, so it is not known which developers, languages, or task mix they describe.",
+      "source": "Unvalidated internal heuristic. Introduced with no citation and retained only as a rough band; NOT derived from published research. Treat as a smell test, not a measurement.",
+      "validated": false,
+      "refreshedAt": "2026-08-31"
+    }
+  },
+  "doraTiers": {
+    "source": "DORA / Google Cloud, Accelerate State of DevOps Report — published performance tiers (Elite / High / Medium / Low).",
+    "reportYear": 2024,
+    "retrievedAt": "2026-08-31",
+    "note": "Band boundaries have moved between report years, so these figures are versioned rather than treated as constants. A tier placement is only as current as reportYear. Refreshing this block and surfacing its staleness is #2677.",
+    "tiers": {
+      "deploymentFrequency": {
+        "elite": {
+          "label": "On-demand (multiple deploys per day)",
+          "minPerWeek": 7
+        },
+        "high": {
+          "label": "Between once per day and once per week",
+          "minPerWeek": 1
+        },
+        "medium": {
+          "label": "Between once per week and once per month",
+          "minPerWeek": 0.23
+        },
+        "low": {
+          "label": "Fewer than once per month",
+          "minPerWeek": 0
+        }
+      },
+      "leadTimeForChanges": {
+        "elite": {
+          "label": "Less than one hour",
+          "maxHours": 1
+        },
+        "high": {
+          "label": "Between one day and one week",
+          "maxHours": 168
+        },
+        "medium": {
+          "label": "Between one week and one month",
+          "maxHours": 730
+        },
+        "low": {
+          "label": "More than one month",
+          "maxHours": null
+        }
+      },
+      "changeFailureRate": {
+        "elite": {
+          "label": "0-15%",
+          "maxRate": 0.15
+        },
+        "high": {
+          "label": "16-30%",
+          "maxRate": 0.3
+        },
+        "medium": {
+          "label": "16-30%",
+          "maxRate": 0.3
+        },
+        "low": {
+          "label": "Above 30%",
+          "maxRate": null
+        }
+      },
+      "timeToRestoreService": {
+        "elite": {
+          "label": "Less than one hour",
+          "maxHours": 1
+        },
+        "high": {
+          "label": "Less than one day",
+          "maxHours": 24
+        },
+        "medium": {
+          "label": "Between one day and one week",
+          "maxHours": 168
+        },
+        "low": {
+          "label": "More than one week",
+          "maxHours": null
+        }
+      }
+    }
+  },
+  "baseline": {
+    "windowDays": 90,
+    "minDataPoints": 5
   }
 }

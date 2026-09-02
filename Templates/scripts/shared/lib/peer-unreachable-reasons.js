@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Shared vocabulary for why a discovered peer cannot be sent to. One reason-to-phrase map, consumed by both surfaces that describe unreachable peers — the startup Peers row (peers-check.js) and the announcement skip notice (peer-announce.js) — so the two cannot drift apart again. Pure data plus two formatters: no I/O, no external require.
  * @checksum sha256:placeholder
  *

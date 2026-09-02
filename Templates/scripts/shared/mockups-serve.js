@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  *
  * Zero-dependency static file server for /mockups --serve (#2377).
  *
@@ -48,6 +48,26 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8',
 };
+
+// #2589: the consolidation step retires superseded sets here. Serving them
+// beside the live ones reintroduces the "which rendition is current?" ambiguity
+// that consolidation exists to remove.
+const DEPRECATED_DIR = 'Deprecated';
+
+/**
+ * True when a decoded URL path enters the served root's top-level Deprecated/.
+ *
+ * Anchored at the root's FIRST segment, deliberately. Matching the segment
+ * anywhere would also refuse `/SomeSet/Deprecated/...`, which is a user's own
+ * directory name and none of this exclusion's business. Serving that tree
+ * explicitly (`--serve Deprecated`) still works: the root itself is never
+ * tested, only paths beneath it.
+ */
+function isDeprecatedPath(pathname) {
+  if (typeof pathname !== 'string') return false;
+  const first = pathname.replace(/^\/+/, '').split('/')[0];
+  return first === DEPRECATED_DIR;
+}
 
 function contentTypeFor(filePath) {
   return MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
@@ -152,7 +172,11 @@ function serveDirectory(dirAbs, pathname, res) {
       }
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.end(renderListing(urlDir, entries));
+      // #2589: never offer the deprecated tree as a browsable sibling of the
+      // live sets. Scoped to the served root's own top level — a set legitimately
+      // named Deprecated deeper in the tree is not what this excludes.
+      const visible = urlDir === '/' ? entries.filter((e) => e.name !== DEPRECATED_DIR) : entries;
+      res.end(renderListing(urlDir, visible));
     });
   });
 }
@@ -176,6 +200,13 @@ function handleRequest(root, req, res) {
     return;
   }
   const pathname = decodePathname(rawUrl);
+  // #2589: filtering the listing hides the link; this refuses the path. Without
+  // both, Deprecated/ stays reachable by typing or by a stale bookmark, and
+  // "excluded from the served tree" would mean only "harder to notice".
+  if (isDeprecatedPath(pathname)) {
+    sendNotFound(rawUrl, res);
+    return;
+  }
   fs.stat(filePath, (err, stat) => {
     if (!err && stat.isFile()) {
       sendFile(filePath, res);

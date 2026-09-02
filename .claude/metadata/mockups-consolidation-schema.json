@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mockups-consolidation-schema.json",
+  "title": "Mockups consolidation decision sequence",
+  "description": "Shape of .claude/metadata/mockups-consolidation.json, the externalized decision procedure for /mockups --consolidate (#2589). Paired schema is required by the AC49 externalization guardrail.",
+  "type": "object",
+  "required": ["version", "decisions"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "description": { "type": "string" },
+    "oneQuestionAtATime": {
+      "type": "boolean",
+      "description": "When true, every interactive decision is its own AskUserQuestion call. Encoded as data so the invariant is machine-checkable rather than only stated in prose."
+    },
+    "neverBatchDecisions": {
+      "type": "boolean",
+      "description": "Companion to oneQuestionAtATime, stated positively so a reader cannot satisfy the first while batching two decisions into one prompt."
+    },
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["order", "id", "interactive", "summary", "rules"],
+        "additionalProperties": false,
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Execution position. Order is load-bearing: nothing may move before the completion-confirmation decision."
+          },
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "interactive": {
+            "type": "boolean",
+            "description": "Whether this step asks the user. False steps are actions the command performs between questions."
+          },
+          "multiSelect": {
+            "type": "boolean",
+            "description": "Only meaningful when interactive is true."
+          },
+          "summary": { "type": "string", "minLength": 1 },
+          "rules": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "exclusions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deprecatedDir": { "type": "string" },
+        "rules": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.99.0",
+  "version": "0.100.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -207,7 +207,8 @@
         "paths.md",
         "audit-commands.md",
         "idpf-stats.md",
-        "issue-reset.md"
+        "issue-reset.md",
+        "x-session-config.md"
       ],
       "managed": [
         "add-story.md",
@@ -229,7 +230,8 @@
         "split-story.md",
         "switch-branch.md",
         "transfer-issue.md",
-        "work.md"
+        "work.md",
+        "x-session-config.md"
       ]
     },
     "scripts": {
@@ -266,6 +268,7 @@
           "generate-changelog.js",
           "generate-domain-entities.js",
           "generate-test-plan.js",
+          "gh-auth-check.js",
           "log-changed-files.js",
           "mockup-ac-generator.js",
           "mockup-detect-framework.js",
@@ -296,13 +299,16 @@
           "statusline-check.js",
           "switch-branch.js",
           "task-tools-check.js",
+          "test-plan-approval-gates.js",
           "transfer-issue.js",
           "update-release-notes.js",
           "upgrade-check.js",
+          "upstream-monitor.js",
           "validate-release.js",
           "validate-screen-catalog.js",
           "wait-for-ci.js",
-          "work-preamble.js"
+          "work-preamble.js",
+          "x-session-config.js"
         ]
       },
       "shared/lib": {
@@ -314,6 +320,9 @@
           "checkbox-scan.js",
           "classify-changed-files.js",
           "code-review-manifest-schema.json",
+          "companion-projects.js",
+          "create-backlog-review-gate.js",
+          "cross-session-config.js",
           "debug.js",
           "deployment-scope.js",
           "detect-tech-stack.js",
@@ -612,6 +621,16 @@
           "description": "Screen specification schema for /catalog-screens and /mockups commands"
         },
         {
+          "name": "test-plan-approval-gates",
+          "source": ".claude/metadata/test-plan-approval-gates.json",
+          "description": "The single declaration of the six test-plan approval gates; both the test plan template Approval Checklist and the /create-prd approval issue Review Checklist render from gates[].text (#2710, epic #2693)"
+        },
+        {
+          "name": "test-plan-approval-gates-schema",
+          "source": ".claude/metadata/test-plan-approval-gates-schema.json",
+          "description": "JSON schema (Draft-07) for test-plan-approval-gates.json (#2710)"
+        },
+        {
           "name": "test-plan-review-criteria",
           "source": ".claude/metadata/test-plan-review-criteria.json",
           "description": "Review criteria for /review-test-plan command"
@@ -625,6 +644,16 @@
           "name": "prior-art-sweep",
           "source": ".claude/metadata/prior-art-sweep.json",
           "description": "Search surfaces, excludes, term derivation and dispositions for the --prior-art sweep"
+        },
+        {
+          "name": "mockups-consolidation",
+          "source": ".claude/metadata/mockups-consolidation.json",
+          "description": "Ordered decision sequence for /mockups --consolidate (#2589)"
+        },
+        {
+          "name": "mockups-consolidation-schema",
+          "source": ".claude/metadata/mockups-consolidation-schema.json",
+          "description": "JSON Schema for mockups-consolidation.json"
         },
         {
           "name": "ci-features-schema",
@@ -765,6 +794,16 @@
           "name": "commit-checkpoint-signals-schema",
           "source": ".claude/metadata/commit-checkpoint-signals-schema.json",
           "description": "JSON schema (Draft 2020-12) for commit-checkpoint-signals.json (#2557)"
+        },
+        {
+          "name": "upstream-monitor",
+          "source": ".claude/metadata/upstream-monitor.json",
+          "description": "Scheduling and surfacing contract for the background upstream-push monitor (#2667)"
+        },
+        {
+          "name": "upstream-monitor-schema",
+          "source": ".claude/metadata/upstream-monitor-schema.json",
+          "description": "JSON schema (Draft 2020-12) for upstream-monitor.json (#2667)"
         }
       ]
     }
@@ -810,7 +849,8 @@
     "split-story",
     "switch-branch",
     "transfer-issue",
-    "work"
+    "work",
+    "x-session-config"
   ],
   "deprecatedCommands": [
     {

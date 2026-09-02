@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -11,6 +11,7 @@
 
 const {
   EMOJI,
+  SECTION_HEADERS,
   REVIEW_HEADER_PATTERN,
   MALFORMED_REVIEW_HEADER_PATTERN,
   REVIEW_TYPES,
@@ -95,6 +96,51 @@ function parseFindings(body) {
   return findings;
 }
 
+// ─── Suggestions (#2717) ───
+
+/**
+ * Read the `### Suggestions` section back out of a review comment.
+ *
+ * Suggestions are findings that are NOT criteria: free text, no `status`, no
+ * criterion id. Before #2717 `review-finalize.js` discarded them at write time;
+ * surfacing them here is the other half, because rendering alone still leaves
+ * the resolve cycle blind — a suggestion-only defect passed through
+ * `/resolve-review` untouched and emerged under a clean "Ready for work".
+ *
+ * **Not a fourth classification, deliberately.** `classifyFindings` sorts on
+ * `f.status`, derived from the finding emoji. Suggestions have no status, so
+ * placing them in autoFixable / needsUserInput / passed would mean inventing
+ * one — and its `warn, skip, or unknown` fallback would silently swallow them
+ * into needsUserInput, asserting a severity nobody expressed. They travel as a
+ * sibling key that `/resolve-review` reports and never auto-applies.
+ *
+ * Bounded by the next `###` heading rather than by a blank line: the section is
+ * rendered with a blank line after its heading, so a blank-line terminator
+ * would return nothing at all.
+ *
+ * @param {string} body - Review comment body
+ * @returns {string[]} Suggestion strings in document order; `[]` when the
+ *   section is absent or empty.
+ */
+function parseSuggestions(body) {
+  if (typeof body !== 'string') return [];
+  const lines = body.split('\n');
+  const start = lines.findIndex((l) => l.trim() === SECTION_HEADERS.suggestions);
+  if (start === -1) return [];
+
+  const out = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^#{2,4}\s/.test(line.trim())) break;   // next section
+    const m = line.match(/^-\s+(.*\S)\s*$/);
+    // Emoji-prefixed lines are criteria findings, never suggestions. They
+    // cannot appear inside this section as rendered, but a hand-edited comment
+    // is not guaranteed to respect that.
+    if (m && !FINDING_LINE_PATTERN.test(line)) out.push(m[1]);
+  }
+  return out;
+}
+
 // ─── Recommendation Extraction ───
 
 function extractRecommendation(body) {
@@ -147,7 +193,7 @@ function classifyFindings(findings) {
 
 // ─── Envelope Builders ───
 
-function buildSuccessEnvelope(reviewInfo, classified, _findings) {
+function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions) {
   return {
     ok: true,
     version: 1,
@@ -156,6 +202,11 @@ function buildSuccessEnvelope(reviewInfo, classified, _findings) {
       reviewNumber: reviewInfo.reviewNumber,
     },
     findings: classified,
+    // Sibling of `findings`, not a member of it (#2717): these are
+    // unclassified by construction. ALWAYS present, empty array included — an
+    // absent key is indistinguishable from a producer that forgot to set it,
+    // which is the exact shape of the defect this issue fixed.
+    suggestions: Array.isArray(suggestions) ? suggestions : [],
     errors: [],
   };
 }
@@ -220,7 +271,9 @@ async function main() {
   const recommendation = extractRecommendation(reviewResult.body);
   const classified = classifyFindings(findings);
 
-  const envelope = buildSuccessEnvelope(reviewResult, classified, findings);
+  const suggestions = parseSuggestions(reviewResult.body);
+
+  const envelope = buildSuccessEnvelope(reviewResult, classified, findings, suggestions);
   envelope.recommendation = recommendation;
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
 }
@@ -241,6 +294,7 @@ module.exports = {
   parseArgs,
   findLatestReview,
   parseFindings,
+  parseSuggestions,
   classifyFindings,
   extractRecommendation,
   buildSuccessEnvelope,

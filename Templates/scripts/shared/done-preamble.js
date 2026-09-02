@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -214,6 +214,47 @@ function hasPrdLabel(labels) {
 function isApprovalGate(labels) {
   const names = (labels || []).map(l => l.name);
   return names.includes('test-plan') && names.includes('approval-required');
+}
+
+// ─── Move Eligibility and the Epic Guard Skip Signal (#2670) ───
+
+/**
+ * Would a move to Done be attempted, ignoring the epic guard?
+ * @param {boolean} forceMove
+ * @param {{ requiresConfirmation?: boolean }|null} diffVerification
+ * @returns {boolean}
+ */
+function isMoveEligible(forceMove, diffVerification) {
+  return Boolean(forceMove || (diffVerification && !diffVerification.requiresConfirmation));
+}
+
+/**
+ * Classify whether the epic guard (#2367) suppressed a move that would
+ * otherwise have happened, so the envelope can report it (#2670).
+ *
+ * Emits a reason ONLY when a move was actually suppressed. An epic reached
+ * without --force-move and without a clean diff verification would not have
+ * moved anyway, so reporting a skip there would restate the guard rather than
+ * report an event -- the same vacuous signal this exists to replace.
+ *
+ * @param {{ labels?: Array<{ name: string }>, forceMove?: boolean, diffVerification?: object|null }} input
+ * @returns {{ skippedReason: string|null, warning: { code: string, message: string }|null }}
+ */
+function classifyMoveSkip({ labels, forceMove, diffVerification } = {}) {
+  const isEpic = (labels || []).some(l => l && l.name === 'epic');
+  if (!isEpic || !isMoveEligible(forceMove, diffVerification)) {
+    return { skippedReason: null, warning: null };
+  }
+  return {
+    skippedReason: 'epic-guard',
+    warning: {
+      code: 'EPIC_MOVE_SKIPPED',
+      message: 'Move to Done was suppressed by the epic guard (#2367): this issue '
+        + 'carries the epic label, so the /done epic flow closes sub-issues first, '
+        + 'then closes the epic explicitly with gh pmu move <epic> --status done '
+        + '--force. The preamble will not move it.'
+    }
+  };
 }
 
 // ─── PRD Reference Parsing ───
@@ -538,13 +579,25 @@ async function runSingleIssue(issueNum, options = {}) {
   // has to be recovered in a follow-up batch.
   let movedToDone = false;
   const isEpic = (dataResult.issue.labels || []).some(l => l.name === 'epic');
-  if (!isEpic && (options.forceMove || (diffVerification && !diffVerification.requiresConfirmation))) {
+  if (!isEpic && isMoveEligible(options.forceMove, diffVerification)) {
     roundTrips++;
     const moveResult = await moveToDone(issueNum);
     if (moveResult.error) {
       return buildErrorEnvelope([moveResult.error]);
     }
     movedToDone = moveResult.moved;
+  }
+
+  // The guard above is silent by construction: movedToDone is false both when
+  // no move was due and when the epic guard suppressed one. Name the second
+  // case so a caller can tell them apart (#2670).
+  const moveSkip = classifyMoveSkip({
+    labels: dataResult.issue.labels,
+    forceMove: options.forceMove,
+    diffVerification
+  });
+  if (moveSkip.warning) {
+    warnings.push(moveSkip.warning);
   }
 
   // 8. CI pre-check data + tracker resolution (both local, no network)
@@ -578,6 +631,9 @@ async function runSingleIssue(issueNum, options = {}) {
   const gates = {
     movedToDone
   };
+  if (moveSkip.skippedReason) {
+    gates.skippedReason = moveSkip.skippedReason;
+  }
 
   const envelope = buildSuccessEnvelope(context, gates, warnings);
   if (diffVerification) {
@@ -725,6 +781,8 @@ module.exports = {
   gatherAllData,
   hasPrdLabel,
   isApprovalGate,
+  isMoveEligible,
+  classifyMoveSkip,
   parsePrdReference,
   validateStatus,
   runDiffVerification,

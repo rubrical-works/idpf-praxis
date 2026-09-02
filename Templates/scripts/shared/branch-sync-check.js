@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Check branch sync status with upstream. Detects behind, ahead,
  *   diverged, and no-upstream states, and reports the post-fetch upstream tip.
  *   Non-blocking; used during session startup, /work Step 1c, and /done Step 2.
@@ -226,9 +226,7 @@ if (require.main === module) {
   if (result.status === 'up-to-date' || result.status === 'no-upstream') {
     console.log(JSON.stringify({
       success: true,
-      message: result.status === 'up-to-date'
-        ? `Branch '${result.branch}' is up to date with upstream.`
-        : `Branch '${result.branch}' has no upstream tracking branch.`,
+      message: buildMessage(result),
       data: { ...result, skipped: result.status === 'no-upstream' }
     }));
     process.exit(0);
@@ -236,13 +234,42 @@ if (require.main === module) {
 
   console.log(JSON.stringify({
     success: true,
-    message: `Branch '${result.branch}' is ${result.status} upstream.`,
+    message: buildMessage(result),
     data: result
   }));
 }
 
+/**
+ * Build the human-readable envelope message for a sync result.
+ *
+ * A failed upstream fetch means the counts came from a cached
+ * remote-tracking ref, so an unqualified "is up to date with upstream"
+ * asserts a parity nothing confirmed — and that is the one status where
+ * the consumers otherwise emit nothing at all, making a stale all-clear
+ * indistinguishable from a verified one (#2687).
+ *
+ * `no-upstream` is left alone: fetchUpstream() returns false whenever no
+ * remote or mergeRef is configured, so that status always carries
+ * fetched:false and a caveat would report configuration as failure.
+ *
+ * @param {{ branch: string, status: string, fetched?: boolean }} result
+ * @returns {string}
+ */
+function buildMessage(result) {
+  if (result.status === 'no-upstream') {
+    return `Branch '${result.branch}' has no upstream tracking branch.`;
+  }
+  if (result.status === 'up-to-date') {
+    return result.fetched === false
+      ? `Branch '${result.branch}' matches its cached remote-tracking ref, but the upstream fetch failed — parity is unverified and the branch may be behind.`
+      : `Branch '${result.branch}' is up to date with upstream.`;
+  }
+  return `Branch '${result.branch}' is ${result.status} upstream.`;
+}
+
 module.exports = {
   parseSyncStatus,
+  buildMessage,
   parsePorcelainPaths,
   fetchUpstream,
   detectConflictingPaths,

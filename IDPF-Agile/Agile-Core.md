@@ -1,5 +1,5 @@
 **Agile-Driven Development Framework - Core**
-**Version:** v0.99.0
+**Version:** v0.100.0
 **Module:** Core (loaded at session startup)
 **Terminology**
 1. **User Story**: Feature described from user's perspective with acceptance criteria
@@ -77,7 +77,7 @@ When User says **`done`** (or `/done`):
 **Definition of Done (Global)**
 All stories must meet:
 - [ ] All acceptance criteria met
-- [ ] Unit tests written and passing
+- [ ] Verification complete for the declared `verificationMode` (#2556): `automated-tests` (default) — unit tests written and passing; `host-process` — expected behaviour recorded in writing, verified in the live runtime with the method named and its captured output quoted, deviation disclosed in the commit or issue
 - [ ] Code follows project conventions
 - [ ] No known bugs
 - [ ] Documentation updated (if applicable)

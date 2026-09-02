@@ -55,6 +55,38 @@
           },
           "additionalProperties": false
         },
+        "companionRepos": {
+          "type": "object",
+          "description": "Cross-repo issue-history search over charter-registered companion repositories (#2665). Carries no repository list of its own: the list is read from CHARTER.md through companion-projects.js, so this file cannot become a second registry that drifts from the charter.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "includeClosed": {
+              "type": "boolean"
+            },
+            "source": {
+              "type": "string",
+              "description": "Where the companion list is read from. Prose pointer, not a list."
+            },
+            "capabilityField": {
+              "type": "string",
+              "description": "Entity field gating inclusion — searchable, not mere registration."
+            },
+            "command": {
+              "type": "string",
+              "description": "Per-companion invocation; must carry --repo, since the unscoped issueHistory command can never see a companion repo."
+            },
+            "unreachable": {
+              "type": "string",
+              "enum": [
+                "skip"
+              ],
+              "description": "An unreachable companion is a skipped surface, never a clean no-result: zeroResolved then degrades the report to partial."
+            }
+          },
+          "additionalProperties": false
+        },
         "resolution": {
           "type": "object",
           "required": [
@@ -184,6 +216,17 @@
         "partialFormat": {
           "type": "string",
           "description": "Incomplete sweep. Distinguishable from noneFoundFormat without parsing prose, and treated by consumers as equivalent to an absent marker."
+        },
+        "_recognisedFormsNote": {
+          "type": "string"
+        },
+        "recognisedForms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Marker forms the DETECTOR accepts, as opposed to the forms the commands emit (#2700). Documentation for readers of this file, who would otherwise read heading as the sole accepted form — the misreading that produced #2700. Pinned against the implementation by tests/scripts/shared/lib/prior-art-marker.test.js, so it cannot drift from classifyMarker."
         }
       },
       "additionalProperties": false

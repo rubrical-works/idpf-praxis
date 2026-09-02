@@ -28,6 +28,14 @@
       "includeClosed": true,
       "command": "gh issue list --search \"<terms>\" --state all --limit 50"
     },
+    "companionRepos": {
+      "enabled": true,
+      "includeClosed": true,
+      "source": "CHARTER.md Companion Repositories, via .claude/scripts/shared/lib/companion-projects.js",
+      "capabilityField": "searchable",
+      "command": "gh issue list --repo <owner/name> --search \"<terms>\" --state all --limit 50",
+      "unreachable": "skip"
+    },
     "resolution": {
       "missingSurface": "skip",
       "zeroResolved": "partial"
@@ -116,6 +124,11 @@
   },
   "bodyFormat": {
     "heading": "**Prior Art:**",
+    "_recognisedFormsNote": "RECOGNITION vs EMISSION (#2700). The formats below are what the commands EMIT. Detection accepts more: a hand-written markdown heading counts too, so an author who writes ## Prior Art is not reported as having skipped the sweep. heading above is the emitted form only — reading it as the sole accepted form is the misreading #2700 fixed.",
+    "recognisedForms": [
+      "**Prior Art:**",
+      "## Prior Art"
+    ],
     "foundFormat": "**Prior Art:** found — <summary> (searched: <terms>)",
     "noneFoundFormat": "**Prior Art:** none found (searched: <terms>)",
     "foundEntryFormat": "| <reference> | <relationship> |",

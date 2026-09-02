@@ -1,0 +1,65 @@
+{
+  "$schema": "./upstream-monitor-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Scheduling and surfacing contract for the background upstream-push monitor (#2667). Externalized so intervals can be tuned without a spec edit (#2318 precedent, same shape as commit-checkpoint-signals.json).",
+    "issue": 2667,
+    "spikeExitReport": "Construction/Design-Decisions/2026-08-30-upstream-push-monitor-host-and-push-window.md"
+  },
+  "host": {
+    "mechanism": "Monitor tool",
+    "persistent": true,
+    "diesWithSession": true,
+    "compactionSurvival": "unverified",
+    "rationale": "Settled by the AC-1 spike. CronCreate is excluded by its own documentation (not for live watching); Bash run_in_background yields one notification on exit, which is the ci-watch.js shape and wrong for per-occurrence surfacing."
+  },
+  "polling": {
+    "defaultIntervalSeconds": 300,
+    "floorSeconds": 60,
+    "fetchBoundSeconds": 10,
+    "backoff": {
+      "strategy": "multiplicative",
+      "factor": 2,
+      "maxIntervalSeconds": 1800,
+      "resetOn": "any poll that reports a change worth surfacing",
+      "rationale": "A quiet branch should cost almost nothing. Backoff widens the interval while nothing changes and snaps back the moment something does."
+    },
+    "floorRationale": "Each poll costs above one second of wall time — 1.05s for the network round trip alone, 1.74s measured end-to-end in the AC-1 spike probe. A floor below 60s spends more than the staleness it prevents. Backoff may never go below this value.",
+    "fetchBoundRationale": "branch-sync-check.js already bounds its fetch at 10s with GIT_TERMINAL_PROMPT=0. The monitor inherits that bound rather than setting its own; a second timeout would be a reimplementation of the thing AC-2 forbids reimplementing."
+  },
+  "emission": {
+    "emitPerPoll": false,
+    "emitOn": "transition",
+    "rationale": "The Monitor host automatically stops a monitor that produces too many events. A per-poll emitter would be silently disarmed — the exact failure this feature exists to prevent, arriving through the back door. Emitting only on transition also rules out the #2541 defect by construction: reporting transitions requires re-evaluating every poll rather than freezing state on the first.",
+    "transitionKey": [
+      "status",
+      "behind",
+      "fetched",
+      "upstreamSha"
+    ],
+    "alwaysEmitFirstResult": true,
+    "firstResultRationale": "The opening observation is a transition from 'nothing known' and is worth exactly one event. Suppressing it would make a monitor that armed successfully indistinguishable from one that never started."
+  },
+  "pushWindow": {
+    "skipWhileGlob": ".tmp-push-base-*.txt",
+    "reportSkip": true,
+    "rationale": "AC-8. /done Step 2.2 pins the remote tip and writes this file; Step 3 consumes and removes it. Its presence is exactly the interval during which a fetch would advance refs/remotes/origin/<branch> out from under a pinned base. Skipping is reported rather than silent — silence that explains itself is not the same as silence, and a crashed /done leaving a stale file must be visible rather than read as 'no upstream activity'."
+  },
+  "surfacing": {
+    "inheritsFrom": ".claude/rules/03-startup.md §Branch Sync Offer",
+    "restatePerStateContract": false,
+    "mutatesWorkingTree": false,
+    "autoRemediation": "none",
+    "rationale": "AC-5. The per-state offer contract is stated once, in the rule; this file holds only the strings the monitor renders. #2668 has since landed and startup now names the recovery path on diverged, so #2719 resolved the open question by inheriting that answer rather than leaving the two surfaces reporting one repository state with different advice minutes apart.",
+    "divergedRecovery": {
+      "wording": "resolve it where it is owned — run /done on the issue still in review so its Step 2 sync guard handles it, or push by hand",
+      "namesGitCommand": false,
+      "rationale": "#2719 Option C. inheritsFrom already declared that this monitor inherits rule 03 §Branch Sync Offer, and #2668 changed what that section says on diverged: startup now names where the divergence resolves. A monitor emitting status and counts alone therefore contradicted its own declared inheritance — the decision was not a preference between two defensible answers but the removal of an inconsistency. Fires mid-session, when the startup message for this divergence may never have been shown, since divergence usually arises after startup."
+    }
+  },
+  "unverifiedFetch": {
+    "neverReportAs": "up to date",
+    "wording": "unverified (upstream fetch failed; counts from a cached remote-tracking ref)",
+    "rationale": "AC-4, and the same contract #2687 established for the startup row. fetched:false is the ABSENCE of information, never a clean bill of health. A poll that silently falls back to the cached ref reports 'up to date' when it means 'could not ask' — and the ref goes stale for the same reason the branch does, so it is wrong exactly when it matters."
+  }
+}

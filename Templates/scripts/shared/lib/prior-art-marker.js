@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the
@@ -45,8 +45,22 @@ const MARKER_HEADING = '**Prior Art:**';
  * Non-global on purpose — `exec` on a global regex carries `lastIndex` between
  * calls, which would make these functions stateful across invocations.
  */
+const MARKER_HEADING_PATTERN = MARKER_HEADING.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Heading form, accepted alongside the bold inline form (#2700).
+ *
+ * `## Prior Art` / `### Prior Art:` — any level, optional trailing colon. The
+ * `\b` after `Art` is load-bearing: without it `### Prior Artistry` matches a
+ * prefix and reports a section that is not there.
+ *
+ * Recognition only. Emission is unchanged and still uses MARKER_HEADING — see
+ * `prior-art-sweep.json` `bodyFormat`, which this file does not write.
+ */
+const HEADING_FORM_PATTERN = '#{1,6}[ \\t]+Prior[ \\t]+Art\\b[ \\t]*:?';
+
 const MARKER_LINE = new RegExp(
-  `^[ \\t]*${MARKER_HEADING.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+  `^[ \\t]*(?:${MARKER_HEADING_PATTERN}|${HEADING_FORM_PATTERN})`,
   'm'
 );
 
@@ -118,17 +132,42 @@ const COMPLETED_SWEEP_PREFIXES = ['found', 'none found'];
  */
 function classifyMarker(body) {
   if (!body || typeof body !== 'string') return 'absent';
-  const match = MARKER_LINE.exec(body);
-  if (!match) return 'absent';
 
-  const line = body.slice(match.index).split('\n', 1)[0];
+  // Every marker line, not just the first (#2700). Collected by scanning lines
+  // rather than by making MARKER_LINE global — a global regex carries
+  // `lastIndex` between calls, which is why the constant is non-global.
+  const markers = [];
+  for (const line of body.split('\n')) {
+    const m = MARKER_LINE.exec(line);
+    if (m) markers.push({ line, marker: m[0] });
+  }
+  if (markers.length === 0) return 'absent';
 
-  // PARTIAL appears immediately after the heading on the same line. Tested
-  // first and against the whole line, preserving pre-#2542 behaviour exactly.
-  if (/\bPARTIAL\b/.test(line)) return 'partial';
+  // PARTIAL among ANY marker line wins, and scanning only the first is what
+  // made this necessary (#2700). Widening detection to accept the heading form
+  // meant a bare `### Prior Art` above a `**Prior Art:** PARTIAL` line matched
+  // first and reported `complete` — a sweep that explicitly recorded itself as
+  // incomplete, read as finished. Before widening the bold line WAS the first
+  // match, so this regression arrived with the widening and belongs to it.
+  // AC3 requires PARTIAL to survive in every accepted form; that includes
+  // combinations of forms, not just each form alone.
+  if (markers.some((entry) => /\bPARTIAL\b/.test(entry.line))) return 'partial';
 
-  // Everything after the heading, which is what distinguishes the shapes.
-  const trailing = line.slice(line.indexOf(MARKER_HEADING) + MARKER_HEADING.length).trim();
+  const first = markers[0];
+
+  // Which accepted form matched decides how the rest of the line reads (#2700).
+  const isHeadingForm = /^[ \t]*#/.test(first.marker);
+
+  // A markdown heading DECLARES a section; its content lives below the line,
+  // not on it. The bold inline form carries its summary ON the line, which is
+  // why only that form inspects what trails it.
+  if (isHeadingForm) return 'complete';
+
+  // Offset taken from the match, NOT from indexOf(MARKER_HEADING) (#2700).
+  // With two accepted shapes a literal search for the bold heading returns -1
+  // on a heading-form line, and `-1 + MARKER_HEADING.length` silently yields a
+  // plausible-looking offset wrong by an amount that varies with heading depth.
+  const trailing = first.line.slice(first.marker.length).trim();
 
   // Bare heading: the found case, with its entries in the table below it.
   if (trailing === '') return 'complete';

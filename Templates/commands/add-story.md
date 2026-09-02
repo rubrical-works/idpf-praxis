@@ -1,5 +1,5 @@
 ---
-version: "v0.99.0"
+version: "v0.100.0"
 description: Add story to epic with charter compliance (project)
 argument-hint: "[epic-number] (e.g., 42 or #42)"
 copyright: "Rubrical Works (c) 2026"
@@ -160,12 +160,25 @@ gh issue view $epic_num --json body --jq '.body' | grep -oE "PRD/[A-Za-z0-9_-]+/
 ```
 Derive: `PRD/{name}/PRD-{name}.md → PRD/{name}/Test-Plan-{name}.md`
 
-If no test plan found: `ℹ️ No test plan. Test cases created when work begins.` → skip to Phase 5.
+If no test plan found: `ℹ️ No test plan. Test cases created when work begins.` → Steps 3-5 skipped, but **continue to Step 2 and run Step 3a/3b**: candidate test-path resolution depends on `Inception/Test-Strategy.md`, not on a test plan, and a story with no test plan is exactly the one whose test paths are otherwise never named (#2727).
 **Step 2: Load test config** — from `Inception/Test-Strategy.md` (framework, organization) and `Inception/Tech-Stack.md` (language). Fallback to `{frameworkPath}/IDPF-Agile/Agile-Core.md` TDD defaults with warning.
 **Step 3: Generate test cases from acceptance criteria**
 | Criterion | Test Cases |
 |-----------|------------|
 | {Criterion text} | Valid input, Invalid input, Edge case |
+**Step 3a: Resolve candidate test paths (#2727)**
+For each acceptance criterion implicating a code path, resolve the **candidate test file paths** a TDD RED phase would create or extend, from the framework/organization Step 2 loaded from `Inception/Test-Strategy.md` and the language from `Inception/Tech-Stack.md` — before #2727 that fed prose test *cases* and was discarded.
+**Read pairing conventions from `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json`** — `languages` keyed by the loaded language, its `sourceExtensions`, `testPatterns` (`{dir}`/`{stem}`), `ignoredSourcePatterns`. **Do not declare a second convention source:** it is the single pairing authority (project overrides in `framework-config.json` `testCoverageAudit`); a second rule set drifts silently until two commands disagree where a test belongs.
+1. Infer from the criterion which source paths the change touches.
+2. Apply each `testPatterns` entry, substituting `{dir}`/`{stem}` from the source path.
+3. Keep paths the project's convention produces — a mirrored tree (`src/x/y.js` → `tests/x/y.test.js`) rather than colocation means the pattern matching that layout is the candidate.
+**Candidates, not certainties** — the code does not exist yet, so a path is a prediction; an author reading one as a requirement creates the wrong file and treats the mismatch as a spec error.
+**When no candidate path resolves** (no code path implicated, language absent from the conventions file, or `Test-Strategy.md` missing with no organization from the fallback), emit `No candidate test path could be resolved for: {criterion}` and say why. **Never omit the paths silently** — a story with no test paths and no statement why is indistinguishable from one where nobody considered tests.
+**Advisory: does not block story creation**; no resolution outcome changes any status transition.
+**Step 3b: Emit candidates into `**Files to modify:**` (#2727)**
+Write resolved candidates into the story body's `**Files to modify:**` section beside the source paths, so `scope-drift-check.js` reads them as **declared scope** at `/work` Step 4c. Without it a test file written during RED reaches the drift gate as an *unexpected* path — flagged as drift rather than planned work, the gate doing its job on an incomplete declaration.
+**Format contract is `extractFilesToModify`'s and matches nothing else (#2523):** literal `**Files to modify:**` on its own line; one **backticked** path per `- ` bullet; **no blank line** inside the list (it terminates at the first blank line, `**bold:**` line, or `##` heading); **not a table** — markdown puts a blank line before a table, terminating the section and yielding empty declared scope.
+Mark unresolved criteria with the Step 3a line rather than dropping them.
 **Step 4: Update test plan**
 ```markdown
 ### Story: {Story Title} (#{story_num})

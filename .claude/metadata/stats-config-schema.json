@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Stats Config",
-  "description": "Configuration for /idpf-stats metric collection, label categories, test patterns, and report sections",
+  "description": "Configuration for /idpf-stats metric collection, label categories, test patterns, report sections, benchmark populations and DORA tiers",
   "type": "object",
   "required": ["metrics", "labelCategories", "testFilePatterns", "testCasePatterns", "reportSections"],
   "properties": {
@@ -14,7 +14,7 @@
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
-          "category": { "type": "string", "enum": ["volume", "testing", "throughput"] },
+          "category": { "type": "string", "enum": ["volume", "testing", "throughput", "dora"] },
           "command": { "type": "string" },
           "aggregation": { "type": "string", "enum": ["count", "sum", "delta", "rate"] },
           "field": { "type": "string" },
@@ -43,7 +43,87 @@
         "properties": {
           "id": { "type": "string" },
           "title": { "type": "string" },
+          "caveat": {
+            "type": "string",
+            "description": "Rendered with the section heading. Carries the SPACE single-dimension warning for Activity metrics (#2676)."
+          },
           "metrics": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "velocityBenchmarks": {
+      "type": "object",
+      "description": "Comparison bands for throughput rates. EVERY set must name the population it describes and cite where its figures came from (#2676) — an uncited median reads as measured fact when it may be a guess.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["low", "high", "median", "population", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "low": { "type": "number" },
+          "high": { "type": "number" },
+          "median": { "type": "number" },
+          "population": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who these figures describe. Required so a reader can tell whether the comparison is meaningful for them."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where the figures came from. An internal heuristic must say so explicitly rather than be left blank — blank reads as an oversight, 'unvalidated internal heuristic' reads as a known limitation."
+          },
+          "validated": {
+            "type": "boolean",
+            "description": "False when the figures are not derived from published research. Machine-readable so a report can label them without parsing prose."
+          },
+          "refreshedAt": {
+            "type": "string",
+            "description": "ISO date this set was last surveyed against its source (#2677). Staleness is measured from here, so a set that has never been surveyed must omit it rather than carry the date it was invented — an absent date reports as never-surveyed, which is true; a fabricated one reports as fresh, which is not."
+          }
+        }
+      }
+    },
+    "doraTiers": {
+      "type": "object",
+      "description": "Published DORA performance tiers, used to place measured DORA outputs (#2676). Carries its own provenance and a report year, because the bands shift between annual reports.",
+      "required": ["source", "reportYear", "tiers"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "reportYear": { "type": "integer" },
+        "retrievedAt": { "type": "string" },
+        "note": { "type": "string" },
+        "tiers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string" },
+                "maxHours": { "type": ["number", "null"] },
+                "minPerWeek": { "type": ["number", "null"] },
+                "maxRate": { "type": ["number", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "description": "Trailing-baseline settings for the deviation figure that replaced the '~Nx typical developer velocity' line (#2676). The comparison is against this repository's own history, so it needs no external population.",
+      "required": ["windowDays", "minDataPoints"],
+      "additionalProperties": false,
+      "properties": {
+        "windowDays": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many days of trailing history form the baseline. Stated in the report so the figure is interpretable."
+        },
+        "minDataPoints": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Fewer usable points than this in the window reports not-collected with a reason — never 0, and never a median computed from too little history."
         }
       }
     }

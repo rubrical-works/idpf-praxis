@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
@@ -9,6 +9,7 @@
  */
 
 const { computeFenceMask } = require('./lib/checkbox-scan.js');
+const { parseCompanionTable, splitTableRow } = require('./lib/companion-projects.js');
 
 /**
  * Generate domain-entities.json content from charter markdown.
@@ -199,45 +200,60 @@ function extractEntities(content) {
 /**
  * Extract companion repositories from a Companion Repositories table
  * and add them as external entities.
+ *
+ * Row parsing is delegated to companion-projects.js, which is also what
+ * `/charter update --register-proj` writes through. One parser with two
+ * callers cannot drift; two parsers of the same table eventually do -- and
+ * the drift would be silent, because both would still produce entities.
+ *
+ * The parser is positional and preserves empty cells. The earlier
+ * implementation here split on `|` and dropped empties, which was harmless
+ * while the table had exactly three always-populated columns and becomes a
+ * column-shift bug the moment an optional column (Board) is left blank.
  */
 function extractCompanionRepos(content, entities) {
-  let sectionMatch = content.match(/###?\s+Companion Repositories[^\n]*\n([\s\S]*?)(?=\n##\s)/);
-  if (!sectionMatch) {
-    sectionMatch = content.match(/###?\s+Companion Repositories[^\n]*\n([\s\S]*)/);
-  }
-  if (!sectionMatch) return;
+  const { entries, sectionFound } = parseCompanionTable(content);
+  if (!sectionFound) return;
 
-  const tableLines = sectionMatch[1].split('\n').filter(l => l.startsWith('|'));
-  // Skip header and separator
-  for (let i = 2; i < tableLines.length; i++) {
-    const cells = tableLines[i].split('|').map(c => c.trim()).filter(c => c);
-    if (cells.length >= 2) {
-      const repoName = cells[0].replace(/`/g, '').trim();
-      const key = repoName.toLowerCase().replace(/\s+/g, '-');
-      const responsibility = cells[1] || '';
-      const relationship = cells[2] || '';
+  for (const row of entries) {
+    const repoName = row.name;
+    const key = repoName.toLowerCase().replace(/\s+/g, '-');
 
-      entities[key] = {
-        description: `${repoName} — ${responsibility}`,
-        external: true,
-        locations: [repoName],
-        relationships: []
-      };
+    const entity = {
+      description: `${repoName} — ${row.responsibility}`,
+      external: true,
+      locations: [repoName],
+      // Always emitted, so a consumer never has to tell absent from false.
+      // A charter that does not declare them defaults both to false, which
+      // is the safe direction: nothing becomes searchable or filable by
+      // omission.
+      searchable: row.searchable,
+      fileIssues: row.fileIssues,
+      relationships: []
+    };
 
-      // If relationship column mentions a connection, try to infer
-      if (relationship) {
-        for (const [entityKey, entity] of Object.entries(entities)) {
-          if (entityKey === key || entity.external) continue;
-          const desc = entity.description.toLowerCase();
-          if (relationship.toLowerCase().includes(desc) ||
-              desc.split(/\s+/).some(w => w.length > 4 && relationship.toLowerCase().includes(w))) {
-            entities[key].relationships.push({
-              type: 'interacts-with',
-              target: entityKey,
-              evidence: relationship
-            });
-            break;
-          }
+    // repo and board are omitted rather than emitted empty: an absent
+    // owner/name is genuinely unknown, and "" would satisfy a truthiness
+    // check while failing every gh invocation built from it.
+    if (row.repo) entity.repo = row.repo;
+    if (row.board) entity.board = row.board;
+
+    entities[key] = entity;
+
+    // If relationship column mentions a connection, try to infer
+    if (row.relationship) {
+      for (const [entityKey, other] of Object.entries(entities)) {
+        if (entityKey === key || other.external) continue;
+        const desc = other.description.toLowerCase();
+        const rel = row.relationship.toLowerCase();
+        if (rel.includes(desc) ||
+            desc.split(/\s+/).some(w => w.length > 4 && rel.includes(w))) {
+          entities[key].relationships.push({
+            type: 'interacts-with',
+            target: entityKey,
+            evidence: row.relationship
+          });
+          break;
         }
       }
     }
@@ -321,10 +337,15 @@ function extractArchitecture(content) {
     // Extract tables under this subsection
     const tableLines = body.split('\n').filter(l => l.startsWith('|'));
     if (tableLines.length >= 3) {
-      const headerCells = tableLines[0].split('|').map(c => c.trim()).filter(c => c);
+      // Positional split: dropping empty cells here shifted every column after
+      // a blank one. Exposed by #2665 adding an optional Board column -- a row
+      // leaving it empty wrote the Searchable value into Board, Searchable into
+      // File Issues, and so on, producing output that still looked well-formed.
+      // Same splitter the companion table uses, so the two cannot diverge.
+      const headerCells = splitTableRow(tableLines[0]);
       const rows = [];
       for (let r = 2; r < tableLines.length; r++) {
-        const cells = tableLines[r].split('|').map(c => c.trim()).filter(c => c);
+        const cells = splitTableRow(tableLines[r]);
         const row = {};
         for (let c = 0; c < headerCells.length; c++) {
           row[headerCells[c]] = cells[c] || '';

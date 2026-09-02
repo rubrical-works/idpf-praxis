@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -28,6 +28,18 @@ const Ajv = require('ajv').default;
 const { atomicWriteSync } = require('./shell-safe');
 
 const CONFIG_FILENAME = 'framework-config.json';
+
+/**
+ * Permitted `verificationMode` values (#2556). Kept in step with the schema
+ * enum by `framework-config.test.js`, so the two cannot drift.
+ */
+const VERIFICATION_MODES = Object.freeze(['automated-tests', 'host-process']);
+
+/**
+ * The mode an undeclared project gets. Strict by construction: the carve-out
+ * must be opted into, never arrived at by omission or by a typo.
+ */
+const DEFAULT_VERIFICATION_MODE = 'automated-tests';
 const SCHEMA_REL_PATH = '.claude/metadata/framework-config.schema.json';
 
 let cachedValidator = null;
@@ -149,8 +161,45 @@ function _resetCache() {
   cachedValidator = null;
 }
 
+/**
+ * The effective TDD verification mode for a project (#2556).
+ *
+ * Reader half of the `verificationMode` key. Every path that is not an
+ * explicitly declared, recognised mode resolves to
+ * `DEFAULT_VERIFICATION_MODE` — absent key, absent file, unreadable file,
+ * and an unrecognised string alike.
+ *
+ * **Failing into the strict gate is the point.** The carve-out relaxes what
+ * satisfies RED, so resolving an unknown value into it would let a typo
+ * (`host_process`, `hostProcess`, `manual`) silently disable a gate while
+ * the config still looks deliberate. Failing into the strict mode makes a
+ * mistyped declaration behave as if it were absent, which is visible the
+ * moment the gate is applied rather than never.
+ *
+ * Note the asymmetry with `write`: the schema REJECTS an unrecognised mode at
+ * write time, so a bad value should not reach disk through the helper at all.
+ * This guard covers the file being hand-edited, which is how most projects
+ * will set the key.
+ *
+ * @param {string} [cwd] - Project root
+ * @returns {string} One of `VERIFICATION_MODES`
+ */
+function resolveVerificationMode(cwd = process.cwd()) {
+  let config;
+  try {
+    config = read(cwd);
+  } catch {
+    return DEFAULT_VERIFICATION_MODE;
+  }
+  const declared = config && config.verificationMode;
+  return VERIFICATION_MODES.includes(declared) ? declared : DEFAULT_VERIFICATION_MODE;
+}
+
 module.exports = {
   read,
+  resolveVerificationMode,
+  VERIFICATION_MODES,
+  DEFAULT_VERIFICATION_MODE,
   validate,
   write,
   ensureReviewSweep,

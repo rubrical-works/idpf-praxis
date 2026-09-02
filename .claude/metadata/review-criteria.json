@@ -15,6 +15,11 @@
           "autoCheck": "Look for 'Expected' and 'Actual' sections or descriptions"
         },
         {
+          "id": "ac-phase-feasible",
+          "name": "Acceptance criteria can close in phase",
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+        },
+        {
           "id": "environment-info",
           "name": "Environment info present",
           "autoCheck": "Look for 'Environment', browser, OS, version references"
@@ -28,7 +33,7 @@
           "id": "test-coverage-bug",
           "name": "Test coverage proportionate (bug)",
           "overrides": "test-coverage-proportionate",
-          "autoCheck": "Single-path fix: 'existing tests pass' may suffice, but regression test AC preferred. Multi-path refactor: ACs MUST require tests for new pattern (flag if only 'existing tests pass' for changes touching multiple functions/modules)"
+          "autoCheck": "Single-path fix: 'existing tests pass' may suffice, but regression test AC preferred. Multi-path refactor: ACs MUST require tests for new pattern (flag if only 'existing tests pass' for changes touching multiple functions/modules). Additionally report which test files the fix implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. Advisory — blocks nothing."
         },
         {
           "id": "proposed-fix-described",
@@ -62,6 +67,11 @@
           "autoCheck": "Verify each `- [ ]` item contains a measurable/verifiable statement (TDD-compatible)"
         },
         {
+          "id": "ac-phase-feasible",
+          "name": "Acceptance criteria can close in phase",
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+        },
+        {
           "id": "incremental-scope",
           "name": "Scope supports incremental implementation",
           "autoCheck": "Check if ACs are small, independent, testable units (not monolithic)"
@@ -75,7 +85,7 @@
           "id": "test-coverage-story",
           "name": "Test coverage proportionate (story)",
           "overrides": "test-coverage-proportionate",
-          "autoCheck": "Infer scope from ACs and description. If story adds or modifies code paths, ACs should include test requirements proportionate to scope"
+          "autoCheck": "Infer scope from ACs and description. If story adds or modifies code paths, ACs should include test requirements proportionate to scope. Additionally report which test files the story implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. A story authored through /add-story should already carry candidate test paths in its `**Files to modify:**` section (#2727) — their absence is itself worth reporting. Advisory — blocks nothing."
         },
         {
           "id": "proposed-solution",
@@ -109,6 +119,11 @@
           "autoCheck": "Check for epic-level success criteria or definition of done"
         },
         {
+          "id": "ac-phase-feasible",
+          "name": "Acceptance criteria can close in phase",
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+        },
+        {
           "id": "sub-issue-dependencies",
           "name": "Dependencies between sub-issues identified",
           "autoCheck": "Check sub-issue bodies for cross-references (`Refs #`, `Depends on #`, `Blocks #`)"
@@ -139,6 +154,11 @@
           "autoCheck": "Check for 'Proposed Solution' or solution description"
         },
         {
+          "id": "ac-phase-feasible",
+          "name": "Acceptance criteria can close in phase",
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+        },
+        {
           "id": "scope-boundaries",
           "name": "Scope boundaries defined",
           "overrides": "scope-boundaries",
@@ -154,7 +174,7 @@
           "id": "test-coverage-enhancement",
           "name": "Test coverage proportionate (enhancement)",
           "overrides": "test-coverage-proportionate",
-          "autoCheck": "New feature: ACs MUST require unit tests for new functionality. Behavior change: ACs MUST require updated tests reflecting changed behavior. Infer scope from keywords ('refactor', 'replace', 'rewrite', 'across N files') and count of affected components"
+          "autoCheck": "New feature: ACs MUST require unit tests for new functionality. Behavior change: ACs MUST require updated tests reflecting changed behavior. Infer scope from keywords ('refactor', 'replace', 'rewrite', 'across N files') and count of affected components. Additionally report which test files the enhancement implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. Advisory — blocks nothing."
         },
         {
           "id": "deployment-impact-assessed",

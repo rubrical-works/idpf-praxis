@@ -1,5 +1,5 @@
 ---
-version: "v0.99.0"
+version: "v0.100.0"
 description: View, create, or manage project charter
 argument-hint: "[update|refresh|validate|--create-domain-entities]"
 copyright: "Rubrical Works (c) 2026"
@@ -14,6 +14,9 @@ Context-aware. Shows summary if exists, starts creation if missing.
 | `/charter update` | Update specific sections |
 | `/charter refresh` | Re-extract from code, merge |
 | `/charter validate` | Check current work against scope |
+| `/charter update --register-proj` | Register a companion repository or board |
+| `/charter update --deregister-proj` | Remove a companion registration by `owner/name` |
+| `/charter update --list-proj` | List registered companions with capability flags |
 | `/charter --create-domain-entities` | Regenerate `domain-entities.json` |
 ## Execution
 **REQUIRED:** Parse workflow steps, use `TaskCreate` to create tasks. Mark `in_progress`→`completed`. After compaction, re-read spec and call `TaskList` to resume from first incomplete task.
@@ -41,6 +44,7 @@ Pattern: `/{[a-z][a-z0-9-]*}/`. ANY placeholder → template. No placeholders �
 2. Analyze codebase (tech stack, architecture, tests, NFRs)
 3. Present findings, ask user to confirm/adjust
 4. Generate CHARTER.md and Inception/ artifacts
+3a. **Companion pre-fill:** propose candidates from disk, never open-ended — `git remote -v`; `.gh-pmu.json` `repositories[]`; existing `external: true` entities in `domain-entities.json`. Confirm with `searchable`/`fileIssues` defaulting false; register via `registerCompanion`. Asking open-ended here would assert something no file was read for — the failure the artifact-voice rule below governs.
 **Artifact voice — extraction:** artifacts here are **observations**. "detected" / "found via `<file>`" claims are permitted *because a file was read*; each must be traceable to the file supporting it.
 ### Inception Mode
 **Artifact voice — inception (#2591):** no code exists on this path (Process step 1 creates the tree against an empty project), so **no artifact here may assert a detection.** Every Inception/ artifact is a **declaration of intent** — what the project *will* use, sourced from answers, never from a filesystem read.
@@ -100,6 +104,16 @@ Where will this project be deployed?
 | **Data handling** | "Any sensitive/personal data?" / "Compliance requirements?" |
 | **External integrations** | "What external services?" / "Any constraints?" |
 Max 1-2 to avoid overwhelm.
+#### Companion Projects (Conditional — ask only on a signal)
+**Ask only on a trigger signal.** Competes for a 4-8 question budget against the 1-2 complexity cap; always asking displaces something that matters more for the single-repo case, which is most projects.
+| Signal | Check |
+|---|---|
+| `.gh-pmu.json` lists >1 repository | `repositories[]` length > 1 |
+| Multiple git remotes | `git remote` returns >1 name |
+| Sibling project named in Q1/Q3 | Answer names another repo or product |
+**No signal → ask nothing** — not a softened or optional version. Silence is the specified behaviour.
+**On a signal, ask:** *"Are there companion repositories or project boards this project works alongside — worth searching for context, or filing issues against?"* Record via `registerCompanion`, never by hand-writing the table.
+`searchable` and `fileIssues` are asked separately and default **false**. Searchable-but-not-filable is the common case; nothing becomes filable by omission.
 #### Dynamic Follow-Up
 - Analyze baselines for gaps/ambiguities
 - Simple: 0-1; Complex: 2-4; skip questions answered indirectly
@@ -179,6 +193,15 @@ What review mode should be used for this project?
 3b. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
 4. If Tech Stack modified: trigger skill/recipe suggestions (NEW only). Detect new default skills not in `projectSkills` (from `skill-keywords.json` `defaultSkills`) — copy from `{frameworkPath}/.claude/skills/`, add additively.
 4b. If Deployment Target changed: remove old deployment skill, copy new from `{frameworkPath}/.claude/skills/<skill-name>/`. Update `deploymentTarget` and `projectSkills`. No prior target → fresh install.
+5. **Companion management (`--register-proj`, `--deregister-proj`, `--list-proj`):** delegate to `.claude/scripts/shared/lib/companion-projects.js`. Read `CHARTER.md`, call the helper, write returned content back — the helper never writes; the caller persists.
+| Argument | Helper | Behaviour |
+|---|---|---|
+| `--register-proj` | `registerCompanion(content, entry)` | `action: "added"`/`"updated"`; duplicate `repo` **updates in place** |
+| `--deregister-proj` | `deregisterCompanion(content, repo)` | `action: "removed"`, or `ok:false` + `"not-found"` |
+| `--list-proj` | `formatCompanionList(listCompanions(content))` | Prints registry; explicit empty-registry line when none |
+**Do NOT restate the helper's validation, dedupe, or removal rules here** — spec prose is LLM-executed and untestable, and a second statement drifts from the module enforcing it. Report `errors[]` verbatim and stop; `ok:false` means nothing was written.
+**Reachability:** call `verifyReachability(repo)` before registering. `verified:false` → register anyway and report the `label` (`unverifiable — <reason>`). NEVER drop the registration because the check failed; NEVER report an unchecked repo as reachable (rule 01 claim labelling).
+**After register/deregister, regenerate `domain-entities.json`** per 3a — entities derive from this table, so skipping leaves the two views disagreeing.
 ### /charter refresh
 1. Verify `.claude/skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**
 2. Analyze codebase

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/pending), and propagates review labels to parent epics.
  * @checksum sha256:placeholder
  *
@@ -295,6 +295,26 @@ function formatReviewComment(findings) {
   }
   lines.push('');
 
+  // Suggestions (#2717)
+  //
+  // Findings that are not criteria: they carry no `status`, so they cannot be
+  // classified, and before this they were accepted by the schema and dropped
+  // without trace. Rendered between Findings and Recommendation so a parser
+  // reading by section header finds them outside the recommendation block.
+  //
+  // Guarded on Array.isArray AND length, NOT modelled on `extensions` above:
+  // that one falls back to the literal 'None' and pushes its line
+  // unconditionally, which here would emit a heading over a placeholder — the
+  // empty section this must never produce. Absent, empty, and non-array all
+  // push nothing at all.
+  const suggestions = Array.isArray(findings.suggestions) ? findings.suggestions : [];
+  if (suggestions.length > 0) {
+    lines.push(SECTION_HEADERS.suggestions);
+    lines.push('');
+    for (const s of suggestions) lines.push(`- ${s}`);
+    lines.push('');
+  }
+
   // Recommendation
   lines.push(SECTION_HEADERS.recommendation);
   lines.push(`**${findings.recommendation}** — ${findings.recommendationReason || ''}`);
@@ -304,9 +324,49 @@ function formatReviewComment(findings) {
 
 // ─── Label Determination ───
 
+/**
+ * The LABEL predicate. Deliberately looser than the GATE predicate in
+ * review-ac-checkoff.js, which tests startsWith('Ready for') (#2694).
+ *
+ * They disagree on exactly one value: `Ready with minor revisions` earns the
+ * `reviewed` label here — it HAS been reviewed — but must not earn the
+ * `PRD reviewed` gate, because it is not yet decomposable. Do not unify them;
+ * unifying either way trades one correct behaviour for a broken one.
+ * Rationale: Construction/Design-Decisions/2026-08-30-review-clean-predicates-diverge-deliberately.md
+ */
 function determineLabel(recommendation) {
   if (!recommendation) return 'pending';
   return recommendation.startsWith('Ready') ? 'reviewed' : 'pending';
+}
+
+/**
+ * Swap the review outcome label, reporting a failure instead of absorbing it.
+ *
+ * Previously inline in main(): `if (labelResult.ok) labelAssigned = '...'` and
+ * nothing on the else branch, so a failed swap produced `labelAssigned: null`
+ * inside an `ok: true` envelope — the same value a run that never reached the
+ * label step produces. One value, two unrelated meanings, no way to tell them
+ * apart (#2694; same class as #2682).
+ *
+ * That mattered because review-state.js classifies "Reviews marker >= 1 with
+ * no label" as `indeterminate`, which passes gates by design (#2577). The
+ * fail-open is intentional; inheriting it from an *undetected* failure is not.
+ *
+ * `exec` is injected so the failure path is testable — execSafe is module-local
+ * and main() is not exported, so there was nothing to drive a failure through.
+ *
+ * @param {{ issue: number, label: 'reviewed'|'pending', exec: Function }} params
+ * @returns {Promise<{ labelAssigned: string|null, labelError: string|null }>}
+ */
+async function applyReviewLabel({ issue, label, exec }) {
+  const [add, remove] = label === 'reviewed' ? ['reviewed', 'pending'] : ['pending', 'reviewed'];
+  const result = await exec(`gh issue edit ${issue} --add-label=${add} --remove-label=${remove}`);
+  if (result && result.ok) return { labelAssigned: label, labelError: null };
+  const detail = (result && result.message) || 'unknown error';
+  return {
+    labelAssigned: null,
+    labelError: `Failed to assign "${label}" label to #${issue}: ${detail}`,
+  };
 }
 
 // ─── Envelope Builders ───
@@ -318,6 +378,9 @@ function buildSuccessResult(data) {
     commentPosted: data.commentPosted,
     commentUrl: data.commentUrl || null,
     labelAssigned: data.labelAssigned,
+    // Present-and-null, never absent (#2694): a caller must not have to tell an
+    // envelope that predates this field from a run where the swap succeeded.
+    labelError: data.labelError || null,
     epicSubIssuesLabeled: data.epicSubIssuesLabeled || 0,
     closingNotification: data.closingNotification || null,
   };
@@ -426,17 +489,13 @@ async function main() {
 
   // Assign label
   const label = determineLabel(findings.recommendation);
-  let labelAssigned = null;
-  if (label === 'reviewed') {
-    const labelResult = await execSafe(
-      `gh issue edit ${issue} --add-label=reviewed --remove-label=pending`
-    );
-    if (labelResult.ok) labelAssigned = 'reviewed';
-  } else {
-    const labelResult = await execSafe(
-      `gh issue edit ${issue} --add-label=pending --remove-label=reviewed`
-    );
-    if (labelResult.ok) labelAssigned = 'pending';
+  const { labelAssigned, labelError } = await applyReviewLabel({ issue, label, exec: execSafe });
+  if (labelError) {
+    // Reported, never swallowed. A dropped label leaves the Reviews marker at
+    // >= 1 with no label, which review-state.js classifies `indeterminate` —
+    // a verdict that passes by design (#2577). Silently absorbing the failure
+    // would hand the downstream gate a fail-open it cannot see (#2694).
+    process.stderr.write(`Warning: ${labelError}\n`);
   }
 
   // Epic sub-issue label propagation
@@ -486,6 +545,7 @@ async function main() {
     commentPosted,
     commentUrl,
     labelAssigned,
+    labelError,
     epicSubIssuesLabeled,
     closingNotification,
   });
@@ -514,6 +574,7 @@ module.exports = {
   formatReviewComment,
   reviewVerb,
   determineLabel,
+  applyReviewLabel,
   buildClosingNotification,
   buildSuccessResult,
   buildErrorResult,

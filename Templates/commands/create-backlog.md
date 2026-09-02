@@ -1,5 +1,5 @@
 ---
-version: "v0.99.0"
+version: "v0.100.0"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -41,13 +41,26 @@ Branch assignment is not performed during backlog creation. Issues are created i
 
 **BLOCKING:** Decomposing an unreviewed PRD risks propagating issues into the epic/story structure.
 
-1. Parse PRD tracker body for checkbox `- \[([ x])\].*PRD reviewed`.
+1. Evaluate via the shared helper — do NOT parse the checkbox inline. A naked regex here was untestable, fence-blind (#2600 class), and read only a checkbox nothing was writing (#2694):
+```bash
+node .claude/scripts/shared/review-state.js --issue $issue_num
+```
+```javascript
+const { evaluateReviewGate } = require('.claude/scripts/shared/lib/create-backlog-review-gate.js');
+// body: tracker body from Phase 1 Step 2. reviewState: verdict above.
+const verdict = evaluateReviewGate({ body, reviewState });
+```
 2. Gate:
 
-| State | Action |
+| `verdict.gate` | Action |
 |---|---|
-| `- [x]` (already-checked) | Proceed normally |
-| `- [ ]` or missing | Warn (Step 3) |
+| `false` | Proceed normally to Phase 2 — report `verdict.reason` |
+| `true` | Warn (Step 3) |
+
+An already-checked `- [x] PRD reviewed` box yields `gate: false` and proceeds normally, as before — that path is unchanged, it is simply no longer the only signal that can lift the gate.
+
+Two signals, failing in opposite directions: the checkbox is what a human sees in the body, `review-state.js` is what the review subsystem recorded. A clean review lifts the gate even if the checkbox write failed; a checked box lifts it even if the label was dropped. `findings-pending` gates regardless — a reviewer flagged criteria and they are still open.
+**`verdict.indeterminate: true` = passed WITHOUT confirming a review** (unreadable body, contradictory labels, `gh` outage). Fails open by design (#2577 — blocking would let an outage stop all backlog creation), but say so; never report it as a clean pass.
 
 3. **Warn** (unchecked):
 
@@ -63,6 +76,8 @@ PRD Tracker: #$issue_num
 | Option | Action |
 |---|---|
 | **Run /review-prd first** (Recommended) | Invoke `/review-prd #$issue_num`, then continue |
+
+A clean review checks the `PRD reviewed` gate and reports `reviewed-clean`, so the NEXT invocation does not re-gate. Before #2694 nothing wrote the box on this branch and re-running offered the review again.
 | **Continue without review** | Mark checkbox bypassed, proceed |
 
 **Bypass path:**
@@ -156,17 +171,22 @@ gh pmu create --title "Epic: {Epic Name}" --label "epic" --status backlog \
 {Epic description from PRD}
 
 ## Success Criteria
-{Success criteria from PRD}
+- [ ] {Success criterion 1 from PRD}
+- [ ] {Success criterion 2 from PRD}
 
 ## Stories
 Stories will be linked as sub-issues.
 ```
 
 Cleanup: `rm .tmp-epic-body.md`
+**Success Criteria — checkbox shape, and why the heading parses (#2697).** Write each PRD-supplied criterion as its own `- [ ]` item, NEVER as prose. Two causes made epic criteria invisible and they blocked disjoint consumer sets: prose-not-checkboxes blocked the 6 heading-agnostic `scanCheckboxes` callers (`nonstop-audit`, `qa-extract`, `reset-issue-preamble`, `review-ac-checkoff`, `review-interdependence`, `lib/create-backlog-review-gate`); an unrecognised heading blocked the 3 heading-anchored `extractAcceptanceCriteria` callers (`work-preamble`, `generate-test-plan`, `mockup-ac-generator`). `scanCheckboxes` takes no heading argument, so the checkbox shape is what reaches the first group — the heading fix alone would not have.
+**Parser extended, heading NOT renamed.** `checkbox-scan.js` `ACCEPTANCE_CRITERIA_HEADINGS` gained `## Success Criteria` as a fourth pattern. A rename would strand every PRD and epic already authored against this heading and invalidate `deliverableSplit.appliesTo`'s `epic success criteria`.
+**Why epics especially:** an empty AC list passes every downstream gate **vacuously**, not by succeeding (`08-work-execution.md` Step 3) — no per-AC subtasks, nothing for Step 4, no unchecked boxes for Step 4b, a clean Step 6a audit. On epics that was the normal case, and an epic gates a whole sub-issue tree.
 
 **Success Criteria — never fabricate (#2508).** `{Success criteria from PRD}` is a placeholder for PRD-supplied content. When the PRD's epic section has **no** Success Criteria heading, the slot has no source. **Do NOT synthesize criteria from the epic's child stories, and do NOT invent them** — an empty template slot is a gap to surface, not a prompt to generate. Epic #2491 got "8 specialists rewritten in opinion-dense format … each user-reviewed via `/review-issue`" this way: pulled up out of the child stories, inheriting their unsatisfiable review gate.
 
 When the PRD supplies none: (1) emit `## Success Criteria` with `_Not specified in the PRD. Add before this epic is worked._`; (2) record the gap in the Phase 7 summary and report `⚠️ Epic "{Epic Name}": PRD section has no Success Criteria. Created with the slot marked unspecified.`; (3) continue — warns, does not block.
+**The marker now parses as present-and-empty (#2697):** the heading is in the scanner's set, so an epic carrying only the unspecified marker returns `sectionFound: true` with zero items — a different fact from no section at all, with a different remedy. **Nothing above changes**; this is not a licence to generate.
 
 **Success Criteria — apply the AC gates.** When the PRD *does* supply criteria, they are ACs. Re-read `.claude/metadata/ac-feasibility-prompts.json` from disk and apply **`deliverableSplit`** (its `appliesTo` names `epic success criteria`; a criterion bundling deliverable + verification must be split, since one checkbox cannot express a satisfied deliverable alongside an unsatisfiable verification) and **`phaseFeasibility`** (condition resolving after the epic reaches `in_review` → annotate `→ GATE: review` / `→ GATE: release`; work another command's checklist owns → drop per `ownedElsewhere`).
 
@@ -301,6 +321,13 @@ gh issue comment $issue_num --body "## Backlog Created
 4. Move PRD: `gh pmu move $issue_num --status in_progress`
 
 PRD remains open until `/complete-prd` verifies all stories Done.
+**Step 4a: Offer to assign the PRD tracker to the current branch (#2696).** Immediately after the `--status in_progress` move — the moment the inconsistency appears (status says work started, board says it belongs to no workstream) and everything needed is in hand.
+**Offer, never force** (`06-runtime-triggers.md`): `AskUserQuestion`, assign-to-current-branch recommended, "skip — assign later with `/assign-branch`" the alternative.
+**Declining mutates nothing** — no status change, no assignment, no body edit, no label; continue to Phase 8. A decline is NOT recorded: the step is cheap to re-offer, and a persisted bypass would suppress it forever after one skip.
+**On acceptance, delegate** to `node .claude/scripts/shared/assign-branch.js` or `gh pmu move $issue_num --branch current` and report the result verbatim, including a failure. Do NOT re-derive assignment logic here.
+**Only the PRD tracker.** Epics and stories are deliberately excluded — bulk-assigning a just-materialized backlog is a far larger promise, and `/assign-branch` owns it.
+**No assignable branch → report and continue.** Detached HEAD, `main`, or no open branch tracker: no offer, report why, proceed. **Do NOT escalate into branch creation** — `assign-branch.js` answers `NO_BRANCH_FOUND` with suggestions and `/assign-branch` then offers `gh pmu branch start`, but `/create-backlog` must not grow a branch-creation prompt as a side effect of creating a backlog. The delegation above is conditional on a branch already existing.
+**Already assigned → suppress and report** in the Phase 8 output; a second run against the same PRD prompts nothing (idempotent). Re-assignment to a different branch is out of scope.
 
 ## Phase 8: Output Summary and Cleanup
 Two parts in order; the prune is **part of** this step, not a trailing step a reader can stop before.
@@ -321,7 +348,8 @@ Test cases embedded:
 PRD status: Backlog Created
 
 Next steps:
-1. Assign issues to branch: /assign-branch #epic #story... branch/name
+1. Assign remaining issues to branch: /assign-branch #epic #story... branch/name
+   (PRD tracker #{issue_num}: {assigned to <branch> in Step 4a | not assigned — no branch context | already assigned to <branch>})
 2. Start work: work #{story}
 ```
 **(2) Prune the task list** (unconditional — every path, including the Phase 1c review-gate and Phase 2 approval-gate early-exit paths, where those tasks were created up front and the later phases never ran): `TaskList` to enumerate, then `TaskUpdate status=deleted` for every task owned by this `/create-backlog` invocation (the `Phase N:` tasks created up front). Do **not** delete tasks created outside this invocation (user TODOs).

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  *
  * Fence-aware checkbox and section scanning for issue bodies (#2600).
  *
@@ -270,7 +270,20 @@ function scanCheckboxes(text) {
 const ACCEPTANCE_CRITERIA_HEADINGS = [
   { id: 'bold', pattern: /^\s*\*\*acceptance criteria:?\*\*\s*$/, level: null },
   { id: 'h3', pattern: /^\s*###\s+acceptance criteria\s*$/, level: 3 },
-  { id: 'h2', pattern: /^\s*##\s+acceptance criteria\s*$/, level: 2 }
+  { id: 'h2', pattern: /^\s*##\s+acceptance criteria\s*$/, level: 2 },
+  // #2697. /create-backlog names the epic section "Success Criteria", so an
+  // epic reached every heading-anchored consumer with ZERO visible criteria
+  // — and rule 08 Step 3 notes an empty AC list passes downstream gates
+  // VACUOUSLY rather than by succeeding, which on epics was the normal case.
+  //
+  // Extending the parser was chosen over renaming the section: a rename
+  // strands every PRD and every epic already authored against the current
+  // heading, none of which this retrofits.
+  //
+  // Global by design, not by accident: any body carrying this heading now
+  // yields criteria, not only epics. A section named for criteria should
+  // parse as criteria wherever it appears.
+  { id: 'success-h2', pattern: /^\s*##\s+success criteria\s*$/, level: 2 }
 ];
 
 function headingLevel(line) {

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.99.0
+ * @framework-script 0.100.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -20,6 +20,15 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execSync } = require('child_process'); // eslint-disable-line no-unused-vars
+
+// #2702: the hook reads the resolver rather than re-deriving "absence means
+// enabled" inline. Six consumers gate on this object and the discovery-implies-
+// groups rule is exactly the kind of thing five would get right and the sixth
+// would not.
+const {
+  resolveCrossSessionConfig,
+  formatEffectiveState,
+} = require('../scripts/shared/lib/cross-session-config.js');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ANSI color helpers
@@ -132,6 +141,7 @@ function gatherSessionInfo(cwd) {
     frameworkPath,
     charterStatus,
     ghPmuVersion,
+    crossSessionMessaging: resolveCrossSessionConfig(config),
     specialist,
     specialistPath,
   };
@@ -267,6 +277,12 @@ function renderBlock(info, checkResults, opts = { color: true }) {
   if (info.specialist?.warning) lines.push(`- ${w(`Specialist: ⚠️ ${info.specialist.warning}`)}`);
   if (info.reviewMode) lines.push(`- Review Mode: ${info.reviewMode}`);
 
+  // #2702. Read off `info`, not re-resolved here: renderBlock is called with
+  // hand-made info objects across the test suite and by callers predating
+  // #2702, and an absent value must behave exactly as it did before — no
+  // suffix, no extra row, no throw.
+  const messaging = info.crossSessionMessaging;
+
   // Check results
   for (const r of checkResults) {
     if (r.name === 'config-integrity') {
@@ -285,6 +301,18 @@ function renderBlock(info, checkResults, opts = { color: true }) {
     }
     if (r.name === 'branch-sync') {
       const status = r.parsed?.data?.status;
+      // `fetched: false` is the ABSENCE of information, not a clean bill of
+      // health, and it matters MOST when the cached ref claims parity —
+      // that is the case which otherwise emits no row at all, leaving a
+      // stale all-clear indistinguishable from a verified one (#2687).
+      //
+      // `no-upstream` is excluded on purpose: fetchUpstream() returns false
+      // whenever no remote or mergeRef is configured, so that status ALWAYS
+      // carries fetched:false. A caveat there would report a configuration
+      // state as a fetch failure.
+      if (r.parsed?.data?.fetched === false && status && status !== 'no-upstream') {
+        lines.push(`- Branch Sync: ${e('⚠️ unverified (upstream fetch failed; counts from a cached remote-tracking ref)')}`);
+      }
       if (status === 'behind' || status === 'diverged') {
         const ahead = r.parsed?.data?.ahead || 0;
         const behind = r.parsed?.data?.behind || 0;
@@ -340,24 +368,76 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       }
       // enabled-locally → omit, matching dependency's healthy.
     }
+    if (r.name === 'gh-auth') {
+      const auth = r.parsed?.data;
+      // The remedy is carried in full on the row. `gh pmu` warns to stderr and
+      // exits 0 on a scope failure, so this row is the only place the condition
+      // is ever stated plainly — every other symptom looks like an empty board
+      // field or a move that silently did nothing.
+      if (auth?.state === 'missing-scopes') {
+        lines.push(`- GitHub Token: ${e(`⚠️ missing ${auth.missing.join(', ')} — board reads return empty and \`gh pmu move\` cannot succeed. Fix: ${auth.remediation}`)}`);
+      } else if (auth?.state === 'undeterminable') {
+        // Never phrased as missing. A fine-grained PAT exposes no scope list at
+        // all, so the honest report is that nothing was learned — presenting
+        // that as a gap fails a correctly-privileged token (#2689 trap 1).
+        lines.push(`- GitHub Token: ${w(`⚠️ scopes could not be determined (${auth.reason}) — this is the absence of information, not an all-clear and not a missing scope.`)}`);
+      } else if (r.error === 'timeout') {
+        lines.push(`- GitHub Token: ${e('⚠️ check timed out')}`);
+      } else if (r.status === 'error') {
+        lines.push(`- GitHub Token: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      }
+      // verified → omit, matching dependency's healthy and task-tools'
+      // enabled-locally. A correctly-scoped token is the overwhelmingly common
+      // case and a ✅ line every session is noise.
+    }
     if (r.name === 'peers') {
       const peers = r.parsed?.data;
+      // #2702: a disabled group emits nothing and prints no per-invocation
+      // skip notice — that suppression is the user's own choice. This suffix
+      // is where the setting is made discoverable instead, so a configured
+      // project is distinguishable from an unconfigured one.
+      const suffix = messaging && !messaging.fullyEnabled
+        ? ` — ${formatEffectiveState(messaging)}`
+        : '';
       // The row carries the helper's own rendering verbatim. Re-deriving it
       // here would put the "seen vs reachable" distinction in two places, and
       // the copy that drifts is the one the user actually reads.
       if (peers?.state === 'peers') {
-        lines.push(`- Peers: ${w(peers.row)}`);
+        lines.push(`- Peers: ${w(peers.row + suffix)}`);
       } else if (peers?.state === 'unavailable') {
-        lines.push(`- Peers: ${w('⚠️ session registry unavailable — peer discovery inactive')}`);
+        lines.push(`- Peers: ${w(`⚠️ session registry unavailable — peer discovery inactive${suffix}`)}`);
       } else if (r.error === 'timeout') {
         lines.push(`- Peers: ${e('⚠️ check timed out')}`);
       } else if (r.status === 'error') {
         lines.push(`- Peers: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      } else if (suffix) {
+        // state `none` AND a configured state. The #2661 silence below is
+        // justified only for an UNCONFIGURED lone session; keeping it here
+        // would hide the configuration at the one place it is reported.
+        lines.push(`- Peers: ${w(`none${suffix}`)}`);
       }
       // none → omit, matching dependency's healthy and task-tools' enabled.
       // A lone session is the overwhelmingly common case; a line every startup
       // announcing it is noise in a block of short factual status lines.
     }
+  }
+
+  // Discovery disabled by config (#2702). The peers check is never registered
+  // in this case, so no result reaches the loop above and the row has to be
+  // emitted here. It must NOT be an absent row: `03-startup.md` already
+  // assigns absence the meaning "no peers found", and reusing it for "did not
+  // look" would make a configured project indistinguishable from a lone one.
+  if (messaging && messaging.discovery === false
+      && !checkResults.some((r) => r.name === 'peers')) {
+    // Name the cause, then the consequence, then the implication the resolver
+    // already authored. Routing this through formatEffectiveState instead said
+    // "discovery" twice and led with the generic phrasing rather than the one
+    // fact a reader needs: nothing was scanned.
+    const cause = messaging.enabled === false
+      ? 'crossSessionMessaging.enabled: false'
+      : 'crossSessionMessaging.discovery: false';
+    const implication = messaging.implications[0] || '';
+    lines.push(`- Peers: ${w(`⚠️ discovery disabled by config (${cause}) — the session registry was not read and peers were not looked for. ${implication}`.trim())}`);
   }
 
   // Charter status
@@ -384,7 +464,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 
   // Check failures (other than the checks rendered inline above, which already
   // emit their own timeout/error lines — listing one here too double-reports it)
-  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers']);
+  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers', 'gh-auth']);
   const failedOther = checkResults.filter((r) =>
     r.status === 'error' && !INLINE_RENDERED.has(r.name)
   );
@@ -474,6 +554,18 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
   const branchSync = checkResults.find((r) => r && r.name === 'branch-sync');
   const sync = branchSync?.parsed?.data;
 
+  // Same contract as the block renderer above (#2687): report an
+  // unverified fetch for every status that can be stale against an
+  // upstream. `behind` is excluded here only because it already carries
+  // the staleNote below -- adding a second caveat would duplicate it --
+  // and `no-upstream` because it always carries fetched:false.
+  if (sync && sync.fetched === false && sync.status
+      && sync.status !== 'no-upstream' && sync.status !== 'behind') {
+    instructions.push(
+      `Branch sync could not be verified: the upstream fetch for \`${sync.branch}\` failed, so the reported status \`${sync.status}\` and its counts come from a cached remote-tracking ref. Report it as unverified rather than as a confirmed state — the branch may be behind without that showing here.`
+    );
+  }
+
   if (sync && sync.status === 'behind') {
     const conflicts = Array.isArray(sync.conflictingPaths) ? sync.conflictingPaths : [];
 
@@ -496,11 +588,25 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
       );
     }
   } else if (sync && sync.status === 'diverged') {
-    // Deliberately narrower than #2001, which offered rebase/merge/skip here.
-    // A history-rewrite prompt at session start commits the user before they
-    // have seen the divergence. Reinstating that choice is a separate issue.
+    // #2668 Option B: a NAVIGATION offer, not a strategy offer. Still narrower
+    // than #2001, which offered rebase/merge/skip here.
+    //
+    // This answers #2518's two recorded objections rather than overriding them:
+    //   1. sequencing/consent — naming where the divergence gets resolved is not
+    //      a history rewrite, so the user is not committed to a strategy at the
+    //      moment they know least about what diverged;
+    //   2. non-assertability — the text is FIXED, so it is assertable per-state
+    //      exactly like every other branch-sync state. "Either offer nothing or
+    //      offer a choice" was the formulation that had no assertable outcome.
+    //
+    // No git command is named on purpose. The rebase that actually resolves this
+    // belongs to `/done` Step 2, which has its own guard and runs when the user
+    // is looking at the change — not at session start.
+    const staleNote = sync.fetched === false
+      ? ' (measured against a cached remote-tracking ref — the upstream fetch failed, so the real counts may be higher)'
+      : '';
     instructions.push(
-      `Branch \`${sync.branch}\` has diverged from its upstream (${sync.ahead} ahead, ${sync.behind} behind). Report the divergence and make no offer — a fast-forward is impossible, and choosing between rebase and merge is out of scope for session startup.`
+      `Branch \`${sync.branch}\` has diverged from its upstream (${sync.ahead} ahead, ${sync.behind} behind)${staleNote}. Report the divergence and make no offer to change history here — a fast-forward is impossible and picking a strategy at session start is out of scope. Point the user at the recovery path instead: run \`/done\` on the issue still in review, whose Step 2 sync guard resolves the divergence at the moment the change is in front of them, or push by hand. Do not run either for them.`
     );
   }
   // ahead / up-to-date / no-upstream / check absent → no instruction
@@ -623,7 +729,20 @@ async function main() {
   checks.push({ name: 'branch-sync', script: '.claude/scripts/shared/branch-sync-check.js' });
   checks.push({ name: 'dependency', script: '.claude/scripts/shared/dependency-check.js' });
   checks.push({ name: 'task-tools', script: '.claude/scripts/shared/task-tools-check.js' });
-  checks.push({ name: 'peers', script: '.claude/scripts/shared/peers-check.js' });
+  // #2689: registered UNCONDITIONALLY, alongside dependency and task-tools —
+  // deliberately NOT modelled on `peers` below. That one is gated because
+  // discovery is a project decision (#2702); token privilege is not. A project
+  // cannot opt out of needing the scopes its own .gh-pmu.json declares, and the
+  // check derives its requirement from that file: a project without one
+  // requires nothing and returns `verified` without spawning `gh` at all.
+  checks.push({ name: 'gh-auth', script: '.claude/scripts/shared/gh-auth-check.js' });
+  // #2702: discovery is a project decision. `false` means the check does not
+  // run at all — not that it runs and its output is discarded — so no session
+  // registry is read and nothing is scanned. renderBlock emits the
+  // disabled-by-config Peers row in place of the result this would produce.
+  if (info.crossSessionMessaging.discovery) {
+    checks.push({ name: 'peers', script: '.claude/scripts/shared/peers-check.js' });
+  }
 
   // Filter to existing scripts (graceful degradation)
   const validChecks = checks.filter((c) => fs.existsSync(path.join(cwd, c.script)));
