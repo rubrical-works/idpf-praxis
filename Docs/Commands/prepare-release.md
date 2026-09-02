@@ -26,4 +26,5 @@ Validate, create a PR to main, merge, and tag for deployment.
 - Multiple confirmation checkpoints: version, validation passed, PR approval, ready to tag, deployment verified
 - Checks for incomplete issues on the current branch before starting; does not proceed past CI failures
 - If `update-release-notes.js` already created the GitHub release after tagging (Step 4.8), skips duplicate creation in Step 5.3
+- The post-tag checklist includes verifying that `.claude/rules/` content actually reaches context in a freshly-installed project. The session startup block is not evidence of this: it renders through a different channel and renders correctly even when no rule has loaded
 - Extension points available at `pre-phase-1`, `post-analysis`, `pre-validation`, `post-validation`, `pre-commit`, `post-prepare`, `post-pr-create`, `pre-tag`, `post-tag`, `pre-close`, `post-close`

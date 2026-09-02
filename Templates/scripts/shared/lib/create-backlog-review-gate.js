@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.0
+ * @framework-script 0.100.1
  * @description Decide whether /create-backlog Phase 1c should gate on PRD review state. Exports evaluateReviewGate(). Reads the tracker's lifecycle checkbox and the review-state verdict together, so a reviewed PRD is not re-gated.
  * @checksum sha256:placeholder
  *

@@ -8,6 +8,101 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.100.1] - 2026-09-02
+
+Where 0.100.0 was about declarations that drifted from what was wired, this release is the same
+failure one layer down: a declaration that was *correct*, delivered through a channel nobody had
+tested end to end. `.claude/rules` was deployed to every user project as a Windows directory
+junction, and Claude Code's project-instruction auto-discovery does not traverse one — so **none of
+the eight auto-loaded rules reached context in any deployed project.** Anti-hallucination guards,
+GitHub-workflow STOP boundaries, shell conventions, charter enforcement and the entire `/work`
+execution rule were all absent, and nothing anywhere reported a problem.
+
+It failed silently for the most misleading possible reason: the junction *works*. `cat` and `ls`
+read straight through it, the files are present and correct, the startup block still renders and the
+domain specialist still loads — because those arrive through the hook, a different channel that was
+never broken. The only visible symptom was `/context` reporting a Memory-files figure far too small
+for the rules on disk. The reference documentation had also stated the deployment mode **both ways**
+in one file, listing rules under "What stays symlinked" while describing Praxis Hub Manager writing
+them via a constant named `COPY_RULES` — a contradiction that is the likeliest reason the drift went
+unexamined for so long.
+
+**Upgrade notes:**
+
+- **Rules are declared copied, not symlinked (#2736).** `framework-manifest.json`
+  `deploymentFiles.rulesDeploymentMode` is the signal Praxis Hub Manager branches on. This reverses
+  the deliberate *hub updates reach every project immediately* property for rules — a property that
+  currently delivers **nothing**, so the trade is a theoretical benefit for actual delivery.
+  **Praxis Hub Manager creates the junction, so only Praxis Hub Manager can stop creating it**
+  (`rubrical-worker/px-manager#1146`); the manifest field is a prerequisite for that change, not a
+  follow-up. **Already-installed projects still have a junction until that ships** — junctioned in
+  the field, copied by contract.
+
+- **The other junctioned directories are unaffected, and this was determined rather than assumed
+  (#2736).** `metadata`, `hooks`, `recipes` and `scripts/shared` are read *explicitly* by scripts and
+  hooks, and explicit reads traverse a junction fine. Only `.claude/rules/` depended on
+  auto-discovery. The deployed set already splits along exactly that boundary: everything
+  auto-discovered is a real copied directory, everything junctioned is explicitly read — `rules` was
+  the sole auto-discovered member deployed as a junction.
+
+- **Compaction survival is measured, not asserted (#2736).** The dependency documentation claimed
+  rules persist across compaction with nothing having checked it, while the startup rule claimed the
+  opposite mechanism. Probed on Claude Code 2.1.258 using the one auto-loaded rule never read or
+  discussed in the session, with answers committed before the file was reopened: rules **do**
+  survive, and the mechanism is **re-injection**, not retention. That matters here because
+  re-injection travels the same auto-discovery path a junction defeats — so in a deployed project the
+  rules were missing at *every* turn, not only the first.
+
+- **`--prior-art` forces a prior-art sweep (#2725).** Available on `/review-issue`,
+  `/review-proposal` and `/resolve-review`. It overrides the marker, the pinned feature cutoff, and
+  the issue-type restriction — the three short-circuits that exist to stop *automatic* sweeping, none
+  of which should refuse an explicit request. A project with `reviewSweep: "off"` still refuses, but
+  now says so verbatim and continues the review, because a refusal the user cannot see is the silent
+  no-op the flag exists to remove. The flag survives the `/review-issue` → `/review-proposal`
+  redirect; `/review-prd` and `/review-test-plan` report it inapplicable rather than swallowing it.
+
+### Added
+
+- `--prior-art` flag on `/review-issue`, `/review-proposal` and `/resolve-review`, forcing the
+  prior-art sweep regardless of marker, cutoff or issue type (#2725)
+- `framework-manifest.json` `deploymentFiles.rulesDeploymentMode`, declaring how `.claude/rules` is
+  deployed, with the matching `deploymentMode` in `constants.js` `INSTALLED_FILES_MANIFEST` (#2736)
+- `.claude/scripts/framework/repro-rules-junction.js` — builds the junction fixture and its
+  real-directory control, so the finding is re-runnable rather than resting on a one-off session
+  (#2736)
+- Post-tag release checklist step verifying that rules actually reach context in a freshly-installed
+  project, explicitly warning that the startup block is not evidence (#2736)
+
+### Fixed
+
+- `/design-system` `argument-hint` advertised four of its eight flags, omitting `--showcase`,
+  `--apply-decisions`, `--diff` and `--from-screenshot` (#2730)
+- The prior-art sweep advisory named a placeholder rather than the issue under review, so the command
+  it printed could not be run as shown (#2725)
+- `CHARTER.md` Scripts count and its In Scope prose disagreed with disk after a framework-only script
+  was added; `register-helper.js` covers `shared/` and `shared/lib/` only (#2736)
+- `CLAUDE.md`'s rules list named seven rules while eight were on disk, omitting
+  `08-work-execution.md` (#2736)
+
+### Changed
+
+- Junction non-traversal is documented as defeating context auto-discovery, not only `Glob`. The
+  previous note was tool-scoped and read as a `Glob` quirk, which is the sentence that made this
+  defect look impossible (#2736)
+- `Docs/Commands/` regenerated for `review-issue`, `review-proposal`, `resolve-review` and
+  `prepare-release`
+- `js-yaml` 4.3.1 → 5.2.2 (#2707)
+
+### Documentation
+
+- `Docs/02-Advanced/Claude-Code-Dependencies.md` §2 now records compaction behaviour as measured,
+  names the build it was measured on, and reconciles the two documents that disagreed about the
+  mechanism (#2736)
+- §3 of the same file remains inaccurate — it understates the hook surface and attributes compaction
+  to `resume-hook.js`, which does not handle it. Tracked as #2738 rather than fixed here
+
+---
+
 ## [0.100.0] - 2026-09-01
 
 Feature release, and the recurring shape this time is a **declaration that drifted from what was
@@ -1953,7 +2048,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.100.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.100.1` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -2246,7 +2341,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.100.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.100.1` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -2617,13 +2712,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.100.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.100.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.100.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.100.1` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.100.1` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.100.1` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.100.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.100.1` placeholder (#1479)
 
 ---
 
@@ -3321,15 +3416,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.100.0 placeholder after packaging
+- **#1059** - Skills retain v0.100.1 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.100.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.100.1 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.100.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.100.1"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -3489,7 +3584,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.100.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.100.1` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -3597,7 +3692,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.100.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.100.1` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -3628,8 +3723,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.100.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.100.0` placeholder
+- **#933** - v0.100.1 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.100.1` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -3770,7 +3865,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.100.0` placeholder
+  - Changed hardcoded version to `v0.100.1` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -3810,7 +3905,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.100.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.100.1` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -3887,10 +3982,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.100.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.100.1` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.100.0` placeholder
+- **#821** - README-DIST.md now uses `v0.100.1` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -4007,7 +4102,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.100.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.100.1 placeholder
 
 ---
 
@@ -4055,7 +4150,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.100.0 placeholders to 209 framework source files
+- Restored v0.100.1 placeholders to 209 framework source files
 
 ---
 
@@ -4123,12 +4218,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.100.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.100.1` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.100.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.100.1` format for consistent replacement
 
 ---
 
@@ -4197,7 +4292,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.100.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.100.1` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

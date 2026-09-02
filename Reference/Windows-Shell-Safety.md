@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.100.0
+**Version:** v0.100.1
 **Source:** Reference/Windows-Shell-Safety.md
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
@@ -185,7 +185,14 @@ rm -rf out
 rm -rf dist
 ```
 **Symlinked Directories and Glob:** Glob does NOT follow symlinks. Files inside symlinked directories are invisible to Glob.
-**Affected dirs in user projects:** `.claude/metadata/`, `.claude/rules/`, `.claude/hooks/`, `.claude/recipes/`, `.claude/scripts/shared/` -- symlinked to hub.
+**Non-traversal is NOT Glob-only — it also defeats context auto-discovery (#2736).** Read, `cat` and `ls` traverse a junction; an earlier version said other tools "access them fine" unqualified, which was true of explicit reads, false of discovery, and the sentence that made this defect look impossible: `.claude/rules/` was deployed as a junction, so **none of the 8 auto-loaded rules reached context in any deployed project.** Nothing errored, files read fine through the link, the startup block still rendered — the rules were never discovered.
+| Consumed by | Traverses a junction? |
+|---|---|
+| Read, `cat`, `ls`, `node require()` — explicit paths | **Yes** |
+| Glob | **No** |
+| Claude Code project-instruction auto-discovery (`.claude/rules/`) | **No** |
+**Affected dirs in user projects:** `.claude/metadata/`, `.claude/hooks/`, `.claude/recipes/`, `.claude/scripts/shared/` -- symlinked to hub, consumed by explicit reads, so the Glob caveat is their only consequence.
+**`.claude/rules/` is moving out of that set (#2736).** `framework-manifest.json` `deploymentFiles.rulesDeploymentMode` declares it `copied`. Until Praxis Hub Manager stops creating the junction (`rubrical-worker/px-manager#1146`) **already-installed projects still have one** — junctioned in the field, copied by contract, until that ships.
 **Not affected:** `.claude/skills/`, `.claude/commands/`, `.claude/extensions/` are **copied**, not symlinked -- real dirs, Glob works. See `Reference/Deployment-Awareness.md`.
 **Rules:**
 1. **Known paths -> Read tool directly.** Do NOT use Glob to check existence first.

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.0
+ * @framework-script 0.100.1
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the
@@ -363,19 +363,31 @@ function decideFlagSweep({ reviewSweep } = {}) {
 }
 
 /**
- * The advisory shown when a sweep was not run under mode `recommend` (#2564 AC8).
+ * The advisory shown when a sweep was not run under mode `recommend` (#2564 AC8,
+ * rewritten #2725).
  *
  * Names a command the reader can actually run. An advisory that only reports
  * absence leaves them to work out what to do about it, which is how a
  * recommendation degrades into noise that gets tuned out.
  *
+ * **It previously named the wrong half of the workflow.** The text pointed at
+ * `/enhancement <title> --prior-art` and `/proposal <title> --prior-art` — the
+ * *authoring* commands. This advisory is emitted during a **review**, so the
+ * issue already exists; re-invoking an authoring command files a *second* issue
+ * and sweeps nothing on the one being read. The instruction did not apply in the
+ * only situation it ever appeared in.
+ *
+ * It names `/review-issue` because that is the universal entry point: a
+ * `proposal`-labelled issue redirects to `/review-proposal` carrying the flag
+ * (#2725 AC2), so one command covers both artifacts and the reader does not have
+ * to know which they are looking at.
+ *
  * @returns {string}
  */
 function formatSweepAdvisory() {
   return (
-    'Prior art was not swept for this issue. To run one, re-invoke the authoring ' +
-    'command with the flag: `/enhancement <title> --prior-art` or ' +
-    '`/proposal <title> --prior-art`.'
+    'Prior art was not swept for this issue. To run one against this issue, ' +
+    're-invoke the review with the flag: `/review-issue #<N> --prior-art`.'
   );
 }
 

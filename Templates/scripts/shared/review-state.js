@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.0
+ * @framework-script 0.100.1
  * @description Classify an issue's review state for the /work review-state gate (#2577).
  * Returns exactly one of never-reviewed, findings-pending, reviewed-clean, or indeterminate,
  * reading the two signals the review subsystem already writes: the reviewed/pending labels

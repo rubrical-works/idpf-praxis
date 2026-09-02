@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.0
+ * @framework-script 0.100.1
  * @description Verify at session startup that the authenticated GitHub token holds the scopes this project's gh pmu workflow actually needs. Required scopes are derived from .gh-pmu.json presence and content, never hardcoded. Read-only and advisory: it runs `gh auth status`, never a mutating command, and emits the `gh auth refresh` remediation as text rather than executing it.
  * @checksum sha256:placeholder
  *

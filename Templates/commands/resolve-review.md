@@ -1,7 +1,7 @@
 ---
-version: "v0.100.0"
+version: "v0.100.1"
 description: Resolve review findings for an issue (project)
-argument-hint: "#issue"
+argument-hint: "#issue [--prior-art]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -17,6 +17,7 @@ Parse the latest review findings and resolve each one. Delegates parsing/classif
 | Argument | Description |
 |----------|-------------|
 | `#issue` | Issue number (e.g., `#42`) |
+| `--prior-art` | Forwarded verbatim to the Step 4 re-review, which runs the sweep. No sweep is performed here (#2725) |
 ---
 ## Execution
 **REQUIRED — routed command, two-phase task creation:**
@@ -93,10 +94,11 @@ After all findings resolved, mark the outer wrapper task `completed` **before** 
 ```
 TaskUpdate: mark "Apply body edits and re-review" task completed
 ```
-Then invoke re-review with `--force`:
+Then invoke re-review with `--force`, appending `--prior-art` when it was passed to this command (omit the trailing flag otherwise; `--force` is unconditional):
 ```
-Skill("review-issue", "#$ISSUE --force")
+Skill("review-issue", "#$ISSUE --force --prior-art")
 ```
+**Pass-through only (#2725).** No sweep logic here: no `decideFlagSweep`, no `reviewSweep` read, no `**Prior Art:**` write. `/review-issue` owns that decision at its 2a-iv, and re-implementing it would give one workflow two answers to the same question. Forwarding matters because the re-review is the only sweep opportunity in a resolve cycle — a flag dropped here is a typed sweep request answered with silence. Under `reviewSweep: off` the refusal surfaces from the nested re-review, which reports the message and **continues**; nothing is refused here and the cycle does not halt.
 `/review-issue` handles full cycle (preamble → evaluate → finalize), including `reviewed`/`pending` label swap.
 Report:
 ```

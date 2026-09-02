@@ -50,23 +50,40 @@ If Claude Code stops recognizing `.claude/` as a special directory, or renames a
 
 **What would break:** If Claude Code changed its command discovery path, stopped parsing markdown command files, or altered how command instructions are interpreted, all 48 commands become inaccessible.
 
-### 2. Auto-Loading Rules (5 rules)
+### 2. Auto-Loading Rules (8 rules)
 
 **How it works:** Claude Code automatically reads all `.md` files from `.claude/rules/` at session start and after context compaction. These files act as persistent instructions that survive the conversation lifecycle.
 
 **What we depend on:**
 - Files in `.claude/rules/` are read automatically — no explicit load needed
-- Rules persist after context compaction (Claude Code re-reads them)
+- Rules persist after context compaction — **measured, not assumed** (#2736; see below)
 - Rules are treated as system-level instructions that guide assistant behavior
 
 **Our rules:**
 | File | Purpose |
 |------|---------|
-| `01-anti-hallucination.md` | Prevents the assistant from inventing versions, counts, or file paths |
+| `01-anti-hallucination.md` | Prevents the assistant from inventing versions, counts, or file paths. **Variant pair** — deployed projects get the Software-Development text, this repo the Framework-Development one |
 | `02-github-workflow.md` | GitHub issue/project board integration (gh pmu commands) |
 | `03-startup.md` | Session initialization procedure |
-| `04-deployment-awareness.md` | Dev → distribution deployment chain |
+| `04-charter-enforcement.md` | Charter compliance. **Variant pair** — this is what a deployed project gets; `04-deployment-awareness.md` (dev → distribution chain) is dev-only and never materialises in a user project |
 | `05-windows-shell.md` | Windows Git Bash safety patterns |
+| `06-runtime-triggers.md` | Runtime artifact triggers (design decisions, tech debt, runbook) |
+| `07-task-creation-timing.md` | Two-phase task creation for routed commands |
+| `08-work-execution.md` | The `/work` execution rule — gates, TDD dispatch, STOP boundary |
+
+Slots `01` and `04` are variant pairs: the same filename carries different content for dev and deployed audiences, so ten registry entries in `framework-manifest.json` produce eight files in any one project.
+
+#### Compaction Survival — Measured 2026-09-02 (#2736)
+
+This line previously asserted the behaviour with nothing having checked it. Measured on Claude Code **2.1.258**, Windows 11, this repo, real (non-junctioned) `.claude/rules/`.
+
+**Probe design.** Three questions whose answers appear only in `06-runtime-triggers.md` — the one auto-loaded rule never read, grepped, or discussed anywhere in the session, so its content was present *solely* via auto-load injection. Any rule read from disk could have survived in the compaction summary and produced a false pass. Answers were committed to the transcript **before** the file was reopened. Result: **3/3 correct**, scored against the rule on disk (sha256 `69d8618…`, 8,163 bytes, unchanged across the probe).
+
+**The mechanism is re-injection, not retention.** After compaction the rule text arrived in a fresh `claudeMd` system-reminder block; the compaction summary itself contained none of it. Claude Code re-runs project-instruction discovery and re-injects. Claude issues no `Read` calls of its own — but the content is not "carried in the window" either.
+
+**Consequence for the junction defect — the reason this was worth measuring.** Re-injection travels the *same* auto-discovery path a directory junction defeats. So in a project where rules never reached context at startup, there is nothing to re-inject at compaction either: the failure is total, not first-turn-only.
+
+**Reconciling `03-startup.md`.** That rule states "No re-reading required … Claude resumes from **in-memory context**." Both of its operative claims hold — no re-read is required *of Claude*, and the startup hook genuinely does not re-run (it is registered on `SessionStart` matcher `startup` only). Only the phrase "in-memory" misattributes the agent: the harness re-injects each time. The observable behaviour the rule describes is correct.
 
 **What would break:** If rules stopped auto-loading, the assistant would lose its quality guardrails mid-session. Anti-hallucination rules prevent version number invention during releases. GitHub workflow rules enforce STOP boundaries. Without these, the assistant becomes unreliable for framework development.
 
@@ -194,12 +211,12 @@ These components would survive a Claude Code migration, though the scripts would
 | Dependency | Severity | Mitigation |
 |-----------|----------|------------|
 | `.claude/commands/` discovery | Critical | None — this is the primary interface |
-| `.claude/rules/` auto-loading | Critical | Could fall back to explicit reads, but loses compaction persistence |
+| `.claude/rules/` auto-loading **via a traversable path** | Critical | Could fall back to explicit reads, but loses compaction persistence. **Auto-loading and path traversal are one dependency, not two (#2736)** — in a deployed project, traversal *is* the delivery mechanism for auto-loading, so a traversal failure removes this row outright rather than degrading it |
 | Hook event system | High | Natural-language triggers would break; slash commands still work |
 | Tool names (Read, Write, etc.) | High | Command specs hardcode tool names |
 | `CLAUDE.md` recognition | Medium | Could embed instructions in rules instead |
 | Settings format | Medium | One-time migration script |
-| Symlink traversal | Medium | Workaround exists (direct Read, Bash ls) |
+| Symlink/junction traversal — **explicit reads only** | Medium | Workaround exists (direct Read, Bash `ls`) for `metadata`, `hooks`, `recipes`, `scripts/shared`, which are consumed by explicit reads. **This rating never covered auto-discovery**, and rating it Medium with "workaround exists" is how #2736 stayed hidden: there is no workaround when the consumer is discovery |
 | Skills system | Low | Skills are rarely loaded mid-session |
 
 **No version pinning exists.** IDPF has no mechanism to detect which Claude Code version is installed or whether the current version supports the features IDPF requires. A breaking Claude Code update would affect all users with no warning.

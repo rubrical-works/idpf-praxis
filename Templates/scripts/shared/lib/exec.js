@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.0
+ * @framework-script 0.100.1
  * @description Timed child-process wrappers. Exports execTimed(), execTimedAsync(), execFileTimed(), execFileTimedAsync() and withTimeout() — every spawn under shared/ routes through one of these so a hung gh/git call fails with ETIMEDOUT instead of blocking the workflow forever.
  * @checksum sha256:placeholder
  *
