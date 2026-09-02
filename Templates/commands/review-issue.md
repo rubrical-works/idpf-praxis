@@ -1,5 +1,5 @@
 ---
-version: "v0.100.1"
+version: "v0.100.2"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...] [--with ...] [--mode ...] [--force] [--prior-art]"
 copyright: "Rubrical Works (c) 2026"

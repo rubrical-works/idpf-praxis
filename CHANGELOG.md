@@ -8,6 +8,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.100.2] - 2026-09-02
+
+Security patch. `fast-uri` 3.1.5 → 3.1.6, closing four high-severity advisories that reach user
+projects through the bundled framework root.
+
+**What happened, because the timing is the interesting part.** The four advisories —
+[GHSA-jqff-g426-hqxp](https://github.com/advisories/GHSA-jqff-g426-hqxp),
+[GHSA-fph4-wmhf-6fwf](https://github.com/advisories/GHSA-fph4-wmhf-6fwf),
+[GHSA-f65p-4m7j-42xc](https://github.com/advisories/GHSA-f65p-4m7j-42xc) and
+[GHSA-5jgf-p345-68v8](https://github.com/advisories/GHSA-5jgf-p345-68v8) — were published between
+**15:41:53 and 15:44:30 UTC**. The v0.100.1 release began at **15:47:13**, about three minutes later.
+Its dev CI runs at 15:47 and 16:13 passed against audit data that did not yet carry them; the
+distribution repository's bare `npm audit` caught it at 16:27, after the tag was pushed.
+
+**This is the dev/dist audit-gate asymmetry (#2553) working as designed, not drift.** The dev gate
+asks *"should this branch block?"*; the dist gate asks *"does the published artifact carry a known
+advisory?"* At 16:27 the honest answer to the second question was yes, and that red is the only
+reason this was found the same day.
+
+**It was not a cooldown deferral.** `fast-uri` 3.1.6 had been published **10.6 days** earlier, past
+the 7-day `.npmrc` `min-release-age`, so the fix was installable throughout — the fix shipped first
+and the disclosure followed, which is the ordinary sequence and precisely the case the cooldown does
+not protect against.
+
+**Why it reached users.** `ajv` is both a production dependency and listed in
+`framework-manifest.json` `runtimeNpmDependencies`, so `deploy-dist.yml`'s `npm ci --omit=dev`
+bundles `ajv → fast-uri` into the framework root that Praxis Hub Manager installs. This was not a
+dev-only devDependency.
+
+**Anyone on v0.100.1 or earlier should upgrade.** The advisories describe the dependency, not this
+release, so prior versions carrying `fast-uri ≤ 3.1.5` are equally affected.
+
+### Fixed
+
+- `fast-uri` 3.1.5 → 3.1.6, closing four high-severity advisories reachable through the bundled
+  `ajv` dependency (#2740)
+
+### Changed
+
+- Lockfile only; `package.json` is untouched. Three incidental `@humanfs/*` updates are eslint's
+  filesystem layer and are **dev-only** — absent from the `--omit=dev` tree — so the production
+  bundle delta is exactly `fast-uri`
+
+---
+
 ## [0.100.1] - 2026-09-02
 
 Where 0.100.0 was about declarations that drifted from what was wired, this release is the same
@@ -2048,7 +2093,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.100.1` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.100.2` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -2341,7 +2386,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.100.1` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.100.2` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -2712,13 +2757,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.100.1` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.100.1` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.100.1` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.100.2` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.100.2` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.100.2` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.100.1` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.100.2` placeholder (#1479)
 
 ---
 
@@ -3416,15 +3461,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.100.1 placeholder after packaging
+- **#1059** - Skills retain v0.100.2 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.100.1 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.100.2 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.100.1"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.100.2"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -3584,7 +3629,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.100.1` pattern
+  - All 52 framework JS files now use `@framework-script v0.100.2` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -3692,7 +3737,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.100.1` placeholder
+- **#951** - Replace hardcoded versions with `v0.100.2` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -3723,8 +3768,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.100.1 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.100.1` placeholder
+- **#933** - v0.100.2 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.100.2` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -3865,7 +3910,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.100.1` placeholder
+  - Changed hardcoded version to `v0.100.2` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -3905,7 +3950,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.100.1` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.100.2` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -3982,10 +4027,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.100.1` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.100.2` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.100.1` placeholder
+- **#821** - README-DIST.md now uses `v0.100.2` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -4102,7 +4147,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.100.1 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.100.2 placeholder
 
 ---
 
@@ -4150,7 +4195,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.100.1 placeholders to 209 framework source files
+- Restored v0.100.2 placeholders to 209 framework source files
 
 ---
 
@@ -4218,12 +4263,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.100.1` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.100.2` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.100.1` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.100.2` format for consistent replacement
 
 ---
 
@@ -4292,7 +4337,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.100.1` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.100.2` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

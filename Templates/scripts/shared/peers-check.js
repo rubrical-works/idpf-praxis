@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.1
+ * @framework-script 0.100.2
  * @description Report other Claude Code sessions running in this same working directory at session startup. Reads the session registry (<claude-config-dir>/sessions/<pid>.json) with Node built-ins only, matches peers on exact cwd, excludes the calling session and dead entries, and distinguishes peers that carry a messaging address from those that do not. Read-only; never opens a socket and never mutates the working tree.
  * @checksum sha256:placeholder
  *

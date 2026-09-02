@@ -1,5 +1,5 @@
 # Task Creation Timing for Routed Commands
-**Version:** v0.100.1
+**Version:** v0.100.2
 **Purpose:** Prevent orphaned tasks when commands have routing decisions.
 ## Availability Precondition
 **Task tools may not exist in the session.** `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate` are gated by remote flag `tengu_rosy_wren` (default off); local override `CLAUDE_CODE_ENABLE_TODO_TOOLS=true` in `~/.claude/settings.json` `env`. Server-side rollout — availability differs between sessions with no local change, which reads as intermittent breakage rather than a feature flag.

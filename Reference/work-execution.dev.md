@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.100.1
+**Version:** v0.100.2
 **Source:** Reference/work-execution.md (dev-preserve variant, #2395)
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow. This variant preserves FRAMEWORK-ONLY blocks for self-hosted dev; the stripped variant ships via `.min-mirror/Reference/work-execution.md` to user projects.
 ## Execution Instructions
@@ -161,7 +161,7 @@ It performs **four** CI-enforced edits:
 | 1 | `framework-manifest.json` | append to `deploymentFiles.scripts.shared.files` or `deploymentFiles.scripts["shared/lib"].files` | `deployment-parity.test.js` |
 | 2 | `constants.js` | append to `INSTALLED_FILES_MANIFEST.scripts.files` or `.scriptsLib.files` | `deployment-parity.test.js` |
 | 3 | `CHARTER.md` | recompute the `Scripts` row from disk | `charter-entity-counts.test.js` |
-| 4 | helper JSDoc | **reported, not written** — `@framework-script v0.100.1` is authored content | `manifest-validation.test.js` |
+| 4 | helper JSDoc | **reported, not written** — `@framework-script v0.100.2` is authored content | `manifest-validation.test.js` |
 **Row 4 is a report, still yours to do.** The script warns and continues; add the line, then commit everything with the helper: `Refs #$ISSUE`.
 **Row 3 is why this is a tool.** Registration was documented as *three* edits for as long as Step 4e existed, but a new `shared/lib` module also moves `CHARTER.md`'s counts — a fourth edit the rule never named, enforced by a suite that fails on it. Following the written procedure exactly still produced a red run.
 > **Why a script, not a longer checklist (#2620):** the `shared/lib` key contains a slash and **cannot** be dot-accessed; a dot form reads `undefined` silently and `|| []` turns that into a plausible `false`. That hazard was already documented here and still paid by hand every time — most recently #2600 for `lib/checkbox-scan.js`. Documentation cannot fix a transcription error it has already warned about; a tool can.

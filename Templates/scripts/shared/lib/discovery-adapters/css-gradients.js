@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.1
+ * @framework-script 0.100.2
  * @description CSS Gradient discovery adapter. Scans .css/.scss files for
  * linear-gradient(...) and radial-gradient(...) calls and extracts them as
  * DTCG `gradient` $type candidates (#2346).

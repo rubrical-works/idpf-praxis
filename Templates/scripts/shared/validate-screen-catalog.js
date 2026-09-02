@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.1
+ * @framework-script 0.100.2
  * Validate Mockups/screen-catalog.json against 9 invariants.
  *
  * Invariants:

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.1
+ * @framework-script 0.100.2
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *

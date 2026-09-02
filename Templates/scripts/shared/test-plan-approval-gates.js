@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.1
+ * @framework-script 0.100.2
  * @description Roll review findings up onto the test-plan approval gates declared in
  * .claude/metadata/test-plan-approval-gates.json (#2711, epic #2693). Pure function of two
  * arguments — the gate map and a review findings JSON — returning, per gate, whether it is
