@@ -170,15 +170,15 @@ The naming is deliberate: if you see `pre-validation` on `/prepare-release`, you
 
 ## Which Commands Are Extensible?
 
-The following commands support extensions. Here's the full map:
+Eighteen commands support extensions, with 77 extension points between them. The authoritative list is the registry (`/extensions list`); this map reflects it as of 0.101.0:
 
 ### High-Extension Commands (8+ points)
 
 | Command | Points | Key Extensions |
 |---|---|---|
-| **`/prepare-release`** | 13 | post-analysis, pre/post-validation, pre-commit, post-pr-create, pre/post-tag, pre/post-close, 3 checklists |
-| **`/prepare-beta`** | 9 | post-analysis, pre/post-validation, post-prepare, pre-commit, pre/post-tag, 2 checklists |
-| **`/create-prd`** | 9 | pre/post-analysis, pre/post-transform, pre/post-diagram, diagram-generator, pre/post-generation, quality-checklist |
+| **`/prepare-release`** | 14 | pre-phase-1, post-analysis, pre/post-validation, pre-commit, post-prepare, post-pr-create, pre/post-tag, pre/post-close, 3 checklists |
+| **`/prepare-beta`** | 10 | pre-phase-1, post-analysis, pre/post-validation, post-prepare, pre-commit, pre/post-tag, 2 checklists |
+| **`/create-prd`** | 10 | pre/post-analysis, pre/post-transform, pre/post-diagram, diagram-generator, pre/post-generation, quality-checklist |
 
 These are the commands where you'll spend most of your extension effort. Release and PRD workflows have the most project-specific variation.
 
@@ -187,10 +187,11 @@ These are the commands where you'll spend most of your extension effort. Release
 | Command | Points | Key Extensions |
 |---|---|---|
 | **`/merge-branch`** | 6 | pre-gate, gates, post-gate, post-pr-create, post-merge, post-close |
-| **`/done`** | 3 | pre-done, post-push, post-done |
-| **`/work`** | 3 | pre-work, post-work-start, pre-framework-dispatch |
+| **`/ci`** | 5 | pre/post-add, pre/post-recommend, custom-subcommands |
+| **`/catalog-screens`** | 3 | pre-catalog, post-discovery, post-catalog |
 | **`/destroy-branch`** | 3 | pre-destroy, post-confirm, post-destroy |
-| **`/review-issue`** | 3 | pre-review, criteria-customize, post-review |
+| **`/done`** | 3 | pre-done, post-push, post-done |
+| **`/paths`** | 3 | pre-paths, post-category, post-paths |
 | **`/review-prd`** | 3 | pre-review, criteria-customize, post-review |
 | **`/review-proposal`** | 3 | pre-review, criteria-customize, post-review |
 
@@ -199,9 +200,16 @@ These are the commands where you'll spend most of your extension effort. Release
 | Command | Points | Key Extensions |
 |---|---|---|
 | **`/bug`** | 2 | pre-create, post-create |
-| **`/enhancement`** | 2 | pre-create, post-create |
-| **`/proposal`** | 2 | pre-create, post-create |
 | **`/create-branch`** | 2 | pre-create, post-create |
+| **`/design-system`** | 2 | discovery-adapters, export-adapters |
+| **`/enhancement`** | 2 | pre-create, post-create |
+| **`/mockups`** | 2 | pre-mockup, post-mockup |
+| **`/proposal`** | 2 | pre-create, post-create |
+| **`/review-test-plan`** | 2 | pre-review, post-review |
+
+### Managed Commands (no extension points)
+
+`/work`, `/review-issue` and `/resolve-review` are **managed** commands: the hub owns them outright, they are symlinked rather than copied into your project, and they carry no `USER-EXTENSION` blocks. `/work` lost its four points in 0.88.0; `/review-issue` lost `pre-review`, `criteria-customize` and `post-review` in 0.101.0. In both cases the points had gone unused, and the customization they were meant to carry is already served by data: `/review-issue` reads its criteria from the framework's review-criteria and review-mode-criteria registries, and its domain-specific checks (security, accessibility, performance and so on) are selected per run with `--with`. Retired points are recorded under `deprecatedExtensionPoints` in the registry rather than deleted, so an old recipe or note that names one still resolves to an explanation.
 
 ---
 
@@ -263,13 +271,15 @@ Tell the assistant: "Post a message to Slack with the version number. Use the SL
 
 ### Example 4: Custom Review Criteria
 
-You want `/review-issue` to check for accessibility considerations on every story.
+You want `/review-proposal` to check for accessibility considerations on every proposal.
 
 ```
-/extensions edit review-issue:criteria-customize
+/extensions edit review-proposal:criteria-customize
 ```
 
-Tell the assistant: "Add a criterion that checks whether the story considers accessibility impact. Ask whether WCAG compliance was addressed."
+Tell the assistant: "Add a criterion that checks whether the proposal considers accessibility impact. Ask whether WCAG compliance was addressed."
+
+The same point exists on `/review-prd`. It does **not** exist on `/review-issue`, which is a managed command since 0.101.0: to add accessibility checks to an issue review, run `/review-issue #N --with accessibility` instead of editing an extension block.
 
 ### Example 5: Linting Before Work Starts
 

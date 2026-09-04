@@ -50,7 +50,7 @@ If Claude Code stops recognizing `.claude/` as a special directory, or renames a
 
 **What would break:** If Claude Code changed its command discovery path, stopped parsing markdown command files, or altered how command instructions are interpreted, all 48 commands become inaccessible.
 
-### 2. Auto-Loading Rules (8 rules)
+### 2. Auto-Loading Rules (9 rules)
 
 **How it works:** Claude Code automatically reads all `.md` files from `.claude/rules/` at session start and after context compaction. These files act as persistent instructions that survive the conversation lifecycle.
 
@@ -87,24 +87,41 @@ This line previously asserted the behaviour with nothing having checked it. Meas
 
 **What would break:** If rules stopped auto-loading, the assistant would lose its quality guardrails mid-session. Anti-hallucination rules prevent version number invention during releases. GitHub workflow rules enforce STOP boundaries. Without these, the assistant becomes unreliable for framework development.
 
-### 3. Hooks (5 hooks, 3 event types)
+### 3. Hooks (9 hook registrations, 5 event types)
 
 **How it works:** Claude Code fires JavaScript hooks in response to events. Hooks are registered in `.claude/settings.local.json` under the `hooks` key. Each hook specifies an event type, a matcher pattern, and a command to execute.
 
+**Counting basis: registrations in this repository's `.claude/settings.local.json`.** Three defensible counts exist here and they disagree, so the number above says which one it is:
+
+| Basis | Count | What it counts |
+|-------|-------|----------------|
+| **Registrations** (used above) | **9** | Entries in this repo's `settings.local.json`, across 5 event types |
+| Files in `.claude/hooks/` | 8 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/` |
+| Deployed to user projects | 7 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 6 `.js` plus the non-`.js` `pre-push` script |
+
+**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js` is deployed but registered by the hub installer, not by this file.
+
 **Event types we use:**
 
-| Event | Hook | Purpose |
-|-------|------|---------|
-| `PostToolUse` | `test-on-change.js` | Runs tests automatically when files are edited/written |
-| `UserPromptSubmit` | `workflow-trigger.js` | Detects `bug:`, `work #N`, `done`, `review #N` and routes to commands |
-| `SessionStart` | `startup-hook.js` | Initializes session state |
-| `SessionStart` | `clear-hook.js` | Clears state on `/clear` |
-| `SessionStart` | `resume-hook.js` | Restores state after context compaction |
+| Event | Matcher | Hook | Purpose |
+|-------|---------|------|---------|
+| `PreToolUse` | `Edit\|Write` | `guard-commands-src.js` | Guards direct edits to generated command specs |
+| `PreToolUse` | `Bash` | `block-cd.js` | Denies `cd`, whose persisted cwd silently breaks later relative paths |
+| `PostToolUse` | `Edit\|Write` | `test-on-change.js` | Runs tests automatically when files are edited/written |
+| `UserPromptSubmit` | — | `workflow-trigger.js` | Detects `bug:`, `work #N`, `done`, `review #N` and routes to commands |
+| `SessionStart` | `startup` | `startup-hook.js` | Initializes session state |
+| `SessionStart` | `clear` | `clear-hook.js` | Clears state on `/clear` |
+| `SessionStart` | `resume` | `resume-hook.js` | Restores state when resuming a session (`--resume` / `--continue`) |
+| `SessionStart` | `compact` | `compact-hook.js` | Fires **after context compaction** |
+| `PreCompact` | — | `precompact-hook.js` | Fires **before** compaction begins |
+
+**`resume` and `compact` are different matchers and different hooks.** This section previously credited compaction to `resume-hook.js`, which fires on `--resume`/`--continue` and never on compaction — leaving a reader to conclude no compaction hook existed. `SessionStart` firing with matcher `compact` is the fact #2736 AC8 turned on, and §3 is where a reader would come to check it.
 
 **What we depend on:**
 - `settings.local.json` format is stable (JSON with `hooks` key)
-- Three event types exist: `PostToolUse`, `UserPromptSubmit`, `SessionStart`
-- Matcher patterns work (`Edit|Write` for PostToolUse, `clear`/`startup`/`resume` for SessionStart)
+- Five event types exist: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `PreCompact`
+- Matcher patterns work — `Edit|Write` and `Bash` for `PreToolUse`, `Edit|Write` for `PostToolUse`, and `startup`/`clear`/`resume`/`compact` for `SessionStart`
+- `SessionStart` distinguishes its four matchers, so `compact` fires only after compaction
 - Hooks execute as `node <script>` with a configurable timeout
 - Hook output is treated as feedback to the assistant
 

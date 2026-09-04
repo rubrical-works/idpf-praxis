@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  *
  * Resolver for the `crossSessionMessaging` project config (#2702).
  *
@@ -36,10 +36,21 @@
  * only project-writable surface -- the same reasoning that put `reviewSweep`
  * there (#2564).
  *
- * SCOPE: this governs EMISSION. Whether a dispatched message is accepted,
- * held, declined, or left to expire is the receiving session's permission-mode
- * decision, undetectable from the sender (#2674). No setting here can promise
- * delivery, and nothing in this module should be read as doing so.
+ * SCOPE: this governs EMISSION, with exactly one deliberate exception.
+ * Whether a dispatched message is accepted, held, declined, or left to expire
+ * is the receiving session's permission-mode decision, undetectable from the
+ * sender (#2674). No setting here can promise delivery, and nothing in this
+ * module should be read as doing so.
+ *
+ * THE EXCEPTION is `noticeNarration` (#2735), which governs how verbosely THIS
+ * session narrates an announcement it RECEIVES. It sits here rather than in a
+ * sibling top-level key so that it inherits one resolver, one absence rule and
+ * the `--on`/`--off` idiom; a parallel key would have re-implemented all three,
+ * and a second copy of the absence rule is precisely what this module exists to
+ * prevent. The trade is recorded rather than hidden: the emission-only framing
+ * above is now true of every lever except this one, and a reader who assumes
+ * otherwise will look for a receive-side setting that does not exist elsewhere.
+ * It is also why `discovery: false` does NOT imply it -- see resolveCrossSessionConfig.
  *
  * Node built-ins only -- in fact no requires at all -- per the runtime
  * dependency contract in `04-deployment-awareness.md`.
@@ -48,7 +59,7 @@
 'use strict';
 
 /** Top-level boolean levers, in display order. */
-const LEVERS = ['enabled', 'discovery', 'notices', 'upstreamMonitor'];
+const LEVERS = ['enabled', 'discovery', 'notices', 'upstreamMonitor', 'noticeNarration'];
 
 /** Announcement groups, in event order. */
 const GROUPS = ['work', 'push', 'review'];
@@ -101,6 +112,11 @@ function resolveCrossSessionConfig(config) {
     discovery: !isOff(xsm.discovery),
     notices: !isOff(xsm.notices),
     upstreamMonitor: !isOff(xsm.upstreamMonitor),
+    // The one RECEIVE-side lever (#2735). Named so that `true` is today's
+    // behaviour: a lever called `quietNotices` would invert the absence rule
+    // above and silently make every project that never wrote this object go
+    // quiet — the exact failure the header warns about, one key down.
+    noticeNarration: !isOff(xsm.noticeNarration),
     groups: {
       work: !isOff(rawGroups.work),
       push: !isOff(rawGroups.push),
@@ -115,6 +131,7 @@ function resolveCrossSessionConfig(config) {
     state.discovery = false;
     state.notices = false;
     state.upstreamMonitor = false;
+    state.noticeNarration = false;
     for (const g of GROUPS) state.groups[g] = false;
     state.implications.push(
       'enabled is off, so every other lever resolves off: discovery, notices, '
@@ -128,7 +145,11 @@ function resolveCrossSessionConfig(config) {
     //
     // The upstream monitor is deliberately NOT folded in -- it polls the git
     // upstream, not peers, and disabling it here would take out an unrelated
-    // feature on a setting that never mentioned it.
+    // feature on a setting that never mentioned it. `noticeNarration` is left
+    // alone for the same reason and one more: it is RECEIVE-side. This branch
+    // reasons about announcing TO peers never discovered, which says nothing
+    // about how this session narrates what it RECEIVES -- and a session can
+    // still receive announcements with its own discovery off.
     for (const g of GROUPS) state.groups[g] = false;
     state.implications.push(
       'discovery is off, so all three announcement groups resolve off — '
@@ -180,6 +201,7 @@ function formatEffectiveState(state) {
   }
   if (state.notices === false) off.push('notices');
   if (state.upstreamMonitor === false) off.push('upstream monitor');
+  if (state.noticeNarration === false) off.push('notice narration (quiet)');
 
   if (off.length === 0) return 'cross-session messaging: fully enabled';
   return `cross-session messaging: partially disabled by config — off: ${off.join(', ')}`;

@@ -44,7 +44,13 @@ Placeholder detection treats sections as missing if body is under 20 characters 
 
 ## Review Is Now Load-Bearing for `/work`
 
-Before this release, running `/review-issue` on an epic was advisory — nothing downstream checked whether it had happened. `/work` now classifies each issue's review state before the first acceptance criterion is worked, and again independently for **each sub-issue** as its turn begins:
+Running `/review-issue` on an epic used to be advisory — nothing downstream checked whether it had happened. `/work` now checks review state at two moments.
+
+**Once, up front, over the whole tree.** Before the first sub-issue is worked, `/work` on an epic classifies the epic itself plus every child it will process, and raises **one** question covering all of them. If any member has never been reviewed it offers `/review-issue`; if any carries unresolved findings it offers `/resolve-review`; both in the same question when both apply. Accepting means work does not begin. Declining proceeds with the whole run and writes a note into the epic body recording the decision. That note is a record, not a suppression: the next `/work` on the same epic asks again, because a sub-issue added later or findings raised after the decline would otherwise never be surfaced.
+
+The same up-front gate runs for a branch tracker under `--nonstop` (the tracker itself is not classified, since nothing reviews a branch tracker, and no note is written because the tracker body is machine-parsed) and for any set of issues typed on one `/work` line. A typed selection of two or more also offers a third answer: proceed with the clean members only, dropping the flagged ones. Removing one hand-typed number from a list is an ordinary answer; removing a sub-issue from an epic is not, which is why the epic form does not offer it.
+
+**Again, per issue, as its turn begins.** Each sub-issue is classified independently when reached. A member the up-front question already decided is not asked about twice in the same run; a member that question never saw (added mid-run, or reached after a compaction) is caught here.
 
 | Review state | Single interactive issue | Epic, branch tracker, or batch | `--nonstop` |
 |---|---|---|---|
@@ -53,7 +59,7 @@ Before this release, running `/review-issue` on an epic was advisory — nothing
 | Reviewed clean | Proceeds | Proceeds | Proceeds |
 | Indeterminate | Proceeds | Proceeds | Proceeds |
 
-Two asymmetries are deliberate. **Never-reviewed only warns on epics** because that is the normal state of sub-issues `/create-backlog` has just created — halting on it would stop nearly every epic run on its first sub-issue. **Unresolved findings halt under `--nonstop`** because working an issue whose criteria a reviewer already flagged is the same class of problem as a failing test, which `--nonstop` also halts on.
+Two asymmetries in the per-issue table are deliberate. **Never-reviewed only warns per sub-issue** because that is the normal state of sub-issues `/create-backlog` has just created — halting there would stop nearly every epic run on its first sub-issue, whereas one question up front about the whole tree is not that interruption, which is why the tree-wide gate can afford to ask. **Unresolved findings halt under `--nonstop`** because working an issue whose criteria a reviewer already flagged is the same class of problem as a failing test, which `--nonstop` also halts on.
 
 The gate reads signals the review subsystem already writes — the `reviewed` / `pending` labels and the `**Reviews:** N` body marker this cascade produces. There is no separate state to maintain. Declining the offer changes nothing: no label, no status move, no body edit. Review stays advisory; the gate only makes its absence visible at the one moment it is still cheap to fix.
 

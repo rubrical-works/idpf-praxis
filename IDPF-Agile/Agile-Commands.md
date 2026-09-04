@@ -1,8 +1,8 @@
 # Agile-Driven Development Framework - Commands
-**Version:** v0.100.2
+**Version:** v0.101.0
 **Module:** Commands (loaded on-demand)
 ## Complete Command Reference (49 commands)
-Authoritative source: `.claude/commands/`. Use `/self-diag` for a live audit.
+Authoritative source: `.claude/commands/`. Use `/fw-self-diag` for a live audit.
 | Category | Commands |
 |----------|----------|
 | **Issue Creation** | `/bug`, `/enhancement`, `/proposal` |
@@ -10,12 +10,12 @@ Authoritative source: `.claude/commands/`. Use `/self-diag` for a live audit.
 | **Workflow** | `/work`, `/done`, `/pivot`, `/assign-branch`, `/transfer-issue`, `/issue-reset` |
 | **Branch & Release** | `/create-branch`, `/switch-branch`, `/merge-branch`, `/destroy-branch`, `/prepare-release`, `/prepare-beta` |
 | **Review** | `/review-issue`, `/review-proposal`, `/review-prd`, `/review-test-plan`, `/resolve-review`, `/code-review`, `/bad-test-review` |
-| **Auditing** | `/audit-commands`, `/audit-core-docs`, `/audit-extensions`, `/audit-hallucination`, `/audit-minimization`, `/gap-analysis`, `/self-diag` |
+| **Auditing** | `/fw-audit-commands`, `/audit-core-docs`, `/fw-audit-extensions`, `/fw-audit-hallucination`, `/fw-audit-minimization`, `/fw-gap-analysis`, `/fw-self-diag` |
 | **Design & Mockups** | `/mockups`, `/catalog-screens`, `/design-system`, `/paths` |
-| **Skills & Extensions** | `/skill-validate`, `/extensions`, `/add-recipe`, `/change-domain-expert` |
+| **Skills & Extensions** | `/fw-skill-validate`, `/extensions`, `/fw-add-recipe`, `/change-domain-expert` |
 | **CI/CD** | `/ci`, `/playwright-check` |
-| **Documentation** | `/minimize-files`, `/idpf-stats` |
-| **Gemini** | `/transform-gemini` |
+| **Documentation** | `/fw-minimize-files`, `/idpf-stats` |
+| **Gemini** | `/fw-transform-gemini` |
 ## Backlog Management Commands
 All backlog commands work against GitHub issues. No local backlog files are created.
 **Prerequisites:** `.gh-pmu.json` configured in repository root, `gh pmu` extension installed

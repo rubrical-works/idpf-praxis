@@ -2,9 +2,22 @@
   "$schema": "trigger-flag-allowlist-schema.json",
   "version": 1,
   "commands": {
-    "/review-issue": ["--with", "--mode", "--force"],
-    "/bug": ["--assignee"],
-    "/enhancement": ["--assignee"],
-    "/proposal": ["--assignee"]
+    "/review-issue": [
+      "--with",
+      "--mode",
+      "--force",
+      "--prior-art",
+      "--without"
+    ],
+    "/bug": [
+      "--assignee"
+    ],
+    "/enhancement": [
+      "--assignee"
+    ],
+    "/proposal": [
+      "--assignee",
+      "--update"
+    ]
   }
 }

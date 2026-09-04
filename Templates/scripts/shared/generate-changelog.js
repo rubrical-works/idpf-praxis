@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Generate a Keep a Changelog formatted entry from categorized commits. Accepts piped input from analyze-commits.js or reads commits directly. Groups changes by type (Added, Changed, Fixed, Removed) with issue references. Used by /prepare-release.
  * @checksum sha256:placeholder
  *
@@ -11,6 +11,39 @@
 
 const git = require('./lib/git');
 const out = require('./lib/output');
+// The version recommendation's classifier, reused rather than reimplemented
+// (#2602). /prepare-release Phase 1 names recommend-version.js authoritative for
+// the bump; a changelog grouped by a different judgment would contradict the
+// verdict the same release just acted on. Requiring it is side-effect free — its
+// CLI is behind a require.main guard.
+const { classifyCommit, classifyByIssueLabels, lookupIssueLabels } = require('./recommend-version.js');
+
+/**
+ * Resolve a commit's changelog intent when its conventional type says nothing.
+ *
+ * Only consulted for commits that would otherwise fall to the default arm.
+ * Prefix-typed commits keep their existing precedence exactly — a project
+ * already using conventional commits must not be silently reclassified.
+ *
+ * Labels are preferred over the message because they are the stronger signal:
+ * "Refs #2658 — assign the branch tracker to its creator" carries no feature
+ * keyword, and only the `enhancement` label says what it is. Keyword heuristics
+ * are the fallback beneath that, and `other` remains a real answer — an
+ * unclassifiable commit belongs in Changed, not dropped.
+ *
+ * @param {{message?: string, labels?: string[]}} commit
+ * @param {function} [lookupLabels] - fn(issueNumber) → string[]; omitted in unit
+ *   tests so they stay offline and fast, supplied by the CLI so a real release
+ *   resolves the same labels the version recommendation did.
+ * @returns {'feature'|'fix'|'breaking'|'other'}
+ */
+function resolveIntent(commit, lookupLabels) {
+    if (Array.isArray(commit.labels) && commit.labels.length > 0) {
+        const byLabel = classifyByIssueLabels(commit.labels);
+        if (byLabel !== 'other') return byLabel;
+    }
+    return classifyCommit(commit.message, lookupLabels);
+}
 
 function showHelp() {
     console.log(`
@@ -115,7 +148,8 @@ function formatDate(dateStr) {
     return now.toISOString().split('T')[0];
 }
 
-function generateChangelog(commits, version, date) {
+function generateChangelog(commits, version, date, options = {}) {
+    const { lookupLabels } = options;
     const sections = {
         added: [],
         changed: [],
@@ -153,11 +187,22 @@ function generateChangelog(commits, version, date) {
             case 'security':
                 sections.security.push(entry);
                 break;
-            default:
-                // Put other commits in changed
-                if (commit.message) {
+            default: {
+                // No conventional prefix. Before filing under Changed, ask the
+                // authoritative classifier what this commit is (#2602): under a
+                // `Refs #N` convention EVERY commit reaches this arm, so the
+                // pre-#2602 behaviour left Added and Fixed empty on every
+                // release of such a project — this one included.
+                if (!commit.message) break;
+                const intent = resolveIntent(commit, lookupLabels);
+                if (intent === 'feature' || intent === 'breaking') {
+                    sections.added.push(entry);
+                } else if (intent === 'fix') {
+                    sections.fixed.push(entry);
+                } else {
                     sections.changed.push(entry);
                 }
+            }
         }
 
         // Breaking changes get special mention
@@ -259,7 +304,7 @@ async function main() {
     }
 
     // Generate changelog
-    const changelog = generateChangelog(commits, version, date);
+    const changelog = generateChangelog(commits, version, date, { lookupLabels: lookupIssueLabels });
 
     // Output markdown directly (not JSON)
     console.log(changelog);

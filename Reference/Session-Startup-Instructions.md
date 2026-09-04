@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.100.2
+**Version:** v0.101.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
@@ -60,6 +60,16 @@ The `peers` check is **registered** only when `crossSessionMessaging.discovery` 
 **`discovery: false` must NEVER render as an absent row.** The table above already assigns absence the meaning *no peers found*; reusing it for *did not look* makes a configured project indistinguishable from a lone one — different facts, different remedies, and the whole reason the row exists.
 **The `none` + configured case is why a row appears where #2661 said it should not.** That silence is justified for an *unconfigured* lone session and only there. This row and `/x-session-config`'s opening display are the **only** two places effective state surfaces, because the emitters deliberately print no per-invocation skip notice — announcing the suppression every run is the noise the setting removes.
 **The upstream monitor is governed separately** by `upstreamMonitor`, via `upstream-monitor.js` `armingDecision()`, reported once at arm time. `discovery: false` does **not** disable it — it polls the git upstream, not peers.
+### Inbound announcement narration — `noticeNarration` (#2735)
+Every other `crossSessionMessaging` lever governs **emission**. This one governs **reception**: how verbosely this session narrates an announcement it receives.
+| Resolved value | Behaviour on an inbound announcement |
+|---|---|
+| absent or `true` (default) | Verbose — may look the issue up, enumerate likely files, analyse the collision surface |
+| `false` (quiet) | **One-line acknowledgement KEPT**; commentary not — no issue lookup, no likely-files enumeration, no collision-surface analysis |
+**Quiet is not silence, and that distinction is the contract.** The acknowledgement is the only evidence the sender has that anything landed — dispatch is undetectable from the sending side (#2674) — so suppressing it removes the one signal the protocol does provide. Quiet trims what the protocol never asked for.
+**Why the rule states this: the memory half does not ship.** `--quiet` writes the config lever *and* a per-project memory artefact, but that artefact lives in Claude Code's per-user, per-machine store — neither project state nor a framework surface. In a deployed project that path differs and may not exist, so the lever may be the only half present, and a lever with no stated behaviour is a setting that does nothing. This section is what makes it mean something there.
+**Not implied by `discovery: false`** — that implication is about announcing **to** peers never discovered and says nothing about narrating what is **received**; a session can still receive with its own discovery off. It **is** forced off by `enabled: false`. **Distinct from `notices`**, which suppresses sender-side dispatch caveats: different axis, not a stronger version of the same one.
+**Config and memory can disagree, silently.** A lever reading quiet with the artefact absent is a suppression that quietly stopped working — indistinguishable from one never set. `/x-session-config --show` reports both and names the drift.
 **Seen is not reachable.** Availability is **per peer**, and there are **two** independent ways to be unreachable — the row names which.
 | `unreachableReason` | Cause | Row |
 |---|---|---|

@@ -1,0 +1,37 @@
+{
+  "$schema": "./ac-gate-markers-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "The intentionally-open gate markers an unchecked acceptance-criterion box may carry, with meaning, precedent and closure rule. Consolidated from the /work Step 4b marker table and the Step 5 closure-by-marker rules (#2765, target identified in #2605). Consumed by both steps; nonstop-audit.js pins the same GATE tokens as GATE_PHASES.",
+    "consumers": ["/work Step 4b (force-move prohibition)", "/work Step 5 (move to in_review; closure)"],
+    "relatedPrompt": ".claude/metadata/ac-feasibility-prompts.json phaseFeasibility (annotationFormat, gatePhases)"
+  },
+  "markers": [
+    {
+      "id": "qa",
+      "literal": "- [ ] … → QA: #N",
+      "pattern": "→ QA: #\\d+",
+      "meaning": "Closure deferred to a QA sub-issue.",
+      "precedent": "Step 4a, Option A / #2472",
+      "closure": "The box stays open until its QA sub-issue closes (see .claude/scripts/shared/lib/qa-config.json closurePath); the parent reaches done only once the box is checked."
+    },
+    {
+      "id": "gate-review",
+      "literal": "- [ ] … → GATE: review",
+      "pattern": "→ GATE: review",
+      "meaning": "The condition resolves after the issue reaches in_review — a human read-and-approve step.",
+      "precedent": "#2508",
+      "closure": "Checked by the user during review; these boxes are precisely what the STOP boundary hands off, so done implies the user has satisfied them."
+    },
+    {
+      "id": "gate-release",
+      "literal": "- [ ] … → GATE: release",
+      "pattern": "→ GATE: release",
+      "meaning": "The condition resolves during /prepare-release.",
+      "precedent": "#2508",
+      "closure": "Checked when the owning release step runs; if one is still open at /done, say so rather than checking it."
+    }
+  ],
+  "recognisedGateTokens": ["review", "release"],
+  "rule": "A gate box is checked when its named resolving event has occurred, never because the issue is closing (#2726). A bare → GATE:, an unrecognised token, or the word gate in ordinary AC prose is unfinished work, not a marker."
+}

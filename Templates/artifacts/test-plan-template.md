@@ -54,3 +54,4 @@
 - [ ] Integration points between epics mapped
 - [ ] E2E scenarios cover critical journeys
 - [ ] Coverage targets are realistic
+- [ ] No AC names an aspirational verification mechanism (#2424 gate — all named mechanisms already in use in this repo; see `.claude/metadata/ac-feasibility-prompts.json`)

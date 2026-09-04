@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * Apply user decision to screenshot-extracted token candidates.
  * AC32: candidates presented before write, user can reject / accept all / select subset.
  * Refs #2349 (PRD #2333 Story 1.11)

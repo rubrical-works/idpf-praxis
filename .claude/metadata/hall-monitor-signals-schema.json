@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hall-monitor-signals-schema.json",
+  "title": "Hall Monitor Signals",
+  "description": "Contract for /hall-monitor (#2768): what the monitor observes, which findings it can raise, and the guards that bound --auto-create. The monitor is advisory and read-only; nothing here grants it authority to mutate the working tree.",
+  "type": "object",
+  "required": ["version", "observation", "findings", "autoCreate", "enhancementOffers"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": {
+      "type": "object",
+      "description": "Provenance. Not read at runtime.",
+      "additionalProperties": true
+    },
+    "observation": {
+      "type": "object",
+      "description": "What the monitor can see. Broadcast lifecycle announcements plus local git state — never direct messages between two other sessions, which are point-to-point and unobservable.",
+      "required": ["events", "gitPollFallbackSeconds"],
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "type": "array",
+          "description": "The peer-announce.js event vocabulary the monitor consumes.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "gitPollFallbackSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600,
+          "description": "Long fallback interval for git polling. Bounded to the ScheduleWakeup clamp; short-interval polling for harness-notified work is wasted."
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "The finding kinds the monitor may raise. severity 'filable' plus autoCreatable true is the only combination --auto-create may act on.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "description", "severity", "autoCreatable", "rationale"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "description": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["report", "filable"] },
+          "autoCreatable": { "type": "boolean" },
+          "rationale": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "autoCreate": {
+      "type": "object",
+      "required": ["enabledByDefault", "label", "dedupe", "rateLimit", "priorArtRequired", "onAlreadyShipped"],
+      "additionalProperties": false,
+      "properties": {
+        "enabledByDefault": {
+          "const": false,
+          "description": "Opt-in only. Unattended filing is the risky half of this command, so the default cannot be true."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Applied to every auto-filed issue so it is recognisable and reversible."
+        },
+        "dedupe": {
+          "type": "object",
+          "required": ["windowMinutes", "fingerprintFields", "rationale"],
+          "additionalProperties": false,
+          "properties": {
+            "windowMinutes": { "type": "integer", "minimum": 1 },
+            "fingerprintFields": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "rationale": { "type": "string", "minLength": 1 }
+          }
+        },
+        "rateLimit": {
+          "type": "object",
+          "required": ["maxPerSession", "rationale"],
+          "additionalProperties": false,
+          "properties": {
+            "maxPerSession": { "type": "integer", "minimum": 1 },
+            "rationale": { "type": "string", "minLength": 1 }
+          }
+        },
+        "priorArtRequired": {
+          "const": true,
+          "description": "A sweep is mandatory before any auto-filed bug. Duplicate filing is a known failure here; an unattended filer has no human check."
+        },
+        "onAlreadyShipped": {
+          "const": "skip",
+          "description": "An already-shipped verdict skips the filing rather than downgrading it."
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "enhancementOffers": {
+      "type": "object",
+      "required": ["autoFile", "mustStayInMonitorSession", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "autoFile": {
+          "const": false,
+          "description": "Enhancements are offered, never filed unattended."
+        },
+        "mustStayInMonitorSession": {
+          "const": true,
+          "description": "A delegated subagent has no AskUserQuestion, so it cannot make an offer at all. This is a tool boundary, not a preference."
+        },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

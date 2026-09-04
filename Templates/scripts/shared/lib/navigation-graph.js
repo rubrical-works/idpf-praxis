@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * Generate Mockups/NAVIGATION.md from a screen catalog.
  * Sections: Pages (with nested outbound edges and modals),
  *           Wizards (with steps), Dangling References, Unreachable,
@@ -13,12 +13,34 @@
  * Refs #2701 — `parent` no longer feeds reachability (it is a back-reference,
  *              not an in-edge); entries that land in no section at all are
  *              reported under Not Shown rather than silently dropped.
+ * Refs #2718 — every remaining kind gets its own named section, derived from
+ *              the catalog rather than a fixed list, so a page-less catalog
+ *              documents its inventory instead of reporting it as a gap.
  */
 
 'use strict';
 
 function dedupSort(list) {
   return Array.from(new Set(list)).sort();
+}
+
+/**
+ * Turn a catalog kind into a section heading: `component` -> `Components`.
+ *
+ * Deliberately naive. Kinds in practice are short lowercase nouns
+ * (`component`, `section`, `modal`, `step`, `widget`), and a real pluralizer
+ * would be a dependency this helper is not allowed to take: it deploys into
+ * user projects through the symlinked `shared/` tree, where the runtime
+ * dependency contract permits Node built-ins and colocated files only. An
+ * imperfect heading on an exotic kind is a cosmetic cost; a MODULE_NOT_FOUND
+ * at load time in every deployed project is not.
+ */
+function kindHeading(kind) {
+  const label = String(kind);
+  const titled = label.charAt(0).toUpperCase() + label.slice(1);
+  if (/[sxz]$/.test(titled) || /(ch|sh)$/.test(titled)) return titled + 'es';
+  if (/[^aeiou]y$/.test(titled)) return titled.slice(0, -1) + 'ies';
+  return titled + 's';
 }
 
 function renderNavigationMarkdown(catalog) {
@@ -131,13 +153,52 @@ function renderNavigationMarkdown(catalog) {
     lines.push('');
   }
 
-  // Anything in the catalog that no section above put on the page. Only `page`
-  // and `wizard` kinds get their own sections and `## Unreachable` lists only
-  // the complement of the reachable set, so a *reachable* entry of any other
-  // kind — a modal opened from a component, say — has nowhere to appear. It is
-  // reported rather than dropped: a renderer that silently omits entries is
+  // Everything still unplaced, grouped into a named section per kind (#2718).
+  //
+  // Before this, only `page` and `wizard` had sections, so a *reachable*
+  // entry of any other kind — a modal opened from a component, say — could
+  // appear only under `## Not Shown`, whose own text describes its contents
+  // as absent from every section above. That is a gap report, not a home,
+  // and a catalog with no pages (px-manager's: 21 entries, 0 pages, 1 wizard)
+  // had its entire inventory documented that way.
+  //
+  // Kinds are derived from the CATALOG, never from a fixed list. A list would
+  // have to be extended for every new kind, and until it was, that kind would
+  // fall back into `## Not Shown` — reintroducing this defect silently for
+  // the one kind nobody thought of. Deriving them is what turns the backstop
+  // below from "usually empty" into "structurally unreachable for any entry
+  // that carries a kind".
+  const unplaced = names.filter(n => !rendered.has(n));
+  const byKind = new Map();
+  for (const n of unplaced) {
+    const kind = screens[n] && screens[n].kind;
+    if (!kind) continue; // no kind to name a section after — the backstop takes it
+    if (!byKind.has(kind)) byKind.set(kind, []);
+    byKind.get(kind).push(n);
+  }
+
+  // Sections are content-driven, so an empty one is unrepresentable rather
+  // than suppressed. That matches the majority convention in this file:
+  // `## Pages` is the ONLY section printing an empty marker, while Wizards,
+  // Dangling References, Unreachable and Not Shown all omit when empty.
+  // `## Pages` keeps its marker deliberately — a page-less catalog is the
+  // anomaly this change exists for, and saying so beats silence.
+  for (const kind of Array.from(byKind.keys()).sort()) {
+    lines.push(`## ${kindHeading(kind)}`, '');
+    for (const n of byKind.get(kind).slice().sort()) {
+      lines.push(`- ${n}`);
+      rendered.add(n);
+    }
+    lines.push('');
+  }
+
+  // Backstop, retained (#2701). It should now be unreachable for any entry
+  // carrying a kind, but an entry with NO kind still has nowhere else to go —
+  // and a future section that forgets to register its names fails in the safe
+  // direction here: the entry appears twice, noisy and immediately visible,
+  // rather than silently absent. A renderer that omits entries silently is
   // indistinguishable from one that has nothing to say, and regenerating
-  // produces a byte-identical file either way (#2701).
+  // produces a byte-identical file either way.
   const notShown = names.filter(n => !rendered.has(n));
   if (notShown.length > 0) {
     const count = notShown.length === 1
@@ -145,9 +206,9 @@ function renderNavigationMarkdown(catalog) {
       : `${notShown.length} catalog entries are`;
     lines.push('## Not Shown', '');
     lines.push(
-      `_${count} absent from every section above. Only \`page\` and \`wizard\` ` +
-      'kinds are rendered in their own sections, and these are reachable, so ' +
-      'they do not appear under `## Unreachable` either._',
+      `_${count} absent from every section above — no \`kind\` to name a ` +
+      'section after, or already claimed by a section that did not register ' +
+      'the name. This section should be empty; its contents are a defect report, not a home._',
       ''
     );
     for (const n of notShown.slice().sort()) lines.push(`- ${n}`);

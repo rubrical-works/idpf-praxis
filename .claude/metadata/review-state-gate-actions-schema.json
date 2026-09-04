@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-state-gate-actions-schema.json",
+  "title": "Review-State Gate Actions",
+  "description": "Schema for review-state-gate-actions.json — the state x run-shape action matrix of the /work Step 3 Review-State Gate (#2577), externalized in #2765. Every state must map every shape to an action; a state missing a shape would read as 'no rule', which the gate would then have to invent.",
+  "type": "object",
+  "required": ["version", "states", "shapes", "actions", "neverPrompt", "actionMeanings"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": { "type": "object", "description": "Provenance. Not read at runtime.", "additionalProperties": true },
+    "states": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": { "enum": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"] }
+    },
+    "shapes": {
+      "type": "object",
+      "required": ["single", "batch", "nonstop"],
+      "additionalProperties": false,
+      "properties": {
+        "single": { "type": "string", "minLength": 1 },
+        "batch": { "type": "string", "minLength": 1 },
+        "nonstop": { "type": "string", "minLength": 1 }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "required": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"],
+      "additionalProperties": false,
+      "properties": {
+        "never-reviewed": { "$ref": "#/$defs/shapeActions" },
+        "findings-pending": { "$ref": "#/$defs/shapeActions" },
+        "reviewed-clean": { "$ref": "#/$defs/shapeActions" },
+        "indeterminate": { "$ref": "#/$defs/shapeActions" }
+      }
+    },
+    "neverPrompt": {
+      "type": "array",
+      "description": "States that never prompt in any mode. The rule states this in prose as well; the two must agree.",
+      "items": { "enum": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"] },
+      "uniqueItems": true
+    },
+    "actionMeanings": {
+      "type": "object",
+      "required": ["stop", "warn-proceed", "halt", "proceed"],
+      "additionalProperties": false,
+      "properties": {
+        "stop": { "type": "string", "minLength": 1 },
+        "warn-proceed": { "type": "string", "minLength": 1 },
+        "halt": { "type": "string", "minLength": 1 },
+        "proceed": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "shapeActions": {
+      "type": "object",
+      "required": ["single", "batch", "nonstop"],
+      "additionalProperties": false,
+      "properties": {
+        "single": { "$ref": "#/$defs/action" },
+        "batch": { "$ref": "#/$defs/action" },
+        "nonstop": { "$ref": "#/$defs/action" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["action"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "enum": ["stop", "warn-proceed", "halt", "proceed"] },
+        "offer": { "type": "string", "pattern": "^/(review-issue|resolve-review) #\\$ISSUE$" }
+      },
+      "if": { "properties": { "action": { "const": "stop" } } },
+      "then": { "required": ["offer"] }
+    }
+  }
+}

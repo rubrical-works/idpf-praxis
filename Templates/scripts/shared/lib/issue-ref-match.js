@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  *
  * Boundary-anchored issue-reference matching and name-status parsing (#2467).
  *
@@ -34,14 +34,44 @@
  * Note this is a TRAILING boundary only. A leading boundary is unnecessary
  * because the literal `#` already terminates any preceding digit run.
  *
+ * `keywords` (#2753) emits an alternation over several keywords, each carrying
+ * its own trailing boundary. Anchoring only the final alternative would let
+ * `Refs #245` match `Refs #2453` and reintroduce #2467 through the new option,
+ * so the boundary is attached per alternative rather than once at the end.
+ *
+ * It exists because two consumers need a Refs/Fixes/Closes set and the
+ * single-`keyword` signature could not express one: the alternatives were
+ * three grep calls, or an inline alternation at the call site. An inline one
+ * already existed in `/done` Step 1b, built independently of this helper —
+ * exactly the drift this module was centralised to prevent.
+ *
  * @param {number|string} issueNumber Issue number (digits only)
- * @param {{ keyword?: string|null }} [options] `keyword` defaults to 'Refs';
- *   pass null for a bare `#N` match (done-verify.js greps without a keyword).
+ * @param {{ keyword?: string|null, keywords?: string[] }} [options]
+ *   `keyword` defaults to 'Refs'; pass null for a bare `#N` match
+ *   (done-verify.js's confirmation gate greps without a keyword).
+ *   `keywords` takes precedence when it is a non-empty array; anything else
+ *   falls back to the `keyword` form, so existing callers are untouched.
  * @returns {string} git basic-regex pattern
- * @throws {TypeError} if issueNumber is not a positive integer
+ * @throws {TypeError} if issueNumber is not a positive integer, or if any
+ *   keyword in `keywords` is not a non-empty string
  */
 function issueRefGrepPattern(issueNumber, options = {}) {
   assertIssueNumber(issueNumber);
+
+  const { keywords } = options;
+  if (Array.isArray(keywords) && keywords.length > 0) {
+    for (const kw of keywords) {
+      if (typeof kw !== 'string' || kw.length === 0) {
+        throw new TypeError(
+          `Invalid keyword in keywords array: ${JSON.stringify(kw)}. Each keyword must be a non-empty string.`
+        );
+      }
+    }
+    return keywords
+      .map(kw => `${kw} #${issueNumber}\\([^0-9]\\|$\\)`)
+      .join('\\|');
+  }
+
   const keyword = options.keyword === undefined ? 'Refs' : options.keyword;
   const prefix = keyword ? `${keyword} ` : '';
   return `${prefix}#${issueNumber}\\([^0-9]\\|$\\)`;

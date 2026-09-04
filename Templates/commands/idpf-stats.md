@@ -1,5 +1,5 @@
 ---
-version: "v0.100.2"
+version: "v0.101.0"
 description: Generate session statistics report with development velocity metrics
 argument-hint: "[--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save]"
 copyright: "Rubrical Works (c) 2026"
@@ -56,14 +56,14 @@ Range is anchored to **local timezone**, never UTC. Modes:
 node .claude/scripts/shared/stats-collect.js [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit]
 ```
 
-Parse JSON output. Script handles: timezone-aware parsing (local, never UTC), git execution for volume/testing/throughput, multi-repo aggregation, directory validation (non-git → warning + skip), directory list cache at `.claude/metadata/idpf-stats-repos.json`, edge cases (no commits/issues/tests, single-commit throughput).
+Parse JSON output. Script handles: timezone-aware parsing (local, never UTC), git execution for volume/testing/throughput, multi-repo aggregation, directory validation (non-git → warning + skip), directory list cache at `<framework_root>/idpf-stats/repos.json` (`framework_root` = `frameworkPath`: repo root self-hosted, **hub** root when deployed — `.claude/scripts/shared` is a hub symlink and Node resolves against the real path, so the cache is not under the project), edge cases (no commits/issues/tests, single-commit throughput).
 
 **`--repos` behavior:**
 - `--repos /path/a,/path/b` — collect and cache
 - `--repos` (no value) — reuse cached list
 - `--repos-edit` — present cached list via `AskUserQuestion`, then collect
 
-**Auto-detection:** If no `--repos` flag but `idpf-stats/repos.json` exists at project root, auto-load and run multi-repo. `idpf-stats/repos.json` is the persistent source of truth.
+**Auto-detection:** If no `--repos` flag but `<framework_root>/idpf-stats/repos.json` exists, auto-load and run multi-repo. It is the persistent source of truth, and resolves under the **hub** root when deployed — so every project sharing a hub shares this cache.
 
 **Multi-repo output shape:** `{ aggregate, perRepo, warnings }`. `aggregate` matches single-repo shape; `perRepo` is per-directory results; `warnings` lists skipped non-git dirs.
 

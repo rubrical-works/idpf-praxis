@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  *
  * Living Style Guide showcase bundle generator (#2430 AC1.1.1, #2431 AC1.2.1-1.2.4).
  *
@@ -97,14 +97,6 @@ function extractCatalogItems(catalog, kindHint) {
   const items = [];
   for (const s of screens) {
     if (!s || typeof s !== 'object') continue;
-    // #2589: a consolidated-away rendition is still in the catalog, marked
-    // `deprecated` by the consolidation step. Showing it beside the live entry
-    // is the exact ambiguity consolidation exists to remove.
-    //
-    // Absent status is NOT deprecation. Every catalog entry predating #2589 has
-    // no status field, so treating absence as deprecated would empty the
-    // showcase for every existing project — the opposite of the fix.
-    if (s.status && String(s.status).toLowerCase() === 'deprecated') continue;
     if (kindHint && s.kind && String(s.kind).toLowerCase() !== kindHint) continue;
     const id = s.id || s.name || '';
     const label = s.name || s.id || '(unnamed)';

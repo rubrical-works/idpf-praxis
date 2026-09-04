@@ -155,6 +155,22 @@ Or without a title (you'll be prompted):
 
 **Next step:** Review the proposal with `/review-proposal`, then promote to PRD with `/create-prd`.
 
+### Revising a Proposal (`--update`)
+
+A proposal rarely survives review untouched. To revise one in place instead of recreating it:
+
+```
+/proposal Add Dark Mode Support --update
+```
+
+The assistant offers the document's sections, asks what to change in each one you pick, and applies the edits. On a direct slash-command invocation you can also state the change inline:
+
+```
+/proposal Add Dark Mode Support --update rename the risk section to Trade-offs
+```
+
+The tracking issue's summary is rewritten to match the revised document; nothing else in the issue changes. The document's tracking-issue link, diagram paths and any prior-art section are preserved unless your instruction names them. If no document exists under that title the command stops rather than creating one, so a mistyped title cannot silently spawn a second proposal.
+
 ### Quick Issues (Skipping Proposals)
 
 Not everything needs a proposal. For focused work:
@@ -469,12 +485,22 @@ Naming the same issue twice assigns it once, including when you list an issue ex
 **What happens:**
 1. Validates the issue exists and is assigned to a branch
 2. Detects issue type (story vs. epic)
-3. Moves the issue to `in_progress`
-4. Extracts acceptance criteria into a todo list
-5. Loads the process framework (IDPF-Agile dispatches to TDD: RED-GREEN-REFACTOR)
-6. The AI implements the work, checking off acceptance criteria as they're met
-7. When all criteria pass, moves the issue to `in_review`
-8. **STOPS** — waits for you to say "done"
+3. Checks whether the issue has been reviewed — an unreviewed issue, or one with unresolved review findings, prompts you to run `/review-issue` or `/resolve-review` first (you can decline and proceed)
+4. Moves the issue to `in_progress`
+5. Extracts acceptance criteria into a todo list
+6. Loads the process framework (IDPF-Agile dispatches to TDD: RED-GREEN-REFACTOR)
+7. The AI implements the work, checking off acceptance criteria as they're met
+8. Runs every verification command your project declares (see below) — all must pass
+9. When all criteria pass, moves the issue to `in_review`
+10. **STOPS** — waits for you to say "done"
+
+**Declaring your verification commands:** `/work` never guesses how to test your project. It runs the commands listed under `verificationCommands` in `framework-config.json`, in order, and reports each result separately, so one passing command cannot hide another that failed:
+
+```json
+"verificationCommands": ["npm run lint", "npx jest"]
+```
+
+A project that declares nothing is told so — the sweep is skipped and the move to `in_review` proceeds unverified. Declare at least one command to make this gate real.
 
 **The TDD cycle (IDPF-Agile):** The assistant performs this autonomously — you don't need to understand TDD to use the framework. For reference, the cycle is:
 ```
@@ -487,7 +513,7 @@ Each acceptance criterion goes through this cycle. You'll see progress as it wor
 
 **Your role during `/work`:** Wait. The AI is implementing. Your turn comes when it stops and presents the result for review. If you're technically inclined, you can watch the output and intervene ("that's the wrong approach — try X instead"), but this is optional.
 
-**For epics:** The assistant works through sub-issue stories one at a time, with a STOP boundary after each story reaches `in_review`. You review and approve each story before the next one begins.
+**For epics:** Before the first story is touched, the assistant checks the review state of the epic and every story it will work and asks one question if any are unreviewed or carry unresolved findings. It then works through the stories one at a time, with a STOP boundary after each story reaches `in_review`. You review and approve each story before the next one begins.
 
 **Next step:** Review the work, then complete it with `/done`.
 
@@ -736,6 +762,7 @@ This prevents issues from closing before they're truly complete.
 |-------|---------|---------|
 | Charter | `/charter` | Define project vision, scope, tech stack |
 | Idea | `/proposal <title>` | Create proposal document + tracking issue |
+| Revise | `/proposal <title> --update` | Revise an existing proposal in place |
 | Quick Issue | `/bug <title>` | Create bug report |
 | Quick Issue | `/enhancement <title>` | Create enhancement request |
 | Review | `/review-proposal #N` | Evaluate proposal quality |
@@ -755,6 +782,8 @@ This prevents issues from closing before they're truly complete.
 | Close PRD | `/complete-prd #N` | Verify all stories done, close PRD |
 | Release | `/prepare-release` | Full release workflow |
 | Merge | `/merge-branch` | Merge branch without release tagging |
+| Coordinate | `/x-session-config` | Control what concurrent sessions announce to each other |
+| Observe | `/hall-monitor` | Dedicate a session to watching cross-session activity |
 
 ---
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -75,6 +75,8 @@ function parseArgs(args) {
   let modeOverride = null;
   let force = false;
   let noRedirect = false;
+  let priorArt = false;
+  const unrecognizedFlags = [];
 
   let i = 0;
   while (i < args.length) {
@@ -98,6 +100,30 @@ function parseArgs(args) {
     } else if (arg === '--no-redirect') {
       noRedirect = true;
       i += 1;
+    } else if (arg === '--prior-art') {
+      // Documented in /review-issue's Arguments table. Recorded here but
+      // CONSUMED AT 2a-iv by decideFlagSweep — the preamble makes no sweep
+      // decision, it only stops rejecting the flag (#2752).
+      priorArt = true;
+      i += 1;
+    } else if (/^--[A-Za-z]/.test(arg)) {
+      // Unrecognised but flag-shaped: collect and report, never fatal.
+      //
+      // Before #2752 this fell through to the positional branch and was
+      // rejected as an issue number, so any documented-but-unparsed flag
+      // halted the review with an error blaming the user's flag for not being
+      // an integer. `02-github-workflow.md` already prescribes the rule this
+      // implements: no flag-shaped token is ever discarded; unrecognized flags
+      // pass through and the command reports them.
+      //
+      // `i += 1`, not 2, is deliberate. Declaration governs value attachment:
+      // a recognised flag may claim the next token (`--with security`); an
+      // unrecognised one may not, so a following issue number is not swallowed.
+      //
+      // Shape is `--` followed by a letter, so a bare `--` or `---` is not a
+      // flag and still falls through to the positional branch.
+      unrecognizedFlags.push(arg);
+      i += 1;
     } else {
       // Positional: issue number
       const cleaned = arg.replace(/^#/, '');
@@ -120,6 +146,8 @@ function parseArgs(args) {
   if (modeOverride !== null) result.modeOverride = modeOverride;
   if (force) result.force = true;
   if (noRedirect) result.noRedirect = true;
+  if (priorArt) result.priorArt = true;
+  if (unrecognizedFlags.length > 0) result.unrecognizedFlags = unrecognizedFlags;
   return result;
 }
 

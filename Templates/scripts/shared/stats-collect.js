@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Collects development statistics from git history using config-driven
  *   metric definitions. Returns structured JSON for the /idpf-stats command to render.
  * @checksum sha256:placeholder
@@ -22,7 +22,30 @@ const fs = require('fs');
  * @param {string[]} args - Command-line arguments
  * @returns {{ since: string, until: string }}
  */
+/**
+ * The superseded cache location. NOT dead code, despite the name (#2742).
+ *
+ * `readRepoCache()` falls back to it when the new cache is absent, and
+ * `writeRepoCache()` unlinks it after writing — together they are a lazy,
+ * one-way migration that only runs when someone invokes `/idpf-stats` with
+ * `--repos`. A project installed before the path changed and not run since
+ * still holds this file, so the migration window is open.
+ *
+ * **Do not delete it on the strength of the name.** Removing it fails
+ * SILENTLY for such a project: `readRepoCache()` returns `[]` and the run
+ * reports "no repos configured" rather than "your cache was ignored".
+ *
+ * Decision and the signal that would close the window:
+ * `Construction/Design-Decisions/2026-09-02-old-cache-path-migration-window.md`
+ */
 const OLD_CACHE_PATH = path.resolve(__dirname, '../../metadata/idpf-stats-repos.json');
+
+/**
+ * The live cache location. Resolved from `__dirname`, so in a PHM-deployed
+ * project — where `.claude/scripts/shared` is a hub symlink and Node resolves
+ * against the real path — this lands in the HUB framework root, not the
+ * project. Every project sharing a hub therefore shares this cache.
+ */
 const STATS_DIR = path.resolve(__dirname, '../../../idpf-stats');
 const CACHE_PATH = path.join(STATS_DIR, 'repos.json');
 

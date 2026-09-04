@@ -1,0 +1,44 @@
+{
+  "$schema": "./review-state-gate-actions-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Action matrix for the /work Step 3 Review-State Gate (#2577), externalized from Reference/work-execution.md (#2765, target identified in #2605). The four state names and every rationale blockquote stay inline in the rule; only the state x run-shape lookup lives here.",
+    "consumer": "/work Step 3 — re-read from disk at use (rule 01: externalized file references)",
+    "classifier": ".claude/scripts/shared/review-state.js"
+  },
+  "states": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"],
+  "shapes": {
+    "single": "Single interactive issue",
+    "batch": "Batch (--issues / --status), epic, branch tracker",
+    "nonstop": "--nonstop"
+  },
+  "actions": {
+    "never-reviewed": {
+      "single":  { "action": "stop",         "offer": "/review-issue #$ISSUE" },
+      "batch":   { "action": "warn-proceed" },
+      "nonstop": { "action": "warn-proceed" }
+    },
+    "findings-pending": {
+      "single":  { "action": "stop",         "offer": "/resolve-review #$ISSUE" },
+      "batch":   { "action": "stop",         "offer": "/resolve-review #$ISSUE" },
+      "nonstop": { "action": "halt" }
+    },
+    "reviewed-clean": {
+      "single":  { "action": "proceed" },
+      "batch":   { "action": "proceed" },
+      "nonstop": { "action": "proceed" }
+    },
+    "indeterminate": {
+      "single":  { "action": "proceed" },
+      "batch":   { "action": "proceed" },
+      "nonstop": { "action": "proceed" }
+    }
+  },
+  "neverPrompt": ["reviewed-clean", "indeterminate"],
+  "actionMeanings": {
+    "stop": "STOP and offer the named command via AskUserQuestion; accepting means work does not begin, declining proceeds with nothing mutated.",
+    "warn-proceed": "Warn and proceed without prompting.",
+    "halt": "Halt the --nonstop run on the same terms as any test/AC/QA/gh pmu failure.",
+    "proceed": "Proceed without prompting."
+  }
+}

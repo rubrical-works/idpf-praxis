@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.100.2",
+  "version": "0.101.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -183,6 +183,7 @@
         "destroy-branch.md",
         "charter.md",
         "extensions.md",
+        "hall-monitor.md",
         "create-prd.md",
         "create-backlog.md",
         "design-system.md",
@@ -221,12 +222,14 @@
         "complete-prd.md",
         "create-backlog.md",
         "extensions.md",
+        "hall-monitor.md",
         "idpf-stats.md",
         "issue-reset.md",
         "pivot.md",
         "plan-workstreams.md",
         "playwright-check.md",
         "resolve-review.md",
+        "review-issue.md",
         "split-story.md",
         "switch-branch.md",
         "transfer-issue.md",
@@ -316,6 +319,7 @@
         "target": ".claude/scripts/shared/lib/",
         "files": [
           "active-label.js",
+          "branch-review-gate.js",
           "bulk-discover-screens.js",
           "checkbox-scan.js",
           "classify-changed-files.js",
@@ -350,6 +354,7 @@
           "gh-pmu-config.js",
           "gh.js",
           "git.js",
+          "hall-monitor-guards.js",
           "input-validation.js",
           "issue-ref-match.js",
           "issue-type.js",
@@ -495,6 +500,13 @@
         "dest": "08-work-execution.md",
         "env": "both",
         "devPreserveFrameworkOnly": true
+      },
+      {
+        "id": "review-execution",
+        "src": "Reference/review-execution.md",
+        "dest": "09-review-execution.md",
+        "env": "both",
+        "devPreserveFrameworkOnly": false
       }
     ],
     "metadata": {
@@ -512,19 +524,59 @@
           "description": "JSON schema (Draft 2020-12) for ac-feasibility-prompts.json (#2424)"
         },
         {
+          "name": "ac-gate-markers",
+          "source": ".claude/metadata/ac-gate-markers.json",
+          "description": "Intentionally-open AC gate markers with meaning, precedent and closure, consumed by /work Steps 4b and 5 (#2765)"
+        },
+        {
+          "name": "ac-gate-markers-schema",
+          "source": ".claude/metadata/ac-gate-markers-schema.json",
+          "description": "JSON schema (Draft 2020-12) for ac-gate-markers.json (#2765)"
+        },
+        {
+          "name": "ci-features",
+          "source": ".claude/metadata/ci-features.json",
+          "description": "CI feature registry for /ci list and /ci add commands"
+        },
+        {
+          "name": "ci-features-schema",
+          "source": ".claude/metadata/ci-features-schema.json",
+          "description": "JSON Schema for ci-features.json"
+        },
+        {
+          "name": "code-review-excludes",
+          "source": ".claude/metadata/code-review-excludes.json",
+          "description": "Default excludes for /code-review (#2327)"
+        },
+        {
+          "name": "code-review-excludes-schema",
+          "source": ".claude/metadata/code-review-excludes-schema.json",
+          "description": "JSON Schema for code-review-excludes.json (#2327)"
+        },
+        {
+          "name": "command-boilerplate",
+          "source": ".claude/metadata/command-boilerplate.json",
+          "description": "Command template boilerplate for command generation"
+        },
+        {
+          "name": "command-boilerplate-schema",
+          "source": ".claude/metadata/command-boilerplate-schema.json",
+          "description": "JSON Schema for command-boilerplate.json"
+        },
+        {
+          "name": "commit-checkpoint-signals",
+          "source": ".claude/metadata/commit-checkpoint-signals.json",
+          "description": "Thresholds and prompt contract for the mid-AC commit checkpoint in /work Step 3 (#2557)"
+        },
+        {
+          "name": "commit-checkpoint-signals-schema",
+          "source": ".claude/metadata/commit-checkpoint-signals-schema.json",
+          "description": "JSON schema (Draft 2020-12) for commit-checkpoint-signals.json (#2557)"
+        },
+        {
           "name": "decisions-schema",
           "source": ".claude/metadata/decisions.schema.json",
           "description": "JSON schema (Draft 2020-12) for Living Style Guide showcase decision records (#2430, AC1.1.5)"
-        },
-        {
-          "name": "extension-recipes",
-          "source": ".claude/metadata/extension-recipes.json",
-          "description": "Extension recipes for /extensions recipes command"
-        },
-        {
-          "name": "framework-config-schema",
-          "source": ".claude/metadata/framework-config.schema.json",
-          "description": "JSON schema for framework-config.json; validated at write time by framework-config.js helper (#2292)"
         },
         {
           "name": "design-system-init-categories",
@@ -537,49 +589,9 @@
           "description": "JSON schema for design-system-init-categories.json (#2397)"
         },
         {
-          "name": "extension-points",
-          "source": ".claude/metadata/extension-points.json",
-          "description": "Extension point registry for command introspection"
-        },
-        {
-          "name": "review-extensions",
-          "source": ".claude/metadata/review-extensions.json",
-          "description": "Review command domain extension criteria registry"
-        },
-        {
-          "name": "recipe-tech-mapping",
-          "source": ".claude/metadata/recipe-tech-mapping.json",
-          "description": "Tech stack to recipe mappings for /charter suggestions"
-        },
-        {
-          "name": "review-mode-criteria",
-          "source": ".claude/metadata/review-mode-criteria.json",
-          "description": "Review mode criteria mapping for context-aware reviews"
-        },
-        {
-          "name": "ci-features",
-          "source": ".claude/metadata/ci-features.json",
-          "description": "CI feature registry for /ci list and /ci add commands"
-        },
-        {
           "name": "domain-entities-schema",
           "source": ".claude/metadata/domain-entities-schema.json",
           "description": "Schema for domain-entities.json charter companion file"
-        },
-        {
-          "name": "imported-skills",
-          "source": ".claude/metadata/imported-skills.json",
-          "description": "Registry of skills imported from idpf-praxis-skills"
-        },
-        {
-          "name": "scope-drift-protected-paths",
-          "source": ".claude/metadata/scope-drift-protected-paths.json",
-          "description": "Always-protected paths for Step 4c state-drift gate (#2404)"
-        },
-        {
-          "name": "scope-drift-protected-paths-schema",
-          "source": ".claude/metadata/scope-drift-protected-paths.schema.json",
-          "description": "JSON schema for scope-drift-protected-paths.json (#2404)"
         },
         {
           "name": "domain-signals",
@@ -587,9 +599,9 @@
           "description": "Domain-to-signal mapping for charter-aware domain filtering"
         },
         {
-          "name": "command-boilerplate",
-          "source": ".claude/metadata/command-boilerplate.json",
-          "description": "Command template boilerplate for command generation"
+          "name": "domain-signals-schema",
+          "source": ".claude/metadata/domain-signals-schema.json",
+          "description": "JSON Schema for domain-signals.json"
         },
         {
           "name": "epic-complexity-signals",
@@ -597,84 +609,14 @@
           "description": "Signal patterns for /work epic complexity classification"
         },
         {
-          "name": "paths-config",
-          "source": ".claude/metadata/paths-config.json",
-          "description": "Path analysis configuration for /paths command"
-        },
-        {
-          "name": "prd-review-criteria",
-          "source": ".claude/metadata/prd-review-criteria.json",
-          "description": "Review criteria for /review-prd command"
-        },
-        {
-          "name": "proposal-review-criteria",
-          "source": ".claude/metadata/proposal-review-criteria.json",
-          "description": "Review criteria for /review-proposal command"
-        },
-        {
-          "name": "review-criteria",
-          "source": ".claude/metadata/review-criteria.json",
-          "description": "Type-specific review criteria for /review-issue command"
-        },
-        {
-          "name": "screen-spec-schema",
-          "source": ".claude/metadata/screen-spec-schema.json",
-          "description": "Screen specification schema for /catalog-screens and /mockups commands"
-        },
-        {
-          "name": "test-plan-approval-gates",
-          "source": ".claude/metadata/test-plan-approval-gates.json",
-          "description": "The single declaration of the six test-plan approval gates; both the test plan template Approval Checklist and the /create-prd approval issue Review Checklist render from gates[].text (#2710, epic #2693)"
-        },
-        {
-          "name": "test-plan-approval-gates-schema",
-          "source": ".claude/metadata/test-plan-approval-gates-schema.json",
-          "description": "JSON schema (Draft-07) for test-plan-approval-gates.json (#2710)"
-        },
-        {
-          "name": "test-plan-review-criteria",
-          "source": ".claude/metadata/test-plan-review-criteria.json",
-          "description": "Review criteria for /review-test-plan command"
-        },
-        {
-          "name": "trigger-flag-allowlist",
-          "source": ".claude/metadata/trigger-flag-allowlist.json",
-          "description": "Per-command flags recognized by workflow-trigger.js phrase routing"
-        },
-        {
-          "name": "prior-art-sweep",
-          "source": ".claude/metadata/prior-art-sweep.json",
-          "description": "Search surfaces, excludes, term derivation and dispositions for the --prior-art sweep"
-        },
-        {
-          "name": "mockups-consolidation",
-          "source": ".claude/metadata/mockups-consolidation.json",
-          "description": "Ordered decision sequence for /mockups --consolidate (#2589)"
-        },
-        {
-          "name": "mockups-consolidation-schema",
-          "source": ".claude/metadata/mockups-consolidation-schema.json",
-          "description": "JSON Schema for mockups-consolidation.json"
-        },
-        {
-          "name": "ci-features-schema",
-          "source": ".claude/metadata/ci-features-schema.json",
-          "description": "JSON Schema for ci-features.json"
-        },
-        {
-          "name": "command-boilerplate-schema",
-          "source": ".claude/metadata/command-boilerplate-schema.json",
-          "description": "JSON Schema for command-boilerplate.json"
-        },
-        {
-          "name": "domain-signals-schema",
-          "source": ".claude/metadata/domain-signals-schema.json",
-          "description": "JSON Schema for domain-signals.json"
-        },
-        {
           "name": "epic-complexity-signals-schema",
           "source": ".claude/metadata/epic-complexity-signals-schema.json",
           "description": "JSON Schema for epic-complexity-signals.json"
+        },
+        {
+          "name": "extension-points",
+          "source": ".claude/metadata/extension-points.json",
+          "description": "Extension point registry for command introspection"
         },
         {
           "name": "extension-points-schema",
@@ -682,9 +624,44 @@
           "description": "JSON Schema for extension-points.json"
         },
         {
+          "name": "extension-recipes",
+          "source": ".claude/metadata/extension-recipes.json",
+          "description": "Extension recipes for /extensions recipes command"
+        },
+        {
           "name": "extension-recipes-schema",
           "source": ".claude/metadata/extension-recipes-schema.json",
           "description": "JSON Schema for extension-recipes.json"
+        },
+        {
+          "name": "framework-config-schema",
+          "source": ".claude/metadata/framework-config.schema.json",
+          "description": "JSON schema for framework-config.json; validated at write time by framework-config.js helper (#2292)"
+        },
+        {
+          "name": "hall-monitor-signals",
+          "source": ".claude/metadata/hall-monitor-signals.json",
+          "description": "Observation vocabulary, finding dispositions and the dedupe/rate-limit guards bounding /hall-monitor --auto-create (#2768)"
+        },
+        {
+          "name": "hall-monitor-signals-schema",
+          "source": ".claude/metadata/hall-monitor-signals-schema.json",
+          "description": "JSON schema (Draft 2020-12) for hall-monitor-signals.json (#2768)"
+        },
+        {
+          "name": "imported-skills",
+          "source": ".claude/metadata/imported-skills.json",
+          "description": "Registry of skills imported from idpf-praxis-skills"
+        },
+        {
+          "name": "imported-skills-schema",
+          "source": ".claude/metadata/imported-skills-schema.json",
+          "description": "JSON Schema for imported-skills.json"
+        },
+        {
+          "name": "paths-config",
+          "source": ".claude/metadata/paths-config.json",
+          "description": "Path analysis configuration for /paths command"
         },
         {
           "name": "paths-config-schema",
@@ -692,44 +669,19 @@
           "description": "JSON Schema for paths-config.json"
         },
         {
+          "name": "prd-review-criteria",
+          "source": ".claude/metadata/prd-review-criteria.json",
+          "description": "Review criteria for /review-prd command"
+        },
+        {
           "name": "prd-review-criteria-schema",
           "source": ".claude/metadata/prd-review-criteria-schema.json",
           "description": "JSON Schema for prd-review-criteria.json"
         },
         {
-          "name": "proposal-review-criteria-schema",
-          "source": ".claude/metadata/proposal-review-criteria-schema.json",
-          "description": "JSON Schema for proposal-review-criteria.json"
-        },
-        {
-          "name": "recipe-tech-mapping-schema",
-          "source": ".claude/metadata/recipe-tech-mapping-schema.json",
-          "description": "JSON Schema for recipe-tech-mapping.json"
-        },
-        {
-          "name": "review-criteria-schema",
-          "source": ".claude/metadata/review-criteria-schema.json",
-          "description": "JSON Schema for review-criteria.json"
-        },
-        {
-          "name": "review-extensions-schema",
-          "source": ".claude/metadata/review-extensions-schema.json",
-          "description": "JSON Schema for review-extensions.json"
-        },
-        {
-          "name": "review-mode-criteria-schema",
-          "source": ".claude/metadata/review-mode-criteria-schema.json",
-          "description": "JSON Schema for review-mode-criteria.json"
-        },
-        {
-          "name": "test-plan-review-criteria-schema",
-          "source": ".claude/metadata/test-plan-review-criteria-schema.json",
-          "description": "JSON Schema for test-plan-review-criteria.json"
-        },
-        {
-          "name": "trigger-flag-allowlist-schema",
-          "source": ".claude/metadata/trigger-flag-allowlist-schema.json",
-          "description": "JSON Schema for trigger-flag-allowlist.json"
+          "name": "prior-art-sweep",
+          "source": ".claude/metadata/prior-art-sweep.json",
+          "description": "Search surfaces, excludes, term derivation and dispositions for the --prior-art sweep"
         },
         {
           "name": "prior-art-sweep-schema",
@@ -737,9 +689,44 @@
           "description": "JSON Schema for prior-art-sweep.json"
         },
         {
-          "name": "imported-skills-schema",
-          "source": ".claude/metadata/imported-skills-schema.json",
-          "description": "JSON Schema for imported-skills.json"
+          "name": "proposal-review-criteria",
+          "source": ".claude/metadata/proposal-review-criteria.json",
+          "description": "Review criteria for /review-proposal command"
+        },
+        {
+          "name": "proposal-review-criteria-schema",
+          "source": ".claude/metadata/proposal-review-criteria-schema.json",
+          "description": "JSON Schema for proposal-review-criteria.json"
+        },
+        {
+          "name": "recipe-tech-mapping",
+          "source": ".claude/metadata/recipe-tech-mapping.json",
+          "description": "Tech stack to recipe mappings for /charter suggestions"
+        },
+        {
+          "name": "recipe-tech-mapping-schema",
+          "source": ".claude/metadata/recipe-tech-mapping-schema.json",
+          "description": "JSON Schema for recipe-tech-mapping.json"
+        },
+        {
+          "name": "review-criteria",
+          "source": ".claude/metadata/review-criteria.json",
+          "description": "Type-specific review criteria for /review-issue command"
+        },
+        {
+          "name": "review-criteria-schema",
+          "source": ".claude/metadata/review-criteria-schema.json",
+          "description": "JSON Schema for review-criteria.json"
+        },
+        {
+          "name": "review-extensions",
+          "source": ".claude/metadata/review-extensions.json",
+          "description": "Review command domain extension criteria registry"
+        },
+        {
+          "name": "review-extensions-schema",
+          "source": ".claude/metadata/review-extensions-schema.json",
+          "description": "JSON Schema for review-extensions.json"
         },
         {
           "name": "review-interdependence",
@@ -752,24 +739,34 @@
           "description": "JSON Schema for review-interdependence.json"
         },
         {
-          "name": "stats-config",
-          "source": ".claude/metadata/stats-config.json",
-          "description": "Metric definitions and report configuration for /idpf-stats"
+          "name": "review-mode-criteria",
+          "source": ".claude/metadata/review-mode-criteria.json",
+          "description": "Review mode criteria mapping for context-aware reviews"
         },
         {
-          "name": "stats-config-schema",
-          "source": ".claude/metadata/stats-config-schema.json",
-          "description": "JSON Schema for stats-config.json"
+          "name": "review-mode-criteria-schema",
+          "source": ".claude/metadata/review-mode-criteria-schema.json",
+          "description": "JSON Schema for review-mode-criteria.json"
         },
         {
-          "name": "code-review-excludes",
-          "source": ".claude/metadata/code-review-excludes.json",
-          "description": "Default excludes for /code-review (#2327)"
+          "name": "review-state-gate-actions",
+          "source": ".claude/metadata/review-state-gate-actions.json",
+          "description": "State x run-shape action matrix for the /work Step 3 Review-State Gate, externalized from the rule (#2765)"
         },
         {
-          "name": "code-review-excludes-schema",
-          "source": ".claude/metadata/code-review-excludes-schema.json",
-          "description": "JSON Schema for code-review-excludes.json (#2327)"
+          "name": "review-state-gate-actions-schema",
+          "source": ".claude/metadata/review-state-gate-actions-schema.json",
+          "description": "JSON schema (Draft 2020-12) for review-state-gate-actions.json (#2765)"
+        },
+        {
+          "name": "scope-drift-protected-paths",
+          "source": ".claude/metadata/scope-drift-protected-paths.json",
+          "description": "Always-protected paths for Step 4c state-drift gate (#2404)"
+        },
+        {
+          "name": "scope-drift-protected-paths-schema",
+          "source": ".claude/metadata/scope-drift-protected-paths.schema.json",
+          "description": "JSON schema for scope-drift-protected-paths.json (#2404)"
         },
         {
           "name": "screen-catalog-schema",
@@ -787,14 +784,49 @@
           "description": "JSON Schema for screen-kinds.json (#2355)"
         },
         {
-          "name": "commit-checkpoint-signals",
-          "source": ".claude/metadata/commit-checkpoint-signals.json",
-          "description": "Thresholds and prompt contract for the mid-AC commit checkpoint in /work Step 3 (#2557)"
+          "name": "screen-spec-schema",
+          "source": ".claude/metadata/screen-spec-schema.json",
+          "description": "Screen specification schema for /catalog-screens and /mockups commands"
         },
         {
-          "name": "commit-checkpoint-signals-schema",
-          "source": ".claude/metadata/commit-checkpoint-signals-schema.json",
-          "description": "JSON schema (Draft 2020-12) for commit-checkpoint-signals.json (#2557)"
+          "name": "stats-config",
+          "source": ".claude/metadata/stats-config.json",
+          "description": "Metric definitions and report configuration for /idpf-stats"
+        },
+        {
+          "name": "stats-config-schema",
+          "source": ".claude/metadata/stats-config-schema.json",
+          "description": "JSON Schema for stats-config.json"
+        },
+        {
+          "name": "test-plan-approval-gates",
+          "source": ".claude/metadata/test-plan-approval-gates.json",
+          "description": "The single declaration of the six test-plan approval gates; both the test plan template Approval Checklist and the /create-prd approval issue Review Checklist render from gates[].text (#2710, epic #2693)"
+        },
+        {
+          "name": "test-plan-approval-gates-schema",
+          "source": ".claude/metadata/test-plan-approval-gates-schema.json",
+          "description": "JSON schema (Draft-07) for test-plan-approval-gates.json (#2710)"
+        },
+        {
+          "name": "test-plan-review-criteria",
+          "source": ".claude/metadata/test-plan-review-criteria.json",
+          "description": "Review criteria for /review-test-plan command"
+        },
+        {
+          "name": "test-plan-review-criteria-schema",
+          "source": ".claude/metadata/test-plan-review-criteria-schema.json",
+          "description": "JSON Schema for test-plan-review-criteria.json"
+        },
+        {
+          "name": "trigger-flag-allowlist",
+          "source": ".claude/metadata/trigger-flag-allowlist.json",
+          "description": "Per-command flags recognized by workflow-trigger.js phrase routing"
+        },
+        {
+          "name": "trigger-flag-allowlist-schema",
+          "source": ".claude/metadata/trigger-flag-allowlist-schema.json",
+          "description": "JSON Schema for trigger-flag-allowlist.json"
         },
         {
           "name": "upstream-monitor",
@@ -807,6 +839,12 @@
           "description": "JSON schema (Draft 2020-12) for upstream-monitor.json (#2667)"
         }
       ]
+    },
+    "recipes": {
+      "source": ".claude/recipes/",
+      "target": ".claude/recipes/",
+      "deploymentMode": "symlinked",
+      "description": "Extension recipe directories consumed by explicit reads from .claude/scripts/. Symlinked deliberately: explicit reads traverse a Windows junction correctly, so the auto-discovery failure that forced rules to copied (#2736) does not apply here. Fourth member of Praxis Hub Manager SYMLINK_DIRS and the only one deploymentFiles did not declare (#2744); px-manager#1152 derives the set from this rather than a hardcoded constant."
     }
   },
   "extensibleCommands": [
@@ -825,7 +863,6 @@
     "prepare-beta",
     "prepare-release",
     "proposal",
-    "review-issue",
     "review-prd",
     "review-proposal",
     "review-test-plan"
@@ -841,12 +878,14 @@
     "complete-prd",
     "create-backlog",
     "extensions",
+    "hall-monitor",
     "idpf-stats",
     "issue-reset",
     "pivot",
     "plan-workstreams",
     "playwright-check",
     "resolve-review",
+    "review-issue",
     "split-story",
     "switch-branch",
     "transfer-issue",

@@ -8,6 +8,166 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.101.0] - 2026-09-04
+
+Feature release. The recurring shape is **a gate that ran late, or on the wrong set**. `/work` checked
+review state per sub-issue at each one's turn, so a tracker's fourth child carrying unresolved
+findings was discovered after three children were already implemented and in review. Its Step 4f
+sweep ran one of the four verification steps CI runs, because the config could express one command.
+Its Step 2b enumerated sub-issues with a `gh pmu sub list` form that errors, then filtered on a field
+the working form never returns, so the review gate that depended on that enumeration classified
+nothing and passed vacuously. `/done` attributed another issue's files to the one being closed
+because it reused the confirmation gate's deliberately broad commit range for a purpose that needed a
+narrow one. In each case the gate existed; what was wrong was *when* it fired or *what* it looked at.
+
+Alongside that: `/hall-monitor` gives cross-session announcements a dedicated reader, `/proposal`
+gains an `--update` mode, the review workflow moves out of two command shells into a ninth
+auto-loaded rule, and the resident `/work` rule sheds about a fifth of its bytes by deferring
+trigger-gated sections and externalizing step-local lookups.
+
+**The release itself repeated 0.100.0's registration defect, and it is recorded here for the same
+reason.** Phase 2n validation found `/hall-monitor` — added this cycle in #2768 — present in
+`framework-manifest.json` `deploymentFiles.commands.managed` but absent from `.workflow` and from
+`constants.js` `INSTALLED_FILES_MANIFEST.commands`, and `/review-issue`, flipped to MANAGED in #2746,
+in neither `extensibleCommands` nor `managedCommands`. That is the fourth registration surface for a
+command, one release after the previous one was written up, with #2768's own commit titled "fix the
+four cross-cutting regressions adding a deployed command caused". The gate caught it; the process
+that keeps producing it did not change. Minimization also found two `.min-mirror/` outputs whose
+sources had moved on in March and May — the per-issue single-file mode had refreshed only the files
+each issue touched, and the full-run staleness check had not been run against the tree since July.
+
+**Upgrade notes:**
+
+- **`/work` verifies against a declared command set (#2733).** `framework-config.json` gains
+  `verificationCommands`, an ordered array; Step 4f runs **every** entry and reports each result
+  separately, so one passing command cannot mask another failing. A single `testCommand` is still
+  honoured as the fallback. A project declaring neither is told the sweep did not run and the
+  `in_review` move proceeds unverified. The rule still names no runner — declaration is the
+  mechanism, and a default invented here would be wrong for some ecosystem.
+
+- **Review state is checked once, up front, over the whole set (#2748, #2749, #2750).** `/work` on an
+  epic classifies the epic and every child before the first sub-issue is worked and raises one
+  question naming every unreviewed or findings-pending member. The same gate runs for a branch tracker
+  under `--nonstop` (tracker not classified — nothing reviews one) and for any selection typed on one
+  line, where a selection of two or more may also proceed with the clean members only. The per-issue
+  gate at each sub-issue's turn is unchanged and still catches members the up-front question never saw.
+  An epic's decline is recorded in the epic body; a branch tracker's is not, because its body is
+  machine-parsed for `**Processing Order:**`. Neither recorded bypass suppresses the next run.
+
+- **`/review-issue` is MANAGED (#2746).** Its three extension points — `pre-review`,
+  `criteria-customize`, `post-review` — are retired to `deprecatedExtensionPoints`; 0 of 3 were filled
+  here and 0 of 28 recipes targeted them. The declarative need is served by `review-criteria.json`,
+  `review-mode-criteria.json` and `--with <domain>`. `/review-prd` and `/review-proposal` keep theirs.
+  Praxis Hub Manager will symlink rather than copy the command; a previously copied file is migrated
+  on the PHM side.
+
+- **`/mockups --consolidate` is removed (#2745)**, with its metadata pair and the deprecation filters
+  in both helpers.
+
+- **`/x-session-config --quiet` and `--loud` (#2735)** set a new receive-side lever,
+  `noticeNarration`. Quiet keeps the one-line acknowledgement of an inbound announcement — the only
+  evidence the sender has that anything landed — and drops the commentary around it. Absent means
+  verbose; `enabled: false` forces it off; `discovery: false` does not, since that implication is about
+  sending. `--show` is the new read-only form.
+
+- **The review Workflow lives in rule 09 (#2737).** `/review-issue` and `/resolve-review` shells keep
+  arguments, prerequisites and error handling; `Reference/review-execution.md` carries the Workflow
+  for both. `/resolve-review` Step 4 invokes `review-issue` with `--force`, so one issue's cycle
+  previously injected the full spec twice. `CLAUDE.md`'s rules list now names nine.
+
+- **Rule 08 loads its conditional sections on demand (#2765).** Steps 1b, 2b, 2b-ii, 2c and 6a have
+  their bodies in `Reference/work-execution-conditional.md`, read at a new Step 1d when
+  `context.type` is epic or branch, `--nonstop` is set, or two or more issues are selected. The
+  Review-State Gate action matrix and the three AC gate markers are data in `.claude/metadata/`.
+  Resident bytes 67,472 → 52,895. Every rationale blockquote is pinned verbatim by digest.
+
+### Added
+
+- `/hall-monitor` — dedicates a session to consuming the lifecycle announcements peers already
+  broadcast, correlating them against local commits, and reporting unannounced commits, unmatched
+  work-started events and overlapping declared scope; `--auto-create` files bugs for filable findings
+  behind a dedupe window, a per-session cap and a prior-art sweep, and only ever offers enhancements
+  (#2768)
+- `/proposal --update [changes]` — revise an existing proposal in place, interactively or from an
+  inline instruction, preserving the tracking-issue link, diagram paths and any prior-art section, and
+  rewriting only the tracking issue's `### Summary`; a missing document is an error, never a fall-through
+  to create (#2767)
+- `verificationCommands` in `framework-config.json` and `resolveVerificationCommands()`; `/work`
+  Step 4f runs every declared command (#2733)
+- Tree-wide and selection-wide review gates on one shared helper, `branch-review-gate.js` (#2748,
+  #2749, #2750)
+- `noticeNarration` lever with `--quiet` / `--loud` aliases and `--show` on `/x-session-config`, plus
+  a per-project memory artefact and config/memory drift reporting (#2735)
+- `ci-resolved` peer event so a CI outcome reaches every session, not only the one that armed the wait;
+  `ci-terminal` no longer claims finality it cannot deliver (#2716)
+- `/bad-test-review` inventories source files and reports missing unit and e2e coverage as two gated
+  finding categories, recorded in the manifest and both reports (#2728)
+- Non-Functional Requirements section in the PRD template (#2706)
+- Every catalog kind has a named rendering home, so a zero-page catalog no longer surfaces components
+  and sections only as *Unreachable* (#2718)
+- `/create-branch` assigns the branch tracker to its creator (#2658)
+- `.claude/recipes/` declared in `deploymentFiles`, so a manifest-driven installer can derive it (#2744)
+- `wait-for-ci.js --schema` exposes the exit-code contract `/work` Step 1a reads (#2765)
+- Guard tests: a backticked slash-command token naming a command that does not exist fails CI across
+  `CommandsSrc/`, `Docs/Commands/` and `Reference/` (#2766); a `/work` step with no task entry fails
+  (#2763); every CHARTER In Scope prose count is checked, not just Scripts (#2757); a review-lifecycle
+  event defined in more than one rule source fails (#2765)
+- `Docs/Commands/hall-monitor.md`; Getting Started and Advanced guides updated for the review gates,
+  verification commands, `--update`, peer announcements and the managed-command set
+
+### Changed
+
+- `/review-issue` converted from EXTENSIBLE to MANAGED; `build-extension-registry.js` marks
+  carried-forward `location`/`purpose` metadata as unverified instead of emitting it as freshly
+  derived (#2746)
+- `/prepare-release`: `recommend-version.js` is authoritative for the bump and the changelog agrees;
+  Step 3.2 stages only paths that exist; Step 4.4 pops the stash only when one was pushed;
+  `deployment-scope` no longer reports a confident dev-only with no basis (#2602)
+- `/prepare-release` Step 4.7 waits on the run the tag actually created, scoped by tag name, and the
+  conditional asks whether any workflow triggers on tags rather than whether a workflow file exists
+  (#2653)
+- `prepare-release-validation.md` Phase 2g Step 4 parses `minimize-config.json` instead of grepping
+  it and compares one-directionally; Phase 2q derives recipe counts instead of stating them (#2628)
+- `/work` Step 4d rebuilds the extension registry after regenerating command specs, and the two
+  `/fw-minimize-files` modes that lacked the rebuild gained it (#2758)
+- `/done` derives the work-summary file list per commit rather than by positional range (#2732);
+  `done-verify.js` separates attribution from the confirmation gate's broad commit set and retires the
+  hand-rolled alternation in favour of `issueRefGrepPattern` with keywords (#2753)
+- QA-issue creation has a named owner, and the shell-safety rule no longer models board-bypassing
+  `gh issue create` (#2724)
+- Startup-safety invariants (#1425, #1700) ported to `startup-hook.test.js`; the skipped suite and the
+  invariant asserting a property of the workstation are deleted (#2684)
+- `/idpf-stats` documents the repo cache path it actually uses in all three pipeline stages (#2742);
+  `Docs/02-Advanced/Claude-Code-Dependencies.md` §3 enumerates the real hook surface and wires
+  `block-cd.js` (#2738)
+- `Reference/Deployment-Awareness.md` records that removing `dependabot.yml` from a target does not
+  stop alert-driven security updates — a repository settings toggle outside this repo (#2708)
+- `hall-monitor.md` registered in `deploymentFiles.commands.workflow` and `constants.js`;
+  `review-issue` classified in `managedCommands`; two stale `.min-mirror/` outputs refreshed (release
+  validation)
+
+### Fixed
+
+- `/work` Step 2b enumerated sub-issues with `gh pmu sub list --json=number,title,status`, which
+  errors (`--json` is boolean), then filtered on a `status` field the working form never returns; the
+  Step 6a post-compaction fallback shared the defect (#2751)
+- `/review-issue --prior-art` fell through the preamble's argument loop to the positional branch and
+  was rejected as an invalid issue number, halting the review; flag-shaped tokens are now collected
+  and reported, never fatal (#2752)
+- `CI_RESOLVED` announcements sent a false *outcome could not be read* on a malformed payload; an
+  unreadable payload is now refused rather than announced, and `ciResult` is named as the wrapper in
+  the `/done` spec (#2764)
+- `work-task-definitions.json` had no entry for Steps 2b, 2b-ii or 2c, leaving the review gate
+  skippable after compaction (#2763)
+- `CommandsSrc/work.md` still shipped a retired `/workit` sentence; removed from three live surfaces,
+  and `/fw-skill-validate` from a fourth (#2766)
+- CHARTER In Scope slash-command count corrected from 51 to 52, and the scripts count guard extended to
+  every prose count (#2757)
+- Three regexes flattened or narrowed to clear the ReDoS lint gate (#2751, #2758, #2763)
+- Two full-path references dropped by the rule-08 restructure restored (#2765)
+
+---
+
 ## [0.100.2] - 2026-09-02
 
 Security patch. `fast-uri` 3.1.5 → 3.1.6, closing four high-severity advisories that reach user
@@ -2093,7 +2253,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.100.2` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.101.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -2386,7 +2546,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.100.2` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.101.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -2757,13 +2917,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.100.2` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.100.2` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.100.2` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.101.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.101.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.101.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.100.2` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.101.0` placeholder (#1479)
 
 ---
 
@@ -3461,15 +3621,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.100.2 placeholder after packaging
+- **#1059** - Skills retain v0.101.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.100.2 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.101.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.100.2"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.101.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -3629,7 +3789,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.100.2` pattern
+  - All 52 framework JS files now use `@framework-script v0.101.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -3737,7 +3897,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.100.2` placeholder
+- **#951** - Replace hardcoded versions with `v0.101.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -3768,8 +3928,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.100.2 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.100.2` placeholder
+- **#933** - v0.101.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.101.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -3910,7 +4070,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.100.2` placeholder
+  - Changed hardcoded version to `v0.101.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -3950,7 +4110,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.100.2` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.101.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -4027,10 +4187,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.100.2` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.101.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.100.2` placeholder
+- **#821** - README-DIST.md now uses `v0.101.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -4147,7 +4307,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.100.2 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.101.0 placeholder
 
 ---
 
@@ -4195,7 +4355,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.100.2 placeholders to 209 framework source files
+- Restored v0.101.0 placeholders to 209 framework source files
 
 ---
 
@@ -4263,12 +4423,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.100.2` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.101.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.100.2` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.101.0` format for consistent replacement
 
 ---
 
@@ -4337,7 +4497,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.100.2` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.101.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

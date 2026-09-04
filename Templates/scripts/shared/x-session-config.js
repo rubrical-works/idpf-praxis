@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -35,6 +35,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const cfgHelper = require('./lib/framework-config.js');
@@ -47,7 +48,10 @@ const { resolveCrossSessionConfig, formatEffectiveState } = require('./lib/cross
  * are named WITHOUT the prefix: there is no other `work` or `push` to confuse
  * them with, and `--off groups.push` is more to type and more to get wrong.
  */
-const LEVERS = ['enabled', 'discovery', 'notices', 'upstreamMonitor', 'work', 'push', 'review'];
+const LEVERS = [
+  'enabled', 'discovery', 'notices', 'upstreamMonitor', 'noticeNarration',
+  'work', 'push', 'review',
+];
 
 /** The three that live under `groups`. */
 const GROUP_LEVERS = ['work', 'push', 'review'];
@@ -98,6 +102,18 @@ function parseArgs(argv) {
       value = arg.slice(eq + 1);
     } else if (arg === '--show') {
       continue; // already recorded as the mode
+    } else if (arg === '--quiet' || arg === '--loud') {
+      // Aliases for `--off noticeNarration` / `--on noticeNarration` (#2735),
+      // resolved here so they share ONE parse, ONE validation and ONE write
+      // with the flags they stand for. A parallel path would be a second
+      // grammar to keep in step -- and re-deriving the write is exactly what
+      // this module's header records going wrong live. Because they land in
+      // the same buckets, the --show conflict rule and the named-in-both rule
+      // below apply to them with no extra checks: one conflict rule, not two
+      // that can disagree.
+      const bucket = arg === '--quiet' ? out.off : out.on;
+      if (!bucket.includes('noticeNarration')) bucket.push('noticeNarration');
+      continue;
     } else if (arg === '--on' || arg === '--off') {
       flag = arg;
       // A following token that is itself a flag is NOT this flag's value:
@@ -185,6 +201,8 @@ function helpText() {
     '  x-session-config                    write the resolved object, then show it',
     '  x-session-config --off <levers>     turn levers off, then write and show',
     '  x-session-config --on  <levers>     turn levers on, then write and show',
+    '  x-session-config --quiet            alias for --off noticeNarration',
+    '  x-session-config --loud             alias for --on  noticeNarration',
     '  x-session-config --show             show the resolved state, WRITE NOTHING',
     '  x-session-config --help             this text, WRITE NOTHING',
     '',
@@ -192,9 +210,13 @@ function helpText() {
     '  Comma-separated, or the literal `all`. The last three address',
     '  groups.work / groups.push / groups.review.',
     '',
+    '  noticeNarration is the one RECEIVE-side lever: it sets how verbosely',
+    '  this session narrates an announcement it RECEIVES. Quiet keeps the',
+    '  one-line acknowledgement and drops the commentary around it.',
+    '',
     'Notes:',
     '  Every invocation except --show and --help writes the complete',
-    '  seven-lever object, a bare invocation included, so the first run in an',
+    '  eight-lever object, a bare invocation included, so the first run in an',
     '  unconfigured project produces a diff and is idempotent thereafter.',
     '  --show cannot be combined with --on or --off.',
     '  An absent object resolves to fully enabled at every level.',
@@ -203,7 +225,134 @@ function helpText() {
     '  x-session-config --off push',
     '  x-session-config --off work,review',
     '  x-session-config --on all',
+    '  x-session-config --quiet',
   ].join('\n');
+}
+
+/**
+ * THE MEMORY HALF (#2735).
+ *
+ * The config lever is the source of truth and the half that ships. This is the
+ * DELIVERY mechanism: in this repo the per-project memory file is what actually
+ * reaches Claude, so setting the lever without it changes nothing a session
+ * would notice.
+ *
+ * It deliberately does NOT ship. The memory directory is Claude Code's
+ * per-user, per-machine store, not project state and not a framework surface;
+ * in a deployed project the path differs and may not exist. So every operation
+ * here is BEST-EFFORT and REPORTED, never fatal — a MANAGED command must not
+ * fail on a surface the framework does not own. The rule section is what makes
+ * the lever mean something in projects this half never reaches.
+ *
+ * The layout is OBSERVED, not specified: <claude-config-dir>/projects/<slug>/
+ * memory/, with <slug> being cwd with every non-alphanumeric replaced by a
+ * dash. Verified against the live directory for this repo. Any release may
+ * change it, which is a further reason nothing here may be load-bearing.
+ */
+const MEMORY_ARTEFACT = 'feedback_peer_notice_brevity.md';
+const MEMORY_INDEX = 'MEMORY.md';
+const MEMORY_POINTER =
+  '- [Peer notice brevity](feedback_peer_notice_brevity.md) — acknowledge an inbound '
+  + 'peer announcement in one line; skip the lookup and analysis';
+
+const MEMORY_BODY = [
+  '---',
+  'name: peer-notice-brevity',
+  'description: Acknowledge inbound peer announcements in one line, without expanding them',
+  'metadata:',
+  '  type: feedback',
+  '---',
+  '',
+  'When a peer announcement arrives, acknowledge it in **one line** and carry on.',
+  'Do not look the issue up, enumerate likely files, or analyse the collision surface —',
+  'the protocol asks for none of it.',
+  '',
+  '**Why:** the announcement is one line, but expanding it into a paragraph scales into',
+  'sustained noise under --nonstop, where work-started and work-completed fire per',
+  'sub-issue on exactly the long unattended runs where a peer is most likely running.',
+  '',
+  '**How to apply:** keep the acknowledgement, drop the commentary. Set by',
+  '/x-session-config --quiet; --loud removes this file and restores the default.',
+  '',
+].join('\n');
+
+/** Resolve the observed per-project memory paths for a working directory. */
+function memoryPaths(cwd) {
+  const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const slug = String(cwd).replace(/[^a-zA-Z0-9]/g, '-');
+  const dir = path.join(configDir, 'projects', slug, 'memory');
+  return { dir, artefact: path.join(dir, MEMORY_ARTEFACT), index: path.join(dir, MEMORY_INDEX) };
+}
+
+/** Is the artefact on disk? Any error answers "no" rather than throwing. */
+function memoryPresent(cwd) {
+  try {
+    return fs.existsSync(memoryPaths(cwd).artefact);
+  } catch {
+    return false;
+  }
+}
+
+/** Write the artefact and ensure its MEMORY.md pointer. Never throws. */
+function writeMemoryArtefact(cwd) {
+  const paths = memoryPaths(cwd);
+  try {
+    fs.mkdirSync(paths.dir, { recursive: true });
+    fs.writeFileSync(paths.artefact, MEMORY_BODY);
+    let index = '';
+    try {
+      index = fs.readFileSync(paths.index, 'utf8');
+    } catch {
+      index = '# Memory Index\n';
+    }
+    if (!index.includes(MEMORY_ARTEFACT)) {
+      fs.writeFileSync(paths.index, index.trimEnd() + '\n' + MEMORY_POINTER + '\n');
+    }
+    return { ok: true, error: null };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/** Remove the artefact and its pointer line. Never throws; absent is success. */
+function removeMemoryArtefact(cwd) {
+  const paths = memoryPaths(cwd);
+  try {
+    if (fs.existsSync(paths.artefact)) fs.unlinkSync(paths.artefact);
+    if (fs.existsSync(paths.index)) {
+      const kept = fs.readFileSync(paths.index, 'utf8')
+        .split('\n')
+        .filter((line) => !line.includes(MEMORY_ARTEFACT));
+      fs.writeFileSync(paths.index, kept.join('\n'));
+    }
+    return { ok: true, error: null };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Build the envelope's memory block.
+ *
+ * `drift` is the load-bearing field. The two stores can disagree — lever says
+ * quiet, artefact absent — and that failure is SILENT: a suppression that
+ * quietly stopped working is indistinguishable from one that was never set.
+ * Reporting both values and leaving the reader to compare them would preserve
+ * exactly that ambiguity, so the disagreement is named.
+ */
+function memoryStatus(cwd, quiet, action, result) {
+  const paths = memoryPaths(cwd);
+  const present = memoryPresent(cwd);
+  return {
+    action: action || null,
+    ok: result ? result.ok : true,
+    error: result ? result.error : null,
+    dir: paths.dir,
+    artefact: paths.artefact,
+    index: paths.index,
+    present,
+    drift: quiet !== present,
+  };
 }
 
 /** Read the seven-lever shape out of a resolved state, dropping derived fields. */
@@ -213,6 +362,7 @@ function toObject(state) {
     discovery: state.discovery,
     notices: state.notices,
     upstreamMonitor: state.upstreamMonitor,
+    noticeNarration: state.noticeNarration,
     groups: {
       work: state.groups.work,
       push: state.groups.push,
@@ -309,6 +459,9 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
       summary: formatEffectiveState(shown),
       implications: shown.implications,
       errors: [],
+      // --show acts on neither store. It reports the lever, whether the
+      // artefact exists, and whether the two disagree.
+      memory: memoryStatus(cwd, shown.noticeNarration === false, null, null),
     };
   }
 
@@ -340,6 +493,22 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
     state = resolveCrossSessionConfig(next);
   }
 
+  // Memory reconciliation runs AFTER the config write, and only when this
+  // invocation NAMED the lever (via --quiet/--loud, or --on/--off
+  // noticeNarration). A bare invocation reports the state without acting: it
+  // writes the complete object for every lever, and silently deleting a memory
+  // file the user may have placed by hand is not something "write the object"
+  // should imply.
+  let action = null;
+  let result = null;
+  if (parsed.off.includes('noticeNarration')) {
+    action = 'write';
+    result = writeMemoryArtefact(cwd);
+  } else if (parsed.on.includes('noticeNarration')) {
+    action = 'remove';
+    result = removeMemoryArtefact(cwd);
+  }
+
   return {
     ok: true,
     changed,
@@ -347,10 +516,17 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
     summary: formatEffectiveState(state),
     implications: state.implications,
     errors: [],
+    // Reported, never fatal: ok stays true even when this failed. The config
+    // write above already succeeded, and failing the command afterwards would
+    // report a write that DID happen as a run that did not.
+    memory: memoryStatus(cwd, state.noticeNarration === false, action, result),
   };
 }
 
-module.exports = { LEVERS, GROUP_LEVERS, parseArgs, applyLevers, toObject, helpText, run };
+module.exports = {
+  LEVERS, GROUP_LEVERS, parseArgs, applyLevers, toObject, helpText, run,
+  memoryPaths, memoryPresent, writeMemoryArtefact, removeMemoryArtefact,
+};
 
 if (require.main === module) {
   const envelope = run({ cwd: process.cwd(), argv: process.argv.slice(2) });

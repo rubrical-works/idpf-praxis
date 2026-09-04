@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Analyze commits referencing an issue to detect hallucinated or incomplete work. Examines diffs for comment-only changes, EOF-only appends, and suspect patterns (e.g., TODO placeholders, empty function bodies). Parallelizes per-commit and per-file git operations for performance. Used by /done verification phase.
  * @checksum sha256:placeholder
  *
@@ -175,8 +175,30 @@ function classifyDiffLines(rawDiff) {
 }
 
 /**
+ * TWO SELECTIONS, DELIBERATELY DIFFERENT (#2753). Do not merge them.
+ *
+ * `findCommitsForIssue` answers "should /done ask the user to confirm?" and is
+ * deliberately the widest of the five call sites — a bare `#N`, no keyword,
+ * `--all`. Breadth is the correct bias there: a gate that errs toward asking
+ * is safer than one that errs toward silence.
+ *
+ * `findAttributedCommitsForIssue` answers "which files did THIS issue change?"
+ * and is keyword-anchored. That question wants precision, and one selection
+ * cannot serve both — before the split, a commit that merely mentioned an
+ * issue in prose had its files reported as that issue's. Observed on real
+ * history: 28a36f4d carries `Refs #2701` and mentions #2718 twice in its body,
+ * so #2718's reported file list gained #2701's design-decision file.
+ *
+ * The file list is what a user reads when deciding whether to approve a
+ * `--force-move` past the diff gate, so a misattribution there degrades the
+ * one decision the gate exists to inform.
+ */
+
+/**
  * Find all commits referencing an issue number.
  * Filters out merge commits.
+ *
+ * CONFIRMATION-GATE SELECTION — keyword-less on purpose. See the note above.
  */
 async function findCommitsForIssue(issueNumber) {
     // Boundary-anchored (#2467). This call site is the widest of the five: it
@@ -186,6 +208,45 @@ async function findCommitsForIssue(issueNumber) {
     // Fixes/Closes/Resolves and plain mentions alike, not only `Refs #N`.
     const output = await execSafe(
         `git log --all --grep="${issueRefGrepPattern(issueNumber, { keyword: null })}" --format="%H|%s"`
+    );
+
+    if (!output) return [];
+
+    return output.split('\n')
+        .filter(line => line.trim())
+        .map(line => {
+            const pipeIdx = line.indexOf('|');
+            if (pipeIdx === -1) return null;
+            return {
+                hash: line.substring(0, pipeIdx),
+                message: line.substring(pipeIdx + 1)
+            };
+        })
+        .filter(c => c !== null)
+        .filter(c => !c.message.startsWith('Merge'));
+}
+
+/**
+ * Find the commits an issue may be CREDITED with — keyword-anchored.
+ * Filters out merge commits.
+ *
+ * ATTRIBUTION SELECTION. See the note above `findCommitsForIssue`.
+ *
+ * Anchored on Refs/Fixes/Closes via the shared helper's `keywords` option
+ * rather than an inline alternation: an inline one already existed in /done
+ * Step 1b, built independently, which is how five call sites drift apart.
+ *
+ * A second git invocation rather than post-filtering the gate's output,
+ * because `--format=%H|%s` yields the SUBJECT only, and a commit can carry
+ * `Refs #N` in its body. Filtering on the subject would drop legitimately
+ * attributed commits — a quieter defect than the one being fixed.
+ */
+async function findAttributedCommitsForIssue(issueNumber) {
+    const pattern = issueRefGrepPattern(issueNumber, {
+        keywords: ['Refs', 'Fixes', 'Closes']
+    });
+    const output = await execSafe(
+        `git log --all --grep="${pattern}" --format="%H|%s"`
     );
 
     if (!output) return [];
@@ -303,13 +364,28 @@ function generateWarnings(analyzedCommits) {
  * Returns structured JSON with commit analysis and warnings.
  */
 async function verify(issueNumber) {
-    const commits = await findCommitsForIssue(issueNumber);
+    // Both selections run: the wide one for the gate, the anchored one for
+    // attribution (#2753). Keeping the wide count on the envelope is what
+    // stops a later narrowing of attribution from quietly narrowing the gate.
+    const [referencingCommits, commits] = await Promise.all([
+        findCommitsForIssue(issueNumber),
+        findAttributedCommitsForIssue(issueNumber)
+    ]);
+    const referencingCommitCount = referencingCommits.length;
 
     if (commits.length === 0) {
+        // Distinguish "nothing references this issue at all" from "commits
+        // mention it but none claims it". The second is the more interesting
+        // state and used to be invisible: the wide set made it look attributed.
+        const warning = referencingCommitCount > 0
+            ? `No commits are attributed to #${issueNumber} by Refs/Fixes/Closes, though ${referencingCommitCount} commit(s) mention it`
+            : `No commits found referencing #${issueNumber}`;
+
         return {
             issue: issueNumber,
             commits: [],
-            warnings: [`No commits found referencing #${issueNumber}`],
+            referencingCommitCount,
+            warnings: [warning],
             newFiles: [],
             substantiveFiles: 0,
             commentOnlyFiles: 0
@@ -348,6 +424,7 @@ async function verify(issueNumber) {
     return {
         issue: issueNumber,
         commits: analyzedCommits,
+        referencingCommitCount,
         warnings,
         newFiles,
         substantiveFiles,
@@ -382,6 +459,7 @@ module.exports = {
     parseStatLine,
     classifyDiffLines,
     findCommitsForIssue,
+    findAttributedCommitsForIssue,
     getCommitStat,
     getFileDiff,
     analyzeCommit,

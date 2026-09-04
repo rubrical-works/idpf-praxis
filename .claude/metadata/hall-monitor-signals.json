@@ -1,0 +1,81 @@
+{
+  "$schema": "./hall-monitor-signals-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Thresholds and dispositions for /hall-monitor (#2768). Externalized so dedupe, rate limiting and finding severity can be tuned without a spec edit (#2318 precedent, same shape as commit-checkpoint-signals.json).",
+    "issue": 2768
+  },
+  "observation": {
+    "events": [
+      "work-started",
+      "work-completed",
+      "push-started",
+      "ci-terminal",
+      "ci-resolved",
+      "push-rejected",
+      "review-started",
+      "review-resolved",
+      "review-passed"
+    ],
+    "gitPollFallbackSeconds": 1200,
+    "note": "The nine events are what peer-announce.js broadcasts to every addressable peer, so a discoverable idle session receives them with no new transport. Direct SendMessage between two OTHER sessions is point-to-point and unobservable — the monitor sees only what is addressed to it, and must say so rather than implying wider coverage."
+  },
+  "findings": [
+    {
+      "kind": "unannounced-commit",
+      "description": "A Refs #N commit appeared in git log with no work-started announcement from any session.",
+      "severity": "report",
+      "autoCreatable": false,
+      "rationale": "A session with groups.work disabled commits legitimately and announces nothing. Filing a bug for a configured-quiet peer would be wrong every time."
+    },
+    {
+      "kind": "unmatched-work-started",
+      "description": "A work-started announcement with no matching work-completed after the pairing window.",
+      "severity": "report",
+      "autoCreatable": false,
+      "rationale": "The peer may still be working. Rule 08 makes every event 1 carry exactly one event 2, so an unmatched opener is worth surfacing but is not by itself a defect."
+    },
+    {
+      "kind": "scope-overlap",
+      "description": "Two in-flight issues declare the same file in their Files to modify sections.",
+      "severity": "report",
+      "autoCreatable": false,
+      "rationale": "Overlap is a collision risk, not a defect. Reporting it early is the whole value; filing a bug about it names no broken behaviour."
+    },
+    {
+      "kind": "stale-generated-output",
+      "description": "minimize-helper stale reports an output that does not match its recorded hash.",
+      "severity": "filable",
+      "autoCreatable": true,
+      "rationale": "A concrete, reproducible defect with a named remedy (regenerate, do not edit). The staleness check is the authority, so the finding does not rest on the monitor's own judgment."
+    },
+    {
+      "kind": "guard-test-red-on-pushed-tip",
+      "description": "A guard test fails on the pushed tip while its issue is already closed.",
+      "severity": "filable",
+      "autoCreatable": true,
+      "rationale": "A failing test on a closed issue is unambiguous and nobody owns it — exactly the gap an unattended observer is positioned to catch."
+    }
+  ],
+  "autoCreate": {
+    "enabledByDefault": false,
+    "label": "auto-filed",
+    "dedupe": {
+      "windowMinutes": 720,
+      "fingerprintFields": ["kind", "subject"],
+      "rationale": "A monitor observing a standing condition re-derives the same finding every tick, so without dedupe one condition becomes one issue per tick. Detail is deliberately excluded from the fingerprint: it is the part most likely to be reworded between ticks while the finding is the same one, and including it would defeat dedupe on exactly the findings dedupe exists for. Twelve hours is long enough to cover an unattended overnight run and short enough that a genuinely recurring condition is re-reported the next day."
+    },
+    "rateLimit": {
+      "maxPerSession": 5,
+      "rationale": "Bounds the blast radius of an analysis that goes wrong. Five is well above the number of distinct filable findings a healthy working directory produces in a session, so the cap is invisible in the common case and decisive in the pathological one."
+    },
+    "priorArtRequired": true,
+    "onAlreadyShipped": "skip",
+    "note": "A sweep is mandatory before any auto-filed bug and an already-shipped verdict skips the filing. Duplicate filing is a known failure in this repo — the whole --prior-art subsystem exists because of it — and an unattended filer has no human check standing between it and the board."
+  },
+  "enhancementOffers": {
+    "autoFile": false,
+    "mustStayInMonitorSession": true,
+    "rationale": "A delegated subagent cannot make an offer: framework-dev declares Read, Write, Edit, Glob, Grep, Bash, Skill and has no AskUserQuestion. Bug filing is non-interactive and therefore delegable; an enhancement offer is not. The asymmetry is enforced by the tool boundary, not by preference."
+  }
+}

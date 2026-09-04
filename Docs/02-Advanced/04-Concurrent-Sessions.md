@@ -70,7 +70,6 @@ These commands must run in one session at a time. They stage, commit, or manipul
 | `/merge-branch` | Merges to main via PR |
 | `/create-branch` | Creates and checks out a new branch |
 | `/switch-branch` | Checks out a different branch |
-| `/minimize-files` | Writes to `.min-mirror/`, typically followed by commit |
 
 Any task that involves writing code, running tests, or committing changes belongs in this category.
 
@@ -141,7 +140,40 @@ When you come back, the git session has three issues ready for final review, and
 
 This is a non-issue in practice. Review commands don't change issue status — they post comments. `/resolve-review` edits issue metadata (title, labels, priority, body) but doesn't move issues between status columns. The status transitions happen through `/work` (→ in_progress) and `/done` (→ done), which belong to the git session.
 
-The one edge case: if Session B runs `/resolve-review` on an issue that Session A is actively working on via `/work`, the resolve-review might edit the issue body while Session A is referencing it. This is harmless — Session A's working context doesn't refresh from GitHub mid-task — but it's worth knowing.
+The one edge case: if Session B runs `/resolve-review` on an issue that Session A is actively working on via `/work`, the resolve-review might edit the issue body while Session A is referencing it. This is harmless — Session A's working context doesn't refresh from GitHub mid-task — but it's worth knowing. Since sessions started announcing to each other (below), Session B is told the moment Session A starts `/work #101`, so the collision is visible before it happens rather than discovered afterwards.
+
+---
+
+## Sessions Announce to Each Other
+
+The setup above used to rely on you remembering which session was doing what. Sessions in the same working directory now discover each other at startup and broadcast lifecycle announcements, so each one knows what the others are doing without you relaying it.
+
+**Discovery.** The session-start block carries a `Peers:` line whenever another session is running in the same directory, naming each one and whether it can be reached. A lone session prints no line at all. Discovery is scoped to one machine, one user and one working directory: a sibling worktree or a second clone is a different directory and is not a peer.
+
+**Announcements.** The git-owning commands and the review commands each announce as they reach a workflow moment:
+
+| Command | Announces |
+|---|---|
+| `/work` | Work started on an issue; work completed, with the commits it produced |
+| `/done` | A push started; how CI resolved for it (or that the push was rejected) |
+| `/review-issue` | A review started; a review passed clean |
+| `/resolve-review` | Findings are being resolved |
+
+Every opener has a closer, so a session that hears "work started on #101" will also hear when #101 reaches review. The announcements are advisory. Nothing waits for delivery, a session that cannot be reached is skipped, and the receiving session decides whether to accept the message. The sender is told a message was dispatched, never that it was read.
+
+**Turning it down.** `/x-session-config` controls what this project sends. Each group of announcements is a separate lever (`work`, `push`, `review`), discovery itself is one, and the background poller that watches the git upstream is another. `/x-session-config --quiet` addresses the other direction: a receiving session keeps the one-line acknowledgement of an inbound announcement but drops the commentary around it (issue lookups, likely-file lists, overlap analysis). `--show` prints the resolved state without writing anything. Absent settings mean everything is on.
+
+**Watching the whole floor.** `/hall-monitor` dedicates a session to receiving. It performs no work and announces nothing of its own; it consumes the announcements the other sessions already broadcast, correlates them against local commits, and reports what no working session is positioned to see: commits nobody announced, a "work started" with no matching completion, two in-flight issues declaring overlapping files. With `--auto-create` it will file bugs for findings marked filable, behind a dedupe window and a per-session cap and always after a prior-art sweep; enhancements are offered, never filed unattended. A monitor sees only what is addressed to it. A direct message between two other sessions is point-to-point, and the report says so rather than implying full coverage.
+
+In the role layout above, a monitor is a fourth terminal:
+
+```
+Terminal 1 (Git)     Terminal 2 (Review)   Terminal 3 (Review)   Terminal 4 (Monitor)
+> runp_claude        > runp_claude         > runp_claude         > runp_claude
+/work #101           /review-issue #105    /review-issue #108    /hall-monitor
+```
+
+It is optional. The announcements reach Sessions A, B and C whether or not anyone is monitoring; the monitor adds a reader, not a transport.
 
 ---
 
@@ -181,7 +213,7 @@ But in IDPF workflows, review is often the bottleneck. A release with twenty sto
 | Board management (`/assign-branch`) | GitHub API | As many as needed |
 | Implementation (`/work`, `/done`) | Git + local files | One |
 | Releases (`/prepare-release`) | Git + local files | One |
-| File minimization (`/minimize-files`) | Local files | One |
+| Observation (`/hall-monitor`) | Announcements + git (read-only) | One, optional |
 
 One session commits. The rest review. No worktrees required.
 

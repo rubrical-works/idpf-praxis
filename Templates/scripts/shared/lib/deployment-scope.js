@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Classify files and commits by deployment scope (deployed vs dev-only).
  * Uses minimize-config.json rules, deployment chain awareness, and known path patterns.
  * Used by generate-changelog.js to separate user-facing from internal changes.
@@ -14,15 +14,72 @@ const path = require('path');
 
 let _config = null;
 
-function loadConfig() {
-    if (_config) return _config;
+const EMPTY_CONFIG = { excludedCommands: [], excludedDirectories: [], includedDirectories: [] };
+
+/**
+ * Load minimize-config.json, recording whether it was actually found (#2602).
+ *
+ * The `loaded` flag is the whole point. This file lives under
+ * `.claude/scripts/framework/`, which is dev-repo-only and never deployed, so in
+ * a consuming project the read always fails and the empty-array substitution
+ * used to be indistinguishable from a real config with nothing in it — every
+ * path then fell through to a confident `dev-only`.
+ *
+ * @param {string} [configPath] - override; also bypasses the module cache, so
+ *   tests can point at a fixture without poisoning subsequent calls
+ * @returns {object} the config, plus a non-enumerable `loaded` boolean
+ */
+function loadConfig(configPath) {
+    if (!configPath && _config) return _config;
+
+    const resolved = configPath || path.resolve(__dirname, '../../framework/minimize-config.json');
+    let result;
     try {
-        const configPath = path.resolve(__dirname, '../../framework/minimize-config.json');
-        _config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        result = { ...JSON.parse(fs.readFileSync(resolved, 'utf8')), loaded: true };
     } catch {
-        _config = { excludedCommands: [], excludedDirectories: [], includedDirectories: [] };
+        result = { ...EMPTY_CONFIG, loaded: false };
     }
-    return _config;
+
+    if (!configPath) _config = result;
+    return result;
+}
+
+/**
+ * Deployed paths a consuming project declares for itself (#2602).
+ *
+ * The escape hatch for projects that have no minimize-config.json — which is
+ * every project except this one. Read from `framework-config.json`
+ * `deployedPaths`: a list of path prefixes that ship.
+ *
+ * @param {string} [projectRoot] - defaults to the current working directory,
+ *   which is the consuming project when a symlinked helper runs inside it
+ * @returns {string[]}
+ */
+function loadDeclaredPaths(projectRoot) {
+    const root = projectRoot || process.cwd();
+    try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(root, 'framework-config.json'), 'utf8'));
+        return Array.isArray(cfg.deployedPaths) ? cfg.deployedPaths : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Whether the classifier has anything to classify against.
+ *
+ * False means every answer outside the built-in patterns is a guess, and
+ * `classifyFile` returns `'unknown'` rather than pretending otherwise.
+ *
+ * @param {{configPath?: string, projectRoot?: string}} [options]
+ * @returns {boolean}
+ */
+function hasClassificationBasis(options = {}) {
+    const config = loadConfig(options.configPath);
+    // An empty deployedPaths array is not a declaration. Treating it as one
+    // would quietly restore the confident dev-only this change removed.
+    const declared = options.declaredPaths || loadDeclaredPaths(options.projectRoot);
+    return Boolean(config.loaded) || declared.length > 0;
 }
 
 // --- Dev-only path patterns (not in minimize-config but known dev-only) ---
@@ -54,12 +111,21 @@ const DEPLOYED_PATTERNS = [
 ];
 
 /**
- * Classify a single file path as 'deployed' or 'dev-only'.
+ * Classify a single file path as 'deployed', 'dev-only' or 'unknown'.
+ *
+ * `'unknown'` is returned only when the path matched no built-in pattern AND
+ * there was no basis to classify against (#2602) — no minimize-config.json and
+ * no project-declared deployedPaths. It is deliberately distinguishable from
+ * `'dev-only'`: a consuming project needs to be able to tell "this is internal"
+ * from "the classifier did not apply here".
+ *
  * @param {string} filePath - Relative file path from repo root
- * @returns {'deployed'|'dev-only'}
+ * @param {{configPath?: string, projectRoot?: string, declaredPaths?: string[]}} [options]
+ * @returns {'deployed'|'dev-only'|'unknown'}
  */
-function classifyFile(filePath) {
-    const config = loadConfig();
+function classifyFile(filePath, options = {}) {
+    const config = loadConfig(options.configPath);
+    const declared = options.declaredPaths || loadDeclaredPaths(options.projectRoot);
     const normalized = filePath.replace(/\\/g, '/');
 
     // Check excluded commands first (most specific)
@@ -95,19 +161,45 @@ function classifyFile(filePath) {
         }
     }
 
+    // Project-declared deployed paths — the escape hatch for a consuming
+    // project, which has no minimize-config.json of its own (#2602).
+    for (const dir of declared) {
+        const prefix = dir.endsWith('/') ? dir : dir + '/';
+        if (normalized.startsWith(prefix) || normalized === dir.replace(/\/$/, '')) {
+            return 'deployed';
+        }
+    }
+
+    // Nothing matched. Whether that means "internal" or "no idea" depends on
+    // whether there was anything to match against (#2602).
+    if (!config.loaded && declared.length === 0) return 'unknown';
+
     // Default: dev-only (unknown files are assumed internal)
     return 'dev-only';
 }
 
 /**
  * Classify a commit based on its changed files.
- * A commit is 'deployed' if ANY of its files are deployed.
+ *
+ * A commit is 'deployed' if ANY of its files are deployed — unchanged. When
+ * none are, it is 'unknown' if any file was unclassifiable, else 'dev-only'
+ * (#2602). Deployed still wins outright: one shipped file makes the commit
+ * user-facing whatever the rest were.
+ *
+ * An empty file list stays 'dev-only'. Nothing changed is not the same as
+ * nothing classifiable, and reporting the empty case as unknown would flag
+ * every merge commit.
+ *
  * @param {string[]} files - Array of file paths changed in the commit
- * @returns {'deployed'|'dev-only'}
+ * @param {{configPath?: string, projectRoot?: string, declaredPaths?: string[]}} [options]
+ * @returns {'deployed'|'dev-only'|'unknown'}
  */
-function classifyCommit(files) {
+function classifyCommit(files, options = {}) {
     if (!files || files.length === 0) return 'dev-only';
-    return files.some(f => classifyFile(f) === 'deployed') ? 'deployed' : 'dev-only';
+    const scopes = files.map(f => classifyFile(f, options));
+    if (scopes.includes('deployed')) return 'deployed';
+    if (scopes.includes('unknown')) return 'unknown';
+    return 'dev-only';
 }
 
-module.exports = { classifyFile, classifyCommit };
+module.exports = { classifyFile, classifyCommit, hasClassificationBasis };

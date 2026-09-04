@@ -1,12 +1,12 @@
 ---
-version: "v0.100.2"
+version: "v0.101.0"
 description: Start working on issues with validation and auto-task extraction (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
 # /work
-`/work` command spec (hybrid shell + auto-loaded execution rule). Execution logic lives in `.claude/rules/08-work-execution.md` and auto-loads once per session. Consolidated from the `/workit` parallel-evaluation prototype (#2329, retired in #2368).
+`/work` command spec (hybrid shell + auto-loaded execution rule). Execution logic lives in `.claude/rules/08-work-execution.md` and auto-loads once per session.
 
 ---
 ## Prerequisites
@@ -54,6 +54,8 @@ Before the first acceptance criterion of an issue is worked — and independentl
 - **Reviewed clean, or indeterminate** → proceed without prompting.
 
 **Declining proceeds to work unchanged** — the gate mutates nothing on decline: no label change, no status move, no body edit. Review stays advisory; the gate only makes its absence visible at the one moment it is still free to fix. Full state matrix and rationale: `.claude/rules/08-work-execution.md` Step 3.
+
+**On an epic (#2748), a branch tracker under `--nonstop` (#2749), or a non-epic selection of 1..N issues (#2750), a second gate runs first.** For a selection — `/work 44`, `/work 44 47 68`, `/work --status ready` — every member is classified up front and one question covers the whole selection; at N ≥ 2 it also offers proceeding with the clean members only, reporting which were dropped, and at N = 1 that option is absent because it would proceed with nothing. Step 2b-ii classifies **every** issue the run will process — the processable set, with `in_review`/`done` members and the preamble's `skipped[]` removed — before the first sub-issue is worked, and raises **one** question covering all of them: `/review-issue` for members never reviewed, `/resolve-review` for members with unresolved findings, both in the same question when both apply. Accepting means work does not begin. The per-sub-issue gate above still runs and does not re-prompt for a member Step 2b-ii already decided; it remains the safeguard for a sub-issue added after that step ran, or a run resumed after compaction into the middle of the set. Every other shape — epic, batch, single issue, branch tracker without `--nonstop` — is unchanged. Decision helper: `.claude/scripts/shared/lib/branch-review-gate.js`.
 
 ---
 ## Peer Announcements (#2662)

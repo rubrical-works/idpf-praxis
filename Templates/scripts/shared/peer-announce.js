@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *
@@ -56,6 +56,20 @@ const EVENTS = Object.freeze({
   // non-terminal on purpose and stay that way; this one describes the one
   // review outcome that is settled rather than open-ended.
   REVIEW_PASSED: 'review-passed',
+  // The CI half's real closer (#2716). Before this, the outcome reached
+  // exactly ONE session — the one that armed the watch, via its own
+  // background-task notification — while every other session in the working
+  // directory was told a run was coming and then told, correctly, that nothing
+  // more would be said. Observed twice on real pushes (2026-08-31), where a
+  // second session had to volunteer a duplicate watch to learn the result at
+  // all. Both happened to be green, which is the point: a red run would have
+  // been just as silent, and /work defers every push to /done so one push
+  // carries whatever issues are in flight across every session.
+  //
+  // This does NOT reopen #2660. `ci-watch.js` still cannot send. The emitter
+  // is the ARMING SESSION, which is back in a command context — with
+  // `SendMessage` available — when its background task completes.
+  CI_RESOLVED: 'ci-resolved',
 });
 
 /**
@@ -70,10 +84,17 @@ const EVENTS = Object.freeze({
  * a peer holding a promise that cannot be kept.
  */
 const TERMINAL_OUTCOMES = Object.freeze({
-  'skipped-no-workflows': { degraded: false },
-  'skipped-paths-ignore': { degraded: false },
-  armed: { degraded: false },
-  'armed-degraded': { degraded: true },
+  // Genuinely terminal: no watch was armed, so there is nothing that could
+  // follow. These keep the finality wording unchanged.
+  'skipped-no-workflows': { degraded: false, terminal: true },
+  'skipped-paths-ignore': { degraded: false, terminal: true },
+  // No longer terminal (#2716). A `ci-resolved` may follow these, so claiming
+  // otherwise is a promise the channel now breaks. Leaving the old wording in
+  // place while adding a follow-up would be WORSE than the gap it fixes: a
+  // peer told nothing follows, then sent something, learns the announcements
+  // cannot be trusted.
+  armed: { degraded: false, terminal: false },
+  'armed-degraded': { degraded: true, terminal: false },
 });
 
 const KNOWN_EVENTS = new Set(Object.values(EVENTS));
@@ -255,16 +276,99 @@ function formatCiTerminal({ issues, outcome, runUrl }) {
     // armed; asserting a running build there is a dispatch decision rendered
     // as a claim about the world, the same shape as #2674. A URL means a run
     // demonstrably exists, so the stronger claim is earned rather than assumed.
+    // The follow-up is stated as CONDITIONAL, never promised (#2716). It is
+    // emitted by the arming session when its background task completes, and
+    // that re-invocation is measured only for an interactive session — so the
+    // wording commits to nothing it cannot keep, and says plainly that silence
+    // is not a verdict. This is the #2674 dispatch-vs-delivery rule applied one
+    // level up: the sender cannot observe whether the closer ever goes out.
     case 'armed-degraded':
       return runUrl
-        ? `Pushed ${subject}. CI is in progress (degraded: the pushed range could not be resolved, so the watch may not match the push)${url}. No further announcement will follow.`
-        : `Pushed ${subject}. A CI watch is armed (degraded: the pushed range could not be resolved, so the watch may not match the push); whether a run started is not known yet. No further announcement will follow.`;
+        ? `Pushed ${subject}. CI is in progress (degraded: the pushed range could not be resolved, so the watch may not match the push)${url}. ${FOLLOW_UP_CAVEAT}`
+        : `Pushed ${subject}. A CI watch is armed (degraded: the pushed range could not be resolved, so the watch may not match the push); whether a run started is not known yet. ${FOLLOW_UP_CAVEAT}`;
     case 'armed':
     default:
       return runUrl
-        ? `Pushed ${subject}. CI is in progress${url}. No further announcement will follow.`
-        : `Pushed ${subject}. A CI watch is armed; whether a run started is not known yet. No further announcement will follow.`;
+        ? `Pushed ${subject}. CI is in progress${url}. ${FOLLOW_UP_CAVEAT}`
+        : `Pushed ${subject}. A CI watch is armed; whether a run started is not known yet. ${FOLLOW_UP_CAVEAT}`;
   }
+}
+
+/**
+ * What the armed outcomes say instead of claiming finality (#2716).
+ *
+ * Held as a constant because both armed branches and their two runUrl variants
+ * must say the SAME thing — four call sites, and a wording that drifts between
+ * them is a wording a receiver cannot rely on.
+ *
+ * "Absence is not a verdict" is the load-bearing half. The arming session emits
+ * the closer only if it is re-invoked when its background task completes; that
+ * is measured for an interactive session and not established for a headless
+ * one. A peer that reads silence as "green" has drawn exactly the conclusion
+ * this channel must never license.
+ */
+const FOLLOW_UP_CAVEAT =
+  'A result announcement follows if this session is re-invoked when the watch completes; '
+  + 'that is not guaranteed, so the absence of one is not a verdict.';
+
+/**
+ * The CI closer (#2716).
+ *
+ * Carries what `ci-watch.js` already returns — `overall` plus `workflows[]`
+ * with their `failedSteps[]` — so no new payload shape is invented for it.
+ *
+ * **A missing result never reads as success.** An absent payload and a green
+ * one are different facts; rendering the first as the second is the #2674
+ * shape, a dispatch decision presented as a claim about the world. It states
+ * that the outcome could not be read, and stays terminal so the peer still
+ * stops waiting.
+ */
+/**
+ * `ci-watch.js` returns `failedSteps` as `{ name, conclusion }` objects, not
+ * strings. Joining them directly rendered `Tests ([object Object])` on every
+ * real red run — the step name is the one detail a peer cannot cheaply recover
+ * itself, so losing it defeats the announcement. Both shapes are accepted:
+ * the object form is what the producer emits, the string form is what callers
+ * and older fixtures pass. An entry with no usable name is dropped rather than
+ * stringified, so the wording degrades to the workflow name alone.
+ */
+function stepNames(failedSteps) {
+  if (!Array.isArray(failedSteps)) return [];
+  return failedSteps
+    .map((step) => (typeof step === 'string' ? step : step && step.name))
+    .filter((name) => typeof name === 'string' && name.length > 0);
+}
+
+function formatCiResolved({ issues, ciResult }) {
+  const subject = describeIssues(issues);
+  const result = ciResult && typeof ciResult === 'object' ? ciResult : null;
+
+  if (!result || typeof result.overall !== 'string') {
+    return `CI finished for ${subject}, but the outcome could not be read. No further announcement will follow.`;
+  }
+
+  const workflows = Array.isArray(result.workflows) ? result.workflows : [];
+
+  if (result.overall === 'success') {
+    const names = workflows.map((w) => w && w.name).filter(Boolean);
+    const detail = names.length > 0 ? ` (${names.join(', ')})` : '';
+    return `CI passed for ${subject}${detail}. No further announcement will follow.`;
+  }
+
+  // Naming the failed step is what makes a red actionable rather than merely
+  // alarming — it is the one detail a peer cannot cheaply recover itself.
+  const failures = workflows
+    .filter((w) => w && w.conclusion && w.conclusion !== 'success')
+    .map((w) => {
+      const steps = stepNames(w.failedSteps);
+      return steps.length > 0 ? `${w.name} (${steps.join(', ')})` : String(w.name || 'unnamed workflow');
+    });
+
+  const detail = failures.length > 0
+    ? ` Failed: ${failures.join('; ')}.`
+    : ' No failing workflow was named.';
+
+  return `CI FAILED for ${subject}.${detail} No further announcement will follow.`;
 }
 
 /**
@@ -280,6 +384,7 @@ const FORMATTERS = Object.freeze({
   [EVENTS.WORK_COMPLETED]: formatWorkCompleted,
   [EVENTS.PUSH_STARTED]: formatPushStarted,
   [EVENTS.CI_TERMINAL]: formatCiTerminal,
+  [EVENTS.CI_RESOLVED]: formatCiResolved,
   [EVENTS.PUSH_REJECTED]: formatPushRejected,
   [EVENTS.REVIEW_STARTED]: formatReviewStarted,
   [EVENTS.REVIEW_RESOLVED]: formatReviewResolved,
@@ -294,7 +399,17 @@ const FORMATTERS = Object.freeze({
  * making all three review events agree would delete the only closer the
  * review half has.
  */
-const TERMINAL_EVENTS = new Set([EVENTS.CI_TERMINAL, EVENTS.PUSH_REJECTED, EVENTS.REVIEW_PASSED]);
+// CI_TERMINAL remains a member because two of its four outcomes are still
+// terminal; the per-outcome `terminal` flag in TERMINAL_OUTCOMES is what
+// decides an individual armed announcement, and buildAnnouncement consults it.
+// Membership here is a coarse "this event CAN close a cycle", not a promise
+// that every instance does (#2716).
+const TERMINAL_EVENTS = new Set([
+  EVENTS.CI_TERMINAL,
+  EVENTS.CI_RESOLVED,
+  EVENTS.PUSH_REJECTED,
+  EVENTS.REVIEW_PASSED,
+]);
 
 // ─── Composition ───
 
@@ -431,15 +546,49 @@ function buildAnnouncement(options) {
     // wrong terminal is worse than a missing one, because it tells a peer to
     // stop waiting for something that may still be coming.
     let degraded = false;
+    // Terminality is EVENT-level for every event but this one. CI_TERMINAL's
+    // armed outcomes stopped being terminal in #2716 while its skip outcomes
+    // stayed terminal, so the flag has to come from the outcome spec rather
+    // than from set membership — otherwise an armed announcement would still
+    // tell a peer to stop waiting for the closer that is now coming.
+    let terminal = TERMINAL_EVENTS.has(event);
     if (event === EVENTS.CI_TERMINAL) {
       const spec = TERMINAL_OUTCOMES[options.outcome];
       if (!spec) return inert(`Peer announcement skipped: unknown outcome ${JSON.stringify(options.outcome)}.`);
       degraded = spec.degraded;
+      terminal = spec.terminal;
+    }
+
+    // CI_RESOLVED is equally terminal and needs the same refusal (#2764).
+    // Without it `formatCiResolved`'s fallback SENT "the outcome could not be
+    // read" — so a caller holding a green result told every peer the run was
+    // unreadable, terminally, leaving no correction possible.
+    //
+    // The reachable cause is a FIELD NAME, not a corrupt payload: `ci-watch.js`
+    // emits `{overall, workflows, failedSteps}` on stdout and the /done spec
+    // named those three fields with no wrapper, so a session following the spec
+    // passed them flat. The notice therefore names `ciResult` — the caller has
+    // to change a key, and a notice that only said "unreadable" would not say
+    // which one.
+    if (event === EVENTS.CI_RESOLVED) {
+      const ci = options.ciResult;
+      if (!ci || typeof ci !== 'object' || typeof ci.overall !== 'string') {
+        return inert(
+          'Peer announcement skipped: CI outcome could not be read — pass the result '
+          + 'under `ciResult` ({overall, workflows, failedSteps}), not as top-level fields.'
+        );
+      }
     }
 
     const commits = Array.isArray(options.commits) ? options.commits : [];
     const { recipients, skipped } = resolveRecipients(peers);
-    const text = FORMATTERS[event]({ issues, commits, outcome: options.outcome, runUrl: options.runUrl });
+    const text = FORMATTERS[event]({
+      issues,
+      commits,
+      outcome: options.outcome,
+      runUrl: options.runUrl,
+      ciResult: options.ciResult,
+    });
 
     const base = {
       event,
@@ -448,7 +597,7 @@ function buildAnnouncement(options) {
       text,
       recipients,
       skipped,
-      terminal: TERMINAL_EVENTS.has(event),
+      terminal,
       degraded,
     };
 

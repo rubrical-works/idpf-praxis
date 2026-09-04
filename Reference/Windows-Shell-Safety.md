@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.100.2
+**Version:** v0.101.0
 **Source:** Reference/Windows-Shell-Safety.md
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
@@ -69,17 +69,23 @@ git commit -m "Release $(date '+%Y-%m-%d')"
 Unsafe patterns:
 ```bash
 # BAD - unpredictable content
-gh issue create --body "$(cat README.md)"
+gh pmu create --body "$(cat README.md)"
 dir=$(dirname $(realpath "$file"))
 for file in $(find . -name "*.md"); do echo "$file"; done
 # GOOD
-gh issue create --body-file README.md
+gh pmu create --body-file README.md
 gh pr create --body-file .tmp-commits.txt
 ```
 **Issue/PR Bodies:** ALWAYS use temp file approach. Bodies almost always contain backticks which fail with heredocs or `--body`.
+**Examples use `gh pmu create` — deliberately (#2724).** The bare `gh issue` creation form,
+without `pmu`, files an issue that never reaches the project board: invisible to
+`gh pmu sub list`, epic closure, `/done` sub-issue checks and every board-driven gate — it
+exists, satisfies nothing, blocks nothing. The `-F` / `--body-file` lesson below is identical
+for both commands; board membership is not. QA case: `Reference/GitHub-Workflow.md`
+§ QA-Issue Creation Ownership.
 ```bash
 # BAD
-gh issue create --body "Fix the \`calculateTotal\` function"
+gh pmu create --body "Fix the \`calculateTotal\` function"
 # GOOD - Write tool + temp file
 gh pmu create --title "Bug: ..." -F .tmp-body.md --status backlog
 rm .tmp-body.md
@@ -134,10 +140,10 @@ rm .tmp-query.json
 **Multi-line Strings:** Use temp files for multi-line content.
 ```bash
 # BAD
-gh issue create --body "Line 1
+gh pmu create --body "Line 1
 Line 2"
 # GOOD - Write tool creates .tmp-body.md
-gh issue create --body-file .tmp-body.md
+gh pmu create --body-file .tmp-body.md
 rm .tmp-body.md
 ```
 **Flag Values with Spaces:** `--flag value` can be misinterpreted on Git Bash.

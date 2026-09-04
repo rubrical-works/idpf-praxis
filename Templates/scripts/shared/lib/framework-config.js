@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -195,9 +195,64 @@ function resolveVerificationMode(cwd = process.cwd()) {
   return VERIFICATION_MODES.includes(declared) ? declared : DEFAULT_VERIFICATION_MODE;
 }
 
+/**
+ * The ordered verification commands /work Step 4f must run (#2733).
+ *
+ * Reader half of the `verificationCommands` key, with `testCommand` as the
+ * single-command fallback. Returns `{ commands, source }` where `source` is
+ * one of `verificationCommands` | `testCommand` | `none`.
+ *
+ * **`source` exists so Step 4f can say which branch it took.** The three
+ * outcomes need three different reports — every declared command ran, the one
+ * declared command ran, or nothing ran and the gap is being reported — and a
+ * bare array cannot distinguish the last from a project that declared an empty
+ * list. Returning the reason alongside the value is what keeps "the gate did
+ * not run" reportable rather than indistinguishable from "the gate passed",
+ * which is the failure #2595 named and this key must not reintroduce.
+ *
+ * **An empty or malformed array falls back rather than short-circuiting.**
+ * `verificationCommands: []` and `verificationCommands: "npm run lint"` are
+ * both declarations that declare no runnable set, so they defer to
+ * `testCommand`; a project that meant to declare commands and mistyped the
+ * shape gets its previous behaviour, not a silently satisfied gate.
+ *
+ * Never throws — an unreadable or absent config resolves to `none`, matching
+ * `resolveVerificationMode`'s treatment of the same conditions.
+ *
+ * @param {string} [cwd] - Project root
+ * @returns {{commands: string[], source: 'verificationCommands'|'testCommand'|'none'}}
+ */
+function resolveVerificationCommands(cwd = process.cwd()) {
+  const NONE = { commands: [], source: 'none' };
+
+  let config;
+  try {
+    config = read(cwd);
+  } catch {
+    return NONE;
+  }
+  if (!config) return NONE;
+
+  const declared = config.verificationCommands;
+  if (Array.isArray(declared)) {
+    const commands = declared.filter((c) => typeof c === 'string' && c.trim() !== '');
+    if (commands.length > 0) {
+      return { commands, source: 'verificationCommands' };
+    }
+  }
+
+  const single = config.testCommand;
+  if (typeof single === 'string' && single.trim() !== '') {
+    return { commands: [single], source: 'testCommand' };
+  }
+
+  return NONE;
+}
+
 module.exports = {
   read,
   resolveVerificationMode,
+  resolveVerificationCommands,
   VERIFICATION_MODES,
   DEFAULT_VERIFICATION_MODE,
   validate,

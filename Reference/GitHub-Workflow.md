@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.100.2
+**Version:** v0.101.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions.
 ## Project Configuration
@@ -43,6 +43,14 @@ GitHub automatically closes issues when `Fixes/Closes/Resolves #XXX` commits mer
 | `proposal:` | `/proposal` | Create proposal + tracking issue |
 Each creates issue, reports number, STOPs. Do NOT implement until user says "work".
 Flags are extracted and appended to the invocation, not left in the title, so no `--` token becomes part of an issue's identity: `enhancement: add dark mode --prior-art` → `/enhancement add dark mode --prior-art`.
+**QA-Issue Creation Ownership:** `/work` Step 4a owns the **automatic** path — files QA sub-issues from unverifiable ACs via `gh pmu sub create` with `qa-required`. This governs **every other** path: QA raised during `/done`, during review, or whenever a session decides a manual check is needed.
+| Situation | Command |
+|-----------|---------|
+| Belongs to a parent issue | `gh pmu sub create <parent> --label qa-required -F .tmp-qa.md` |
+| Stands alone | `gh pmu create --label qa-required -F .tmp-qa.md --status backlog` |
+**Always `gh pmu`, never the bare `gh issue` creation form.** The bare form files an issue that never reaches the project board — invisible to `gh pmu sub list`, epic closure, `/done` sub-issue checks and the `/work` Step 4b QA force-exception. An off-board QA issue satisfies nothing and blocks nothing; it reads as done. Silent and occasional, which is why it survives — nobody notices until an epic will not close.
+**Closure contract.** A `qa-required` issue is a **gate**, not a note. Its parent AC stays unchecked as `- [ ] … → QA: #N` until the QA issue closes; the parent reaches `done` only once it has. `--force` past such a line is permitted **only** because the line names the sub-issue that still owns the check — the gate moved, it did not disappear. Closing the parent while its QA issue is open defeats it.
+**Label mandatory.** `qa-required` is what makes the issue recognisable as a gate to every consumer looking for one; unlabelled, it is an ordinary issue nobody treats as blocking.
 **Review Command Routing:** `review` with issue reference (`#N`) routes to `/review-issue`:
 | Trigger Pattern | Routes To |
 |----------------|-----------|

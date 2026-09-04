@@ -1,6 +1,6 @@
 # /work
 
-Start working on one or more issues with branch validation, context gathering, and TDD dispatch. As of #2368, the parallel-evaluation `/workit` prototype is retired — its behavior is now consolidated into `/work` via the auto-loaded execution rule at `.claude/rules/08-work-execution.md`.
+Start working on one or more issues with branch validation, context gathering, and TDD dispatch. The execution logic lives in the auto-loaded execution rule at `.claude/rules/08-work-execution.md`.
 
 ## Arguments
 

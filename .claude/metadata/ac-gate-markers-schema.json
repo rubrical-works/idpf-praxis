@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ac-gate-markers-schema.json",
+  "title": "AC Gate Markers",
+  "description": "Schema for ac-gate-markers.json — the intentionally-open gate markers consumed by /work Steps 4b and 5 (#2765). Exactly three markers, and the recognised GATE tokens must be exactly the set nonstop-audit.js pins as GATE_PHASES.",
+  "type": "object",
+  "required": ["version", "markers", "recognisedGateTokens", "rule"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": { "type": "object", "description": "Provenance. Not read at runtime.", "additionalProperties": true },
+    "markers": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["id", "literal", "pattern", "meaning", "precedent", "closure"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "enum": ["qa", "gate-review", "gate-release"] },
+          "literal": { "type": "string", "pattern": "^- \\[ \\] … → (QA: #N|GATE: (review|release))$" },
+          "pattern": { "type": "string", "minLength": 1 },
+          "meaning": { "type": "string", "minLength": 1 },
+          "precedent": { "type": "string", "minLength": 1 },
+          "closure": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recognisedGateTokens": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "enum": ["review", "release"] }
+    },
+    "rule": { "type": "string", "minLength": 1 }
+  }
+}

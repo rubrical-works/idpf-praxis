@@ -36,6 +36,20 @@ Stories: 1.1, 1.2, 1.3
 > Implementation hints, not requirements.
 > Do not create issues from this section.
 
+## Non-Functional Requirements
+> One row per category. **Where enforced** names the epic, story, or gate that owns the requirement,
+> so an unmet NFR points at something rather than sitting as unattributed prose.
+> **"Not applicable — <reason>" is a valid answer** for any row — a local CLI has no availability
+> target, and recording that beats inventing one. An unanswered row is not an N/A row.
+
+| Category | Requirement | Where enforced |
+|---|---|---|
+| Performance | <latency, throughput, or resource budget — or Not applicable — reason> | <epic/story/gate> |
+| Scalability | <load, data volume, or concurrency the design must absorb — or Not applicable — reason> | <epic/story/gate> |
+| Security | <authn/authz, data handling, threat model — or Not applicable — reason> | <epic/story/gate> |
+| Availability | <uptime target, degradation behaviour, recovery — or Not applicable — reason> | <epic/story/gate> |
+| Vulnerability remediation | <SLA for patching a known advisory, by severity — or Not applicable — reason> | <epic/story/gate> |
+
 ## Out of Scope
 <Explicit exclusions>
 

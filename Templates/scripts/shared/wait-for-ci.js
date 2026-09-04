@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 60-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 10-minute hard cap. Returns structured JSON with
@@ -270,9 +270,44 @@ function selectRun(runs, filter) {
  * @param {object} [deps] - Injectable boundaries: `fetchRuns(cmd)` and `sleep(ms)`
  * @returns {Promise<number>} process exit code
  */
+/**
+ * The exit-code contract, beside the code that implements it (#2765).
+ *
+ * The /work rule used to enumerate these five codes and their gate actions
+ * in prose, where they could drift from EXIT_CODES without anything failing.
+ * Mirrors work-preamble.js --schema: mutually exclusive with every other
+ * argument, prints JSON, exits 0.
+ */
+function schema() {
+    return {
+        script: 'wait-for-ci.js',
+        arguments: ['--branch <name>', '--commit <sha> | --sha <sha>', '--timeout <seconds>', '--schema'],
+        exitCodes: [
+            { code: EXIT_CODES.SUCCESS,         name: 'SUCCESS',         meaning: 'CI passed for the selected run.',                                                    ruleAction: 'continue' },
+            { code: EXIT_CODES.FAILURE,         name: 'FAILURE',         meaning: 'CI failed, bad arguments, or gh unavailable after retries.',                          ruleAction: 'STOP' },
+            { code: EXIT_CODES.TIMEOUT,         name: 'TIMEOUT',         meaning: 'Timeout with no jobs running.',                                                       ruleAction: 'STOP' },
+            { code: EXIT_CODES.NO_RUNS,         name: 'NO_RUNS',         meaning: 'No CI runs found for this branch/commit.',                                            ruleAction: 'continue' },
+            { code: EXIT_CODES.TIMEOUT_RUNNING, name: 'TIMEOUT_RUNNING', meaning: 'Timeout with jobs still running at the 10-minute cap; re-run --wait or check the run.', ruleAction: 'STOP' }
+        ]
+    };
+}
+
 async function run(argv = [], deps = {}) {
     const fetchRuns = deps.fetchRuns || defaultFetchRuns;
     const wait = deps.sleep || sleep;
+
+    if (argv.includes('--schema')) {
+        if (argv.some(a => a !== '--schema')) {
+            console.log(JSON.stringify({
+                success: false,
+                message: '--schema cannot be combined with other arguments.',
+                data: { status: 'bad_arguments' }
+            }));
+            return EXIT_CODES.FAILURE;
+        }
+        console.log(JSON.stringify(schema(), null, 2));
+        return EXIT_CODES.SUCCESS;
+    }
 
     const parsed = parseArgs(argv);
     if (!parsed.ok) {
@@ -457,6 +492,7 @@ if (require.main === module) {
 
 module.exports = {
     run,
+    schema,
     parseArgs,
     buildRunListCommand,
     selectRun,

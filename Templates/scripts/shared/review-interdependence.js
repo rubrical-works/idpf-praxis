@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.100.2
+ * @framework-script 0.101.0
  * @description Analyze interdependence between multiple issues.
  * Detects overlap, ordering dependencies, conflicts, and shared criteria
  * using config-driven evaluation dimensions.
