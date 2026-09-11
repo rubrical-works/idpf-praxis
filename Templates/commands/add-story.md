@@ -1,5 +1,5 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: Add story to epic with charter compliance (project)
 argument-hint: "[epic-number] (e.g., 42 or #42)"
 copyright: "Rubrical Works (c) 2026"
@@ -112,14 +112,7 @@ gh pmu create --repo {repository} \
 ### Description
 As a {user type}, I want {capability} so that {benefit}.
 ### Relevant Skills
-<!-- Read from framework-config.json projectSkills array -->
-<!-- For each, lookup from .claude/metadata/skill-registry.json -->
-
-**If projectSkills configured:**
-- {skill-name} - {description}
-
-Load skill: `read .claude/skills/{skill-name}/SKILL.md`
-
+N/A
 **If no projectSkills:** Run `/charter` to set up project-specific skills.
 ### Acceptance Criteria
 - [ ] {Criterion 1}
@@ -140,6 +133,7 @@ Load skill: `read .claude/skills/{skill-name}/SKILL.md`
 **CLOSED SET (#2508).** These two checkboxes are the complete Documentation section. **Do not add or invent additional Documentation checkboxes** — none may be inferred from the story text, the PRD, or what seems obviously needed. `/create-backlog` applies the same rule when materializing this template. **Release-phase work is never a Documentation checkbox:** `/prepare-release` owns the CHANGELOG end to end (writes the section, commits it, carries its own `- [ ] CHANGELOG updated`); tagging, release notes, and asset verification are the same. A story-level checkbox for any of them cannot close inside the story *and* duplicates an obligation another command already discharges. Authoritative list: `phaseFeasibility.ownedElsewhere` in `.claude/metadata/ac-feasibility-prompts.json`. Documentation work that genuinely belongs to this story goes in **Acceptance Criteria** as a deliverable that closes here.
 ### TDD Test Cases
 **Note:** Test cases added when story work begins. See test plan for related cases.
+**E2E:** {E2E framework from `Inception/Test-Strategy.md` → Framework → E2E}
 ### Definition of Done
 - [ ] All acceptance criteria met
 - [ ] TDD test cases pass
@@ -149,6 +143,15 @@ Load skill: `read .claude/skills/{skill-name}/SKILL.md`
 **Priority:** {P0|P1|P2}
 **Parent Epic:** #{epic_num}
 ```
+**Relevant Skills renders `N/A` when skills ARE configured (#2817).** The section used to emit the whole `projectSkills` array into every story; there is no relevance filter here or in `/create-backlog`, so all stories got the same list — ten identical copies in a ten-story epic — and the name was a misnomer, the content being project-wide. It was also a third copy: the session lists available skills, and `/work` loads TDD skills from `.claude/skills/tdd-process/tdd-checklist.json`, not the story body. The unconfigured branch stays: it is the only actionable half.
+**E2E — `Inception/Test-Strategy.md` is the source, and the only source.** `Templates/artifacts/test-plan-template.md` already treats that Framework table as authoritative for E2E; reading it here makes two consumers of one artifact agree. **Do NOT add a `framework-config.json` key and do NOT detect a framework from repository contents** — that is the second convention source this spec forbids elsewhere. Three states, and the last two stay distinguishable:
+| `Inception/Test-Strategy.md` | Emit |
+|---|---|
+| Framework table has an E2E row | The framework named there, verbatim |
+| File exists, no E2E row | `N/A` |
+| File absent | `Not consulted — no Inception/Test-Strategy.md` |
+`N/A` asserts the file was read and declared no E2E framework; a project with no Inception artifact consulted nothing, so `N/A` there claims a reading that never happened. Neither state may invent a framework name.
+**Both sections obey the atomic contract rather than being exempt.** Each can legitimately have nothing to say and each still renders, with `N/A`, exactly as `Files to modify:` does. Naming them as exceptions trades one rule for a rule plus a list of what it does not cover.
 **Step 3: Link to parent epic**
 ```bash
 gh pmu sub add {epic_num} {story_num} || true

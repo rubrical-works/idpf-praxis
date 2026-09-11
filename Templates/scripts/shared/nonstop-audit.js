@@ -1,19 +1,28 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
- * @description Post-nonstop audit for /work epic/branch processing. Performs two audits:
+ * @framework-script 0.102.0
+ * @description Post-nonstop audit for /work epic/branch processing. Performs three audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
+ *   (4) Announcement pairing — warning if a sub-issue has a work-completed with no
+ *       work-started recorded, or an announcement composed but never dispatched (#2790)
  * Audit (3) test coverage is intentionally NOT handled here — that remains skill-delegated
- * to tdd-refactor-coverage-audit per the spec (#2318 AC7).
+ * to tdd-refactor-coverage-audit per the spec (#2318 AC7). The gap in the numbering is
+ * deliberate: (3) is an established reference in the Step 6a spec, so the new audit takes
+ * the next number rather than renumbering it.
  *
  * Usage: node nonstop-audit.js --issue <N>
  *
  * Output (JSON envelope on stdout):
- *   { ok, issueNumber, audits: { commitDensity: { status, commitCount, acCount, threshold, message },
- *                                  acCheckbox:    { status, unchecked: [{ subIssue, uncheckedCount }], message } },
+ *   { ok, issueNumber, audits: { commitDensity:       { status, commitCount, acCount, threshold, message },
+ *                                acCheckbox:          { status, unchecked: [{ subIssue, uncheckedCount }], message },
+ *                                announcementPairing: { status, missingOpener, missingCloser, unrecorded,
+ *                                                       undispatched, caveats, message } },
  *     warnings: [string], blocks: [string] }
+ *
+ * Only (2) can populate `blocks`. (1) and (4) are advisory — (4) audits a channel that
+ * gates nothing, and an audit stricter than the thing it audits is a gate by the back door.
  *
  * Exit codes: 0 = ok or warnings only; 1 = blocking audit failed; 2 = bad args; 3 = query failed
  */
@@ -21,6 +30,7 @@
 const { execSync } = require('child_process');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 const { scanCheckboxes } = require('./lib/checkbox-scan.js');
+const { readLedger, reconcile: reconcileLedger } = require('./lib/announce-ledger.js');
 
 function parseArgs(argv) {
   const out = { issue: null };
@@ -159,7 +169,68 @@ function auditCommitDensityPerSubIssue(details, countFn) {
   return perSubIssue;
 }
 
-function audit({ issueNumber, listFn, fetchFn, countFn }) {
+/**
+ * Audit (3) — announcement pairing (#2790).
+ *
+ * WHAT IT ANSWERS, and what it deliberately does not. Symptom 1 of #2790 was a
+ * `work-completed` for sub-issue #1165 with no matching `work-started`, among
+ * twelve sub-issues of one `--nonstop` run. Nothing reported it on either side.
+ * #2674 makes the receiving side structurally unable to say which of three
+ * things happened — never composed, composed and the send failed, or delivered
+ * and dropped — because all three arrive as the same silence.
+ *
+ * The SENDER can separate the first two, and this audit is where that surfaces.
+ * It reads the local ledger, not the network, and claims nothing about
+ * delivery.
+ *
+ * ADVISORY, never blocking. The channel it audits gates nothing by design; an
+ * audit that halted an epic over a missing announcement would make an advisory
+ * channel a gate — the property every other line in this subsystem protects.
+ * So it joins `commitDensity` in `warnings`, never `blocks`.
+ *
+ * `skip` is a first-class outcome, not a degraded `pass`. A project with
+ * messaging disabled records nothing, and reporting twelve dropped openers
+ * there would get the whole audit ignored — which costs more than the gap it
+ * reports. No ledger file at all means the question was never asked.
+ */
+function auditAnnouncementPairing(subIssueNumbers, ledgerFn, reconcileFn) {
+  if (typeof ledgerFn !== 'function') {
+    return { status: 'skip', message: 'Announcement pairing not audited — no ledger reader supplied.' };
+  }
+
+  let read;
+  try {
+    read = ledgerFn();
+  } catch (err) {
+    // The other two audits must still render. A ledger that cannot be read is
+    // this audit failing, not the epic failing.
+    return {
+      status: 'skip',
+      message: `Announcement pairing not audited — the ledger could not be read (${err && err.message ? err.message : 'unknown'}).`,
+    };
+  }
+
+  if (!read || read.exists === false) {
+    return {
+      status: 'skip',
+      message: 'Announcement pairing not audited — no announcement ledger in this working directory '
+        + '(peer messaging may be disabled, or this run predates the ledger).',
+    };
+  }
+
+  const result = reconcileFn({ entries: read.entries, issues: subIssueNumbers });
+  return {
+    status: result.ok ? 'pass' : 'warn',
+    missingOpener: result.missingOpener,
+    missingCloser: result.missingCloser,
+    unrecorded: result.unrecorded,
+    undispatched: result.undispatched,
+    caveats: result.caveats,
+    message: result.message,
+  };
+}
+
+function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn }) {
   const subIssues = listFn(issueNumber);
   if (!subIssues.length) {
     return {
@@ -193,6 +264,11 @@ function audit({ issueNumber, listFn, fetchFn, countFn }) {
   };
 
   const acCheckbox = auditAcCheckbox(details);
+  const announcementPairing = auditAnnouncementPairing(
+    details.map((d) => d.number),
+    ledgerFn,
+    reconcileFn || reconcileLedger
+  );
 
   const warnings = [];
   const blocks = [];
@@ -201,12 +277,16 @@ function audit({ issueNumber, listFn, fetchFn, countFn }) {
       warnings.push(`#${r.subIssue}: Low commit density (${r.commits} commits for ${r.acs} ACs, threshold ${r.threshold}). Warning only — does not block.`);
     }
   }
+  if (announcementPairing.status === 'warn') {
+    warnings.push(announcementPairing.message);
+    for (const c of announcementPairing.caveats || []) warnings.push(c);
+  }
   if (acCheckbox.status === 'fail') blocks.push(acCheckbox.message);
 
   return {
     ok: blocks.length === 0,
     issueNumber,
-    audits: { commitDensity, acCheckbox },
+    audits: { commitDensity, acCheckbox, announcementPairing },
     warnings,
     blocks
   };
@@ -223,7 +303,8 @@ function main() {
       issueNumber: args.issue,
       listFn: (n) => listSubIssues(n),
       fetchFn: (n) => fetchIssue(n),
-      countFn: (n) => countCommitsForIssue(n)
+      countFn: (n) => countCommitsForIssue(n),
+      ledgerFn: () => readLedger({ cwd: process.cwd() })
     });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
@@ -243,6 +324,7 @@ module.exports = {
   auditCommitDensity,
   auditCommitDensityPerSubIssue,
   auditAcCheckbox,
+  auditAnnouncementPairing,
   audit,
   fetchIssue,
   listSubIssues

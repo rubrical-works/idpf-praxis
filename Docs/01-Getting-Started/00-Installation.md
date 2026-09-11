@@ -109,7 +109,8 @@ You only need to do this **once per GitHub owner** (user or organization) that w
 4. **Deselect** **Import items from repository**. The template must start empty — PHM populates items itself per project.
 5. Name it something clear, e.g. `Praxis Kanban Template`, and click **Create project**.
 6. On the new project's board view, click **View** → **Fields**, toggle **Labels** to **Visible**, then **Save changes to view**. The Labels field is hidden by default; making it visible gives you per-card visual indicators.
-7. Record the project **name** (as entered above) or **number** (the integer at the end of `https://github.com/users/<you>/projects/<NUMBER>`). PHM will ask for this value the first time you open it.
+7. Add a **`QA Required`** option to the **Status** field. Open **⋯** → **Settings** → **Status**, click **+ Add option**, and name it exactly `QA Required` — capital Q, capital A, a **space**, capital R. Manual-verification sub-issues land here. The space is load-bearing: `gh pmu init` derives the config alias from the column name by lowercasing and turning spaces into underscores, so `QA Required` yields `qa_required`, the alias the framework uses. `QA-Required` would yield `qa-required` and every QA transition would fail.
+8. Record the project **name** (as entered above) or **number** (the integer at the end of `https://github.com/users/<you>/projects/<NUMBER>`). PHM will ask for this value the first time you open it.
 
 Full walkthrough with verification checklist: `06-Kanban-Template-Setup.md`.
 

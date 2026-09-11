@@ -1,0 +1,18 @@
+{
+  "$schema": "./tmp-cleanup-signals-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Thresholds for the stale scratch-file sweep run from the startup hook (#2771). Externalized so the age threshold is tunable without a spec edit (#2318 precedent; #2557's commit-checkpoint-signals pair is the shape followed here). Consumed by .claude/scripts/shared/lib/tmp-cleanup.js, which re-reads this file from disk at every use per rule 01.",
+    "issue": 2771
+  },
+  "patterns": [
+    ".tmp-*"
+  ],
+  "minAgeMs": 86400000,
+  "reportWhenNothingRemoved": false,
+  "rationale": {
+    "patterns": "Matched against the BASENAME of direct children of the project root only, never recursively. Every entry must already appear in .gitignore: the sweep's safety argument is that the target set is ignored, so a pattern selecting committed files would make the tracked-file skip the common path rather than the exception. Bare wildcards and path separators are rejected by the schema — this file drives deletion, and a one-character edit must not be able to widen the selection to the whole project root.",
+    "minAgeMs": "One day. A scratch file this old belongs to no live command: every command that writes one removes it within the same invocation, so anything surviving a day was orphaned by an error, an interruption, or compaction landing between the write and the remove. Younger files are never touched because they may belong to a command running right now in this session or a peer session sharing the working directory — observed live at authoring time, where one of thirteen root scratch files was three hours old and owned by a concurrent session.",
+    "reportWhenNothingRemoved": "False. A clean sweep emits no row at all, matching the Peers row's `none` and the dependency check's healthy state. A line every startup reporting that nothing needed cleaning is noise in a block of short factual status lines. Set true only when diagnosing whether the sweep is running."
+  }
+}

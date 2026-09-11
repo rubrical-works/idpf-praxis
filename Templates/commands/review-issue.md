@@ -1,5 +1,5 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: Review issues with type-specific criteria (project)
 argument-hint: "#issue [#issue...] [--with ...] [--mode ...] [--force] [--prior-art]"
 copyright: "Rubrical Works (c) 2026"
@@ -23,7 +23,7 @@ Multi: `/review-issue #42 #43 #44` reviews each sequentially.
 ## Execution Instructions
 **REQUIRED:** Routed command — two-phase task creation:
 1. **Phase 1:** Single `TaskCreate` for preamble step only.
-2. **Phase 2:** After preamble confirms path (no redirect, no early exit), bulk-create tasks for all remaining steps.
+2. **Phase 2:** After preamble confirms path (no redirect, no early exit), bulk-create tasks for all remaining steps, **emitted in one message as parallel tool calls** — not one call per message (`07-task-creation-timing.md` § Emission).
 3. **On redirect/early exit:** Mark preamble completed, prune the task list per Step 4 part (2), then stop; do NOT create remaining tasks.
 4. **Track Progress:** mark each task `in_progress` → `completed` as you work it.
 5. **Post-Compaction:** Re-read spec; resume from first incomplete task — no re-routing.

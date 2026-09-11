@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
- * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, and returns structured envelope for LLM-driven resolution.
+ * @framework-script 0.102.0
+ * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, reports the issue's type so an epic can be expanded, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -19,6 +19,7 @@ const {
   RECOMMENDATION_PATTERN,
   AUTO_FIXABLE_CRITERIA,
 } = require('./lib/review-format');
+const { getIssueType, REDIRECT_LABELS } = require('./lib/issue-type.js');
 
 // ─── Argument Parsing ───
 
@@ -34,6 +35,33 @@ function parseArgs(args) {
   }
 
   return { issue: num };
+}
+
+// ─── Issue Type (#2872) ───
+
+/**
+ * The issue's type, from the classifier review-preamble.js uses.
+ *
+ * `/resolve-review <epic>` has to expand the epic into its children before any
+ * finding is classified, and it could not: this script read comments only, so
+ * an epic looked like any other issue and only its own comment was resolved.
+ *
+ * Same source and same fallback as review-preamble.js — `getIssueType`, then a
+ * redirect label's own name, then `generic` — so the two halves of one review
+ * cycle cannot disagree about what an issue is. A second classifier here is
+ * how they would.
+ *
+ * @param {{labels?: Array<{name: string}>}} issueData
+ * @returns {string}
+ */
+function resolveIssueType(issueData) {
+  const data = issueData && typeof issueData === 'object' ? issueData : {};
+  const { type } = getIssueType(data);
+  if (type) return type;
+  const redirect = (data.labels || [])
+    .map((l) => (l && l.name) || '')
+    .find((name) => Object.prototype.hasOwnProperty.call(REDIRECT_LABELS, name));
+  return redirect || 'generic';
 }
 
 // ─── Review Comment Matching ───
@@ -193,13 +221,16 @@ function classifyFindings(findings) {
 
 // ─── Envelope Builders ───
 
-function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions) {
+function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions, issueType) {
   return {
     ok: true,
     version: 1,
     context: {
       reviewType: reviewInfo.reviewType,
       reviewNumber: reviewInfo.reviewNumber,
+      // Always present (#2872): `generic` when unknown, never an absent key —
+      // the same reasoning as `suggestions` below.
+      type: typeof issueType === 'string' && issueType ? issueType : 'generic',
     },
     findings: classified,
     // Sibling of `findings`, not a member of it (#2717): these are
@@ -232,14 +263,17 @@ async function main() {
 
   const { issue } = args;
 
-  // Fetch issue comments
+  // Fetch comments and labels in one call — labels decide the type (#2872).
   let comments;
+  let issueType;
   try {
     const { stdout } = await execAsync(
-      `gh issue view ${issue} --json comments --jq=".comments"`,
+      `gh issue view ${issue} --json comments,labels`,
       { encoding: 'utf-8' }
     );
-    comments = JSON.parse(stdout.trim());
+    const data = JSON.parse(stdout.trim());
+    comments = data.comments || [];
+    issueType = resolveIssueType(data);
   } catch (e) {
     process.stdout.write(JSON.stringify(buildErrorEnvelope([{
       code: 'FETCH_FAILED',
@@ -273,7 +307,7 @@ async function main() {
 
   const suggestions = parseSuggestions(reviewResult.body);
 
-  const envelope = buildSuccessEnvelope(reviewResult, classified, findings, suggestions);
+  const envelope = buildSuccessEnvelope(reviewResult, classified, findings, suggestions, issueType);
   envelope.recommendation = recommendation;
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
 }
@@ -292,6 +326,7 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  resolveIssueType,
   findLatestReview,
   parseFindings,
   parseSuggestions,

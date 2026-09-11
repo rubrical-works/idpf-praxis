@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -39,7 +39,11 @@ const os = require('os');
 const path = require('path');
 
 const cfgHelper = require('./lib/framework-config.js');
-const { resolveCrossSessionConfig, formatEffectiveState } = require('./lib/cross-session-config.js');
+const {
+  resolveCrossSessionConfig,
+  readCrossSessionConfig,
+  formatEffectiveState,
+} = require('./lib/cross-session-config.js');
 
 /**
  * Every lever the flags accept, in display order.
@@ -398,6 +402,29 @@ function applyLevers(object, { on = [], off = [] } = {}) {
 }
 
 /**
+ * Resolve one config twice: as the PROJECT declares it, and as THIS SESSION
+ * will act (#2705).
+ *
+ * Extracted because the rule is subtle and now has two call sites (`--show` and
+ * the write path), which is exactly where it would drift: one of them silently
+ * losing the `{}` and persisting a session-scoped override into git-tracked
+ * project config. Naming the two results is what keeps the distinction visible
+ * at both.
+ *
+ * @param {object} config  The whole `framework-config.json` object.
+ * @returns {{written: object, effective: object}}
+ *   `written` excludes the environment layer — what the file declares, and what
+ *   a write is derived from. `effective` includes it — what this session does.
+ *   They differ only under an active override.
+ */
+function resolveBothViews(cwd) {
+  return {
+    written: readCrossSessionConfig(cwd, {}),
+    effective: readCrossSessionConfig(cwd),
+  };
+}
+
+/**
  * Parse, apply, write, and report.
  *
  * @param {{cwd?: string, argv?: string[]}} [opts]
@@ -425,25 +452,40 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
     };
   }
 
-  const configPath = path.join(cwd, 'framework-config.json');
-  if (!fs.existsSync(configPath)) {
-    // Reported, never created: this command owns one key, not the file.
-    return fail([`No framework-config.json at ${cwd}.`]);
-  }
-
-  let config;
-  try {
-    config = cfgHelper.read(cwd);
-  } catch (err) {
-    return fail([`framework-config.json could not be read: ${err.message}`]);
-  }
-  if (config === null || typeof config !== 'object') {
-    return fail(['framework-config.json did not parse as an object.']);
+  // THE FILE THIS COMMAND OWNS IS NOW `.claude/x-session.json` (#2774), and an
+  // absent `framework-config.json` is no longer a reason to refuse. The old
+  // rule — "this command owns one key, not the file" — was about
+  // framework-config.json specifically; it owns the new file outright, creating
+  // it when absent. A project may legitimately have only the new file.
+  let config = {};
+  if (fs.existsSync(path.join(cwd, 'framework-config.json'))) {
+    try {
+      config = cfgHelper.read(cwd);
+    } catch (err) {
+      return fail([`framework-config.json could not be read: ${err.message}`]);
+    }
+    if (config === null || typeof config !== 'object') {
+      return fail(['framework-config.json did not parse as an object.']);
+    }
   }
 
   // Base is the RESOLVED state, not the file's literal contents, so a partial
   // hand-written object is completed rather than discarded.
-  const before = toObject(resolveCrossSessionConfig(config));
+  //
+  // RESOLVED WITHOUT THE ENVIRONMENT LAYER, deliberately (#2705). `IDPF_X_SESSION`
+  // is scoped to one session; `framework-config.json` is project-scoped and
+  // git-tracked. Letting the override reach this line would make a bare
+  // invocation write every lever false into the shared file — turning a
+  // session-scoped mute into a permanent project-wide one, silencing exactly
+  // the concurrent sessions the channel exists to coordinate, and committing it
+  // for whoever runs `git add` next. What this command writes is the PROJECT's
+  // decision; what it reports below is the SESSION's effective state, and the
+  // two are allowed to differ.
+  // Resolved through the CHAIN (#2774): `.claude/x-session.json` when it
+  // exists, otherwise the legacy `framework-config.json` key. That is what
+  // makes the one-shot move carry values across rather than reset them — the
+  // base a bare invocation writes is whatever the project already meant.
+  const before = toObject(readCrossSessionConfig(cwd, {}));
 
   // `--show` returns here, BEFORE any write. It reports exactly what a bare
   // invocation would have written, which is what makes it a preview rather
@@ -451,17 +493,27 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
   // absent key, the case a byte-comparison against an already-written file
   // would miss.
   if (parsed.mode === 'show') {
-    const shown = resolveCrossSessionConfig(config);
+    // Same two-resolution split as the write path below (#2705): `object`
+    // previews what a bare invocation would WRITE, so it excludes the
+    // environment layer; `summary` reports what this session will actually DO,
+    // so it includes it.
+    const { written: shownWritten, effective: shown } = resolveBothViews(cwd);
     return {
       ok: true,
       changed: [],
-      object: toObject(shown),
+      object: toObject(shownWritten),
       summary: formatEffectiveState(shown),
       implications: shown.implications,
+      source: shown.source,
+      envOverride: shown.envOverride,
       errors: [],
       // --show acts on neither store. It reports the lever, whether the
-      // artefact exists, and whether the two disagree.
-      memory: memoryStatus(cwd, shown.noticeNarration === false, null, null),
+      // artefact exists, and whether the two disagree. Keyed to the PROJECT
+      // lever, not the env-suppressed state: the artefact pairs with the
+      // written `noticeNarration`, so reading the override here would report a
+      // drift that does not exist and send the user to fix a file that is
+      // already consistent.
+      memory: memoryStatus(cwd, shownWritten.noticeNarration === false, null, null),
     };
   }
 
@@ -471,27 +523,50 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
   const afterFlat = flatten(after);
   const changed = LEVERS.filter((l) => beforeFlat[l] !== afterFlat[l]);
 
-  const next = { ...config, crossSessionMessaging: after };
+  let migrationError = null;
 
+  // THE LEVERS NOW LAND IN `.claude/x-session.json` (#2774), validated against
+  // its own schema. Nothing is written on a validation failure.
   try {
-    // write() validates against the schema first and throws rather than
-    // writing on failure. Note the argument order: write(cwd, config), the
-    // REVERSE of validate(config, cwd).
-    cfgHelper.write(cwd, next);
+    cfgHelper.writeXSession(cwd, after);
   } catch (err) {
     return fail([`Write refused: ${err.message}`]);
+  }
+
+  // THE ONE-SHOT MOVE, and it runs only AFTER the new file is safely on disk.
+  // Ordering is the whole safety property: stripping first and then failing the
+  // write would delete a user's settings and put nothing in their place. In
+  // this order the worst case is a project carrying both, which the resolver
+  // already handles — the new file wins outright.
+  let migrated = false;
+  try {
+    migrated = cfgHelper.stripLegacyCrossSessionKey(cwd);
+  } catch (err) {
+    // Reported, never fatal. The levers ARE written; failing the command here
+    // would report a write that did happen as a run that did not, and the
+    // resolver ignores the legacy key anyway once the new file exists.
+    migrationError = `The legacy crossSessionMessaging key could not be removed `
+      + `from framework-config.json (${err.message}). It is now ignored — `
+      + `.claude/x-session.json takes precedence — but it can be deleted by hand.`;
   }
 
   // Read back from disk rather than reporting what was computed. With an
   // unconditional write the two cannot disagree, and reading back is what
   // makes that structural instead of asserted.
-  let state;
-  try {
-    cfgHelper._resetCache();
-    state = resolveCrossSessionConfig(cfgHelper.read(cwd));
-  } catch {
-    state = resolveCrossSessionConfig(next);
-  }
+  // TWO resolutions of the same file, and the split is the point (#2705).
+  //
+  //   written  — env excluded. What the PROJECT now declares, and what
+  //              `object` reports. This is the file's own content.
+  //   state    — env included. What THIS SESSION will actually do, and what
+  //              `summary` and `implications` report.
+  //
+  // They differ only under an active override, and reporting either one alone
+  // would be a lie in that case: `object` alone says messaging is on while
+  // nothing leaves the session; `summary` alone says it is off while the file
+  // says otherwise, sending the next reader to change a key that is already
+  // correct.
+  cfgHelper._resetCache();
+  const { written, effective: state } = resolveBothViews(cwd);
 
   // Memory reconciliation runs AFTER the config write, and only when this
   // invocation NAMED the lever (via --quiet/--loud, or --on/--off
@@ -512,14 +587,20 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
   return {
     ok: true,
     changed,
-    object: toObject(state),
+    // The file's content, not the session's effective state — see above.
+    object: toObject(written),
     summary: formatEffectiveState(state),
     implications: state.implications,
+    source: state.source,
+    envOverride: state.envOverride,
+    migrated,
     errors: [],
     // Reported, never fatal: ok stays true even when this failed. The config
     // write above already succeeded, and failing the command afterwards would
     // report a write that DID happen as a run that did not.
-    memory: memoryStatus(cwd, state.noticeNarration === false, action, result),
+    // Keyed to the written project lever, not the env-suppressed state — the
+    // artefact pairs with what is on disk (#2705).
+    memory: memoryStatus(cwd, written.noticeNarration === false, action, result),
   };
 }
 

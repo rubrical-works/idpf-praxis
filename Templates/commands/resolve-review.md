@@ -1,5 +1,5 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: Resolve review findings for an issue (project)
 argument-hint: "#issue [--prior-art]"
 copyright: "Rubrical Works (c) 2026"
@@ -22,7 +22,7 @@ Parse the latest review findings and resolve each one. Delegates parsing/classif
 ## Execution
 **REQUIRED — routed command, two-phase task creation:**
 1. **Phase 1 — Preamble task only:** `TaskCreate` single preamble/setup task. Do NOT create subsequent tasks yet.
-2. **Phase 2 — Bulk after routing:** After preamble confirms path (no redirect, no early exit), bulk-create remaining workflow tasks.
+2. **Phase 2 — Bulk after routing:** After preamble confirms path (no redirect, no early exit), bulk-create remaining workflow tasks, **emitted in one message as parallel tool calls** — not one call per message (`07-task-creation-timing.md` § Emission).
 3. **Redirect or early exit:** Mark preamble done, stop. Do NOT create remaining tasks.
 4. **Include Extensions:** Active `USER-EXTENSION` block → Phase 2 task
 5. Mark `in_progress` → `completed`

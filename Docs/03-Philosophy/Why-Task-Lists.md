@@ -1,6 +1,7 @@
 # Why Task Lists in Every Command
 
 **Date:** 2026-08-02
+**Counts verified:** 2026-09-10
 **Topic:** The role of mandatory task creation in IDPF command execution
 
 > Supersedes *Why Todo Lists in Every Command* (2026-02-08). IDPF migrated from `TodoWrite` to the `TaskCreate` / `TaskUpdate` / `TaskList` tools across issues #2224–#2241, and renamed the auto-todo signal to auto-task in #2325. The philosophy survived that migration intact. Two of the mechanics inverted — see [What Changed](#what-changed-from-todo-lists).
@@ -9,7 +10,7 @@
 
 ## The Pattern
 
-Most IDPF commands — `/work`, `/prepare-release`, `/review-issue`, `/done` — open with a task-creation contract. Today 33 of 51 command specifications reference `TaskCreate`, alongside `.claude/rules/07-task-creation-timing.md` and `.claude/rules/08-work-execution.md`.
+Most IDPF commands — `/work`, `/prepare-release`, `/review-issue`, `/done` — open with a task-creation contract. Today 34 of 56 command specifications reference `TaskCreate`, alongside `.claude/rules/07-task-creation-timing.md`, `.claude/rules/08-work-execution.md` and `.claude/rules/09-review-execution.md`.
 
 For a routed command such as `/review-issue`, the instruction reads:
 
@@ -19,6 +20,25 @@ For a routed command such as `/review-issue`, the instruction reads:
 > 2. **Phase 2 — Bulk create after routing:** After the preamble confirms the workflow path (no redirect, no early exit), bulk-create tasks for all remaining workflow steps using `TaskCreate`.
 
 This is not optional. The question is why a framework for AI assistants insists on a practice that looks like busywork.
+
+---
+
+## First, the Precondition: the Tools May Not Be There
+
+Everything below assumes `TaskCreate` / `TaskUpdate` / `TaskList` exist in the session. Since **#2593** that is not guaranteed.
+
+The task tools are gated behind a remote feature flag — `tengu_rosy_wren`, **default off** — with a local override via `CLAUDE_CODE_ENABLE_TODO_TOOLS=true` in `~/.claude/settings.json`. Because the flag is server-side, availability can differ between two sessions on the same machine with no local change, which reads as intermittent breakage rather than as a feature flag.
+
+Rules `07` and `08` therefore both open with the same contract: **call `TaskList` once before Phase 1.**
+
+- **Present** → the document below applies as written.
+- **Absent** → track the same steps in the same order with an **inline checklist**, and **say once, explicitly, that the `TaskList`-based compaction-recovery guarantee does not hold.**
+
+That announcement is the load-bearing part, and it is why this section comes before the argument rather than after it. An inline checklist lives in the context window — which is precisely what compaction discards. So the central claim of this document, *"the list persists through compaction and is read back,"* is **conditional on the tools being available**, and silently false when they are not.
+
+A step machine that is quietly absent is indistinguishable from one that was never needed. It surfaces later as work resumed from the wrong step, and nobody can tell why. When the tools are missing, position is re-derived from durable state instead — issue status, `Refs #N` commits, and checked acceptance criteria — never from a checklist that may no longer be present.
+
+The startup hook reports this on its `Task Tools:` row when the local override is not enabled.
 
 ---
 
@@ -39,6 +59,10 @@ So the contract splits:
 | **On redirect / early exit** | Mark preamble complete, create nothing further | The redirected command creates its own tasks |
 
 `.claude/rules/07-task-creation-timing.md` also names the opposite failure. Creating tasks **one at a time** as work proceeds is explicitly an anti-pattern: after compaction the list must represent the *full remaining workflow*, not just the step in flight.
+
+**Two distinct failures share the phrase "one at a time,"** and the rule separates them. The one above is a failure of *timing* — deferring each task until its step is reached, losing the recovery picture. The other is a failure of *shape*: creating every task at the correct moment but emitting one tool call per message. A session can avoid the first and still commit the second, which is why the rule states the emission requirement separately — independent `TaskCreate` calls belong in **one message as parallel tool calls**.
+
+The cost is per round trip rather than per call. Measured on a `/work` run: 19 `TaskCreate` calls executed in 433 ms against 55.85 s of interval, where an interval is wall-clock between calls and therefore contains the model's generation for that turn. Batching collapses those round trips; it does not reduce the number of tasks. Nothing in the repository can detect a session that reads the rule and emits sequentially anyway — tool-call emission is not observable from inside the project, and the rule says so rather than implying a guard exists.
 
 Commands without routing decisions — `/bug`, `/enhancement`, `/proposal` — may still create all tasks upfront. The two-phase rule is a response to branching, not a universal ceremony.
 
@@ -108,15 +132,17 @@ The subtasks are created when Step 3 begins and cleared before the next sub-issu
 
 ### 6. Integrates Extension Points
 
-IDPF commands support user-customizable extension blocks:
+Extensible IDPF commands support user-customizable extension blocks:
 
 ```markdown
-<!-- USER-EXTENSION-START: pre-work -->
-Run linting before starting work
-<!-- USER-EXTENSION-END: pre-work -->
+<!-- USER-EXTENSION-START: pre-create -->
+Run linting before creating the issue
+<!-- USER-EXTENSION-END: pre-create -->
 ```
 
 Each non-empty extension block becomes a task. An extension that exists but never appears in the list would be invisible — task creation makes user customizations first-class workflow steps.
+
+**This applies to the 18 EXTENSIBLE commands, not to all of them.** `/work` and `/review-issue` are both **MANAGED** and carry no extension points: `/work`'s four were retired in 0.88.0 when it consolidated from the `/workit` hybrid shell (#2368), and `/review-issue`'s three followed in 0.101.0 (#2746) — never filled in practice, and targeted by none of the 28 extension recipes. A MANAGED command is hub-owned with no per-project customization surface, so there is no extension block for a task to represent. The names survive in `extension-points.json` under `deprecatedExtensionPoints` so a project that once used one gets a clear answer rather than silence.
 
 ### 7. Constrains Scope Creep
 

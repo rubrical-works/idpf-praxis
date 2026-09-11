@@ -1,6 +1,7 @@
 # IDPF Intentional Friction
 
 **Date:** 2026-02-08
+**Behaviour verified:** 2026-09-10
 **Topic:** Why every gate, boundary, and checkpoint in IDPF exists — and what goes wrong without them
 
 ---
@@ -31,7 +32,9 @@ IDPF's friction exists to make the cost of starting work non-zero — specifical
 
 ### 1. Mandatory Charter
 
-**The friction:** You cannot start a session without a charter. If `CHARTER.md` is missing or contains template placeholders, the assistant will not proceed until you configure one.
+**The friction:** Every session opens by reporting charter status. If `CHARTER.md` is missing or still holds template placeholders, the startup hook says so and prompts you to run `/charter`; when it is active, the assistant reads it and summarises the project's scope and current focus before doing anything else.
+
+**This gate asks rather than blocks, deliberately.** `Reference/Charter-Enforcement.md` — the rule deployed to user projects — states it directly: validation is *"conversational, not blocking"*, and you may expand scope, proceed anyway, or revise the work. The friction is that the charter is read aloud at the top of every session and that scope questions are raised against it, not that a missing charter halts the tool. A hard block would be the wrong shape here: the most common reason a charter is absent is that the project is new, which is exactly when refusing to work is least useful.
 
 **What it prevents:** Building without knowing what you're building. Without a charter, the assistant has no vision statement to check proposals against, no tech stack to constrain architecture decisions, no scope boundaries to prevent feature creep. Every subsequent command becomes unanchored — the assistant will make reasonable-sounding decisions that may contradict your actual intent, and you won't notice until much later.
 
@@ -93,11 +96,21 @@ STOP boundaries are the mechanism that keeps the human in the decision loop. Aft
 
 ### 6. Acceptance Criteria Verification
 
-**The friction:** Before moving an issue from `in_progress` to `in_review`, the `/work` command checks every acceptance criterion. If a criterion cannot be verified by the AI, it STOPS and asks the user how to proceed.
+**The friction:** Before moving an issue from `in_progress` to `in_review`, the `/work` command re-reads each modified file and checks every acceptance criterion. A criterion the AI cannot verify is **not** checked off — it is converted into a gate that must be discharged separately.
 
 **What it prevents:** "Done" meaning "I stopped working." Without explicit AC verification, the assistant declares completion based on its own assessment of whether the code is sufficient. But the acceptance criteria are the *user's* definition of done, not the AI's. The verification step forces alignment between what was requested and what was delivered.
 
-The STOP on unresolvable criteria is particularly important. Some acceptance criteria require human judgment ("the UI feels responsive"), external action ("deploy to staging and verify"), or domain knowledge the AI lacks. The framework does not allow the assistant to silently skip these or mark them complete on your behalf.
+**How unverifiable criteria are handled (#2472).** Some criteria require human judgment ("the UI feels responsive"), external action ("deploy to staging and verify"), or domain knowledge the AI lacks. Rather than stopping the whole workflow, `/work` Step 4a extracts each one into a labelled `qa-required` sub-issue and rewrites the parent line as:
+
+```
+- [ ] Works with screen readers → QA: #143
+```
+
+The box **stays unchecked, by design.** The parent may then move to `in_review` past that line — and only past lines carrying such a marker — but it cannot reach `done` until the QA sub-issue closes. The gate moved; it did not disappear.
+
+Two sibling markers work the same way for criteria that are out of phase rather than unverifiable: `→ GATE: review` for something a human sign-off resolves after `in_review`, and `→ GATE: release` for work `/prepare-release` owns. Each must name the event that resolves it — a token that cannot name one is unfinished work wearing a gate's clothing, not a phase claim.
+
+**Why this replaced a STOP.** Halting on every unverifiable criterion stopped long runs on their first sub-issue over criteria that were correctly unverifiable and always would be. Converting them into tracked, labelled, closable gates preserves the guarantee — nothing is silently skipped or marked complete on your behalf — while letting the rest of the work proceed. The gate is now an issue on the board rather than a pause in a session, which also means it survives the session ending.
 
 **The expensive alternative:** The assistant marks all criteria as met, moves to done, and you discover during release that criterion 4 ("works with screen readers") was never actually tested — the assistant assumed its code would be accessible because it followed general patterns.
 
@@ -133,6 +146,8 @@ This is especially critical when the user is triaging multiple issues. "Evaluate
 
 The per-issue STOP boundary ensures that each story receives full attention: its own TDD cycle, its own AC verification, its own user review. This is slower. It is also how you catch the story that looks complete but isn't.
 
+**`--nonstop` removes exactly this boundary, and nothing else.** Passing it to `/work` on an epic or branch tracker runs the same per-sub-issue cycle — status gate, TDD, AC verification, full-suite sweep, `in_review` — without pausing between them. It is the deliberate escape hatch for unattended runs, and it comes with its own compensating gates: any test, AC, QA or `gh pmu` failure halts the run immediately, and a sub-issue whose review found unresolved findings halts it too. What `--nonstop` buys is the removal of *waiting*, not the removal of *checking*.
+
 **The expensive alternative:** The assistant processes 5 stories in batch. Stories 1-3 are solid. Story 4 has a subtle bug that only manifests in combination with story 3. Story 5's acceptance criteria were reinterpreted to make the batch implementation easier. You discover this after all 5 are marked done, and untangling the interleaved changes is harder than implementing them sequentially would have been.
 
 ---
@@ -146,6 +161,18 @@ The per-issue STOP boundary ensures that each story receives full attention: its
 This seems like a minor style preference. It is not. In a project with dozens of issues across multiple branches, an accidentally-closed issue is a silent tracking failure. The project board shows it as done. The branch tracker counts it as complete. Nobody reviews it again. The gap surfaces later, usually at the worst time.
 
 **The expensive alternative:** A mid-development commit says "Fixes #42 - add input validation." The PR is merged to close a different issue. #42 auto-closes. The remaining work on #42 (error message localization, edge case handling) is forgotten. The release ships with partial input validation.
+
+---
+
+### 11. Review Before Work
+
+**The friction:** Before the first acceptance criterion of any issue is worked, `/work` classifies the issue's review state — `never-reviewed`, `findings-pending`, `reviewed-clean`, or `indeterminate` — and acts on it. In an interactive single-issue run, the first two stop and offer to run `/review-issue` or `/resolve-review` first.
+
+**What it prevents:** Implementing an issue whose criteria a reviewer already flagged, or that nobody has read since it was filed. Working an issue with unresolved findings is not a small waste — the findings usually describe the thing that is about to be built wrong.
+
+**Two properties worth noting, because both are deliberate.** Declining the offer mutates nothing: no label change, no status move, no body edit, and the decline is *not* recorded durably, because this gate runs on every invocation and a persisted bypass would suppress it forever after one decline. And `indeterminate` — an unreadable body, a contradictory label pair, a `gh` outage — **fails open**. Blocking there would let an outage stop all work; prompting there would train users to dismiss a gate on issues it cannot classify. The classifier reports `indeterminate` explicitly rather than guessing, so the fail-open is visible in the verdict instead of buried.
+
+**The expensive alternative:** You work an issue for two hours, then discover a review from last week flagged the acceptance criteria as untestable and the approach as wrong. The findings were sitting on the issue the whole time.
 
 ---
 
@@ -180,7 +207,8 @@ IDPF includes escape hatches. Not every piece of work needs the full pipeline:
 - **`/bug` and `/enhancement`** skip the proposal/PRD stages for focused, well-defined work
 - **Patch branches** skip the proposal stage for urgent fixes
 - **Manual overrides** ("don't create an issue", "keep the issue open") bypass specific gates when the user explicitly instructs
-- **`--force` flags** on commands like `/gap-analysis` skip staleness checks
+- **`--nonstop`** on `/work` removes the per-sub-issue STOP for unattended epic and branch-tracker runs, keeping every failure gate
+- **`--force` flags** on commands like `/fw-gap-analysis` skip staleness checks, and on `/review-issue` force a re-review of an already-reviewed issue
 
 The framework trusts the user to know when friction is unnecessary. What it does not trust is the *absence of a decision*. Skipping a gate is fine; not knowing the gate exists is where errors happen.
 

@@ -1,6 +1,8 @@
 # Release Variants and Extensions
 
-**Why IDPF ships two release commands — and why you don't need more.**
+**Date:** 2026-02-23
+**Counts verified:** 2026-09-10
+**Topic:** Why IDPF ships two release commands — and why you don't need more
 
 ---
 
@@ -63,7 +65,7 @@ Release workflows don't exist in isolation. The `/ci` command provides the CI/CD
 | Subcommand | What It Does |
 |------------|-------------|
 | `/ci` | View existing workflow status |
-| `/ci list` | Show available CI features (11 features, tiered) |
+| `/ci list` | Show available CI features (18 features, tiered) |
 | `/ci add <feature>` | Add CI features (caching, cross-OS testing, etc.) |
 | `/ci validate` | Check workflows for errors, anti-patterns, security issues |
 | `/ci recommend` | Analyze your project and suggest CI improvements |

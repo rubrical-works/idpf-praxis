@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Analyze an issue to determine what /issue-reset would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
  * @checksum sha256:placeholder
  *
@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { bodyMentionsIssue } = require('./lib/issue-ref-match.js');
 const { scanCheckboxes } = require('./lib/checkbox-scan.js');
+const { REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
 
 const execAsync = execTimedAsync;
 const SCHEMA_VERSION = 1;
@@ -70,7 +71,8 @@ function analyzeBody(body) {
   const boxes = scanCheckboxes(body);
   const checkedBoxes = boxes.filter((b) => b.checked).length;
   const uncheckedBoxes = boxes.filter((b) => !b.checked).length;
-  const reviewsMatch = body.match(/\*\*Reviews:\*\*\s*(\d+)/);
+  // Standalone marker line only (#2880) — a quoted marker is not a review.
+  const reviewsMatch = body.match(REVIEWS_MARKER_PATTERN);
   const reviewCount = reviewsMatch ? parseInt(reviewsMatch[1], 10) : 0;
 
   const autoSections = [];

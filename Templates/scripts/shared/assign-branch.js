@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -428,7 +428,8 @@ async function main() {
 
     // Parse args - order-independent parsing
     const addReady = args.includes('--add-ready');
-    const removeFlag = args.includes('--remove');
+    const confirmRemoveFlag = args.includes('--confirm-remove');
+    const removeFlag = args.includes('--remove') || confirmRemoveFlag;
     showTiming = args.includes('--timing');
 
     // Auto-detect: arguments starting with # are issues, prefix/name patterns are branches
@@ -459,9 +460,24 @@ async function main() {
         }
         console.log('');
 
+        // --confirm-remove is the other side of the CONFIRM_REMOVE gate (#2814).
+        // Without it main() printed the gate and returned, and removeIssues was
+        // exported but never called from main() — so the only way to complete a
+        // removal was to require() the module and call the export by hand.
+        if (confirmRemoveFlag) {
+            const result = await removeIssues(issueNumbers);
+            console.log(JSON.stringify(result, null, 2));
+            endTimer('total');
+            // Exit non-zero when any removal failed, so a caller can tell.
+            if (result.removed < result.total) process.exitCode = 1;
+            return;
+        }
+
         // Output for command spec to present confirmation via AskUserQuestion
         console.log('CONFIRM_REMOVE');
         console.log(JSON.stringify({ issues: expanded, epicSubIssues: [...epicSubIssues] }));
+        console.log('');
+        console.log(`To complete: node .claude/scripts/shared/assign-branch.js ${expanded.map(n => `${n}`).join(' ')} --confirm-remove`);
         endTimer('total');
         return;
     }
@@ -724,26 +740,97 @@ async function main() {
 // ============================================================================
 
 /**
+ * Map issues to the open branch tracker that lists them as children.
+ *
+ * `gh pmu sub remove` takes <parent-issue> <child-issue>..., and an issue does
+ * not carry a usable back-pointer to its parent, so the mapping is built from
+ * the tracker side: one `gh pmu sub list` per open tracker, once per run
+ * rather than once per issue.
+ *
+ * An issue that no open tracker claims is left unmapped. Guessing a tracker
+ * would unlink the issue from a branch it was never on.
+ *
+ * @param {number[]} issueNumbers - Issues to resolve
+ * @returns {Promise<Map<number, number>>} child issue number -> tracker number
+ */
+async function resolveTrackerForIssues(issueNumbers) {
+    const map = new Map();
+    const wanted = new Set(issueNumbers.map(Number));
+    if (wanted.size === 0) return map;
+
+    for (const { tracker } of getOpenBranches()) {
+        if (!tracker) continue;
+        const raw = await execAsyncSafe('gh', ['pmu', 'sub', 'list', String(tracker), '--json']);
+        const data = safeJsonParse(raw);
+        const children = data && Array.isArray(data.children) ? data.children : [];
+        for (const child of children) {
+            const num = Number(child && child.number);
+            if (wanted.has(num) && !map.has(num)) map.set(num, tracker);
+        }
+    }
+
+    return map;
+}
+
+/**
  * Remove a single issue from its branch assignment.
  * Unlinks from tracker, removes assigned label, clears branch field, sets status to backlog.
+ *
+ * Each operation's result is inspected. `execAsyncSafe` resolves `null` on
+ * failure and a (possibly empty) string on success, so the test is against
+ * `null` specifically — a successful command with no stdout returns `''`,
+ * which is falsy and must not be read as a failure.
+ *
+ * An operation string is recorded only for an operation that actually
+ * completed. Before #2814 all three were pushed unconditionally and every
+ * return value was discarded, so the envelope for a wholly failed removal was
+ * indistinguishable from a successful one.
+ *
  * @param {number} issueNumber - Issue to remove
+ * @param {number|null} trackerNumber - Parent branch tracker, from resolveTrackerForIssues
  * @returns {{ ok: boolean, operations: string[], error?: string }}
  */
-async function removeFromBranch(issueNumber) {
+async function removeFromBranch(issueNumber, trackerNumber) {
     const operations = [];
+    const failures = [];
     try {
-        // Unlink from branch tracker sub-issues
-        await execAsyncSafe('gh', ['pmu', 'sub', 'remove', String(issueNumber)]);
-        operations.push(`unlink #${issueNumber} from tracker`);
+        // Unlink from branch tracker sub-issues. --force because interactive
+        // stdin is unavailable and gh-pmu prompts for confirmation here.
+        if (trackerNumber) {
+            const unlinked = await execAsyncSafe(
+                'gh',
+                ['pmu', 'sub', 'remove', String(trackerNumber), String(issueNumber), '--force']
+            );
+            if (unlinked === null) {
+                failures.push(`unlink #${issueNumber} from tracker #${trackerNumber}`);
+            } else {
+                operations.push(`unlink #${issueNumber} from tracker #${trackerNumber}`);
+            }
+        } else {
+            // Nothing to unlink is not a failure, but it is not an unlink
+            // either — say which, rather than claiming one happened.
+            operations.push(`no branch tracker found for #${issueNumber} (nothing to unlink)`);
+        }
 
         // Remove assigned label
-        await execAsyncSafe('gh', ['issue', 'edit', String(issueNumber), '--remove-label', 'assigned']);
-        operations.push(`remove assigned label from #${issueNumber}`);
+        const unlabelled = await execAsyncSafe('gh', ['issue', 'edit', String(issueNumber), '--remove-label', 'assigned']);
+        if (unlabelled === null) {
+            failures.push(`remove assigned label from #${issueNumber}`);
+        } else {
+            operations.push(`remove assigned label from #${issueNumber}`);
+        }
 
         // Clear branch field and set status to backlog
-        await execAsyncSafe('gh', ['pmu', 'move', String(issueNumber), '--backlog']);
-        operations.push(`set #${issueNumber} to backlog`);
+        const moved = await execAsyncSafe('gh', ['pmu', 'move', String(issueNumber), '--backlog']);
+        if (moved === null) {
+            failures.push(`set #${issueNumber} to backlog`);
+        } else {
+            operations.push(`set #${issueNumber} to backlog`);
+        }
 
+        if (failures.length > 0) {
+            return { ok: false, operations, error: `Failed: ${failures.join('; ')}` };
+        }
         return { ok: true, operations };
     } catch (err) {
         return { ok: false, operations, error: err.message };
@@ -764,11 +851,14 @@ async function removeIssues(issueNumbers) {
     // Expand epics to include sub-issues
     const { expanded } = await expandEpicSubIssues(issueNumbers);
 
+    // Resolve every parent tracker once for the run, not once per issue.
+    const trackers = await resolveTrackerForIssues(expanded);
+
     const results = [];
     let removed = 0;
 
     for (const num of expanded) {
-        const result = await removeFromBranch(num);
+        const result = await removeFromBranch(num, trackers.get(Number(num)) || null);
         results.push({ issue: num, ...result });
         if (result.ok) removed++;
     }
@@ -790,6 +880,7 @@ module.exports = {
     getOpenBranches,
     getIssuesByStatus,
     assignToBranch,
+    resolveTrackerForIssues,
     removeFromBranch,
     removeIssues,
     linkToTracker,

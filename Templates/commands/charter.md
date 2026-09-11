@@ -1,5 +1,5 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: View, create, or manage project charter
 argument-hint: "[update|refresh|validate|--create-domain-entities]"
 copyright: "Rubrical Works (c) 2026"
@@ -21,7 +21,7 @@ Context-aware. Shows summary if exists, starts creation if missing.
 ## Execution
 **REQUIRED:** Parse workflow steps, use `TaskCreate` to create tasks. Mark `in_progress`→`completed`. After compaction, re-read spec and call `TaskList` to resume from first incomplete task.
 ## framework-config.json — Use the Helper
-ALL writes to `framework-config.json` MUST go through `framework-config.js`. Raw `fs.writeFileSync` forbidden — helper validates against `.claude/metadata/framework-config.schema.json` (ajv draft-07), rejects invalid output.
+ALL writes to `framework-config.json` — `deploymentTarget`, `projectSkills`, `reviewMode`, `activeDomains`, `verificationCommands`, any field — MUST go through `framework-config.js`. Raw `fs.writeFileSync` forbidden — helper validates against `.claude/metadata/framework-config.schema.json` (ajv draft-07), rejects invalid output.
 ```javascript
 const fwconfig = require('./.claude/scripts/shared/lib/framework-config.js');
 const config = fwconfig.read(process.cwd());
@@ -46,6 +46,15 @@ Pattern: `/{[a-z][a-z0-9-]*}/`. ANY placeholder → template. No placeholders �
 4. Generate CHARTER.md and Inception/ artifacts
 3a. **Companion pre-fill:** propose candidates from disk, never open-ended — `git remote -v`; `.gh-pmu.json` `repositories[]`; existing `external: true` entities in `domain-entities.json`. Confirm with `searchable`/`fileIssues` defaulting false; register via `registerCompanion`. Asking open-ended here would assert something no file was read for — the failure the artifact-voice rule below governs.
 **Artifact voice — extraction:** artifacts here are **observations**. "detected" / "found via `<file>`" claims are permitted *because a file was read*; each must be traceable to the file supporting it.
+**Step 2a — Verification commands from the manifest script block.** Read the script declarations here, in this spec:
+| Source | What to read |
+|---|---|
+| `package.json` | the `scripts` object — test, lint, build, typecheck entries |
+| `Makefile` | target names and their recipe lines |
+| `pyproject.toml` | `[tool.poetry.scripts]`, `[project.scripts]`, tox/pytest config |
+| CI workflow (`.github/workflows/*.yml`) | run steps of the test job — usually the most complete set, since CI must name every command |
+**Propose each candidate with its provenance** — the file it was read from — and write only what the user confirms, in run order, to `verificationCommands` via the `framework-config.js` helper (never a raw `fs` write). Confirmed nothing → leave the key absent, as Q5b does.
+**Read the manifests here, not in `codebase-analysis`.** That skill is imported from `idpf-praxis-skills` and `/fw-import-skills` replaces imported skills wholesale, so logic added there reverts at the next import. `tech-stack-detection.md` already opens `package.json`, but only as an ecosystem marker — it never reads the `scripts` block, which is why the data was never collected. Same reasoning that placed `verificationMode` in `framework-config.json` rather than the imported `tdd-process` checklist (#2556).
 ### Inception Mode
 **Artifact voice — inception (#2591):** no code exists on this path (Process step 1 creates the tree against an empty project), so **no artifact here may assert a detection.** Every Inception/ artifact is a **declaration of intent** — what the project *will* use, sourced from answers, never from a filesystem read.
 - **`Inception/Tech-Stack.md` is intent voice from the Q3 (technology) answer.** It must not contain "detected", "found", or "via `<file>`" claims, nor name a technology, framework, or version the answers did not supply. No manifest was consulted; none exists yet.
@@ -59,7 +68,8 @@ Pattern: `/{[a-z][a-z0-9-]*}/`. ANY placeholder → template. No placeholders �
 | 3 | What technology/language? | CHARTER.md Tech Stack |
 | 4 | What's in scope for v1? (3-5 items) | CHARTER.md In Scope |
 | 5 | What testing framework? (conditional) | Inception/Test-Strategy.md Framework |
-Q5 only for testable projects (skip docs/config repos).
+| 5b | What command runs your tests? (conditional) | framework-config.json `verificationCommands` + Inception/Test-Strategy.md |
+Q5 and Q5b only for testable projects (skip docs/config repos).
 #### Testing Framework (conditional)
 | Tech Stack | Ask? | Options |
 |------------|:----:|---------|
@@ -70,7 +80,15 @@ Q5 only for testable projects (skip docs/config repos).
 | Java/Kotlin | Yes | JUnit, TestNG |
 | C#/.NET | Yes | xUnit, NUnit, MSTest |
 | Documentation-only | Skip | N/A |
-**Skip:** Q3 contains "documentation"/"docs"/"config"/"terraform"/"ansible" → skip Q5, framework = "N/A - non-code project".
+**Skip:** Q3 contains "documentation"/"docs"/"config"/"terraform"/"ansible" → skip Q5 **and Q5b**, framework = "N/A - non-code project".
+#### Verification Command (Q5b — conditional)
+**Trigger:** asked whenever Q5 is asked — the **same skip detection** governs both.
+**ASK USER** (free text, "Other" for custom): "What command runs your tests? (optionally lint and build, one per line)"
+**Never derive the command from the Q5 framework name.** Q5 gives a framework *name* (`Jest`); this gives an *invocation* (`npx jest --no-coverage`). Expanding one into the other is a fabrication under the Artifact voice rule above — nothing is installed at inception, so no answer supplies the package manager, script name or flags. Asking converts it into an answer, which that rule permits.
+**After answer:**
+1. Write the commands, in run order, to `verificationCommands` via the `framework-config.js` helper — never a raw `fs` write.
+2. Record the same commands in `Inception/Test-Strategy.md` beside the Q5 framework, so prose and config agree at creation.
+**No answer, or skip matched → leave `verificationCommands` AND `testCommand` absent.** Do NOT write an empty array: `/work` Step 4f reports `source: "none"` for an absent key — truthful — whereas an empty array asserts nothing needs verifying, a different and weaker claim. Absence is also what lets a later `/charter refresh` fill it without overwriting a deliberate choice.
 #### Deployment Platform (Q3a — conditional)
 **Trigger:** Deployable from Q3 — web framework, frontend build tool, Docker, or "web app"/"API"/"service"/"site".
 **Skip:** CLI, libraries, docs-only, infra repos.
@@ -152,7 +170,7 @@ What review mode should be used for this project?
 | Chaos/resilience mentioned | Chaos |
 | Automated testing mentioned | QA-Automation |
 **Step 2: ASK USER (multi-select):** Present all 11 domains pre-checked per detection.
-**Step 3:** Write `activeDomains` (lowercase IDs: `"security"`, `"accessibility"`, `"seo"`, `"privacy"`, `"observability"`, `"i18n"`, `"api-design"`, `"performance"`, `"chaos"`, `"contract"`, `"qa"`). Report active list.
+**Step 3:** Write `activeDomains` (lowercase IDs: `"security"`, `"accessibility"`, `"seo"`, `"privacy"`, `"observability"`, `"i18n"`, `"api-design"`, `"performance"`, `"chaos"`, `"contract"`, `"qa"`). Report the active list, naming where it applies: these auto-apply to `/review-issue`; `/code-review` applies them only when `--with` is passed. **Name the commands (#2810)** — "auto-apply to review commands" was false for `/code-review`, which reads the key only inside its `--with` path, so a user believing it got no domains and no reason why.
 **Step 4 (`/charter refresh`):** Re-evaluate vs auto-detection from updated tech stack.
 **Step 5 (`/charter update`):** Allow add/remove via multi-select.
 #### Artifact Generation
@@ -165,6 +183,7 @@ What review mode should be used for this project?
 | What technology? (Q3) | Inception/Tech-Stack.md → whole artifact, intent voice, `TBD` for anything Q3 did not supply |
 | What's in scope? | CHARTER.md → In Scope |
 | Testing framework? | Inception/Test-Strategy.md → Framework |
+| Verification command(s)? (Q5b) | framework-config.json → verificationCommands, and Inception/Test-Strategy.md beside the framework. Absent when unanswered — never an empty array |
 | Review mode? | framework-config.json → reviewMode |
 | Active domains? | framework-config.json → activeDomains |
 **Process:**
@@ -209,6 +228,8 @@ What review mode should be used for this project?
 4. Present diff, ask for confirmation
 5. Merge changes, commit "Charter refresh"
 5a. Regenerate `domain-entities.json` via `generateFromCharter()`. Run `verifyEntityCounts()` — report mismatches (`match: false`) and unverifiable entities (`resolved: false`) **separately** per Step 2b; only mismatches feed the consent prompt (#2597). Ask before updating charter counts. Then run **Out-of-Table Count Reconciliation** (below) — `verifyEntityCounts()` sees only the Key Entities table, so prose counts need their own pass (#2636). Validate and write. Include `"$schema"` first property. **#2379:** helper may return `{error, hint}` or `{warning, entities:{}}` if refreshed charter lost title or Key Entities table — surface to user and restore required sections before overwriting.
+5c. **Verification command diff.** Compare `verificationCommands` (via `framework-config.js`) against two sources: the manifest script block of Extraction Step 2a — `package.json` `scripts`, `Makefile`, `pyproject.toml`, CI workflow — and the commands in `Inception/Test-Strategy.md`. Report every difference with the source that disagrees, write only on confirmation, through the helper. Absent key and no candidates → report nothing, write nothing.
+**This is the only hook reaching an already-complete charter.** `/charter` with no arguments shows a summary and never re-runs generation, so neither Inception nor Extraction reaches a project past its first session — refresh is where an existing project acquires the key, and where drift between the two hand-authored surfaces is caught. Not hypothetical: this repository's `Inception/Test-Strategy.md` states only `testCommand` while `framework-config.json` also declares a three-entry `verificationCommands` array, with nothing checking them.
 5b. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
 6. Trigger skill/recipe suggestions. Detect new default skills not in `projectSkills` — copy from `{frameworkPath}/.claude/skills/`, add additively, report. Tech stack changed → keyword-based suggestions (NEW only).
 ### /charter validate

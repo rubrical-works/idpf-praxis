@@ -1,6 +1,6 @@
 {
   "$schema": "./imported-skills-schema.json",
-  "lastUpdated": "2026-09-01T20:31:00.630Z",
+  "lastUpdated": "2026-09-10T02:30:35.946Z",
   "count": 16,
   "skills": [
     "ci-cd-pipeline-design",
@@ -21,22 +21,22 @@
     "test-writing-patterns"
   ],
   "shas": {
-    "tdd-process": "bb4c8d6d55a0719d6abc4e9fa30a66c84fb905bf",
-    "ci-cd-pipeline-design": "8b466a36ca608a241c343a03f7a46e1438798dd6",
+    "tdd-process": "fcf544b57cf0d76086cbe9e71d7426515df5db7a",
+    "ci-cd-pipeline-design": "e242b0396907fef0a4e5e19dbfc4973e0997c83a",
     "command-spec-audit": "5d478ffbde58d68abf7a8bd831c40053441f5bd1",
-    "common-errors": "b6b726049862f5a52b314164cce8d8c16f7973fe",
-    "drawio-generation": "8481bf41b9943d713360550109c23329e84e1320",
-    "electron-development": "af12251c1e2731e6f5512bf3de6fe58b9d9f43f7",
-    "error-handling-patterns": "74cae8602c542cde28ce37d46679f6900c78242a",
-    "test-writing-patterns": "a3ffd82a0429368e1ad55ade801f3d6bead10b52",
-    "tdd-failure-recovery": "5659911cb359d4382cf63ef9e6c4a104ff4a06f6",
-    "tdd-green-phase": "51010269741134de8128a74a5e34dd429d3945cf",
-    "tdd-red-phase": "efae399e8775cda70876b8d2c50710af0a239348",
-    "tdd-refactor-phase": "f38d196f0be1025f0969aeb98c20b9a2f521a347",
-    "code-path-discovery": "dd9ae199544a1c37b886afbdaec3b2e48767a7b4",
+    "common-errors": "8c19ed6729cbee517603ac5b708122b1d5ff619e",
+    "drawio-generation": "528dcb1f844300be3e6d753b85000eb0974c6bcb",
+    "electron-development": "25c4795f280274201890ae4db3131d04e77e1543",
+    "error-handling-patterns": "a467f5f23d8a88683b5a52a6be1e4251a12fe08f",
+    "test-writing-patterns": "ee5dd6b1f65f46cbd927723c7892ebe2eb4d5c44",
+    "tdd-failure-recovery": "c386804d9c42b55973ec9d292b210c3e88dc00c0",
+    "tdd-green-phase": "8eb5e9e096c9f164666bcb788892f724516d4f17",
+    "tdd-red-phase": "da469b51b7f421edaec8078c5afd1cff6976fea9",
+    "tdd-refactor-phase": "1cb06eb99859ef03019f85f2b01d32e6c0d8ccc8",
+    "code-path-discovery": "12ba6a762442255ef2a549e4934865cb3e41c784",
     "hal-2026": "dc1ec97d8157a1db792fb7f7924855077c017059",
-    "engage-exocortex": "c4a3189664480b9ac988f8bd3d063b860172c5ad",
-    "tdd-refactor-coverage-audit": "4bc4a09ede68fcfdaccc2d49c3c416461cfa53fc",
-    "codebase-analysis": "b3b6db2c956555f4717ad8319cc90210bc90bca7"
+    "engage-exocortex": "e4290de685db3fb4933c8dc6d887fbd8e10f7b06",
+    "tdd-refactor-coverage-audit": "7ed153dc3be189a920e02d59f6bd976b6eaa59f8",
+    "codebase-analysis": "d4bf8d884add44a88a13c6a89b5abf8da2a36a22"
   }
 }

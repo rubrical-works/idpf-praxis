@@ -1,6 +1,7 @@
 # Context Engineering: The Thin Orchestrator Pattern
 
 **Date:** 2026-02-23
+**Counts verified:** 2026-09-10
 **Topic:** How IDPF manages context budget through architectural separation, and why this matters more than compression ratios
 
 ---
@@ -111,23 +112,50 @@ Compare this to loading a 500-line monolithic command spec every time the user s
 Beyond the three-layer separation, IDPF manages *when* context gets loaded:
 
 **Always loaded** (auto-loaded by Claude Code):
-- `.claude/rules/` — 5 minimized rule files. Anti-hallucination, GitHub workflow, session startup, deployment awareness, Windows shell safety. These are the guardrails that must survive context compaction.
+- `.claude/rules/` — 9 rule files. Anti-hallucination, GitHub workflow, session startup, deployment awareness, Windows shell safety, runtime triggers, task-creation timing, and the two execution rules for `/work` and the review pair. These are the guardrails that must survive context compaction. **This layer has grown substantially — see [When the Principle Bends](#when-the-principle-bends) below.**
 
 **Loaded at session startup:**
 - Process framework core (e.g., `Agile-Core.md` from `.min-mirror/`). Loaded once, stays in context.
 
 **Loaded on demand:**
-- `Overview/Framework-Development.md` — only when working on IDPF frameworks
-- `Overview/Framework-Skills.md` — only when creating or updating skills
+- `Overview/Framework-Overview.md` — only when working on IDPF-Agile or the complete framework reference
+- `Overview/Framework-System-Instructions.md` — only when working on system instructions or domain specialists
 - `Assistant/Anti-Hallucination-Rules-for-PRD-Work.md` — only during PRD work
+- `Reference/work-execution-conditional.md` — only for epics, branch trackers, `--nonstop`, or multi-issue selections
 
 **Loaded per-command:**
 - The specific command spec for the slash command being executed. A lean orchestrator, not a reference manual.
 
 **Never loaded (executed instead):**
-- All 50 shared scripts and library modules. These run as `node` processes and return results. They could be 10,000 lines and the model would never know.
+- All 165 scripts under `.claude/scripts/` and the 9 hooks. These run as `node` processes and return results. They are roughly 50,000 lines, and the model never sees one of them.
 
 This is explicit context budget management. The `Finite-Context-Windows.md` philosophy doc describes the principle; the codebase implements it.
+
+---
+
+## When the Principle Bends
+
+A framework document that only describes its principle working is advertising, not engineering. The always-loaded layer has grown, and it grew for a reason worth stating plainly.
+
+Three commands — `/work`, `/review-issue`, `/resolve-review` — no longer carry their workflow in their command spec. The **hybrid shell + rule architecture** (#2329, #2368, #2737) moved those workflows into `.claude/rules/08-work-execution.md` and `.claude/rules/09-review-execution.md`, leaving the command file as a thin shell holding arguments, prerequisites and error handling.
+
+The rules are auto-loaded. That means workflow text which used to be loaded *per invocation* is now resident *every session*:
+
+| Rule | Size |
+|---|---|
+| `08-work-execution.md` | ~61 KB |
+| `09-review-execution.md` | ~36 KB |
+| `04-deployment-awareness.md` (dev-only variant) | ~55 KB |
+| All 9 rules, this repo | ~239 KB |
+| The 8 rules deployed to user projects | ~113 KB, roughly 43,000 tokens |
+
+Forty-three thousand tokens is around a fifth of a 200K window, spent before the user's first message.
+
+**Why it was done anyway.** `/resolve-review` invokes `/review-issue` as a nested skill, so a single resolution cycle previously injected the same command spec twice. And a workflow that lives in a rule survives compaction without being re-read, which the STOP boundaries and status gates depend on. The trade was per-invocation cost and compaction fragility against permanent residence.
+
+**What it costs.** The tiered-loading table above is still the design, but the top tier is no longer small. A reader should understand this section as the exception that the principle now has to accommodate, not as evidence the principle was abandoned — the 165 scripts and 71 registries still carry zero context cost, and that remains the larger effect.
+
+**The open question** is whether execution rules belong in the always-loaded tier at all, or whether a fourth tier — loaded once per command family rather than once per session — would recover most of the budget without giving back compaction survival. That question is unresolved.
 
 ---
 
@@ -137,7 +165,7 @@ The frameworks that claim aggressive token reduction are solving the right probl
 
 IDPF's approach is architectural. Move the 350 lines that don't require model reasoning into scripts and metadata files. Now the command spec is 150 lines *because that's all the model needs to see*, not because the rest was compressed away.
 
-The difference matters at scale. IDPF has 48 commands, 81 extension points, 38 skills, 17 metadata registries, and 50 shared scripts. If all of that lived in command spec markdown, running `/prepare-release` (which internally invokes validation, minimization, skill packaging, and CI monitoring) would consume an enormous context budget. Instead, each phase delegates to scripts that execute deterministically, and the model focuses on the judgment calls: "Is this version number appropriate? Should we proceed past this gate? Does this CHANGELOG look complete?"
+The difference matters at scale. IDPF has 56 commands, 77 active extension points across 18 extensible commands, 71 metadata registries, and 165 scripts. If all of that lived in command spec markdown, running `/prepare-release` (which internally invokes validation, minimization, skill packaging, and CI monitoring) would consume an enormous context budget. Instead, each phase delegates to scripts that execute deterministically, and the model focuses on the judgment calls: "Is this version number appropriate? Should we proceed past this gate? Does this CHANGELOG look complete?"
 
 ---
 

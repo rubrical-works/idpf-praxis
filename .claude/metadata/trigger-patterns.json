@@ -1,0 +1,68 @@
+{
+  "$schema": "trigger-patterns-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Trigger phrase patterns for .claude/hooks/workflow-trigger.js (#2816). Adding or widening a trigger phrase is a data edit here, matching the policy 02-github-workflow.md already states for trigger-flag-allowlist.json: recognized flags are data, not a hook edit. Patterns moved; meanings did not.",
+    "consumer": ".claude/hooks/workflow-trigger.js — compiled once per invocation, before the fast-path check",
+    "compositionDecision": "Patterns are data; COMPOSITION IS NOT. reviewTrigger, analysisMatch and testPlanApprovalTrigger are conjunctions of a pattern, a co-requirement and exclusions against sibling triggers, and those relationships stay in code. See Construction/Design-Decisions/2026-09-07-trigger-patterns-composition-stays-in-code.md for the rejected `requires`/`excludes` schema."
+  },
+  "analysisKeywords": [
+    "evaluate",
+    "analyze",
+    "assess",
+    "investigate",
+    "check",
+    "verify"
+  ],
+  "commandRequests": [
+    "commands",
+    "list-commands"
+  ],
+  "patterns": {
+    "workflowTriggerPrefix": {
+      "source": "^(bug|enhancement|idea|proposal):",
+      "flags": "i",
+      "description": "Trigger prefixes routed to /bug, /enhancement and /proposal. The captured group is the trigger type."
+    },
+    "workTrigger": {
+      "source": "^work\\s",
+      "flags": "i",
+      "description": "Any prompt starting with 'work '. Deliberately broad — the issue number or status filter is extracted opportunistically afterwards."
+    },
+    "doneTrigger": {
+      "source": "^done(\\s|$)",
+      "flags": "i",
+      "description": "Standalone 'done' or 'done #N' at message start. Contextual detection (are there active issues) happens later."
+    },
+    "reviewAtStart": {
+      "source": "^(?:please )?review\\b",
+      "flags": "i",
+      "description": "Anchored at the start so assistant output mentioning a review command does not re-trigger routing."
+    },
+    "strictIssueRef": {
+      "source": "#\\d+|\\bissue\\s+\\d+",
+      "flags": "i",
+      "description": "An EXPLICIT issue reference. Required by triggers that mutate or route to a command, where picking up a stray conversational number would be costly."
+    },
+    "looseIssueRef": {
+      "source": "#\\d+|\\bissue\\s+\\d+|\\b\\d{2,}\\b",
+      "flags": "i",
+      "description": "Also accepts a bare two-or-more-digit number. Used ONLY by the analysis trigger, which is read-only, so a false positive costs a STOP reminder rather than an action. Deliberately distinct from strictIssueRef — collapsing the two would change what routes."
+    },
+    "approvalVerb": {
+      "source": "\\bapprov(?:e|ed|es|ing|al)\\b",
+      "flags": "i",
+      "description": "Approval verb for the verbal test-plan approval trigger (#2815). Never sufficient alone."
+    },
+    "testPlanRef": {
+      "source": "\\btest[-\\s]plans?\\b",
+      "flags": "i",
+      "description": "Explicit test-plan reference, hyphenated or spaced, singular or plural."
+    },
+    "refreshFlag": {
+      "source": "--refresh",
+      "flags": "i",
+      "description": "Cache-refresh flag on the commands help path."
+    }
+  }
+}

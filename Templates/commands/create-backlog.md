@@ -1,5 +1,5 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -225,7 +225,8 @@ Link to epic: `gh pmu sub add {epic_number} {story_number} || true`. Cleanup: `r
 | Template Section | Source |
 |---|---|
 | **Description** | PRD user story (As a / I want / So that) |
-| **Relevant Skills** | `framework-config.json` → `projectSkills` |
+| **Relevant Skills** | No input. Renders `N/A` when configured — the list is project-wide, not story-specific (#2817) |
+| **E2E** | `Inception/Test-Strategy.md` → Framework → E2E. Single authority; no `framework-config.json` key, no detection heuristic |
 | **Acceptance Criteria** | PRD AC checkbox list |
 | **Files to modify** | PRD `## Technical Notes` + per-story codebase analysis — see derivation below |
 | **Documentation** | Standard checkboxes **verbatim** — closed set, see below |

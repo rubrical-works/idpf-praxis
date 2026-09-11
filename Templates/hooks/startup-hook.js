@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -26,9 +26,21 @@ const { spawn, execSync } = require('child_process'); // eslint-disable-line no-
 // groups rule is exactly the kind of thing five would get right and the sixth
 // would not.
 const {
-  resolveCrossSessionConfig,
+  readCrossSessionConfig,
   formatEffectiveState,
 } = require('../scripts/shared/lib/cross-session-config.js');
+
+// #2771: stale `.tmp-*` scratch-file sweep. Required directly rather than
+// through framework-config.js, which is the cwd-taking wrapper around the same
+// opt-out predicate: that module pulls ajv, ~41ms paid synchronously on every
+// session start before a single check is spawned. This one requires nothing
+// but Node built-ins.
+const tmpCleanup = require('../scripts/shared/lib/tmp-cleanup.js');
+
+// #2769: the .hall-monitor.json presence marker. Read-only and advisory — this
+// module never deletes, so a stale marker survives to be reported and is
+// cleaned up by the next monitor's start-time overwrite, not by the hook.
+const hallMonitorPresence = require('../scripts/shared/lib/hall-monitor-presence.js');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ANSI color helpers
@@ -141,10 +153,69 @@ function gatherSessionInfo(cwd) {
     frameworkPath,
     charterStatus,
     ghPmuVersion,
-    crossSessionMessaging: resolveCrossSessionConfig(config),
+    // Reads .claude/x-session.json first, then the legacy framework-config.json
+    // key, then the environment layer above both (#2774). Takes the project
+    // root rather than the already-parsed config, because the chain spans two
+    // files and the hook only loaded one of them.
+    crossSessionMessaging: readCrossSessionConfig(cwd),
+    // #2771. Read off the already-parsed config through the helper's own
+    // predicate — never re-derived inline, for the reason crossSessionMessaging
+    // records: a second copy of an absence rule is how the two drift.
+    tmpCleanup: tmpCleanup.isEnabled(config),
+    // #2769. Cheap: one stat and one JSON parse, no spawn, so it runs inline
+    // with the rest of the synchronous gather rather than joining the check
+    // ladder. Never throws.
+    hallMonitor: hallMonitorPresence.readPresence(cwd),
     specialist,
     specialistPath,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stale scratch-file sweep (#2771)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Remove stale `.tmp-*` scratch files from the project root.
+ *
+ * THE ONE STARTUP STEP THAT MUTATES THE TREE. Every other check is advisory,
+ * per `06-runtime-triggers.md`'s *offer, don't force*. The exception is
+ * deliberate: an `AskUserQuestion` at every session start, for files nobody
+ * wants, is exactly the noise a hook should remove rather than add — and since
+ * the hook communicates through `additionalContext`, the "offer" would be
+ * Claude asking a question after the block, costing a turn on every start.
+ * What makes that safe is not a prompt but what the helper refuses to touch.
+ *
+ * BEST-EFFORT AND SILENT ON FAILURE. Returning `null` rather than throwing is
+ * the contract: the Session Initialized block must render no matter what, so a
+ * sweep that cannot run degrades to no row, exactly as it does when there was
+ * nothing to remove. That collapse is acceptable here and only here — a failed
+ * sweep and a clean one both mean "no files were deleted", which is the fact
+ * the row would have reported.
+ *
+ * @param {string} cwd - Project root
+ * @param {{tmpCleanup?: boolean}} info - Session info carrying the resolved opt-out
+ * @returns {{removed: string[], failed: Array<{name: string, error: string}>, oldestAgeMs?: number, signals: object}|null}
+ */
+function sweepStaleTempFiles(cwd, info) {
+  try {
+    // Disabled emits no row at all — not an "opted out" row. The suppression is
+    // the user's own choice, and restating it every startup is the noise the
+    // setting exists to remove (same decision as a disabled messaging group).
+    if (info && info.tmpCleanup === false) return null;
+
+    const signals = tmpCleanup.loadSignals(cwd);
+    const { stale } = tmpCleanup.findStale(cwd, signals, Date.now());
+    const { removed, failed } = tmpCleanup.removeStale(cwd, stale);
+
+    const result = { removed, failed, signals };
+    if (stale.length > 0) {
+      result.oldestAgeMs = stale.reduce((max, s) => (s.ageMs > max ? s.ageMs : max), 0);
+    }
+    return result;
+  } catch {
+    return null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -396,9 +467,30 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       // skip notice — that suppression is the user's own choice. This suffix
       // is where the setting is made discoverable instead, so a configured
       // project is distinguishable from an unconfigured one.
-      const suffix = messaging && !messaging.fullyEnabled
+      const messagingSuffix = messaging && !messaging.fullyEnabled
         ? ` — ${formatEffectiveState(messaging)}`
         : '';
+
+      // #2769: a live `/hall-monitor` in this directory sets every session
+      // here to quiet narration, so a session starting now must know that
+      // BEFORE the first announcement arrives rather than inferring it
+      // afterwards. A STALE marker is named too, and for the opposite reason:
+      // a crashed monitor suppresses nothing, and without a row the user has
+      // no way to tell that from a monitor doing its job.
+      //
+      // Read off `info`, never re-derived here — renderBlock is called with
+      // hand-made info objects across the test suite and by callers predating
+      // this, so an absent value must behave exactly as before: no text, no
+      // throw. Same contract `trash` and `crossSessionMessaging` have.
+      const hm = info.hallMonitor;
+      let monitorSuffix = '';
+      if (hm && hm.active) {
+        monitorSuffix = ` — hall-monitor live (#${hm.pid})`;
+      } else if (hm && typeof hm.reason === 'string' && hm.reason.startsWith('stale')) {
+        monitorSuffix = ` — stale hall-monitor marker (#${hm.pid})`;
+      }
+
+      const suffix = `${messagingSuffix}${monitorSuffix}`;
       // The row carries the helper's own rendering verbatim. Re-deriving it
       // here would put the "seen vs reachable" distinction in two places, and
       // the copy that drifts is the one the user actually reads.
@@ -433,11 +525,41 @@ function renderBlock(info, checkResults, opts = { color: true }) {
     // already authored. Routing this through formatEffectiveState instead said
     // "discovery" twice and led with the generic phrasing rather than the one
     // fact a reader needs: nothing was scanned.
-    const cause = messaging.enabled === false
-      ? 'crossSessionMessaging.enabled: false'
-      : 'crossSessionMessaging.discovery: false';
     const implication = messaging.implications[0] || '';
-    lines.push(`- Peers: ${w(`⚠️ discovery disabled by config (${cause}) — the session registry was not read and peers were not looked for. ${implication}`.trim())}`);
+
+    // An environment override zeroes `discovery` exactly as the config keys do,
+    // so this branch fires for both — but the CAUSE differs and only one of the
+    // two is in a file (#2705). Reporting "disabled by config
+    // (crossSessionMessaging.enabled: false)" for a session-scoped override
+    // sends the reader to edit framework-config.json, where they find nothing
+    // wrong and no remaining explanation for a session that stays muted.
+    if (messaging.source === 'environment') {
+      const variable = (messaging.envOverride && messaging.envOverride.variable) || 'IDPF_X_SESSION';
+      const value = messaging.envOverride ? messaging.envOverride.value : null;
+      lines.push(`- Peers: ${w(`⚠️ discovery disabled for this session by ${variable}=${value} (not written to framework-config.json) — the session registry was not read and peers were not looked for. Unset it to restore discovery for the next session. ${implication}`.trim())}`);
+    } else {
+      const cause = messaging.enabled === false
+        ? 'crossSessionMessaging.enabled: false'
+        : 'crossSessionMessaging.discovery: false';
+      lines.push(`- Peers: ${w(`⚠️ discovery disabled by config (${cause}) — the session registry was not read and peers were not looked for. ${implication}`.trim())}`);
+    }
+  }
+
+  // Stale scratch-file sweep (#2771). Read off `info`, not re-run here:
+  // renderBlock is called with hand-made info objects across the test suite and
+  // by callers predating #2771, and an absent value must behave exactly as it
+  // did before — no row, no throw. Same contract crossSessionMessaging has, and
+  // the same reason a render function must never be the thing that deletes.
+  if (info.trash) {
+    const row = tmpCleanup.formatTrashRow(info.trash, info.trash.signals);
+    // Empty string means nothing worth saying: no removals, no failures, and
+    // the signals file did not ask for a row anyway. Omitting matches the Peers
+    // row's `none` and the dependency check's healthy state.
+    if (row) {
+      // Warn-colored rather than plain: the tree was modified, which is worth
+      // a reader's eye even though nothing went wrong.
+      lines.push(`- Trash: ${w(row)}`);
+    }
   }
 
   // Charter status
@@ -749,6 +871,13 @@ async function main() {
 
   const checkResults = validChecks.length > 0 ? await runChecksParallel(validChecks) : [];
 
+  // #2771: after the ladder resolves, before the block is rendered. After,
+  // because the sweep must never delay a check or share their timeout budget;
+  // before, because its outcome is a row in the block. Its own try/catch is
+  // inside the helper — a failed sweep degrades to no row, never to a missing
+  // Session Initialized block.
+  info.trash = sweepStaleTempFiles(cwd, info);
+
   // Render block — colored for stderr, plain for additionalContext
   const coloredBlock = renderBlock(info, checkResults, { color: true });
   const plainBlock = renderBlock(info, checkResults, { color: false });
@@ -773,6 +902,7 @@ module.exports = {
   resolveSpecialist,
   isSafeSpecialistName,
   runChecksParallel,
+  sweepStaleTempFiles,
   renderBlock,
   buildAdditionalContext,
   safeExec,

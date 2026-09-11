@@ -1,5 +1,11 @@
 **Performance Review Criteria**
 **Source:** IDPF-Performance | **Domain:** Load testing, stress testing, thresholds, capacity planning
+**Charter Review Questions**
+- Does the charter describe request handling, database access, or streaming work whose latency a user would notice?
+- Are throughput, latency, or capacity expectations stated anywhere in scope?
+- Do the in-scope items include caching, queueing, or batch processing whose behaviour under load is load-bearing?
+- Does the charter name the deployment target, so realistic resource limits can be judged?
+- Is performance explicitly out of scope, and if so is that consistent with what the project ships?
 **Proposal Review Questions**
 - Does the proposal identify performance-critical paths (APIs, database queries, user flows)?
 - Are response time targets specified with percentile thresholds (p95 < 500ms, p99 < 1000ms)?

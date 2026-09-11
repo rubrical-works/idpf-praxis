@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-fixtures-schema.json",
+  "title": "QA Fixtures Declaration",
+  "description": "The parsed form of a QA issue's `### Fixtures` section (#2827): the board state /qa provisions for a manual-only check and tears down afterwards. Board fixtures only — an issue per item, optionally nested one level under a single root. `shape` is derived by the parser, never authored: `tree` when the one root carries children (an epic and its sub-issues), `selection` when every item is a sibling with no children (independent issues, the #2756 shape). The parser (qa-fixtures.js parseFixturesSection) rejects shell metacharacters in titles before validation, because titles reach gh as shell arguments; the pattern here is the same rule stated as data.",
+  "type": "object",
+  "required": ["shape", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "shape": { "enum": ["tree", "selection"] },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "shape": { "const": "tree" } } },
+      "then": {
+        "properties": {
+          "items": {
+            "maxItems": 1,
+            "description": "A tree has exactly one root. Two roots would be two epics sharing one teardown record, and the hand-off (`/work <root>`) names one."
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "shape": { "const": "selection" } } },
+      "then": {
+        "properties": {
+          "items": {
+            "items": { "properties": { "children": { "maxItems": 0 } } }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9 #()._:/,-]+$",
+      "description": "Letters, digits, space and # ( ) . _ : / , - only. No quotes, backticks, $ or other shell metacharacters — the title is passed to gh as a shell argument."
+    },
+    "label": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "child": {
+      "type": "object",
+      "required": ["type", "title", "labels", "reviewed", "children"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["story", "bug", "enhancement", "epic"] },
+        "title": { "$ref": "#/$defs/title" },
+        "labels": { "type": "array", "items": { "$ref": "#/$defs/label" } },
+        "reviewed": { "type": "boolean" },
+        "children": { "type": "array", "maxItems": 0, "description": "One level only. A child of a child has no place in the provision order or the hand-off." }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["type", "title", "labels", "reviewed", "children"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["story", "bug", "enhancement", "epic"] },
+        "title": { "$ref": "#/$defs/title" },
+        "labels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/label" },
+          "description": "Always begins with the type, then any `label:<name>` tokens."
+        },
+        "reviewed": {
+          "type": "boolean",
+          "description": "True applies the `reviewed` label directly at provisioning — a scratch issue is not put through /review-issue — and the helper reports it under labelledDirectly."
+        },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/child" } }
+      }
+    }
+  }
+}

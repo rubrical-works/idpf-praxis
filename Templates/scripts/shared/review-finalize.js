@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
- * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, assigns labels (reviewed/pending), and propagates review labels to parent epics.
+ * @framework-script 0.102.0
+ * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, and assigns labels (reviewed/pending) to the reviewed issue only — never to its sub-issues (#2869).
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -19,7 +19,7 @@ const EXEC_OPTS = { encoding: 'utf-8' };
 
 // ─── Shared Constants ───
 
-const { EMOJI, SECTION_HEADERS, REVIEW_TYPES } = require('./lib/review-format');
+const { EMOJI, SECTION_HEADERS, REVIEW_TYPES, REVIEWS_MARKER_PATTERN } = require('./lib/review-format');
 
 // Header verb per review type, inverted from REVIEW_TYPES rather than copied
 // (#2594). REVIEW_TYPES is the same table REVIEW_HEADER_PATTERN's alternation
@@ -239,10 +239,13 @@ function validateFindings(findings) {
 function updateBodyReviewCount(body) {
   if (!body) return '**Reviews:** 1\n';
 
-  const match = body.match(/\*\*Reviews:\*\*\s*(\d+)/);
+  // Only a standalone marker line counts (#2880). A marker quoted in prose is
+  // left exactly as written; with no standalone line, one is appended below.
+  // Only the digits change, so the line keeps its own spacing and line ending.
+  const match = REVIEWS_MARKER_PATTERN.exec(body);
   if (match) {
-    const current = parseInt(match[1], 10);
-    return body.replace(/\*\*Reviews:\*\*\s*\d+/, `**Reviews:** ${current + 1}`);
+    const line = match[0].replace(match[1], String(parseInt(match[1], 10) + 1));
+    return body.slice(0, match.index) + line + body.slice(match.index + match[0].length);
   }
 
   // Append Reviews field at end
@@ -381,7 +384,6 @@ function buildSuccessResult(data) {
     // Present-and-null, never absent (#2694): a caller must not have to tell an
     // envelope that predates this field from a run where the swap succeeded.
     labelError: data.labelError || null,
-    epicSubIssuesLabeled: data.epicSubIssuesLabeled || 0,
     closingNotification: data.closingNotification || null,
   };
 }
@@ -498,28 +500,15 @@ async function main() {
     process.stderr.write(`Warning: ${labelError}\n`);
   }
 
-  // Epic sub-issue label propagation
-  let epicSubIssuesLabeled = 0;
-  if (findings.type === 'epic' && label) {
-    const subListResult = await execSafe(`gh pmu sub list ${issue} --json`);
-    if (subListResult.ok) {
-      try {
-        const subData = JSON.parse(subListResult.output);
-        const subIssues = subData.children || subData.subIssues || [];
-        for (const sub of subIssues) {
-          const subNum = sub.number || sub;
-          if (label === 'reviewed') {
-            await execSafe(`gh issue edit ${subNum} --add-label=reviewed --remove-label=pending`);
-          } else {
-            await execSafe(`gh issue edit ${subNum} --add-label=pending --remove-label=reviewed`);
-          }
-          epicSubIssuesLabeled++;
-        }
-      } catch (_e) {
-        // Non-blocking
-      }
-    }
-  }
+  // No label propagation to sub-issues (#2869). An epic review used to end
+  // here by listing the epic's children and stamping the EPIC's verdict onto
+  // each — a `reviewed` label with no comment, no `**Reviews:**` marker and
+  // no findings behind it, which review-state.js read as reviewed-clean and
+  // the /work gate passed silently. Since #2869 an epic expands into the
+  // multi-issue set (rule 09 § 2a-iii) and every child reaches this script
+  // through its own finalize, so each label is earned by the review that
+  // wrote it. A child not reached keeps no label and classifies never-reviewed.
+  // tests/scripts/shared/review-finalize-epic-propagation.test.js pins this.
 
   // Findings file cleanup is owned by the caller (#2396) — the /review-issue
   // spec chains `&& rm .tmp-<issue>-findings.json`. Do not delete here or
@@ -546,7 +535,6 @@ async function main() {
     commentUrl,
     labelAssigned,
     labelError,
-    epicSubIssuesLabeled,
     closingNotification,
   });
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');

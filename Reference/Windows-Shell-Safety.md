@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.101.0
+**Version:** v0.102.0
 **Source:** Reference/Windows-Shell-Safety.md
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
@@ -82,6 +82,7 @@ without `pmu`, files an issue that never reaches the project board: invisible to
 `gh pmu sub list`, epic closure, `/done` sub-issue checks and every board-driven gate — it
 exists, satisfies nothing, blocks nothing. The `-F` / `--body-file` lesson below is identical
 for both commands; board membership is not. QA case: `Reference/GitHub-Workflow.md`
+**One exception, and it is not a shell-safety one (#2775).** A `--target` **companion** filing uses the bare `gh issue` creation form deliberately: there the local board is exactly what must not be touched, since `gh pmu create -R` would add the issue to **this** repo's board. `file-companion-issue.js` then adds it to the *companion's* board, so membership is redirected rather than lost. **Do not read the prohibition above as covering that path.** Everything else is unchanged, `-F` / `--body-file` over inline `--body` included — that applies to the bare form exactly as to `gh pmu`.
 § QA-Issue Creation Ownership.
 ```bash
 # BAD

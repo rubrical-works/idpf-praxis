@@ -131,7 +131,7 @@
         {
           "id": "sub-issue-review",
           "name": "Iterate and review each sub-issue",
-          "autoCheck": "For each sub-issue from `gh pmu sub list`, run review criteria (Steps 3b-3c, including 3b-ii auto-generate proposed solution/fix) recursively, applying per-sub-issue body updates and summarizing findings in final report"
+          "autoCheck": "Expand the epic into the multi-issue set: read the children from `gh pmu sub list <epic> --json` and review each child as its own issue through Steps 1-3 — own preamble, own type criteria, Step 2a-ii proposed solution/fix auto-generate with per-sub-issue body updates, own finalize — so each child earns its own review comment, `**Reviews:** N` marker and label. The children are reviewed before the epic, so evaluate this criterion from their recorded outcomes: pass only when every child was reached, fail otherwise, and in both cases record the roster — each child reviewed with its verdict, each child not reached with the reason (cap of six children per invocation, error, interrupted) — as this criterion's evidence in the epic's own review comment. Never expand a child that is itself an epic."
         },
         {
           "id": "construction-context",

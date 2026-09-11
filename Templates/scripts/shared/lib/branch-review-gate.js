@@ -2,7 +2,7 @@
 /**
  * Tree-wide review gate aggregation (#2749, shared with #2748 and #2750).
  *
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  *
  * A pure decision function answering "should `/work` stop and ask before
  * touching this set of issues, and what should it offer?" — the counterpart to
@@ -23,6 +23,25 @@
  * and can carry its own findings — and both are expressed by which members the
  * caller passes, via `isTracker`. A type branch here would make the helper
  * three helpers wearing one name.
+ *
+ * WHERE THE GATES DIFFER IN THEIR OPTION SET (#2780)
+ *
+ * `proceed-with-clean` is a selection-only answer, and the caller declares
+ * which shape of set it assembled via `setShape`. This is the same mechanism
+ * as `isTracker` one level up — a caller declaration about its own input, not
+ * a type test — so the paragraph above still holds: the difference is carried
+ * by what the caller passes, never by this file inspecting an issue.
+ *
+ * #2750 added the drop option and, in the same commit, wrote in three places
+ * that the epic and branch gates do not get it: both `Drop option?` cells of
+ * the § Step 2b-ii table, the rule-08 line "Dropping is natural here and
+ * nowhere else", and this file's own comment beside the condition. Only the
+ * code disagreed, gating on set size alone, and no test exercised a
+ * tracker-shaped set — so the divergence survived until #2780. Recorded
+ * intent was unanimous, so the code was corrected to match it rather than the
+ * reverse. #2749 could not have withheld the option deliberately: it predates
+ * `proceed-with-clean` entirely (ec42f72b), which is why that hypothesis is
+ * disproved rather than merely unsupported.
  *
  * The filename is historical: named for #2749, its first consumer.
  *
@@ -63,6 +82,38 @@ const REVIEW_STATES = Object.freeze([
 const NOT_PROCESSABLE = Object.freeze(['in review', 'in_review', 'done']);
 
 /**
+ * The shape of the set the caller assembled, which decides whether
+ * `proceed-with-clean` is on offer (#2780).
+ *
+ * `selection` — the user hand-typed these numbers (`/work 44 47 68`) or named
+ * a status query. Dropping one is editing their own input.
+ * `tree` — the members were derived from a tracker (an epic's children, or a
+ * branch tracker's processable set). They carry an order and may carry
+ * provider/consumer dependencies (`**Processing Order:**`, #2622), so dropping
+ * one silently changes what the remaining run means.
+ *
+ * This is a caller declaration about its INPUT, exactly like `isTracker`, not
+ * an issue-type test — the distinction the file header draws and this keeps.
+ */
+const SET_SHAPES = Object.freeze(['selection', 'tree']);
+
+/**
+ * Absent or unrecognised resolves to `tree`, the shape that withholds the drop.
+ *
+ * The direction is the whole point. A tree caller that omits the field would,
+ * under a `selection` default, get the drop back with nothing reporting it —
+ * the #2750 defect restored silently. A selection caller that omits it loses a
+ * third option, which is visible in the prompt it raises.
+ */
+function resolveSetShape(raw, warnings) {
+  if (raw === undefined || raw === null) return 'tree';
+  const shape = String(raw).trim().toLowerCase();
+  if (SET_SHAPES.includes(shape)) return shape;
+  warnings.push('unrecognised-set-shape');
+  return 'tree';
+}
+
+/**
  * Normalize the preamble's `skipped[]`, which is `[{number, status}]` — NOT a
  * bare number array. Accepting only the bare form would silently skip nothing
  * and quietly widen the gate's scope to issues the run will not touch.
@@ -89,9 +140,12 @@ function isProcessable(m, skipSet) {
 }
 
 /**
- * @param {{members?: Array, skipped?: Array}} input
+ * @param {{members?: Array, skipped?: Array, setShape?: string}} input
  *   `members` — the tracker's children as `{number, state, boardStatus, isTracker?}`.
  *   `skipped` — the preamble's `skipped[]`, in either shape.
+ *   `setShape` — `'selection'` or `'tree'` (#2780). Decides whether
+ *   `proceed-with-clean` is offered. Absent or unrecognised resolves to
+ *   `'tree'`, which withholds it; an unrecognised value also warns.
  * @returns {{
  *   gate: boolean, processable: number[], neverReviewed: number[],
  *   findingsPending: number[], indeterminate: number[], unknown: number[],
@@ -119,6 +173,7 @@ function evaluateBranchReviewGate(input = {}) {
     };
   }
 
+  const setShape = resolveSetShape(input.setShape, warnings);
   const skipSet = skippedNumbers(input.skipped);
   const members = rawMembers.filter((m) => isProcessable(m, skipSet));
   const processable = members.map((m) => m.number);
@@ -152,13 +207,18 @@ function evaluateBranchReviewGate(input = {}) {
 
   const gate = options.length > 0;
 
-  // "Proceed with the clean members only" (#2750). Offered only when it means
-  // something different from the other two answers: at N=1, or when every
-  // member is flagged, proceeding-with-clean proceeds with nothing, which is
-  // the decline path wearing a third label. Dropping one issue from a
-  // hand-typed selection is natural; the epic and branch gates do not offer
-  // it because dropping a sub-issue from a tree is not.
-  if (gate && processable.length >= 2 && clean.length > 0) {
+  // "Proceed with the clean members only" (#2750), restricted to selections
+  // by #2780. Three conditions, each removing a case where the option would
+  // not mean what it says:
+  //
+  //   - `setShape === 'selection'` — dropping one issue from a hand-typed
+  //     list is an ordinary answer; dropping a member from a tracker-derived,
+  //     ordered set is not. #2750 stated this in three places and did not
+  //     implement it; the shape the caller declares is what implements it.
+  //   - `processable.length >= 2` — at N=1 proceeding with the clean members
+  //     proceeds with nothing, which is the decline path wearing a third label.
+  //   - `clean.length > 0` — likewise when every member is flagged.
+  if (setShape === 'selection' && gate && processable.length >= 2 && clean.length > 0) {
     options.push('proceed-with-clean');
   }
 

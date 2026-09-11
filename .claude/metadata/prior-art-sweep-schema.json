@@ -51,6 +51,99 @@
             },
             "command": {
               "type": "string"
+            },
+            "excludedSections": {
+              "type": "object",
+              "description": "Sections removed from a candidate issue body before it is matched as evidence (#2874). The corpus is self-contaminating: every sweep writes a Prior Art section and log-changed-files.js a Files Changed section, so without this each sweep degrades the precision of the next. Applied as a post-filter because gh issue list --search cannot exclude a section server-side. Evidence matching only: it never removes a section a command reads as input.",
+              "required": [
+                "sections",
+                "helper",
+                "appliesTo",
+                "scope"
+              ],
+              "properties": {
+                "sections": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": "Every bodyFormat.recognisedForms entry plus ### Files Changed. Pinned to recognisedForms and to the helper's EXCLUDED_SECTION_FORMS by tests/metadata/prior-art-sweep.test.js."
+                },
+                "helper": {
+                  "type": "string",
+                  "description": "The deterministic function that applies this declaration."
+                },
+                "appliesTo": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "issueHistory",
+                      "companionRepos"
+                    ]
+                  },
+                  "description": "Issue-search surfaces only. A source tree is never post-filtered."
+                },
+                "scope": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "truncation": {
+              "type": "string",
+              "description": "How a search that returned exactly its --limit is reported (#2874): possibly truncated, never complete."
+            }
+          },
+          "additionalProperties": false
+        },
+        "retrieval": {
+          "type": "object",
+          "description": "How matching content is retrieved from a resolved surface (#2874). Count-first: a match count and file list per term before any line is read, then line content only within a declared budget. Measured cost is inversely correlated with value (a common term returned 548 lines while a novel one returned zero), so an unbounded sweep bills most exactly where prior art exists.",
+          "required": [
+            "strategy",
+            "countFirst",
+            "lineBudget",
+            "overBudget"
+          ],
+          "properties": {
+            "strategy": {
+              "const": "count-first"
+            },
+            "countFirst": {
+              "type": "string"
+            },
+            "lineBudget": {
+              "type": "object",
+              "required": [
+                "perTerm",
+                "perFile"
+              ],
+              "properties": {
+                "perTerm": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Maximum matching lines read for one term across all surfaces."
+                },
+                "perFile": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Maximum matching lines read from any one file for one term."
+                }
+              },
+              "additionalProperties": false
+            },
+            "overBudget": {
+              "type": "string"
+            },
+            "_note": {
+              "type": "string",
+              "description": "Basis for the initial budget values: the measurement or reasoning they come from."
             }
           },
           "additionalProperties": false
@@ -169,7 +262,7 @@
     },
     "dispositions": {
       "type": "object",
-      "description": "Evidence signals mapping sweep findings to one of three verdicts",
+      "description": "Evidence signals mapping sweep findings to one of four verdicts. alreadyShipped, warranted and noneFound answer whether a request is already done; obsolete (#2825) answers whether what a qa-required issue verifies still exists, and is consumed by /qa Step 1 only.",
       "required": [
         "alreadyShipped",
         "warranted",
@@ -183,6 +276,9 @@
           "$ref": "#/$defs/disposition"
         },
         "noneFound": {
+          "$ref": "#/$defs/disposition"
+        },
+        "obsolete": {
           "$ref": "#/$defs/disposition"
         }
       },
@@ -282,6 +378,10 @@
         },
         "action": {
           "type": "string"
+        },
+        "_note": {
+          "type": "string",
+          "description": "Optional authoring note explaining why the disposition exists; never consumed by a sweep"
         }
       },
       "additionalProperties": false

@@ -1,6 +1,7 @@
 # Finite Context and Framework Discipline
 
 **Date:** 2026-02-08
+**Mechanisms verified:** 2026-09-10
 **Topic:** How IDPF addresses the fundamental limitations of AI context windows
 
 ---
@@ -13,7 +14,7 @@
 
 ### Refutation
 
-Context windows have grown dramatically and continue to grow. Current models work with 100K-200K+ tokens -- enough to hold entire medium-sized codebases. Most individual tasks don't require understanding every line simultaneously.
+Context windows have grown dramatically and continue to grow. Models routinely work with 200K tokens and million-token windows are now available -- enough to hold entire medium-sized codebases outright. Most individual tasks don't require understanding every line simultaneously.
 
 Humans don't hold entire applications in their heads either. A skilled developer works by understanding architecture and abstractions, then zooming into relevant sections. AI assistants work similarly -- they don't need the entire codebase loaded to make a meaningful contribution, just the relevant modules, interfaces, and context around the change.
 
@@ -52,16 +53,18 @@ The IDPF framework doesn't refute the context limitation argument so much as it 
 The amnesiac-with-a-search-engine critique is real. IDPF addresses it with:
 
 - **`.claude/rules/`** -- Auto-loaded every session and after compaction. The assistant never loses its workflow knowledge, anti-hallucination discipline, or GitHub integration patterns.
-- **`MEMORY.md`** -- Persistent cross-session memory that accumulates project-specific lessons (tool quirks, release process details, detection patterns).
-- **Charter** -- Mandatory project identity document that survives context loss.
+- **`CHARTER.md`** -- Project identity document, read and summarised at the top of every session, that survives context loss.
+- **Issue and board state** -- The durable record of what is in flight, what was reviewed, and what remains. `Refs #N` commit attribution ties code back to the requirement that asked for it, so position in a workflow is recoverable from git and GitHub rather than from memory.
 
 This isn't "full understanding" -- it's **strategic persistence** of exactly the knowledge that matters most.
 
+**What IDPF deliberately does not own.** Claude Code maintains its own per-user, per-machine memory store, and it is genuinely useful for accumulated lessons like tool quirks and detection patterns. It is not a framework artifact: IDPF ships no memory file, references none in its manifest or templates, and cannot rely on one being present in a deployed project. Anything that must survive a session and be readable by a *different* session belongs in the charter, an issue body, or a commit — surfaces IDPF does own.
+
 ### 2. "Summaries lose subtle details" -- Minimization with Safeguards
 
-IDPF's `/minimize-files` doesn't blindly summarize. It has:
+IDPF's `/fw-minimize-files` doesn't blindly summarize. It has:
 
-- **`/audit-minimization`** -- Explicitly checks that Medium+ requirements survive minimization.
+- **`/fw-audit-minimization`** -- Explicitly checks that Medium+ requirements survive minimization.
 - **Versioned source-of-truth chains** -- `Reference/` to `.min-mirror/` to `.claude/rules/` with traceable lineage.
 - **FRAMEWORK-ONLY markers** -- Content that should only exist in development, stripped cleanly for distribution.
 
@@ -77,16 +80,9 @@ This is where the counter-refutation is sharpest. IDPF's response:
 
 ### 4. "Context windows are misleading" -- Tiered Loading Architecture
 
-IDPF explicitly designs for context scarcity:
+IDPF explicitly designs for context scarcity, deciding what deserves permanent context residence versus on-demand retrieval. The tiered loading architecture is specified in [Context Engineering](Context-Engineering.md#the-tiered-loading-architecture) rather than restated here — one description, one place to correct.
 
-| Layer | Loaded When | Size Impact |
-|-------|-------------|-------------|
-| Rules (`.claude/rules/`) | Always (auto-load) | Small -- minimized |
-| Process framework (Agile-Core.md) | Session startup | Medium -- `.min-mirror/` version |
-| On-demand docs (`Overview/`) | Only when relevant | Load as needed |
-| Full source files | During active work | Read-on-demand |
-
-This is **hierarchical context management** -- the framework decides what deserves permanent context residence versus on-demand retrieval.
+Two points from it matter to *this* argument. The largest category by far is **never loaded at all**: 165 scripts and 71 metadata registries execute or are queried without a token ever entering the window. And the always-loaded tier has **grown** — the execution rules for `/work` and the review commands now live there, so roughly 43,000 tokens of rules are resident before the user's first message. That growth is a real concession to the counter-refutation, not a footnote: the framework spends a fifth of the window on guardrails precisely because it does not trust the model to retain them otherwise.
 
 ### 5. "False confidence" -- STOP Boundaries and Verification Gates
 

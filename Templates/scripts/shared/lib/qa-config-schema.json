@@ -12,6 +12,10 @@
       "description": "Case-insensitive keywords that indicate an AC requires manual QA"
     },
     "bodyTemplate": { "type": "string" },
+    "fixturesTemplate": {
+      "type": "string",
+      "description": "Appended to the rendered body only when the --fill entry supplies `fixtures` (#2827). Must carry the `### Fixtures` heading qa-fixtures.js reads and the {fixtures} placeholder."
+    },
     "subIssueCommand": { "type": "string" },
     "annotationFormat": { "type": "string" },
     "closurePath": { "type": "string" }

@@ -26,15 +26,39 @@
     "issueHistory": {
       "enabled": true,
       "includeClosed": true,
-      "command": "gh issue list --search \"<terms>\" --state all --limit 50"
+      "command": "gh issue list --search \"<terms>\" --state all --limit 50 --json number,title,state,body",
+      "excludedSections": {
+        "sections": [
+          "**Prior Art:**",
+          "## Prior Art",
+          "### Files Changed"
+        ],
+        "helper": "stripExcludedSections(body) in .claude/scripts/shared/lib/prior-art-marker.js",
+        "appliesTo": [
+          "issueHistory",
+          "companionRepos"
+        ],
+        "scope": "Evidence matching only (#2874). gh issue list --search matches whole bodies server-side and cannot exclude a section, so every candidate it returns is post-filtered: pass the body through the helper, and count the issue as evidence only when a term still matches its title or its stripped body. A hit that falls only inside an earlier sweep's **Prior Art:** section (any recognised form, heading at any level) or a log-changed-files.js ### Files Changed section is not prior art. This never removes a section a command reads as INPUT: /qa reads the parent's ### Files Changed section as its term source, and that is unchanged."
+      },
+      "truncation": "A search that returns exactly the number of issues its command's --limit allows (gh's default is 30 when the command carries none) is reported as possibly truncated, never as complete: --limit cuts off with no signal. Applies to companionRepos searches too. Decide via isPossiblyTruncated(resultCount, command) in .claude/scripts/shared/lib/prior-art-marker.js."
     },
     "companionRepos": {
       "enabled": true,
       "includeClosed": true,
       "source": "CHARTER.md Companion Repositories, via .claude/scripts/shared/lib/companion-projects.js",
       "capabilityField": "searchable",
-      "command": "gh issue list --repo <owner/name> --search \"<terms>\" --state all --limit 50",
+      "command": "gh issue list --repo <owner/name> --search \"<terms>\" --state all --limit 50 --json number,title,state,body",
       "unreachable": "skip"
+    },
+    "retrieval": {
+      "strategy": "count-first",
+      "countFirst": "For each term on each resolved surface, take the match count and the list of matching files BEFORE reading any matching line, using a count or files-with-matches mode of whatever search tool is in use. Counts and file lists are reported for every term; line content is read only within lineBudget.",
+      "lineBudget": {
+        "perTerm": 40,
+        "perFile": 5
+      },
+      "overBudget": "A term whose count exceeds lineBudget.perTerm is not read in full: read at most lineBudget.perFile lines from each matching file, in file-list order, until lineBudget.perTerm lines have been read, and report the remainder as counted, not read, naming the count and the file list. A high count is evidence in itself (it says where a subsystem noun lives), so it is recorded, never dropped.",
+      "_note": "Basis (#2874): measured for #2564 in Construction/Design-Decisions/2026-08-07-review-sweep-four-modes.md, one common term (`extension point`) returned 548 matching lines, roughly 20K tokens (about 36 per line), across the eight resolved surfaces, while a novel term returned zero. perTerm 40 caps any one term near 1.5K tokens, about 7% of that measured cost, and still reads in full every term with 40 or fewer hits, which is where line content decides relevance. perFile 5 stops one noisy file (a registry, a CHANGELOG) spending a term's whole budget. No end-to-end measurement of a full sweep exists; these are starting values to re-measure, not tuned constants."
     },
     "resolution": {
       "missingSurface": "skip",
@@ -120,6 +144,17 @@
         "No matching issue title or body across open and closed issues"
       ],
       "action": "Continue. Record the none-found line, including the terms searched."
+    },
+    "obsolete": {
+      "verdict": "obsolete",
+      "_note": "Consumed by /qa Step 1 (#2825). The three dispositions above answer 'is this request already done?'; an overtaken qa-required issue asks a different question — 'does what this verifies still exist, and has it been verified since?' — so it carries its own verdict rather than being mapped onto already-shipped by prose. Not a verdict the review commands reach for.",
+      "signals": [
+        "The parent issue is closed or superseded, or its body no longer carries the `- [ ] … → QA: #N` line that produced this QA issue",
+        "The files in the parent's `### Files Changed` section have since been deleted or rewritten, so the described steps no longer exercise the code they were written against",
+        "A later issue or test covers the described steps, so the check has been verified since it was filed",
+        "The check was performed and recorded elsewhere — an issue comment, a release test plan, or CHANGELOG.md"
+      ],
+      "action": "Offer to close as not_planned, never automatically. On acceptance the parent line is rewritten to the struck form `- [x] ~~<acText>~~ → QA: #N (obsolete: <one-line reason>)` with the marker preserved verbatim — a released gate, not a verified one. A decline leaves both issues untouched."
     }
   },
   "bodyFormat": {

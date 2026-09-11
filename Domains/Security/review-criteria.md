@@ -1,5 +1,11 @@
 **Security Review Criteria**
 **Source:** IDPF-Security | **Domain:** OWASP Top 10, SAST/DAST, vulnerability management
+**Charter Review Questions**
+- Does the charter's tech stack name components that handle authentication, sessions, credentials, or secrets?
+- Do the in-scope items include APIs, user input, or file I/O that carry a security surface?
+- Are compliance obligations (SOC 2, PCI-DSS, HIPAA, GDPR) named in scope, or deliberately excluded?
+- Does the charter identify who owns vulnerability response for the components it lists?
+- Is the deployment target stated, so the exposure of the running system can be judged?
 **Proposal Review Questions**
 - Does the proposal identify security-sensitive components (authentication, data handling, APIs)?
 - Are OWASP Top 10 categories addressed where the proposal touches web-facing surfaces?

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tmp-cleanup-signals-schema.json",
+  "title": "Temp File Cleanup Signals",
+  "description": "Contract for the stale scratch-file sweep run from the startup hook (#2771). This is the one startup step that MUTATES the tree, so the constraints below are deliberately tighter than a configuration file would otherwise carry: they exist to bound what a future edit to the data file can select for deletion.",
+  "type": "object",
+  "required": ["version", "patterns", "minAgeMs", "reportWhenNothingRemoved"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": {
+      "type": "object",
+      "description": "Provenance. Not read at runtime.",
+      "additionalProperties": true
+    },
+    "patterns": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Basename globs matched against DIRECT CHILDREN of the project root. `*` and `?` only — character classes and brace expansion are deliberately unsupported, because every construct added here widens what a config edit can select in a helper that deletes. Each entry must also appear in the project .gitignore; a pattern selecting committed files would make the tracked-file skip the common path rather than the exception it is meant to be.",
+      "items": {
+        "type": "string",
+        "minLength": 4,
+        "pattern": "^[^*?/\\\\]{3,}[^/\\\\]*$",
+        "description": "At least three literal characters before any wildcard, and no path separator anywhere. The literal-prefix floor means a one-character typo cannot turn a scoped pattern into one matching everything at the project root; the separator ban means no pattern can reach outside it."
+      }
+    },
+    "minAgeMs": {
+      "type": "integer",
+      "minimum": 3600000,
+      "description": "A file is stale when `now - mtime >= minAgeMs`; the boundary belongs to the stale side, so a file exactly at the threshold is removed. Floor of one hour, deliberately: a threshold near zero would delete scratch files belonging to a command running right now in this session or a peer session sharing the working directory, which is the one failure mode this sweep must never cause. The shipped value is one day (86400000)."
+    },
+    "reportWhenNothingRemoved": {
+      "type": "boolean",
+      "description": "Whether the startup block emits a `Trash:` row when the sweep removed nothing and nothing failed. False in the shipped file: a clean sweep emits no row, matching the Peers row's `none` and the dependency check's healthy state. Set true only when diagnosing whether the sweep is running at all."
+    },
+    "rationale": {
+      "type": "object",
+      "description": "Why each threshold holds the value it does. Not read at runtime, but kept in the data file rather than only in the schema so an editor changing a number sees the reasoning next to it.",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

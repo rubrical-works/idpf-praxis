@@ -192,17 +192,14 @@ Missing: cross-service integration testing (covered by your staging environment 
 
 ---
 
-## Framework Comparison
+## Framework Fit
 
-| Framework | Microservice Fit | Notes |
-|---|---|---|
-| **IDPF-Agile** | Best per-service fit | TDD, structured stories, release management |
-| **IDPF-Vibe** | Useful for new services | Prototype a service quickly, then transition to Agile |
+**IDPF-Agile** is the process framework, and it fits per-service work well: TDD, structured stories, and release management all operate at the service boundary.
 
 **Recommended approach:**
-- Use **IDPF-Agile** for established services with stable APIs
-- Use **IDPF-Vibe** for new services where the API surface is still being discovered
-- Transition Vibe→Agile once the service's contract stabilizes
+- Use the full pipeline for established services with stable APIs
+- For a new service whose API surface is still being discovered, start with a [spike](../02-Advanced/Spike-Workflow.md) — a time-boxed `/proposal` that settles the contract question in code without escalating to a PRD or backlog
+- Move into full planning once the service's contract stabilizes
 
 ---
 

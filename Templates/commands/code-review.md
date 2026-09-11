@@ -1,5 +1,5 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: Comprehensive code review with manifest-driven incremental tracking (project)
 argument-hint: "[--full] [--status] [--scope <globs>] [--batch <N>] [--with <domains>] [--suggest]"
 copyright: "Rubrical Works (c) 2026"
@@ -74,14 +74,17 @@ Read `CHARTER.md` for goals, conventions, quality, tech stack, security.
 Check `projectSkills` in `framework-config.json`. Re-read `.claude/metadata/skill-keywords.json` and match keywords. Skills load lazily — supplementary only. If no skills installed, continue with charter-only criteria.
 ### Step 5a: Charter-Aware Domain Filtering
 When `--with all`/`--with <domains>`:
-1. Check `activeDomains` in `framework-config.json` → precedence (intersect requested)
-2. Else read `CHARTER.md` (Tech Stack, In Scope) + `.claude/metadata/domain-signals.json`
+1. Check `activeDomains` in `framework-config.json` — if **configured** → precedence (intersect requested)
+2. Absent **or empty array** → read `CHARTER.md` (Tech Stack, In Scope) + `.claude/metadata/domain-signals.json`
 3. Call `filterDomainsByCharter(requestedDomains, charterContent, domainSignalsJson, config)` from `load-review-extensions.js`
 4. Log skipped: `"Skipping {domains} — not applicable per {source}"`
 5. Pass applicable to Step 5c
 
 `--with all` = all applicable.
 **Error:** `domain-signals.json` missing/malformed → no filtering.
+**`activeDomains` means something DIFFERENT here than in `/review-issue` (#2810).** Here it is a **narrowing filter** — it only subtracts from what `--with` requested. There `resolveAutoInclusion` reads the same key as **additive**, loading domains with no `--with` at all. One key, two readings; the split is a design question left open, written down so the two are comparable without reading the code.
+**An empty array is "not configured", never "nothing applies."** `Array.isArray([])` is true, so an empty `activeDomains` took step 1 with an empty set: every requested domain skipped, step 2 never reached, `--with all` returned **zero** domains. `[]` is the default state before anyone answers the domain question, so the user asked for everything and got nothing. Empty now falls through to charter inference, identically to an absent key.
+**The key is read only when `--with` was passed — a recorded decision (#2810).** With no `--with` this step does not run, so a project that declared its domains gets none here unless it asks each time. Making it additive would change what `/code-review` loads for every existing project, which needs its own negotiation. **Consequence:** `/charter`'s active-domains report holds for `/review-issue`, not for `/code-review`.
 ### Step 5d: Domain Suggestion (--suggest)
 1. Read `CHARTER.md` + `.claude/metadata/domain-signals.json`
 2. Call `suggestDomains(charterContent, domainSignalsJson)`

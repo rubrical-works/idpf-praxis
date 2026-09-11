@@ -1,7 +1,7 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
- * @description Load and resolve review extension domains for /review-issue and /code-review. Exports loadCodeReviewExtensions(), resolveAutoInclusion(), filterDomainsByCharter(), suggestDomains(), and AVAILABLE_EXTENSIONS. Used by review-preamble.js and code-review-preamble.js.
+ * @framework-script 0.102.0
+ * @description Load and resolve review extension domains for /review-issue and /code-review. Exports loadCodeReviewExtensions(), extractSectionQuestions(), getAvailableExtensions(), resolveAutoInclusion(), filterDomainsByCharter() and suggestDomains(). Consumed by review-preamble.js and by the /code-review command spec.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -22,13 +22,47 @@ const ERRORS = {
   REGISTRY_MALFORMED: 'Review extensions registry is malformed. Run hub update or check installation.',
   CRITERIA_NOT_FOUND: (domain) => `Warning: Review criteria file not found for '${domain}'. Skipping domain. Update hub to resolve.`,
   ALL_MISSING: 'No review criteria files found. Running standard review only.',
-  UNKNOWN_EXTENSION: (id) => `Unknown extension: ${id}. Available: ${AVAILABLE_EXTENSIONS.join(', ')}`
+  UNKNOWN_EXTENSION: (id, available = []) => `Unknown extension: ${id}. Available: ${available.join(', ')}`
 };
 
-const AVAILABLE_EXTENSIONS = [
-  'security', 'accessibility', 'performance', 'chaos', 'contract', 'qa',
-  'seo', 'privacy', 'observability', 'i18n', 'api-design'
-];
+const REGISTRY_RELATIVE_PATH = ['.claude', 'metadata', 'review-extensions.json'];
+
+/**
+ * Read the review extensions registry, or null when it cannot be read.
+ *
+ * Null is deliberately distinguishable from an empty registry: callers treat
+ * "could not read" and "read, nothing registered" differently.
+ *
+ * @param {string} projectDir
+ * @returns {object|null}
+ */
+function readRegistry(projectDir) {
+  try {
+    const raw = fs.readFileSync(path.join(projectDir, ...REGISTRY_RELATIVE_PATH), 'utf-8');
+    const registry = JSON.parse(raw);
+    return registry && typeof registry.extensions === 'object' ? registry : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+/**
+ * The set of domain ids this project can review with, derived from the
+ * registry (#2812).
+ *
+ * This used to be a literal array duplicating the registry keys, and it acted
+ * as a GATE — `resolveAutoInclusion` filtered `activeDomains` through it, so a
+ * domain added to the registry alone was silently dropped from auto-inclusion.
+ * Nothing asserted parity between the two. Deriving removes the second source
+ * rather than adding a test to hold two sources together.
+ *
+ * @param {string} [projectDir] - defaults to the current working directory
+ * @returns {string[]} Registered domain ids; empty when the registry is unreadable
+ */
+function getAvailableExtensions(projectDir = process.cwd()) {
+  const registry = readRegistry(projectDir);
+  return registry ? Object.keys(registry.extensions) : [];
+}
 
 /**
  * Resolve auto-inclusion domains from activeDomains and domainSpecialist.
@@ -56,12 +90,23 @@ function resolveAutoInclusion(projectDir, explicitDomains = [], options = {}) {
     if (process.env.DEBUG) console.error(`[DEBUG load-review-extensions] Config load failed: ${err.message}`);
   }
 
+  // One registry read serves both sources below: the available-domain set that
+  // gates source 1, and the relevantSpecialists mapping that drives source 2.
+  const registry = readRegistry(projectDir);
+
   // Source 1: activeDomains from framework-config.json
   const activeDomains = Array.isArray(config.activeDomains) ? config.activeDomains : [];
   const withoutSet = new Set(options.without || []);
 
+  // Null registry means there is no derived set, so no filtering can happen —
+  // activeDomains pass through. That failure is visible: a bogus domain
+  // surfaces downstream as EXTENSION_NOT_FOUND or CRITERIA_NOT_FOUND. Dropping
+  // every domain instead would be silent and total (#2812).
+  const availableIds = registry ? new Set(Object.keys(registry.extensions)) : null;
+
   for (const domain of activeDomains) {
-    if (AVAILABLE_EXTENSIONS.includes(domain) && !withoutSet.has(domain)) {
+    const registered = availableIds === null || availableIds.has(domain);
+    if (registered && !withoutSet.has(domain)) {
       domains.add(domain);
       sources.set(domain, 'activeDomains');
     }
@@ -69,22 +114,16 @@ function resolveAutoInclusion(projectDir, explicitDomains = [], options = {}) {
 
   // Source 2: domainSpecialist -> relevantSpecialists matching
   const specialist = config.domainSpecialist;
-  if (specialist) {
-    const registryPath = path.join(projectDir, '.claude', 'metadata', 'review-extensions.json');
-    try {
-      const registry = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
-      for (const [id, ext] of Object.entries(registry.extensions)) {
-        if (Array.isArray(ext.relevantSpecialists) && ext.relevantSpecialists.includes(specialist)) {
-          if (!withoutSet.has(id)) {
-            domains.add(id);
-            if (!sources.has(id)) {
-              sources.set(id, specialist);
-            }
+  if (specialist && registry) {
+    for (const [id, ext] of Object.entries(registry.extensions)) {
+      if (Array.isArray(ext.relevantSpecialists) && ext.relevantSpecialists.includes(specialist)) {
+        if (!withoutSet.has(id)) {
+          domains.add(id);
+          if (!sources.has(id)) {
+            sources.set(id, specialist);
           }
         }
       }
-    } catch (_err) {
-      // Registry not found or malformed — skip specialist auto-inclusion
     }
   }
 
@@ -104,25 +143,49 @@ function resolveAutoInclusion(projectDir, explicitDomains = [], options = {}) {
 // #2359 — Section marker regexes. The dev source authors write H2 headings,
 // but the minimization pipeline flattens `## X` → `**X**` in .min-mirror/ and
 // that is what ships to user projects. The parser must accept either form.
-const CODE_REVIEW_HEADING = /^##\s+Code Review Questions\b/;
-const CODE_REVIEW_BOLD = /^\*\*Code Review Questions\*\*\s*$/;
 const ANY_H2_HEADING = /^##\s+/;
 const ANY_BOLD_PARAGRAPH = /^\*\*[^*]+\*\*\s*$/;
 
+const CODE_REVIEW_SECTION = 'Code Review Questions';
+
 /**
- * Extract "Code Review Questions" section from criteria file content.
- * Accepts either `## Code Review Questions` (H2) or `**Code Review Questions**`
- * (bold paragraph). Terminates on the next H2 OR the next bold paragraph.
- * @param {string} content - Full content of a review criteria markdown file
- * @returns {string[]} Array of question strings (bullet items)
+ * Escape a section name for use inside a RegExp.
+ *
+ * Shipped section names are alphanumerics and spaces, so this changes nothing
+ * for them. It is here because the section is now a PARAMETER: a caller can
+ * pass anything, and an unescaped metacharacter would silently match the wrong
+ * section rather than fail (#2812).
+ *
+ * @param {string} literal
+ * @returns {string}
  */
-function extractCodeReviewQuestions(content) {
-  const lines = content.split('\n');
+function escapeForRegExp(literal) {
+  return String(literal).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Extract the bullet items of a named question section (#2812).
+ *
+ * Accepts either `## <section>` (H2, the dev source form) or `**<section>**`
+ * (bold paragraph, the minimized form that ships). Terminates on the next H2
+ * OR the next bold paragraph, so a section never bleeds into its successor.
+ *
+ * @param {string} content - Full content of a review criteria markdown file
+ * @param {string} section - Section name, e.g. 'Issue Review Questions'
+ * @returns {string[]} Question strings; empty when the section is absent or
+ *   carries no bullets
+ */
+function extractSectionQuestions(content, section) {
+  const name = escapeForRegExp(section);
+  const headingMarker = new RegExp('^##\\s+' + name + '\\b');
+  const boldMarker = new RegExp('^\\*\\*' + name + '\\*\\*\\s*$');
+
+  const lines = String(content || '').split('\n');
   const questions = [];
   let inSection = false;
 
   for (const line of lines) {
-    if (CODE_REVIEW_HEADING.test(line) || CODE_REVIEW_BOLD.test(line)) {
+    if (headingMarker.test(line) || boldMarker.test(line)) {
       inSection = true;
       continue;
     }
@@ -140,6 +203,45 @@ function extractCodeReviewQuestions(content) {
 }
 
 /**
+ * Extract the "Code Review Questions" section from criteria file content.
+ *
+ * Retained as a wrapper over `extractSectionQuestions` so /code-review and its
+ * tests need no edit — the export surface is deployed (#2812).
+ *
+ * @param {string} content - Full content of a review criteria markdown file
+ * @returns {string[]} Array of question strings (bullet items)
+ */
+function extractCodeReviewQuestions(content) {
+  return extractSectionQuestions(content, CODE_REVIEW_SECTION);
+}
+
+/**
+ * Resolve the root that `registry.extensions[id].source` paths are relative to (#1861).
+ *
+ * The registry lives in projectDir — `.claude/metadata/` is symlinked to the
+ * hub — but the criteria files it points at live in the framework root. The
+ * two differ in every deployed project and coincide only when self-hosted.
+ *
+ * Exported (#2812) because review-preamble.js resolves the same paths; a
+ * second copy of this rule there is the duplication this issue exists to
+ * remove, one directory along.
+ *
+ * @param {string} projectDir - Path to the project directory
+ * @returns {string} Framework root, falling back to projectDir
+ */
+function resolveFrameworkRoot(projectDir) {
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(projectDir, 'framework-config.json'), 'utf-8'));
+    if (config.frameworkPath && config.frameworkPath !== '.') {
+      return path.resolve(projectDir, config.frameworkPath);
+    }
+  } catch (_err) {
+    // No config or malformed — fall back to projectDir (self-hosted behavior)
+  }
+  return projectDir;
+}
+
+/**
  * Load code review extension criteria for specified domains.
  * @param {string} projectDir - Path to the project directory
  * @param {string[]} domainIds - Domain IDs to load, or ['all']
@@ -148,19 +250,7 @@ function extractCodeReviewQuestions(content) {
 function loadCodeReviewExtensions(projectDir, domainIds) {
   const registryPath = path.join(projectDir, '.claude', 'metadata', 'review-extensions.json');
   const warnings = [];
-
-  // Resolve frameworkPath for criteria file resolution (#1861)
-  // Registry is in projectDir (.claude/metadata/ is symlinked), but criteria files
-  // are in the framework root (hub installation), not the project directory.
-  let frameworkRoot = projectDir;
-  try {
-    const config = JSON.parse(fs.readFileSync(path.join(projectDir, 'framework-config.json'), 'utf-8'));
-    if (config.frameworkPath && config.frameworkPath !== '.') {
-      frameworkRoot = path.resolve(projectDir, config.frameworkPath);
-    }
-  } catch (_err) {
-    // No config or malformed — fall back to projectDir (self-hosted behavior)
-  }
+  const frameworkRoot = resolveFrameworkRoot(projectDir);
 
   // Load registry
   if (!fs.existsSync(registryPath)) {
@@ -185,7 +275,7 @@ function loadCodeReviewExtensions(projectDir, domainIds) {
   for (const id of requestedIds) {
     const ext = registry.extensions[id];
     if (!ext) {
-      warnings.push(ERRORS.UNKNOWN_EXTENSION(id));
+      warnings.push(ERRORS.UNKNOWN_EXTENSION(id, Object.keys(registry.extensions)));
       continue;
     }
 
@@ -254,8 +344,24 @@ function parseCharterSignals(charterContent) {
  * @returns {{ applicable: string[], skipped: Array<{domain: string, reason: string}>, source: string }}
  */
 function filterDomainsByCharter(requestedDomains, charterContent, domainSignalsJson, config = {}) {
-  // Priority 1: activeDomains from config overrides everything
-  const activeDomains = Array.isArray(config.activeDomains) ? config.activeDomains : null;
+  // Priority 1: a CONFIGURED activeDomains overrides everything.
+  //
+  // An EMPTY array is "not configured", not "nothing applies" (#2810).
+  // `Array.isArray([])` is true, so an empty array used to take this branch with
+  // an empty `activeSet`: every requested domain fell into `skipped`, priority 2
+  // was never reached, and `/code-review --with all` returned zero domains. `[]`
+  // is the state of a project where nobody has answered the domain question
+  // yet — the default after install — so the user asked for everything and got
+  // nothing, reported as "not applicable per activeDomains".
+  //
+  // Note the sibling reader `resolveAutoInclusion` treats this same key as
+  // ADDITIVE and already handles `[]` correctly by contributing nothing. The
+  // additive-versus-narrowing split between the two is a design question, not
+  // this defect, and is deliberately left alone here.
+  const activeDomains =
+    Array.isArray(config.activeDomains) && config.activeDomains.length > 0
+      ? config.activeDomains
+      : null;
   if (activeDomains) {
     const activeSet = new Set(activeDomains);
     const applicable = requestedDomains.filter(d => activeSet.has(d));
@@ -361,4 +467,23 @@ function suggestDomains(charterContent, domainSignalsJson) {
   return results;
 }
 
-module.exports = { ERRORS, AVAILABLE_EXTENSIONS, extractCodeReviewQuestions, loadCodeReviewExtensions, resolveAutoInclusion, filterDomainsByCharter, suggestDomains };
+module.exports = {
+  ERRORS,
+  getAvailableExtensions,
+  resolveFrameworkRoot,
+  extractSectionQuestions,
+  extractCodeReviewQuestions,
+  loadCodeReviewExtensions,
+  resolveAutoInclusion,
+  filterDomainsByCharter,
+  suggestDomains
+};
+
+// `AVAILABLE_EXTENSIONS` was an exported literal until #2812. It is kept as a
+// lazily-derived accessor so any existing consumer of the name keeps working;
+// prefer `getAvailableExtensions(projectDir)`, which does not depend on the
+// process working directory being the project root.
+Object.defineProperty(module.exports, 'AVAILABLE_EXTENSIONS', {
+  get() { return getAvailableExtensions(); },
+  enumerable: true
+});

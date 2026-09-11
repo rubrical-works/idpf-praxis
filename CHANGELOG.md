@@ -8,33 +8,125 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.102.0] - 2026-09-11
+
+New this release: `/qa` works a QA-Required issue end to end, `/idpf-measure` instruments a command
+run, and `/domain-config` reads and edits `activeDomains`. Reviewing or resolving an epic now treats
+the epic and its stories as one set, children first, so no story is labelled reviewed without being
+reviewed. Cross-session settings move to a per-developer `.claude/x-session.json`, and session
+startup clears stale `.tmp-*` scratch files.
+
+**Upgrade notes:**
+
+- **Cross-session settings move to `.claude/x-session.json` (#2774).** The `crossSessionMessaging`
+  key in `framework-config.json` is deprecated but still read as a fallback; the next
+  `/x-session-config` write moves it across. `IDPF_X_SESSION=off` mutes emission for one session
+  without touching either file (#2705), and a live `/hall-monitor` quiets inbound narration for its
+  lifetime (#2769).
+
+- **QA sub-issues get their own board status (#2821).** They are placed on the parent's branch in a
+  `QA Required` column, aliased `qa_required`; add that status option to the project board so the
+  alias resolves. `/work` hands a single `qa-required` issue to `/qa` and skips such sub-issues in an
+  epic or branch-tracker run (#2824).
+
+- **Epic reviews expand into their stories (#2869, #2870, #2872).** `/review-issue` on an epic
+  reviews each child as its own issue (up to six per run), then the epic, whose `sub-issue-review`
+  verdict records every child's outcome. The epic's label no longer propagates to its children, and a
+  `reviewed` label with no `**Reviews:**` marker now classifies as never reviewed. `/resolve-review`
+  on an epic resolves findings-pending children first (up to three per run) and re-reviews once.
+
+- **Startup removes stale `.tmp-*` files (#2771)** — untracked regular files a day old or older. Opt
+  out with `tmpCleanup: false` in `framework-config.json`.
+
+- **Always-protected paths are checked against the authored scope only (#2788).** A path appended
+  under `### Files Changed` no longer licenses an edit to a protected file; name it under
+  `**Files to modify:**` instead. A table after that declaration no longer extends it (#2813).
+
+### Added
+
+- `/qa` — works a QA-Required issue: an obsolete-gate sweep (#2825), board fixtures provisioned and
+  torn down behind two consent gates (#2827), and verdict capture on re-invocation (#2835) (#2823)
+- `/idpf-measure --start | --stop | --report | --reset` — hook-based run instrumentation grouped by
+  session, disclosing truncated collection and fallback spawn cost (#2794, #2796, #2797, #2798, #2799,
+  #2800, #2803, #2807)
+- `/domain-config --add | --remove | --list` for `activeDomains`, with auto-inclusion source
+  attribution (#2811)
+- `/charter` collects verification commands and declares them in `framework-config.json` (#2805)
+- `.claude/x-session.json` and `x-session.schema.json`, with install defaults held apart from read
+  defaults (#2774, #2783); `IDPF_X_SESSION` session-scoped opt-out (#2705)
+- Startup Trash sweep and its `tmpCleanup` opt-out (#2771)
+- `review-findings` announcement for a review ending with findings, so every `review-started` opener
+  is closed (#2781); `announce.js` composes all four review events and enforces the `--force`
+  suppression in code (#2871)
+- `announce.js` with a sender-side ledger: commit payloads are derived from git, and Step 6a
+  reconciles openers against closers (#2790)
+- `tree-review-gate.js`, the scripted `/work` Step 2b-ii chain, testable against a mocked board
+  (#2826)
+- Hall-monitor presence marker (#2769) and an `opener-while-previous-unmatched` finding kind (#2879)
+- A trigger flag may claim the rest of the line, declared per flag (#2770); verbal test-plan approval
+  routes to `/review-test-plan` (#2815); trigger patterns move to metadata (#2816)
+- Prior-art sweep: count-first retrieval budget, Prior Art and Files Changed sections excluded from
+  issue-history matching, and a truncation signal (#2874)
+
+### Changed
+
+- `/work` redirects a test-plan approval issue to the `/review-test-plan` gate rollup (#2784)
+- `/review-test-plan` is gated on the source PRD's review state (#2786)
+- Multi-issue review runs define when an issue's turn begins: opener and verdict for one issue before
+  the next issue's opener (#2879)
+- A branch tracker under `--nonstop` does not offer proceed-with-clean members (#2780)
+- `/done` peer announcements name every issue in the pushed commit range (#2772)
+- Two-phase task creation states one-message emission at every Phase 2 site, and § Measured basis
+  distinguishes intervals from execution time (#2793, #2801, #2806)
+- `/prepare-release` Step 3.1 requires a short, user-facing CHANGELOG lead (#2777)
+- The Story Body Template drops the per-story skill list and adds a conditional E2E section (#2817)
+- Review commands compose the domain `Available:` tip from the registry (#2812)
+- `validate-rules-registry.js` reports a verdict matching its evidence, with tracked divergences
+  (#2779)
+- `minimize-helper.js help` documents every subcommand (#2789)
+- Skills imported from `idpf-praxis-skills` v0.18.0; the narrowing `testCoverageAudit` override is
+  removed (#2867)
+- `Docs/03-Philosophy` and `Docs/04-Suitability` brought in line with the current framework, plus a
+  Sequential-vs-Swarm philosophy document
+- `domain-config.md` registered for deployment and `qa` classified in `managedCommands`; 18
+  `minimize-targets.json` entries given their first recorded run (release validation)
+
+### Fixed
+
+- The always-protected scope-drift halt could be satisfied by the run's own Files Changed append
+  (#2788); a table following the Files to modify declaration was harvested as declared scope (#2813)
+- An epic review labelled its stories reviewed without reviewing them (#2869)
+- Review numbering counted any `## … Review #` comment (#2837), and the `**Reviews:** N` marker was
+  matched inside quoted prose (#2880)
+- `/work --nonstop` dropped a work-started event and announced a commit SHA that never existed
+  (#2790)
+- `assign-branch --remove` reported the tracker unlink as done without performing it (#2814)
+- `--target` filing added the issue to this repository's board rather than the companion's (#2775)
+- `/done` announcements named the issue batch, not the pushed range (#2772)
+- An empty `activeDomains` suppressed every domain in `/code-review` (#2810)
+- `/review-test-plan` Step 5a was skipped on "Ready with minor gaps" (#2785)
+- The `workflow-trigger.js` status extractor was unanchored, so prose containing "in" routed to a
+  batch `/work` (#2782)
+- The hall-monitor self carve-out was unreachable, so a re-arming monitor refused itself (#2795)
+- Tests depended on an ambient `CLAUDE_PID` (#2809); a rules-junction guard was vacuous (#2802); an
+  unreachable `changeFailureRate` tier (#2787)
+- `js-yaml` override floor raised to 3.15.2 for GHSA-2883-xcg3-v3hh
+
+---
+
 ## [0.101.0] - 2026-09-04
 
-Feature release. The recurring shape is **a gate that ran late, or on the wrong set**. `/work` checked
-review state per sub-issue at each one's turn, so a tracker's fourth child carrying unresolved
-findings was discovered after three children were already implemented and in review. Its Step 4f
-sweep ran one of the four verification steps CI runs, because the config could express one command.
-Its Step 2b enumerated sub-issues with a `gh pmu sub list` form that errors, then filtered on a field
-the working form never returns, so the review gate that depended on that enumeration classified
-nothing and passed vacuously. `/done` attributed another issue's files to the one being closed
-because it reused the confirmation gate's deliberately broad commit range for a purpose that needed a
-narrow one. In each case the gate existed; what was wrong was *when* it fired or *what* it looked at.
+New this release: `/hall-monitor` dedicates a session to reading cross-session announcements,
+`/proposal` gains an `--update` mode for revising an existing proposal, and `/x-session-config` gains
+`--quiet` / `--loud`. `/work` now verifies against a declared `verificationCommands` set and checks
+review state once, up front, across a whole epic, branch tracker or typed selection. `/review-issue`
+becomes a managed command, the review workflow moves into a ninth auto-loaded rule, and the resident
+`/work` rule is about a fifth smaller. Fixes cover sub-issue enumeration in `/work`, the
+`--prior-art` flag on `/review-issue`, file attribution in `/done`, and `CI_RESOLVED` announcements.
 
-Alongside that: `/hall-monitor` gives cross-session announcements a dedicated reader, `/proposal`
-gains an `--update` mode, the review workflow moves out of two command shells into a ninth
-auto-loaded rule, and the resident `/work` rule sheds about a fifth of its bytes by deferring
-trigger-gated sections and externalizing step-local lookups.
-
-**The release itself repeated 0.100.0's registration defect, and it is recorded here for the same
-reason.** Phase 2n validation found `/hall-monitor` — added this cycle in #2768 — present in
-`framework-manifest.json` `deploymentFiles.commands.managed` but absent from `.workflow` and from
-`constants.js` `INSTALLED_FILES_MANIFEST.commands`, and `/review-issue`, flipped to MANAGED in #2746,
-in neither `extensibleCommands` nor `managedCommands`. That is the fourth registration surface for a
-command, one release after the previous one was written up, with #2768's own commit titled "fix the
-four cross-cutting regressions adding a deployed command caused". The gate caught it; the process
-that keeps producing it did not change. Minimization also found two `.min-mirror/` outputs whose
-sources had moved on in March and May — the per-issue single-file mode had refreshed only the files
-each issue touched, and the full-run staleness check had not been run against the tree since July.
+Release validation caught two command-registration gaps and two stale `.min-mirror/` outputs; all
+four are fixed in this release and recorded in `Construction/Test-Plans/v0.101.0-release-test-plan.md`
+§ J.
 
 **Upgrade notes:**
 
@@ -2253,7 +2345,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.101.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.102.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -2546,7 +2638,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.101.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.102.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -2917,13 +3009,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.101.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.101.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.101.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.102.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.102.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.102.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.101.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.102.0` placeholder (#1479)
 
 ---
 
@@ -3621,15 +3713,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.101.0 placeholder after packaging
+- **#1059** - Skills retain v0.102.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.101.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.102.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.101.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.102.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -3789,7 +3881,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.101.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.102.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -3897,7 +3989,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.101.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.102.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -3928,8 +4020,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.101.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.101.0` placeholder
+- **#933** - v0.102.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.102.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -4070,7 +4162,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.101.0` placeholder
+  - Changed hardcoded version to `v0.102.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -4110,7 +4202,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.101.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.102.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -4187,10 +4279,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.101.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.102.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.101.0` placeholder
+- **#821** - README-DIST.md now uses `v0.102.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -4307,7 +4399,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.101.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.102.0 placeholder
 
 ---
 
@@ -4355,7 +4447,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.101.0 placeholders to 209 framework source files
+- Restored v0.102.0 placeholders to 209 framework source files
 
 ---
 
@@ -4423,12 +4515,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.101.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.102.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.101.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.102.0` format for consistent replacement
 
 ---
 
@@ -4497,7 +4589,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.101.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.102.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

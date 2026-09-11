@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Classify an issue's review state for the /work review-state gate (#2577).
  * Returns exactly one of never-reviewed, findings-pending, reviewed-clean, or indeterminate,
  * reading the two signals the review subsystem already writes: the reviewed/pending labels
@@ -14,6 +14,7 @@
  */
 
 const { execTimed } = require('./lib/exec.js');
+const { REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
 
 /**
  * The four verdicts. Exactly one is returned per classification — the caller's
@@ -50,7 +51,10 @@ function parseArgs(argv) {
  */
 function parseReviewCount(body) {
   if (typeof body !== 'string') return null;
-  const match = body.match(/\*\*Reviews:\*\*\s*(\d+)/);
+  // Standalone marker line only (#2880). A quoted marker read as a recorded
+  // review let a bare `reviewed` label classify reviewed-clean, defeating
+  // #2869's rule that a label with no marker counts for nothing.
+  const match = body.match(REVIEWS_MARKER_PATTERN);
   return match ? parseInt(match[1], 10) : 0;
 }
 
@@ -62,9 +66,11 @@ function labelNames(labels) {
 /**
  * Classify a single issue's review state.
  *
- * Labels are consulted before body metadata because they are the signal
- * review-finalize.js writes last and always: a body edit can fail after the
- * label lands, but not the reverse.
+ * Labels are consulted first because they are the signal review-finalize.js
+ * writes last and always. A `pending` label decides on its own — it only ever
+ * makes the gate stricter. A `reviewed` label decides only when the body's
+ * `**Reviews:** N` marker corroborates it (#2869): the two are written in one
+ * finalize run, so a label with no marker was not written by a review.
  *
  * @param {object} issue - Issue object with `labels` and `body`
  * @returns {{state: string, reason: string, signals: object}} Verdict
@@ -105,6 +111,26 @@ function classifyReviewState(issue) {
   }
 
   if (hasReviewedLabel) {
+    // A `reviewed` label is trusted only when the body corroborates it (#2869).
+    // review-finalize.js writes the `**Reviews:** N` marker and the label in
+    // the same run, so a label with no marker behind it was written by
+    // something other than a recorded review — until #2869, the epic
+    // propagation block stamping the epic's verdict onto every child. Read
+    // as reviewed-clean, that label passed the /work gate silently on stories
+    // nobody had reviewed. It is never-reviewed rather than indeterminate
+    // because indeterminate fails open and never prompts, which reproduces
+    // the symptom under a different name. An unreadable body stays
+    // indeterminate: "cannot tell" is not "never".
+    if (reviewCount === null) {
+      return indeterminate('Label `reviewed` present but the issue body is unreadable.', signals);
+    }
+    if (reviewCount === 0) {
+      return {
+        state: STATES.NEVER_REVIEWED,
+        reason: 'Label `reviewed` with no `**Reviews:**` marker — the label was written without a recorded review, so it counts for nothing.',
+        signals
+      };
+    }
     return {
       state: STATES.REVIEWED_CLEAN,
       reason: 'Label `reviewed` — a review completed with no unresolved findings.',

@@ -1,5 +1,11 @@
 **Contract Testing Review Criteria**
 **Source:** IDPF-Contract-Testing | **Domain:** Consumer-driven contracts, provider verification, API compatibility
+**Charter Review Questions**
+- Does the charter name an API surface — REST, GraphQL, gRPC — consumed by anything outside this project?
+- Are consumers identified, whether internal services, published clients, or companion repositories?
+- Does the charter list schema or interface definitions (OpenAPI, protobuf, JSON Schema) as project artifacts?
+- Is a compatibility policy stated for changes that reach an existing consumer?
+- Do the companion repositories in the charter depend on an interface this project owns?
 **Proposal Review Questions**
 - Does the proposal identify consumer/provider service pairs affected by the change?
 - Are breaking contract changes explicitly flagged with a coordination plan?

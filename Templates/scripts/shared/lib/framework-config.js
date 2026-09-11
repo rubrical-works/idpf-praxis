@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -26,6 +26,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv').default;
 const { atomicWriteSync } = require('./shell-safe');
+const { isEnabled: tmpCleanupEnabled } = require('./tmp-cleanup');
 
 const CONFIG_FILENAME = 'framework-config.json';
 
@@ -116,6 +117,117 @@ function write(cwd, config) {
   atomicWriteSync(configPath, JSON.stringify(config, null, 2) + '\n');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// .claude/x-session.json — the per-developer cross-session preferences (#2774)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Where the file lives, relative to the project root. */
+const X_SESSION_FILENAME = '.claude/x-session.json';
+
+/** Its schema, deployed alongside framework-config.schema.json. */
+const X_SESSION_SCHEMA_REL_PATH = '.claude/metadata/x-session.schema.json';
+
+let cachedXSessionValidator = null;
+
+/**
+ * Compile and cache the x-session validator.
+ *
+ * Its own cache, not a shared one keyed by path: the two schemas have different
+ * lifetimes in a test run (`_resetCache` clears both), and a single-slot cache
+ * shared between them would silently validate one file against the other's
+ * schema the moment a caller interleaved them.
+ */
+function getXSessionValidator(cwd) {
+  if (cachedXSessionValidator) return cachedXSessionValidator;
+  const schemaPath = path.join(cwd, X_SESSION_SCHEMA_REL_PATH);
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  cachedXSessionValidator = ajv.compile(schema);
+  return cachedXSessionValidator;
+}
+
+/**
+ * Read `.claude/x-session.json`.
+ *
+ * @returns {object|undefined} The parsed object, or undefined when the file is
+ *   absent or unreadable. NOT a throw: an absent file is the normal state of
+ *   every project that has not run `/x-session-config`, and the resolver's
+ *   absence rule already defines what it means.
+ */
+function readXSession(cwd = process.cwd()) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(cwd, X_SESSION_FILENAME), 'utf8'));
+    return (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
+      ? parsed
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Validate an x-session object against its schema.
+ *
+ * @returns {{valid: boolean, errors: Array|null}}
+ */
+function validateXSession(obj, cwd = process.cwd()) {
+  const validator = getXSessionValidator(cwd);
+  const valid = validator(obj);
+  return { valid, errors: valid ? null : validator.errors };
+}
+
+/**
+ * Write `.claude/x-session.json`, validating first.
+ *
+ * Creates `.claude/` when absent — unlike `write`, which refuses to create
+ * `framework-config.json`. The asymmetry is the point: this command owns this
+ * file outright, whereas it owns exactly one key of the other one.
+ *
+ * @throws {Error} If the object fails schema validation. Nothing is written.
+ */
+function writeXSession(cwd, obj) {
+  const { valid, errors } = validateXSession(obj, cwd);
+  if (!valid) {
+    const summary = errors
+      .map((e) => `${e.dataPath || e.instancePath || '(root)'} ${e.message}`)
+      .join('; ');
+    throw new Error(`${X_SESSION_FILENAME} validation failed: ${summary}`);
+  }
+  const target = path.join(cwd, X_SESSION_FILENAME);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  atomicWriteSync(target, JSON.stringify(obj, null, 2) + '\n');
+}
+
+/**
+ * Remove the deprecated `crossSessionMessaging` key from framework-config.json
+ * (#2774), returning whether anything was removed.
+ *
+ * Routed through `write` so the result is schema-validated before it lands. The
+ * key stays ACCEPTED by that schema, marked deprecated, precisely so this write
+ * succeeds on a project mid-migration — removing it from the schema outright
+ * would invalidate every unmigrated project's config and block every other
+ * writer of that file.
+ *
+ * Never throws on an absent or unreadable framework-config.json: a project may
+ * legitimately have only the new file.
+ *
+ * @returns {boolean} True when a key was present and has been removed.
+ */
+function stripLegacyCrossSessionKey(cwd = process.cwd()) {
+  let config;
+  try {
+    config = read(cwd);
+  } catch {
+    return false;
+  }
+  if (!Object.prototype.hasOwnProperty.call(config, 'crossSessionMessaging')) return false;
+
+  const next = { ...config };
+  delete next.crossSessionMessaging;
+  write(cwd, next);
+  return true;
+}
+
 /**
  * Materialise an absent `reviewSweep` as the default mode (#2564).
  *
@@ -159,6 +271,9 @@ function ensureReviewSweep(cwd = process.cwd()) {
  */
 function _resetCache() {
   cachedValidator = null;
+  // Both, always. Leaving the x-session validator cached across a reset would
+  // let one test's schema fixture validate the next test's file.
+  cachedXSessionValidator = null;
 }
 
 /**
@@ -249,10 +364,55 @@ function resolveVerificationCommands(cwd = process.cwd()) {
   return NONE;
 }
 
+/**
+ * Whether the startup hook's stale-scratch-file sweep is enabled (#2771).
+ *
+ * Reader half of the `tmpCleanup` key. **Absent means enabled**, matching
+ * `crossSessionMessaging`'s absence rule: a config records only what was
+ * turned OFF, so the sweep arrives switched on in every project already on
+ * disk without anyone editing a file.
+ *
+ * **Only the literal `false` disables it**, and that asymmetry is deliberate
+ * in the opposite direction from `resolveVerificationMode`. There, an
+ * unrecognised value fails INTO the strict gate, because the risk is a typo
+ * silently relaxing a check. Here the risk runs the other way: a typo that
+ * silently disabled the sweep would leave a user believing a cleanup is
+ * running when it is not, and nothing would ever report the gap — the sweep
+ * emits no row when it removes nothing, so a disabled sweep and a clean one
+ * look identical. Requiring an exact `false` means a mistyped opt-out behaves
+ * as if it were absent, which is visible the first time files are removed
+ * anyway rather than never.
+ *
+ * The safety of that choice rests on the helper, not on this flag: what the
+ * sweep will delete is bounded by `tmp-cleanup.js` refusing directories,
+ * tracked files, young files and everything at all when git cannot answer.
+ * This key decides whether to run it, not what it may touch.
+ *
+ * Never throws — an absent or unreadable config resolves to enabled, matching
+ * how `resolveVerificationMode` treats the same conditions.
+ *
+ * @param {string} [cwd] - Project root
+ * @returns {boolean}
+ */
+function resolveTmpCleanup(cwd = process.cwd()) {
+  let config;
+  try {
+    config = read(cwd);
+  } catch {
+    return true;
+  }
+  // The predicate lives in tmp-cleanup.js, not here, so the startup hook can
+  // apply the same absence rule without loading this module — requiring it
+  // pulls ajv, ~41ms paid synchronously on every session start before any
+  // check is spawned. Delegating rather than restating keeps one rule.
+  return tmpCleanupEnabled(config);
+}
+
 module.exports = {
   read,
   resolveVerificationMode,
   resolveVerificationCommands,
+  resolveTmpCleanup,
   VERIFICATION_MODES,
   DEFAULT_VERIFICATION_MODE,
   validate,
@@ -260,5 +420,12 @@ module.exports = {
   ensureReviewSweep,
   _resetCache,
   CONFIG_FILENAME,
-  SCHEMA_REL_PATH
+  SCHEMA_REL_PATH,
+  // .claude/x-session.json (#2774)
+  X_SESSION_FILENAME,
+  X_SESSION_SCHEMA_REL_PATH,
+  readXSession,
+  validateXSession,
+  writeXSession,
+  stripLegacyCrossSessionKey
 };

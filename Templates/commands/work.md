@@ -1,5 +1,5 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: Start working on issues with validation and auto-task extraction (project)
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -35,6 +35,19 @@ Follow `.claude/rules/08-work-execution.md` (auto-loaded at session start). That
 - Review-State / Pre-Work Status / Sub-Agent / Commit-per-AC gates
 - Autonomous epic & branch tracker processing (default vs. `--nonstop`)
 - STOP boundary and post-STOP cleanup
+
+---
+## Redirect: test-plan approval issues (#2784)
+**Trigger: the preamble envelope sets `context.redirect`.** `work-preamble.js` sets it for a `test-plan`-labelled issue, taking the command from `issue-type.js`'s shared label map, so `/work` and `/review-issue` cannot route one label to different places.
+**On a redirect, immediately after Step 1:** mark the Phase 1 preamble task `completed`; create **no** Phase 2 tasks (Behavior Rule 1 in `08-work-execution.md` covers it); invoke the mapped command via the Skill tool, deriving the name from `context.redirect` with the leading `/` stripped — never a hardcoded string — `Skill("review-test-plan", "#$ISSUE")`; **STOP.**
+**Report the label and the command,** so a user who typed `/work` and got a review is not left guessing:
+```
+#$ISSUE carries the `test-plan` label — handing off to /review-test-plan.
+The six approval gates are evaluated by its Step 5a rollup, not worked as acceptance criteria.
+```
+**Neither Step 3 gate runs for a redirected issue,** and the preamble makes no status move: the command that owns the work owns the transition.
+**Why redirect rather than evaluate here.** The six gates in `.claude/metadata/test-plan-approval-gates.json` are already computed, confirmed and checked off by `/review-test-plan` Step 5a — both surfaces, by declared text rather than index. Classified `standard`, `/work` loaded them as `autoTask` items; none matches a QA-extraction keyword, so Step 4a extracted no QA sub-issue and Step 4b saw six unchecked ACs with no marker. A second evaluator here would give one checklist two implementations.
+**`prd` and `proposal` do not redirect,** deliberately: they share the fall-through and the map, but neither `/review-prd` nor `/review-proposal` has an equivalent rollup to land in, so a redirect there hands the user a review with nothing to confirm. A separate decision, not folded in.
 
 ---
 ## Branch Sync

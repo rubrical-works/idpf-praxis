@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.101.0",
+  "version": "0.102.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -171,44 +171,47 @@
         "playwright-check.md"
       ],
       "workflow": [
+        "add-story.md",
         "assign-branch.md",
+        "audit-commands.md",
         "bad-test-review.md",
-        "code-review.md",
-        "switch-branch.md",
-        "transfer-issue.md",
-        "create-branch.md",
-        "prepare-release.md",
-        "prepare-beta.md",
-        "merge-branch.md",
-        "destroy-branch.md",
+        "bug.md",
+        "catalog-screens.md",
         "charter.md",
+        "ci.md",
+        "code-review.md",
+        "complete-prd.md",
+        "create-backlog.md",
+        "create-branch.md",
+        "create-prd.md",
+        "design-system.md",
+        "destroy-branch.md",
+        "domain-config.md",
+        "done.md",
+        "enhancement.md",
         "extensions.md",
         "hall-monitor.md",
-        "create-prd.md",
-        "create-backlog.md",
-        "design-system.md",
-        "complete-prd.md",
-        "add-story.md",
-        "split-story.md",
+        "idpf-measure.md",
+        "idpf-stats.md",
+        "issue-reset.md",
+        "merge-branch.md",
+        "mockups.md",
+        "paths.md",
         "pivot.md",
         "plan-workstreams.md",
-        "work.md",
-        "done.md",
-        "bug.md",
-        "enhancement.md",
+        "prepare-beta.md",
+        "prepare-release.md",
         "proposal.md",
+        "qa.md",
         "resolve-review.md",
         "review-issue.md",
         "review-prd.md",
         "review-proposal.md",
         "review-test-plan.md",
-        "catalog-screens.md",
-        "ci.md",
-        "mockups.md",
-        "paths.md",
-        "audit-commands.md",
-        "idpf-stats.md",
-        "issue-reset.md",
+        "split-story.md",
+        "switch-branch.md",
+        "transfer-issue.md",
+        "work.md",
         "x-session-config.md"
       ],
       "managed": [
@@ -221,13 +224,16 @@
         "code-review.md",
         "complete-prd.md",
         "create-backlog.md",
+        "domain-config.md",
         "extensions.md",
         "hall-monitor.md",
+        "idpf-measure.md",
         "idpf-stats.md",
         "issue-reset.md",
         "pivot.md",
         "plan-workstreams.md",
         "playwright-check.md",
+        "qa.md",
         "resolve-review.md",
         "review-issue.md",
         "split-story.md",
@@ -243,6 +249,7 @@
         "target": ".claude/scripts/shared/",
         "files": [
           "analyze-commits.js",
+          "announce.js",
           "assign-branch.js",
           "branch-sync-check.js",
           "ci-add.js",
@@ -268,10 +275,12 @@
           "done-verify.js",
           "epic-complexity.js",
           "extensions-cli.js",
+          "file-companion-issue.js",
           "generate-changelog.js",
           "generate-domain-entities.js",
           "generate-test-plan.js",
           "gh-auth-check.js",
+          "idpf-measure.js",
           "log-changed-files.js",
           "mockup-ac-generator.js",
           "mockup-detect-framework.js",
@@ -285,6 +294,7 @@
           "plan-workstreams.js",
           "praxis-diagram-config.js",
           "qa-extract.js",
+          "qa-fixtures.js",
           "recommend-version.js",
           "reset-issue-preamble.js",
           "resolve-preamble.js",
@@ -304,6 +314,7 @@
           "task-tools-check.js",
           "test-plan-approval-gates.js",
           "transfer-issue.js",
+          "tree-review-gate.js",
           "update-release-notes.js",
           "upgrade-check.js",
           "upstream-monitor.js",
@@ -319,6 +330,8 @@
         "target": ".claude/scripts/shared/lib/",
         "files": [
           "active-label.js",
+          "announce-ledger.js",
+          "announcement-issues.js",
           "branch-review-gate.js",
           "bulk-discover-screens.js",
           "checkbox-scan.js",
@@ -355,16 +368,21 @@
           "gh.js",
           "git.js",
           "hall-monitor-guards.js",
+          "hall-monitor-presence.js",
           "input-validation.js",
           "issue-ref-match.js",
           "issue-type.js",
           "load-review-extensions.js",
           "local-server.js",
+          "measure-marker.js",
+          "measure-report.js",
+          "measure-wiring.js",
           "navigation-graph.js",
           "output.js",
           "paths-ac-generator.js",
           "paths-marker.js",
           "peer-unreachable-reasons.js",
+          "prd-tracker-lookup.js",
           "prior-art-marker.js",
           "prior-art-surfaces.js",
           "qa-config-schema.json",
@@ -377,6 +395,7 @@
           "screenshot-token-candidates.js",
           "shell-safe.js",
           "specialist-resolver.js",
+          "tmp-cleanup.js",
           "token-drift-report.js",
           "token-propagation.js",
           "token-update-mode.js",
@@ -395,7 +414,8 @@
           "startup-hook.js",
           "clear-hook.js",
           "resume-hook.js",
-          "compact-hook.js"
+          "compact-hook.js",
+          "measure-tap.js"
         ]
       }
     },
@@ -699,6 +719,11 @@
           "description": "JSON Schema for proposal-review-criteria.json"
         },
         {
+          "name": "qa-fixtures-schema",
+          "source": ".claude/metadata/qa-fixtures-schema.json",
+          "description": "Schema for the parsed ### Fixtures declaration of a qa-required issue: the board state /qa outcome 3 provisions and tears down through qa-fixtures.js (#2827). Schema-only; the declaration lives in each QA issue body."
+        },
+        {
           "name": "recipe-tech-mapping",
           "source": ".claude/metadata/recipe-tech-mapping.json",
           "description": "Tech stack to recipe mappings for /charter suggestions"
@@ -819,6 +844,16 @@
           "description": "JSON Schema for test-plan-review-criteria.json"
         },
         {
+          "name": "tmp-cleanup-signals",
+          "source": ".claude/metadata/tmp-cleanup-signals.json",
+          "description": "Patterns and age threshold for the startup hook stale .tmp-* scratch-file sweep (#2771)"
+        },
+        {
+          "name": "tmp-cleanup-signals-schema",
+          "source": ".claude/metadata/tmp-cleanup-signals-schema.json",
+          "description": "JSON schema (Draft 2020-12) for tmp-cleanup-signals.json (#2771)"
+        },
+        {
           "name": "trigger-flag-allowlist",
           "source": ".claude/metadata/trigger-flag-allowlist.json",
           "description": "Per-command flags recognized by workflow-trigger.js phrase routing"
@@ -829,6 +864,16 @@
           "description": "JSON Schema for trigger-flag-allowlist.json"
         },
         {
+          "name": "trigger-patterns",
+          "source": ".claude/metadata/trigger-patterns.json",
+          "description": "Trigger phrase patterns recognized by workflow-trigger.js (#2816)"
+        },
+        {
+          "name": "trigger-patterns-schema",
+          "source": ".claude/metadata/trigger-patterns-schema.json",
+          "description": "JSON Schema for trigger-patterns.json"
+        },
+        {
           "name": "upstream-monitor",
           "source": ".claude/metadata/upstream-monitor.json",
           "description": "Scheduling and surfacing contract for the background upstream-push monitor (#2667)"
@@ -837,6 +882,11 @@
           "name": "upstream-monitor-schema",
           "source": ".claude/metadata/upstream-monitor-schema.json",
           "description": "JSON schema (Draft 2020-12) for upstream-monitor.json (#2667)"
+        },
+        {
+          "name": "x-session-schema",
+          "source": ".claude/metadata/x-session.schema.json",
+          "description": "JSON schema (Draft-07) for the cross-session messaging levers, governing .claude/x-session.json and the legacy framework-config.json crossSessionMessaging key. Carries per-lever x-installDefault annotations for Praxis Hub Manager, distinct from the resolver read default (#2774, #2783)"
         }
       ]
     },
@@ -877,13 +927,16 @@
     "code-review",
     "complete-prd",
     "create-backlog",
+    "domain-config",
     "extensions",
     "hall-monitor",
+    "idpf-measure",
     "idpf-stats",
     "issue-reset",
     "pivot",
     "plan-workstreams",
     "playwright-check",
+    "qa",
     "resolve-review",
     "review-issue",
     "split-story",

@@ -167,14 +167,13 @@ The TDD cycle is not optional in IDPF-Agile. This is a feature, not a bug. The a
 
 ---
 
-## Framework Comparison
+## Framework Fit
 
-| Framework | Solo Dev Fit | Notes |
-|---|---|---|
-| **IDPF-Agile** | Best fit | TDD, structured stories, clear done criteria |
-| **IDPF-Vibe** | Strong for new projects | Start exploring, transition to Agile when the project matures |
+**IDPF-Agile** is the process framework, and it suits solo work well: TDD, structured stories, and clear done criteria substitute for the review pressure a team would otherwise supply.
 
-For solo developers starting a new project with unclear requirements, the IDPF-Vibe → IDPF-Agile transition path is ideal. Vibe for the first few sessions while you figure out what you're building, then Evolution Point to capture what exists, then Agile for production-quality development going forward.
+For a solo developer starting a project with unclear requirements, the path is a [spike](../02-Advanced/Spike-Workflow.md) first and the full pipeline second. A spike is a time-boxed `/proposal` that answers "can this even work?" in code — issue-tracked and branch-isolated, but with no PRD, review cycle, or backlog. Once the question is answered and you know what you are building, `/proposal` escalates into the normal `/create-prd` → `/create-backlog` → `/work` flow, and the spike's code is kept, refactored, or thrown away on its merits.
+
+The distinction that matters is what each produces. A spike's output is **knowledge**; the pipeline's output is **shipped, tested work**. Reaching for the pipeline before you have the knowledge is what makes early planning feel like overhead.
 
 ---
 

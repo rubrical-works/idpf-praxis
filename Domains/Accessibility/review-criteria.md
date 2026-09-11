@@ -1,5 +1,11 @@
 **Accessibility Review Criteria**
 **Source:** IDPF-Accessibility | **Domain:** WCAG conformance, assistive technology, automated a11y scanning
+**Charter Review Questions**
+- Does the charter's tech stack include a user interface — web, frontend framework, or native components?
+- Do the in-scope items describe screens, forms, or interactive components that users operate directly?
+- Is a WCAG conformance level named, or is accessibility left unstated for a project that ships a UI?
+- Does the charter identify the audiences served, including assistive-technology users?
+- Are design tokens, component libraries, or style systems listed that would carry accessibility defaults?
 **Proposal Review Questions**
 - Does the proposal identify UI components that require accessibility compliance?
 - Is the target WCAG conformance level specified (A, AA, or AAA)?

@@ -95,12 +95,11 @@ N-tier applications have notoriously tricky test boundaries. IDPF addresses this
 
 ---
 
-## Framework Comparison
+## Framework Fit
 
-| Framework | N-Tier Fit | Notes |
-|-----------|-----------|-------|
-| **IDPF-Agile** | Best fit | TDD, structured stories, acceptance criteria, release management |
-| **IDPF-Vibe** | Moderate | Useful for rapid prototyping a tier, but Agile preferred for production |
+**IDPF-Agile** is the process framework, and n-tier is among its strongest fits: TDD, structured stories, acceptance criteria, and release management all map onto tier boundaries.
+
+For rapid prototyping of a single tier — proving a persistence approach or an integration before committing to it — use a [spike](../02-Advanced/Spike-Workflow.md) rather than a full planning cycle. A spike is a time-boxed `/proposal` whose output is knowledge; it keeps issue tracking and branch isolation without escalating to a PRD, review cycle, or backlog.
 
 ---
 

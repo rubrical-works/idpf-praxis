@@ -119,17 +119,14 @@ The combination of **Playwright for E2E** and **TDD for unit/integration** cover
 
 ---
 
-## Framework Comparison
+## Framework Fit
 
-| Framework | Full-Stack Fit | Notes |
-|---|---|---|
-| **IDPF-Agile** | Best fit | TDD enforces testing at every layer; story decomposition maps to layers |
-| **IDPF-Vibe** | Strong for prototypes | Good for "let me see if this stack works" before committing to full process |
+**IDPF-Agile** is the process framework. It is a good fit for full-stack work: TDD enforces testing at every layer, and story decomposition maps cleanly onto the layer boundaries.
 
 **Recommended path for new full-stack projects:**
-- Start with **IDPF-Vibe** if the tech stack is uncertain (e.g., "React or Vue? Express or FastAPI?")
-- Transition to **IDPF-Agile** once the stack is chosen and the first feature is working
-- Stay with **IDPF-Agile** for production development
+- Answer stack questions ("React or Vue? Express or FastAPI?") with a [spike](../02-Advanced/Spike-Workflow.md) — a time-boxed `/proposal` that proves or disproves an approach in code without escalating to a PRD, review cycle, or backlog. The output is knowledge; the code may be kept or discarded
+- Move into the full pipeline once the stack is chosen and the first feature is working
+- Stay with IDPF-Agile for production development
 
 ---
 

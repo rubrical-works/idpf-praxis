@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -14,6 +14,9 @@ const path = require('path');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const { execFileTimedAsync } = require('./lib/exec.js');
 const { extractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
+// Relative path under shared/lib, per the runtime dependency contract —
+// never an external package (#2418).
+const { REDIRECT_LABELS } = require('./lib/issue-type.js');
 
 // Every spawn here goes through the timed wrapper (#2469). These are /work's
 // Step 1 critical path — including the `gh pmu move --status in_progress` calls —
@@ -199,6 +202,19 @@ function parseArgs(args) {
  * @param {number} issueNum
  * @returns {Promise<{ issue: object, branch: object } | { error: { code: string, message: string, suggestion?: string } }>}
  */
+/**
+ * Label names from either shape `gh` returns: flat strings (`gh pmu view`)
+ * or `{ name }` objects (`gh issue view`). Null-safe, so callers can pass
+ * `data.labels` straight through.
+ * @param {Array<string|{ name: string }>|null|undefined} labels
+ * @returns {string[]}
+ */
+function labelNamesOf(labels) {
+  return Array.isArray(labels)
+    ? labels.map(l => typeof l === 'string' ? l : (l && l.name)).filter(Boolean)
+    : [];
+}
+
 async function gatherAllData(issueNum) {
   const result = await execJSON(
     'gh', ['pmu', 'view', String(issueNum), '--json=number,title,labels,body,state,status,branch'],
@@ -210,7 +226,14 @@ async function gatherAllData(issueNum) {
     return { error: { code: 'CLOSED', message: `Issue #${issueNum} is already closed.` } };
   }
   if (!result.data.branch) {
-    return { error: { code: 'NO_BRANCH', message: `Issue #${issueNum} is not assigned to a branch.`, suggestion: `Run /assign-branch #${issueNum} first.` } };
+    // This error fires BEFORE detectRedirect() runs, so an unassigned
+    // qa-required issue never reaches the /qa redirect (#2824). The labels are
+    // already here, so the pointer names the command that owns the assignment
+    // for a QA issue rather than sending the user to /assign-branch and back.
+    const suggestion = labelNamesOf(result.data.labels).includes('qa-required')
+      ? `Run /qa #${issueNum} — a qa-required issue is verified there, and /qa handles the branch assignment itself.`
+      : `Run /assign-branch #${issueNum} first.`;
+    return { error: { code: 'NO_BRANCH', message: `Issue #${issueNum} is not assigned to a branch.`, suggestion } };
   }
   // Normalize labels: gh pmu view returns flat strings, gh issue view returned objects.
   // Downstream code accesses label.name — wrap strings in objects for compatibility.
@@ -282,7 +305,66 @@ function detectIssueType(issueData) {
   const labels = (issueData.labels || []).map(l => l.name);
   if (labels.includes('branch')) return 'branch';
   if (labels.includes('epic')) return 'epic';
+  const redirect = detectRedirect(issueData);
+  if (redirect) return redirect.label;
   return 'standard';
+}
+
+/**
+ * Labels `/work` redirects on, and the reason the set is narrower than
+ * `issue-type.js`'s (#2784).
+ *
+ * `test-plan` ONLY. An approval issue's six gates are not implementation
+ * work: they are a checklist `/review-test-plan` Step 5a already computes,
+ * confirms with the user and checks off on both surfaces. Classified
+ * `standard`, `/work` loaded them as `autoTask` items instead, matched none
+ * against `qa-config.json`, and reached Step 4b with six unchecked ACs
+ * carrying no marker.
+ *
+ * `prd` and `proposal` are deliberately absent. They share the fall-through
+ * and the map, but neither `/review-prd` nor `/review-proposal` has an
+ * equivalent of the gate rollup for a redirected user to land in, so
+ * redirecting there would hand someone a review with nothing to confirm.
+ * #2784 records that as a separate decision rather than folding it in.
+ *
+ * `qa-required` → `/qa` (#2824) lives HERE and not in the shared map, and
+ * that is the point of this being a map rather than a filter over
+ * `REDIRECT_LABELS`. `review-preamble.js` acts on every key of the shared
+ * map with no honoured set of its own, so adding the label there would
+ * redirect `review #N` — and a story that also carries the label — into
+ * `/qa`. The shared map exists so two commands cannot route ONE label to
+ * DIFFERENT targets; here the second command must not route it at all, so
+ * there is nothing to keep in sync and the map gains nothing.
+ *
+ * Single-issue shape only. Under an epic or branch-tracker run a
+ * `qa-required` sub-issue is skipped with a pointer by
+ * `checkSubIssueStatuses` — a mid-loop Skill redirect never returns to the
+ * sub-issue loop.
+ */
+const WORK_REDIRECT_LABELS = Object.freeze({
+  'test-plan': REDIRECT_LABELS['test-plan'],
+  'qa-required': '/qa'
+});
+
+/**
+ * The redirect target for an issue, or null.
+ *
+ * `test-plan`'s COMMAND comes from `issue-type.js` rather than a literal, so
+ * `/work` and `/review-issue` cannot drift to different targets for that
+ * label. A label in the shared map but not in `WORK_REDIRECT_LABELS` returns
+ * null — that is the out-of-scope case above, not a lookup failure.
+ *
+ * @param {{ labels?: Array<{ name: string }> }} issueData
+ * @returns {{ label: string, command: string }|null}
+ */
+function detectRedirect(issueData) {
+  const labels = ((issueData && issueData.labels) || []).map(l => l.name);
+  for (const label of labels) {
+    if (WORK_REDIRECT_LABELS[label]) {
+      return { label, command: WORK_REDIRECT_LABELS[label] };
+    }
+  }
+  return null;
 }
 
 /**
@@ -405,10 +487,12 @@ async function loadSubIssues(issueNum) {
  * sub-issue, so bodies cost zero additional round trips.
  *
  * Skipped entries stay `{ number, status }`. They feed a report line rather than
- * the ordering pass, and two existing suites assert that exact shape.
+ * the ordering pass, and two existing suites assert that exact shape. The one
+ * addition is `reason: 'qa-required'` on a child skipped for its label rather
+ * than its status (#2824); status skips are unchanged.
  *
  * @param {Array<{ number: number, title: string }>} subIssues
- * @returns {Promise<{ skipped: Array<{ number: number, status: string }>, active: Array<{ number: number, title: string, body: string, labels: string[] }> }>}
+ * @returns {Promise<{ skipped: Array<{ number: number, status: string, reason?: 'qa-required' }>, active: Array<{ number: number, title: string, body: string, labels: string[] }> }>}
  */
 async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
   const skipped = [];
@@ -454,7 +538,15 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
   }
 
   for (const { sub, status, body, labels } of statusResults) {
-    if (status && skipStatuses.includes(status.toLowerCase())) {
+    // A qa-required child is a gate on the PARENT's closure, not implementation
+    // work in sequence with its siblings (#2824). It is skipped with a pointer
+    // whatever its board status — never redirected mid-loop, because a Skill
+    // transfer would end at /qa's own STOP and nothing would return here. The
+    // `reason` field is what lets the caller print `run /qa #N` rather than a
+    // status; status-skipped entries keep their two-field shape.
+    if (labelNamesOf(labels).includes('qa-required')) {
+      skipped.push({ number: sub.number, status, reason: 'qa-required' });
+    } else if (status && skipStatuses.includes(status.toLowerCase())) {
       skipped.push({ number: sub.number, status });
     } else {
       // Normalize to '' / [] rather than passing null through. Every downstream
@@ -1032,6 +1124,31 @@ async function runSingleIssue(issueNum, options) {
     ...(options && options.wait ? { wait: true } : {})
   };
 
+  // 4a. Redirect types return BEFORE any work is loaded or any status moved
+  //     (#2784). An approval issue's gates are not acceptance criteria — they
+  //     are a checklist `/review-test-plan` Step 5a computes and confirms — so
+  //     loading them as `autoTask` items is what produced six unmarked
+  //     unchecked ACs at Step 4b.
+  //
+  //     Placement is the contract. This sits above the type-specific loading
+  //     and above step 5's `moveToInProgress`, so a redirected issue is left
+  //     exactly as found: the command that owns the work owns the transition,
+  //     the same reason `/review-issue`'s redirect happens before its own
+  //     side effects.
+  const redirect = detectRedirect(dataResult.issue);
+  if (redirect) {
+    context.redirect = redirect.command;
+    context.redirectLabel = redirect.label;
+    const envelope = buildSuccessEnvelope(
+      context,
+      { assigned: assignGate, movedToInProgress: false, alreadyInProgress: false, prdTrackerMoved: false },
+      { items: [] },
+      warnings
+    );
+    envelope.roundTrips = roundTrips;
+    return envelope;
+  }
+
   if (type === 'epic' || type === 'branch') {
     // Epic/Branch flow: load sub-issues, check statuses (parallelized), determine order
     roundTrips++;
@@ -1412,6 +1529,7 @@ module.exports = {
   gatherIssueOnly,
   gatherBranchData,
   detectIssueType,
+  detectRedirect,
   isBranchTracker,
   parseAcceptanceCriteria,
   normalizeStatus,

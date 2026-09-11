@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -238,7 +238,7 @@ function usableFillValue(v) {
  * improvement, not an instruction to discard the other half.
  */
 function resolveFill(acText, fill) {
-  const derived = deriveFill(acText);
+  const derived = { ...deriveFill(acText), fixtures: null };
   const entry = fill && typeof fill === 'object' ? fill[acText] : null;
   if (!entry || typeof entry !== 'object') return derived;
 
@@ -246,10 +246,20 @@ function resolveFill(acText, fill) {
   const expectedResult = usableFillValue(entry.expectedResult)
     ? entry.expectedResult.trim()
     : derived.expectedResult;
+  // The `### Fixtures` declaration qa-fixtures.js provisions (#2827). Caller-
+  // only: nothing derives board state from AC text, and an absent value means
+  // no section at all — a heading with no items is an invalid declaration.
+  const fixtures = usableFillValue(entry.fixtures) ? entry.fixtures.trim() : null;
 
   const usedCaller = steps !== derived.steps || expectedResult !== derived.expectedResult;
-  return { steps, expectedResult, path: usedCaller ? 'caller' : derived.path };
+  return { steps, expectedResult, fixtures, path: usedCaller ? 'caller' : derived.path };
 }
+
+/**
+ * Appended to a rendered body when the fill declares fixtures. A config may
+ * override the template; the default keeps the heading qa-fixtures.js reads.
+ */
+const DEFAULT_FIXTURES_TEMPLATE = '\n\n### Fixtures\n{fixtures}';
 
 /**
  * Read a --fill JSON map. A missing or malformed file degrades to null so extraction
@@ -266,8 +276,75 @@ function loadFillFile(filePath, readFn = (p) => fs.readFileSync(p, 'utf8')) {
 }
 
 function fetchIssue(issueNumber, execFn = execSync) {
-  const raw = execFn(`gh pmu view ${issueNumber} --json=body,title`, { encoding: 'utf8' });
+  // `branch` is consumed by placeSubIssue (#2821): a QA sub-issue inherits the
+  // parent's branch, because the verification it carries is evidence about the
+  // parent's change and belongs on the same workstream.
+  const raw = execFn(`gh pmu view ${issueNumber} --json=body,title,branch`, { encoding: 'utf8' });
   return JSON.parse(raw);
+}
+
+// The `.gh-pmu.json` alias, not the board option name. `gh pmu move --status`
+// resolves the alias to the "QA-Required" column; passing the column label
+// directly is rejected.
+const QA_STATUS_ALIAS = 'qa_required';
+
+// `gh pmu sub create` accepts no --status flag — verified against gh pmu 1.5.3,
+// whose flags are assignee/body/body-file/inherit-*/label/milestone/parent/
+// project/repo/title. The board status is therefore a discrete move after
+// creation, not an argument to it. Discrete argv for the same reason as
+// createSubIssue: nothing reaches a shell (#2456).
+function setSubIssueStatus(subIssueNumber, execFileFn = execFileSync) {
+  return execFileFn('gh', ['pmu', 'move', String(subIssueNumber), '--status', QA_STATUS_ALIAS],
+    { encoding: 'utf8' });
+}
+
+// Branch assignment is delegated to assign-branch.js rather than issued here as
+// `gh pmu move --branch`. That command is assign-branch's contract; a second
+// caller is how the two drift, and this script has no business owning the
+// branch-field spelling.
+function defaultAssignFn(subIssueNumber, branch) {
+  const { assignToBranch } = require('./assign-branch.js');
+  return assignToBranch(subIssueNumber, branch);
+}
+
+/**
+ * Put a freshly-created QA sub-issue where /work and /qa can find it: on the
+ * parent's branch, in the qa_required column.
+ *
+ * Never throws. A placement failure leaves a real sub-issue that is simply less
+ * reachable — the pre-#2821 state — and that state must be *reported*, because
+ * from the outside it is indistinguishable from a successful run.
+ */
+async function placeSubIssue({ subIssueNumber, parentBranch, assignFn = defaultAssignFn, statusFn = setSubIssueStatus }) {
+  const placement = { branch: null, status: null };
+  const warnings = [];
+
+  if (parentBranch) {
+    let assigned = false;
+    let threw = false;
+    try {
+      assigned = await assignFn(subIssueNumber, parentBranch);
+    } catch (e) {
+      threw = true;
+      warnings.push(`#${subIssueNumber} branch assignment to ${parentBranch} threw: ${e.message}`);
+    }
+    // Keyed to `threw`, not to warnings.length: a length test would silently
+    // swallow this warning the moment anything else warns earlier in the
+    // function, which is a defect waiting for the next edit.
+    if (assigned) placement.branch = parentBranch;
+    else if (!threw) warnings.push(`#${subIssueNumber} was not assigned to branch ${parentBranch}`);
+  } else {
+    warnings.push(`#${subIssueNumber} has no parent branch to inherit — left unassigned`);
+  }
+
+  try {
+    statusFn(subIssueNumber);
+    placement.status = QA_STATUS_ALIAS;
+  } catch (e) {
+    warnings.push(`#${subIssueNumber} status not set to ${QA_STATUS_ALIAS}: ${e.message}`);
+  }
+
+  return { placement, warnings };
 }
 
 // Title is `QA: ${acText}` verbatim from unchecked AC lines in (attacker-
@@ -289,15 +366,24 @@ function buildAnnotation(format, acText, subIssueNumber) {
     .replace('{subIssueNumber}', String(subIssueNumber));
 }
 
-function extract({ issueNumber, config, fetchFn, createFn, writeTemp, unlinkTemp, dryRun, fill = null }) {
+async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null }) {
+  // placeFn is injected, never defaulted to the live implementation. Every
+  // other dependency here follows that rule and main() supplies all of them;
+  // a live default would let any caller that forgot the stub reach `gh`
+  // silently — which is precisely what a test suite must not do.
+  if (!dryRun && typeof placeFn !== 'function') {
+    throw new Error('extract requires placeFn — placement is not optional (#2821)');
+  }
   const issue = fetchFn(issueNumber);
   const body = issue.body || '';
   const parentTitle = issue.title || '';
+  const parentBranch = issue.branch || null;
   const acs = extractUncheckedAcs(body);
 
   const matched = [];
   const skipped = [];
   const errors = [];
+  const warnings = [];
 
   for (const acText of acs) {
     const keyword = findMatchingKeyword(acText, config.keywords);
@@ -312,20 +398,27 @@ function extract({ issueNumber, config, fetchFn, createFn, writeTemp, unlinkTemp
     try {
       // Resolved content reaches gh only as temp-file body text (-F), never as an
       // argument, so caller-supplied and AC-derived strings stay inert data (#2456).
-      const { steps, expectedResult, path: fillPath } = resolveFill(acText, fill);
-      const bodyText = renderBody(config.bodyTemplate, {
+      const { steps, expectedResult, fixtures, path: fillPath } = resolveFill(acText, fill);
+      let bodyText = renderBody(config.bodyTemplate, {
         acDescription: acText,
         parentIssue: issueNumber,
         parentTitle,
         steps,
         expectedResult
       });
+      if (fixtures) {
+        bodyText += renderBody(config.fixturesTemplate || DEFAULT_FIXTURES_TEMPLATE, { fixtures });
+      }
       const tmpPath = `.tmp-qa-body-${issueNumber}.md`;
       writeTemp(tmpPath, bodyText);
       try {
         const subIssueNumber = createFn(issueNumber, `QA: ${acText}`, tmpPath);
         const annotation = buildAnnotation(config.annotationFormat, acText, subIssueNumber);
-        matched.push({ acText, keyword, subIssueNumber, annotation, fillPath });
+        // Placement runs per sub-issue, immediately after creation, so a
+        // failure names the issue it belongs to rather than the batch.
+        const placed = await placeFn({ subIssueNumber, parentBranch });
+        for (const w of placed.warnings) warnings.push(w);
+        matched.push({ acText, keyword, subIssueNumber, annotation, fillPath, placement: placed.placement });
       } finally {
         unlinkTemp(tmpPath);
       }
@@ -334,10 +427,13 @@ function extract({ issueNumber, config, fetchFn, createFn, writeTemp, unlinkTemp
     }
   }
 
-  return { ok: errors.length === 0, issueNumber, matched, skipped, errors };
+  // `ok` tracks creation, not placement. An unplaced sub-issue is a real gate
+  // that is merely harder to reach, so it is a warning; failing the run would
+  // suggest nothing was created when something was.
+  return { ok: errors.length === 0, issueNumber, matched, skipped, errors, warnings };
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.error) {
     process.stderr.write(args.error + '\n');
@@ -345,11 +441,12 @@ function main() {
   }
   try {
     const config = loadConfig();
-    const result = extract({
+    const result = await extract({
       issueNumber: args.issue,
       config,
       fetchFn: (n) => fetchIssue(n),
       createFn: (p, t, b) => createSubIssue(p, t, b),
+      placeFn: (a) => placeSubIssue(a),
       writeTemp: (p, c) => fs.writeFileSync(p, c),
       unlinkTemp: (p) => { try { fs.unlinkSync(p); } catch { /* best-effort */ } },
       dryRun: args.dryRun,
@@ -363,7 +460,12 @@ function main() {
   }
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  main().catch((e) => {
+    process.stderr.write((e && e.message ? e.message : String(e)) + '\n');
+    process.exit(1);
+  });
+}
 
 module.exports = {
   parseArgs,
@@ -375,8 +477,12 @@ module.exports = {
   extract,
   fetchIssue,
   createSubIssue,
+  setSubIssueStatus,
+  placeSubIssue,
+  QA_STATUS_ALIAS,
   deriveFill,
   resolveFill,
   loadFillFile,
-  QA_PLACEHOLDER
+  QA_PLACEHOLDER,
+  DEFAULT_FIXTURES_TEMPLATE
 };

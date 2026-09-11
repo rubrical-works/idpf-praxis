@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Commands
-**Version:** v0.101.0
+**Version:** v0.102.0
 **Module:** Commands (loaded on-demand)
 ## Complete Command Reference (49 commands)
 Authoritative source: `.claude/commands/`. Use `/fw-self-diag` for a live audit.

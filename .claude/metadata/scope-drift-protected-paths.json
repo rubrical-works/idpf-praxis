@@ -1,7 +1,7 @@
 {
   "$schema": "./scope-drift-protected-paths.schema.json",
   "version": 1,
-  "description": "Paths that the Step 4c state-drift gate (#2404) always protects. A sub-issue touching one of these requires the issue body to name the file explicitly (under Files to modify: or in a previously-logged Files Changed section) or carry a `Scope-Override: <reason>` line in the most recent commit message or an issue comment.",
+  "description": "Paths that the Step 4c state-drift gate (#2404) always protects. A sub-issue touching one of these requires the issue body to name the file explicitly under `Files to modify:` / `**Files:**`, or to carry a `Scope-Override: <reason>` line in the most recent commit message or an issue comment. A `### Files Changed` section does NOT satisfy this guard (#2788): Step 4c appends that section from the run's own commits before the gate reads the body, so counting it let a run license its own protected edits — the gate's input derived from its own subject. The union with `### Files Changed` still governs the `outside-declared-scope` violation class, where absorbing growth across passes is the intended #2520 behaviour.",
   "paths": [
     {
       "pattern": "framework-config.json",
@@ -27,5 +27,17 @@
       "pattern": "CHARTER.md",
       "reason": "Project charter; out-of-scope edits drift from the project's stated vision and current focus."
     }
-  ]
+  ],
+  "registrarExemption": {
+    "description": "/work Step 4e runs register-helper.js, which necessarily edits framework-manifest.json and CHARTER.md. Neither is declarable when the issue is written, because the helper being registered does not exist yet. Before #2788 such runs passed only because the appended `### Files Changed` section absorbed them; with that absorption removed from the always-protected guard, this block is what keeps helper-adding runs from halting on paths the framework itself instructs the session to edit. EVERY triggerPattern must match at least one touched path before any exemptPattern applies. The co-occurrence requirement is the entire safeguard: touching a shared helper is ordinary work — #2788's own run edits scope-drift-check.js — so keying on that alone would re-open the hole this block accompanies. register-helper.js always edits constants.js, which ordinary helper work does not. An absent, malformed, or empty block exempts nothing: absence keeps the gate strict, the opposite polarity from a config whose deletion would silently disarm a guard. The exemption suppresses only the always-protected halt; the paths are still reported, and still raise advisory outside-declared-scope violations, so the run says what it did rather than passing silently.",
+    "triggerPatterns": [
+      ".claude/scripts/shared/**/*.js",
+      ".claude/scripts/framework/constants.js"
+    ],
+    "exemptPatterns": [
+      "framework-manifest.json",
+      "CHARTER.md"
+    ],
+    "reason": "Edited by .claude/scripts/framework/register-helper.js during /work Step 4e."
+  }
 }

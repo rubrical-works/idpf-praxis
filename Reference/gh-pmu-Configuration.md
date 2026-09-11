@@ -1,5 +1,5 @@
 # gh-pmu Configuration Reference
-**Version:** v0.101.0
+**Version:** v0.102.0
 **Source:** Reference/gh-pmu-Configuration.md
 **Load on demand** for `.gh-pmu.json` schema, release config, or `gh pmu` CLI operations.
 ## .gh-pmu.json Schema
@@ -12,13 +12,14 @@ defaults:                                     # Applied when none given
 fields:
     status:
         field: Status
-        values: {backlog: Backlog, in_progress: In progress, in_review: In review, done: Done}
+        values: {backlog: Backlog, in_progress: In progress, in_review: In review, qa_required: QA Required, done: Done}
     priority:
         field: Priority
         values: {p0: P0, p1: P1, p2: P2}
 ```
 **Derived:** Repository = `repositories[0]`. Board = `https://github.com/users/{project.owner}/projects/{project.number}/views/1`.
 Use the **alias** (left side) in commands: `gh pmu move 90 --status in_progress`
+**An alias is a mapping, not a definition.** `qa_required: QA Required` names the column to send; the transition fails if the Status field has no `QA Required` option. Add it to the template project before cloning (`Docs/01-Getting-Started/06-Kanban-Template-Setup.md`). Same for any alias added later.
 **Labels vs Project Fields:** labels are issue metadata (`bug`, `enhancement`, `pm-tracked`) set via `gh issue edit --add-label`; project fields are board columns (Status, Priority) set via `gh pmu move [number] --status [value]` and defined under `fields:`.
 ### Issue Assignee — Constant Plus Flag
 **Not a `.gh-pmu.json` setting.** No `defaults.assignee` key exists; adding one has no effect (#2599).

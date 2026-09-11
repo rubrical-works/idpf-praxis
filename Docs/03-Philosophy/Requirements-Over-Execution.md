@@ -121,4 +121,5 @@ Neither bet is wrong. They're bets about different parts of the problem. The str
 **See also:**
 - `Intentional-Friction.md` — Why every STOP boundary exists
 - `Context-Engineering.md` — How IDPF manages context budget
+- `Sequential-vs-Swarm.md` — The other axis: not where to automate, but what shape the execution takes
 - `Proposal/Automated-Workflow-Orchestration-via-Agent-Delegation.md` — Technical proposal for the combined approach

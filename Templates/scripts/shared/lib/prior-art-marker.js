@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the
@@ -10,16 +10,22 @@
  * The sweep itself — surface resolution, term derivation, searching, relevance
  * judgment — is owned by #2514 and performed as generative work by the command
  * specs reading `.claude/metadata/prior-art-sweep.json`. None of it is here.
- * This module answers only three mechanical questions: is a marker present and
- * complete, is this issue old enough to be exempt, and where does the section
- * go in the body.
+ * This module answers mechanical questions only: is a marker present and
+ * complete, is this issue old enough to be exempt, where does the section go
+ * in the body — and, for issue-history matching (#2874), what of a candidate
+ * body counts as evidence and whether a search may have been truncated.
  *
- * Node built-ins only, per the runtime dependency contract for deployed
- * helpers (04-deployment-awareness.md). Marker strings are matched by shape
+ * Node built-ins and sibling framework modules only (`./checkbox-scan.js` for
+ * fence masking, `./review-format.js` for the `**Reviews:** N` footer pattern),
+ * per the runtime dependency contract for deployed helpers
+ * (04-deployment-awareness.md). Marker strings are matched by shape
  * rather than re-read from prior-art-sweep.json so this stays dependency-free;
  * the literal heading is fixed by that file's `bodyFormat.heading` and is
  * asserted against it in tests.
  */
+
+// The review footer this module inserts above, defined once (#2880).
+const { REVIEWS_MARKER_PATTERN } = require('./review-format.js');
 
 const MARKER_HEADING = '**Prior Art:**';
 
@@ -425,13 +431,161 @@ function insertPriorArtSection(body, section) {
 
   // No marker yet — append, keeping it above any trailing Reviews line so the
   // section reads as part of the body rather than after its footer.
-  const reviewsMatch = base.match(/\n\*\*Reviews:\*\*\s*\d+/);
-  if (reviewsMatch) {
-    const at = base.indexOf(reviewsMatch[0]);
+  // The standalone footer line only (#2880): a prose line that merely opens
+  // with a quoted marker is not the footer. Inserting at the newline that ends
+  // the line above keeps the output exactly as the old `\n**Reviews` match gave.
+  const reviews = REVIEWS_MARKER_PATTERN.exec(base);
+  if (reviews && reviews.index > 0) {
+    const at = reviews.index - 1;
     return `${base.slice(0, at)}\n\n${section}${base.slice(at)}`;
   }
 
   return `${base.trimEnd()}\n\n${section}\n`;
+}
+
+// ─── Issue-history evidence matching (#2874) ───
+//
+// Fence masking and the bold-section-header predicate come from the shared
+// scanner rather than being written a third time. checkbox-scan.js requires
+// nothing, so this helper stays inside the runtime dependency contract.
+const { computeFenceMask, isBoldMarker } = require('./checkbox-scan.js');
+
+/**
+ * Sections removed from an issue body before it is matched as prior-art
+ * evidence (#2874).
+ *
+ * The corpus is self-contaminating: every sweep writes a Prior Art section into
+ * the body it swept, and log-changed-files.js appends a Files Changed section,
+ * so a later sweep "found" issues whose only hit was an earlier sweep's record
+ * of its own search terms, or a path the issue merely touched. Each sweep
+ * degraded the precision of the next, with no natural bound.
+ *
+ * Mirrors prior-art-sweep.json `searchSurfaces.issueHistory.excludedSections`
+ * and is pinned to it by test; the heading form is matched at any level, as
+ * classifyMarker recognises it.
+ */
+const EXCLUDED_SECTION_FORMS = [MARKER_HEADING, '## Prior Art', '### Files Changed'];
+
+// Header and terminator are scope-drift-check.js `extractFilesChanged`'s own
+// predicates, so the parser that READS this section as declared scope and the
+// one that REMOVES it cannot disagree about where it ends. Pinned by test.
+const FILES_CHANGED_HEADER = /^###\s+Files Changed\s*$/;
+const isFilesChangedTerminator = (line) => /^##\s/.test(line) || /^###\s/.test(line);
+
+// Derived from the same constants MARKER_LINE uses, so recognition and removal
+// match on one rule. Split in two because the forms end differently.
+const BOLD_MARKER_LINE = new RegExp(`^[ \\t]*${MARKER_HEADING_PATTERN}`);
+const HEADING_MARKER_LINE = new RegExp(`^[ \\t]*(${HEADING_FORM_PATTERN})`);
+
+const ANY_HEADING = /^[ \t]*(#{1,6})[ \t]+\S/;
+// A bold lead-in label: `**Reviews:** 2`, `**Motivation:**`. Wider than
+// isBoldMarker, which requires the bold run to be the whole line.
+const BOLD_LABEL = /^[ \t]*\*\*[^*\n]+:\*\*/;
+
+/**
+ * The terminator for the excluded section `line` opens, or null.
+ *
+ * Each form ends by its own grammar:
+ *   ### Files Changed  next `##`/`###` heading — `**Added:**` sub-headers
+ *                      belong to it, exactly as extractFilesChanged reads it
+ *   ## Prior Art       next heading of the same or higher level, or a
+ *                      whole-line bold header — the rule checkbox-scan.js
+ *                      applies to a heading-form acceptance-criteria section
+ *   **Prior Art:**     next heading of any level, or the next bold label line;
+ *                      a bold label is a peer of the labels around it, and
+ *                      blank lines do not end it, so its entry table goes too
+ *
+ * @param {string} line
+ * @returns {((line: string) => boolean)|null}
+ */
+function excludedSectionTerminator(line) {
+  if (FILES_CHANGED_HEADER.test(line)) return isFilesChangedTerminator;
+
+  const heading = HEADING_MARKER_LINE.exec(line);
+  if (heading) {
+    const level = /#+/.exec(heading[1])[0].length;
+    return (next) => {
+      const h = ANY_HEADING.exec(next);
+      return (h !== null && h[1].length <= level) || isBoldMarker(next);
+    };
+  }
+
+  if (BOLD_MARKER_LINE.test(line)) {
+    return (next) => ANY_HEADING.test(next) || BOLD_LABEL.test(next);
+  }
+
+  return null;
+}
+
+/**
+ * Remove every excluded section from an issue body before evidence matching.
+ *
+ * Applies to issue-history evidence matching ONLY. It never removes a section a
+ * command reads as input — /qa deliberately reads a parent's Files Changed
+ * section as its term source, and does not call this.
+ *
+ * Fence-aware in both directions: a marker quoted inside a fenced code block
+ * opens no section (the #2523 rule — a body that discusses a format does not
+ * carry it), and a heading quoted inside a fence ends none. extractFilesChanged
+ * is fence-blind; the two agree on every body log-changed-files.js writes,
+ * since that section never contains a fence.
+ *
+ * A body with nothing to strip is returned as given; otherwise lines are
+ * rejoined with `\n`, which is all evidence matching needs.
+ *
+ * @param {string} body
+ * @returns {string}
+ */
+function stripExcludedSections(body) {
+  if (typeof body !== 'string' || body === '') return '';
+
+  const lines = body.split(/\r?\n/);
+  const mask = computeFenceMask(lines);
+  const kept = [];
+  let stripped = false;
+  let i = 0;
+
+  while (i < lines.length) {
+    const isTerminator = mask[i] ? null : excludedSectionTerminator(lines[i]);
+    if (!isTerminator) {
+      kept.push(lines[i]);
+      i++;
+      continue;
+    }
+    stripped = true;
+    let j = i + 1;
+    while (j < lines.length && (mask[j] || !isTerminator(lines[j]))) j++;
+    i = j;
+  }
+
+  return stripped ? kept.join('\n') : body;
+}
+
+/**
+ * `gh issue list`'s default `--limit`, per `gh issue list --help`
+ * ("Maximum number of issues to fetch (default 30)"). Applies when a
+ * configured command carries no limit of its own.
+ */
+const GH_ISSUE_LIST_DEFAULT_LIMIT = 30;
+
+/**
+ * Whether an issue search may have been cut off by its own `--limit` (#2874).
+ *
+ * `--limit` truncates with no signal: a search returning exactly the limit is
+ * indistinguishable from one that returned every match. Reporting it complete
+ * is the sweep claiming a search it did not finish — so a full page is reported
+ * as possibly truncated, never as complete.
+ *
+ * @param {number} resultCount - how many issues the search returned
+ * @param {string} command - the invocation that produced them
+ * @returns {boolean}
+ */
+function isPossiblyTruncated(resultCount, command) {
+  if (typeof resultCount !== 'number' || !Number.isFinite(resultCount)) return false;
+  const text = typeof command === 'string' ? command : '';
+  const m = /(?:^|\s)(?:--limit|-L)(?:=|\s+)(\d+)/.exec(text);
+  const limit = m ? Number(m[1]) : GH_ISSUE_LIST_DEFAULT_LIMIT;
+  return resultCount >= limit;
 }
 
 module.exports = {
@@ -439,11 +593,15 @@ module.exports = {
   MARKER_HEADING,
   REVIEW_SWEEP_MODES,
   DEFAULT_REVIEW_SWEEP_MODE,
+  EXCLUDED_SECTION_FORMS,
+  GH_ISSUE_LIST_DEFAULT_LIMIT,
   normalizeReviewSweep,
   decideFlagSweep,
   formatSweepAdvisory,
   classifyMarker,
   isExemptFromSweep,
   decideSweep,
-  insertPriorArtSection
+  insertPriorArtSection,
+  stripExcludedSections,
+  isPossiblyTruncated
 };

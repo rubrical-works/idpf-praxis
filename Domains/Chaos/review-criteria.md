@@ -1,5 +1,11 @@
 **Chaos Engineering Review Criteria**
 **Source:** IDPF-Chaos | **Domain:** Resilience testing, fault injection, failure-mode validation
+**Charter Review Questions**
+- Does the charter describe a distributed system — services, queues, clusters, or replicas — rather than a single process?
+- Do the in-scope items include network boundaries where a partition or timeout is possible?
+- Are availability or recovery expectations stated, so a failure mode can be judged acceptable or not?
+- Does the charter name external dependencies whose failure the project must survive?
+- Is there a stated operational owner who would act on a resilience finding?
 **Proposal Review Questions**
 - Does the proposal identify failure modes that could affect system resilience?
 - Are steady-state metrics defined for measuring normal behavior before fault injection?

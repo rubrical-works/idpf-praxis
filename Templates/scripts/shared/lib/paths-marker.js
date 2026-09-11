@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * paths-marker.js
  *
  * Mechanical half of recording `/paths` application on the proposal issue
@@ -19,14 +19,20 @@
  * already worked. A third insert-or-replace shape would have been a third set
  * of edge cases to get wrong.
  *
- * Node built-ins only, per the runtime dependency contract for deployed helpers
- * (04-deployment-awareness.md) — this file is symlinked into every user project
- * through the `shared/lib` tree.
+ * Node built-ins and one sibling framework module (`./review-format.js`, for the
+ * `**Reviews:** N` footer pattern, #2880) only, per the runtime dependency
+ * contract for deployed helpers (04-deployment-awareness.md) — this file is
+ * symlinked into every user project through the `shared/lib` tree.
  *
  * Explicit non-goal (#2642): no classifier, and no gate that consults the
  * marker. Recording the state and consuming it are separate work; `hasMarker`
  * is not exported for that reason, even though the replace path needs it.
  */
+
+// The review footer this module inserts above, defined once for every reader
+// and locator (#2880) — a sibling framework module, within the runtime
+// dependency contract.
+const { REVIEWS_MARKER_PATTERN } = require('./review-format.js');
 
 const MARKER_HEADING = '**Path Analysis:**';
 
@@ -172,9 +178,12 @@ function applyPathMarker(body, marker) {
     return before + marker + tail;
   }
 
-  const reviewsMatch = base.match(/\n\*\*Reviews:\*\*\s*\d+/);
-  if (reviewsMatch) {
-    const at = base.indexOf(reviewsMatch[0]);
+  // The standalone footer line only (#2880): a prose line that merely opens
+  // with a quoted marker is not the footer. Inserting at the newline that ends
+  // the line above keeps the output exactly as the old `\n**Reviews` match gave.
+  const reviews = REVIEWS_MARKER_PATTERN.exec(base);
+  if (reviews && reviews.index > 0) {
+    const at = reviews.index - 1;
     return `${base.slice(0, at)}\n\n${marker}${base.slice(at)}`;
   }
 

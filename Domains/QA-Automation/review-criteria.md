@@ -1,5 +1,11 @@
 **QA Automation Review Criteria**
 **Source:** IDPF-QA-Automation | **Domain:** UI automation, test coverage, Page Object Model, flaky test management
+**Charter Review Questions**
+- Does the charter name a test framework and a CI pipeline, or is verification left unstated?
+- Are `verificationCommands` (or a single `testCommand`) declared, so the project can state what a green run means?
+- Do the in-scope items include user-facing flows that would justify UI automation rather than unit tests alone?
+- Is a coverage expectation stated, or deliberately not stated?
+- Does the charter identify who maintains the test suite as the project grows?
 **Proposal Review Questions**
 - Does the proposal identify UI flows that require automated test coverage?
 - Are test suite boundaries defined (smoke < 5 min, regression < 60 min)?

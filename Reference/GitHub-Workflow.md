@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.101.0
+**Version:** v0.102.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions.
 ## Project Configuration
@@ -49,6 +49,7 @@ Flags are extracted and appended to the invocation, not left in the title, so no
 | Belongs to a parent issue | `gh pmu sub create <parent> --label qa-required -F .tmp-qa.md` |
 | Stands alone | `gh pmu create --label qa-required -F .tmp-qa.md --status backlog` |
 **Always `gh pmu`, never the bare `gh issue` creation form.** The bare form files an issue that never reaches the project board — invisible to `gh pmu sub list`, epic closure, `/done` sub-issue checks and the `/work` Step 4b QA force-exception. An off-board QA issue satisfies nothing and blocks nothing; it reads as done. Silent and occasional, which is why it survives — nobody notices until an epic will not close.
+**The one exception: a `--target` companion filing (#2775).** `/bug --target <owner/name>` and `/enhancement --target <owner/name>` file into a **companion** repository, and there the bare `gh issue` creation form is **correct** — the local board is precisely what must not be touched. `gh pmu create -R` takes the *repository* from `-R` but the *project* from the local `.gh-pmu.json`, with no override, so it files into the companion and adds the issue to **this** repo's board (observed 2026-09-04: px-manager#1155 landed on Project-Varia). **Membership is redirected, not abandoned** — `.claude/scripts/shared/file-companion-issue.js` adds it to the *companion's* board explicitly, resolving field and option ids from that board and reporting anything unresolvable as unset rather than guessing. Both commands delegate; neither re-derives the sequence.
 **Closure contract.** A `qa-required` issue is a **gate**, not a note. Its parent AC stays unchecked as `- [ ] … → QA: #N` until the QA issue closes; the parent reaches `done` only once it has. `--force` past such a line is permitted **only** because the line names the sub-issue that still owns the check — the gate moved, it did not disappear. Closing the parent while its QA issue is open defeats it.
 **Label mandatory.** `qa-required` is what makes the issue recognisable as a gate to every consumer looking for one; unlabelled, it is an ordinary issue nobody treats as blocking.
 **Review Command Routing:** `review` with issue reference (`#N`) routes to `/review-issue`:
@@ -65,6 +66,8 @@ Flags are extracted and appended to the invocation, not left in the title, so no
 - **No flag-shaped token is ever discarded.** Unrecognized flags pass through; the command reports them. Silent truncation is never correct — a dropped flag narrows the result with nothing for the user to notice.
 - **Recognized flags are data,** per command, in `.claude/metadata/trigger-flag-allowlist.json`. Adding one is a data edit, not a hook edit.
 - **Declaration governs value attachment only.** A recognized flag may claim the next token as its value (`--with security`); an unrecognized one may not, so trailing prose is not swallowed into args.
+- **How much it claims is declared per flag (#2770).** An entry is a plain flag string — one token, the default and the meaning of every pre-#2770 entry — or an object adding `"attach": "rest-of-line"`, claiming every remaining token so a flag can take prose. `/proposal --update` is the motivating case; it previously bound only the first word and returned the rest to the title. **Per flag, not a mode switch:** #2767 rejected a global variant because it would change attachment for every command sharing the convention to suit one flag — correct, so the declaration carries it and every other flag is untouched.
+- **Rest-of-line stops at the next flag-shaped token.** `--update rewrite the intro --assignee octocat` binds `rewrite the intro`, leaving `--assignee` its own value. This keeps the no-flag-discarded rule true: absorbing a following flag into prose discards it silently — the same failure one level down, at the value layer. `--flag=value` carries its own value and never claims following tokens, whatever the attachment.
 **Epic Detection:** Epic label takes precedence. Always check labels before routing. Never skip per-sub-issue STOP boundary.
 ## Reopen Workflows
 **Reopening Closed Issues:** Trigger: "reopen issue #N", "reopen #N", "open issue #N again"

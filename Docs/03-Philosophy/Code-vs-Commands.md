@@ -1,6 +1,7 @@
 # Code vs Commands: Two Approaches to LLM Orchestration
 
 **Date:** 2026-02-27
+**Counts verified:** 2026-09-10
 **Topic:** How IDPF's preamble pattern compares to Cloudflare's codemode thesis, and why the answer isn't either/or
 
 ---
@@ -103,15 +104,17 @@ The LLM doesn't reason about *how* to gather this data. It reads the result and 
 
 IDPF's JavaScript layer is not incidental. It is foundational:
 
-| Metric | Count |
-|--------|-------|
-| JavaScript files in `.claude/scripts/` | 50 |
-| Lines of JavaScript | ~11,000 |
-| Commands that invoke JavaScript | 26 of 48 (54%) |
-| JSON metadata registries | 17 |
-| Library modules (`.claude/scripts/shared/lib/`) | 8 |
+| Metric | Count (2026-09-10) | At first writing (2026-02-27) |
+|--------|-------|-------|
+| JavaScript files in `.claude/scripts/` | 165 | 50 |
+| Lines of JavaScript | ~50,600 | ~11,000 |
+| Commands that invoke JavaScript | 37 of 56 (66%) | 26 of 48 (54%) |
+| JSON metadata registries | 71 | 17 |
+| Library modules (`.claude/scripts/shared/lib/`) | 65 | 8 |
 
-The most JavaScript-heavy commands — `/prepare-release` (6+ invocations), `/ci` (8+), `/minimize-files` (17+) — are the most mechanically complex. The commands with minimal JavaScript — `/bug`, `/enhancement`, `/proposal` — are the simplest, doing little more than creating a GitHub issue.
+The second column is kept deliberately. In six months the script layer grew more than threefold and the metadata layer more than fourfold, while the command count grew by 17%. That divergence is the thesis of this document arriving as measurement rather than assertion: as the framework matured, the work moved *out* of the markdown the model reads and *into* code it executes and data it queries.
+
+The most JavaScript-heavy commands — `/prepare-release`, `/ci`, `/fw-minimize-files` — are the most mechanically complex. The commands with minimal JavaScript — `/bug`, `/enhancement`, `/proposal` — are the simplest, doing little more than creating a GitHub issue.
 
 This distribution is not accidental. It reflects a principle: **the more deterministic the work, the more it belongs in code, not in the LLM's reasoning loop.**
 
@@ -241,7 +244,7 @@ The frameworks that mature will likely end up with all three, applied to differe
 
 4. **The convergence point is a hybrid** where pre-built code handles known workflows, generated code handles ad-hoc operations, and LLM reasoning handles judgment — all speaking the same JSON envelope contract.
 
-5. **54% of IDPF commands already invoke JavaScript.** The framework has organically arrived at the conclusion that code orchestration beats LLM reasoning for deterministic work. The open question is whether to extend that pattern to LLM-authored code for the remaining ad-hoc cases.
+5. **66% of IDPF commands already invoke JavaScript, up from 54% six months ago.** The framework has organically arrived at the conclusion that code orchestration beats LLM reasoning for deterministic work, and the trend has accelerated rather than plateaued. The open question is whether to extend that pattern to LLM-authored code for the remaining ad-hoc cases.
 
 ---
 

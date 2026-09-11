@@ -39,6 +39,35 @@
           }
         }
       }
+    },
+    "registrarExemption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "triggerPatterns", "exemptPatterns", "reason"],
+      "description": "Exempts the paths /work Step 4e's register-helper.js necessarily edits from the always-protected halt (#2788), but ONLY on a run carrying the registrar's full signature. Optional: an absent block exempts nothing, which is the strict direction — absence must never widen a gate.",
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "triggerPatterns": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Glob patterns identifying a registrar run. EVERY pattern must match at least one touched path before any exemptPattern applies. minItems is 2 deliberately: a single pattern cannot express a co-occurrence signature, and any one of these patterns alone describes ordinary work."
+        },
+        "exemptPatterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Always-protected paths exempt from the halt on a registrar run. Still reported, and still raise advisory outside-declared-scope violations."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why these paths are exempt. Surfaced in the gate report."
+        }
+      }
     }
   }
 }

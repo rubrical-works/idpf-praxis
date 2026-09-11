@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "x-session.schema.json",
+  "title": "Cross-session peer messaging levers",
+  "description": "Standalone declaration of the cross-session messaging object (#2774, #2783). Governs .claude/x-session.json in a project, and the legacy framework-config.json crossSessionMessaging key until a project migrates. TWO DEFAULTS LIVE HERE AND THEY DISAGREE ON PURPOSE. The READ default is the resolver rule below: an absent lever resolves ENABLED, at every level, so a file only ever records what was turned OFF and a lever added by a future release is on by default in every existing project with no edit. The INSTALL default is what Praxis Hub Manager writes when it CREATES the file, and it is carried per lever as x-installDefault, never as a JSON Schema default — generic tooling reads default as the read default, which for noticeNarration is the exact opposite of the install value. Collapsing the two would either make every project that never wrote the file go quiet, or make the installer write a loud default nobody asked for. Project-level governance of cross-session peer messaging (#2702). ABSENCE MEANS FULLY ENABLED, and that rule holds at every level: an omitted key inside the object is enabled too, so a config only ever records what was turned OFF and a group added by a future release is on by default in every existing project without a config edit. Read through .claude/scripts/shared/lib/cross-session-config.js resolveCrossSessionConfig() — no consumer re-derives these defaults inline, because a second copy of the absence rule is how the two drift. It lives here rather than in .claude/metadata/ because that directory is a read-only hub junction in PHM-deployed projects, so a deployed project could not otherwise disable a poller running inside it; framework-config.json is the only project-writable surface, the same reasoning that placed reviewSweep here (#2564). Written by /x-session-config. This governs EMISSION with exactly one deliberate exception, noticeNarration (#2735), which is RECEIVE-side: it sets how verbosely this session narrates an announcement it receives. That exception lives here rather than in a sibling top-level key so it inherits one resolver, one absence rule and the --on/--off idiom; a parallel key would have re-implemented all three, and a second copy of the absence rule is what this object exists to prevent. Recorded rather than hidden, because a reader who assumes the emission-only framing still holds universally will look for a receive-side setting somewhere else and not find one. Emission remains true of every other lever: whether a dispatched message is accepted, held, declined or left to expire is the receiving session's permission-mode decision and is undetectable from the sender (#2674), so no setting here can promise delivery.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Master switch. False disables every other lever below, including discovery and the upstream monitor.",
+      "x-installDefault": true
+    },
+    "discovery": {
+      "type": "boolean",
+      "description": "Governs peers-check.js and the startup 'Peers:' row. False IMPLIES all three groups off — announcing to peers that were never discovered is not meaningful — and the resolver reports that implication rather than silently zeroing them, because the user set one key and got four effects. False still emits a 'Peers:' row saying discovery is off by config: rule 03-startup.md already assigns 'no row' the meaning 'no peers found', and reusing it for 'not looked' would make a configured project indistinguishable from a lone one.",
+      "x-installDefault": true
+    },
+    "notices": {
+      "type": "boolean",
+      "description": "Governs the dispatch-caveat and skip-reason lines printed once per announcement (#2672, #2674). False suppresses the printed notice only; dispatch itself is unchanged.",
+      "x-installDefault": true
+    },
+    "upstreamMonitor": {
+      "type": "boolean",
+      "description": "Governs whether the background upstream-push poller arms (#2667). The monitor's scheduling values — intervals, backoff, push window — stay in .claude/metadata/upstream-monitor.json; only the whether-it-arms decision is a project decision. False makes the monitor report the reason once, not once per poll.",
+      "x-installDefault": true
+    },
+    "noticeNarration": {
+      "type": "boolean",
+      "description": "The one RECEIVE-side lever (#2735). Governs how verbosely this session narrates an inbound peer announcement. ABSENT OR true IS TODAY BEHAVIOUR (verbose): the receiving session may expand a one-line announcement into issue lookup, likely-files enumeration and collision-surface analysis. false is quiet: the one-line acknowledgement is KEPT, the surrounding commentary is not. Polarity is load-bearing — a lever named quietNotices would invert the absence rule and silently make every project that never wrote this object go quiet. Not implied by discovery:false, which reasons about announcing TO undiscovered peers and says nothing about narrating what is RECEIVED; it IS forced off by enabled:false. Distinct from notices, which suppresses sender-side dispatch caveats — a different axis, not a stronger version of the same one. Written by /x-session-config --quiet / --loud.",
+      "x-installDefault": false
+    },
+    "groups": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-command event groups. Groups rather than per-event toggles because peer-announce.js guarantees every event 3 (push-started) is followed by exactly one terminal event (4 ci-terminal or 5 push-rejected). Per-event toggles would make 'push-started enabled, ci-terminal disabled' expressible in valid config, leaving a peer waiting forever for a message that will never arrive. Grouping makes that combination UNREPRESENTABLE, which is stronger than validating against it. The groups are also the emitting commands, so the setting a user reasons about is the setting that exists.",
+      "properties": {
+        "work": {
+          "type": "boolean",
+          "description": "Events 1 work-started and 2 work-completed, emitted by /work Step 3 and Step 6 (#2662).",
+          "x-installDefault": true
+        },
+        "push": {
+          "type": "boolean",
+          "description": "Events 3 push-started, 4 ci-terminal and 5 push-rejected, emitted by /done Step 2 and Step 3 (#2663). Governed as one unit — see the groups description.",
+          "x-installDefault": true
+        },
+        "review": {
+          "type": "boolean",
+          "description": "Events 6 review-started and 7 review-resolved, emitted by /review-issue and /resolve-review (#2695).",
+          "x-installDefault": true
+        }
+      }
+    }
+  }
+}

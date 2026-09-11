@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trigger-patterns-schema.json",
+  "title": "Trigger Patterns Schema",
+  "description": "Schema for .claude/metadata/trigger-patterns.json — the phrase patterns workflow-trigger.js recognizes on UserPromptSubmit. This file carries PATTERNS ONLY. The relationships between triggers — a co-required issue reference, and the mutual exclusions that stop `work #42` routing as an analysis request — stay in the hook, because expressing them here would need an evaluation order and a resolver for a three-entry dependency graph in a hook that must never throw. See Construction/Design-Decisions/2026-09-07-trigger-patterns-composition-stays-in-code.md.",
+  "type": "object",
+  "required": ["analysisKeywords", "commandRequests", "patterns"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": {
+      "type": "integer",
+      "description": "Schema revision of this data file",
+      "minimum": 1
+    },
+    "_meta": {
+      "type": "object",
+      "description": "Human-facing provenance. Never read by the hook.",
+      "additionalProperties": true
+    },
+    "analysisKeywords": {
+      "type": "array",
+      "description": "Keywords that, combined with an issue reference, mark a prompt as analysis rather than work. Matched as SUBSTRINGS of the lowercased prompt, not as whole words — so 'check' matches inside 'checklist'. That looseness is pre-existing and deliberate for a read-only trigger; it is also why the hook excludes competing triggers explicitly rather than relying on these keywords being disjoint.",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "commandRequests": {
+      "type": "array",
+      "description": "Exact prompts (lowercased, --refresh stripped) that request the command help surface rather than routing to a command.",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "patterns": {
+      "type": "object",
+      "description": "Named regular expressions. A name present here with an unparseable source is a broken pattern; a name ABSENT is a trigger the hook cannot evaluate at all, and the hook treats that as 'this trigger does not fire' rather than substituting a built-in. Keeping no fallback copy in code is what stops the two sources drifting.",
+      "required": [
+        "workflowTriggerPrefix",
+        "workTrigger",
+        "doneTrigger",
+        "reviewAtStart",
+        "strictIssueRef",
+        "looseIssueRef",
+        "approvalVerb",
+        "testPlanRef",
+        "refreshFlag"
+      ],
+      "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["source"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Regular expression source, as accepted by the RegExp constructor. Written without delimiters."
+          },
+          "flags": {
+            "type": "string",
+            "description": "Regular expression flags. Omitted means no flags — distinct from an empty string only in intent, and the hook treats both identically.",
+            "pattern": "^[dgimsuvy]*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What this pattern is for, and where its looseness or strictness is load-bearing."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

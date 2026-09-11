@@ -15,10 +15,12 @@
       "push-rejected",
       "review-started",
       "review-resolved",
-      "review-passed"
+      "review-passed",
+      "review-findings",
+      "fixtures-provisioned"
     ],
     "gitPollFallbackSeconds": 1200,
-    "note": "The nine events are what peer-announce.js broadcasts to every addressable peer, so a discoverable idle session receives them with no new transport. Direct SendMessage between two OTHER sessions is point-to-point and unobservable — the monitor sees only what is addressed to it, and must say so rather than implying wider coverage."
+    "note": "The eleven events are what peer-announce.js broadcasts to every addressable peer, so a discoverable idle session receives them with no new transport. Direct SendMessage between two OTHER sessions is point-to-point and unobservable — the monitor sees only what is addressed to it, and must say so rather than implying wider coverage. This list is enumerated rather than read from the EVENTS object, so a new event is invisible to the monitor until added here (#2781)."
   },
   "findings": [
     {
@@ -55,6 +57,13 @@
       "severity": "filable",
       "autoCreatable": true,
       "rationale": "A failing test on a closed issue is unambiguous and nobody owns it — exactly the gap an unattended observer is positioned to catch."
+    },
+    {
+      "kind": "opener-while-previous-unmatched",
+      "description": "A peer sends an opener — review-started, review-resolved or work-started — while its previous opener of the same kind is still unmatched by that opener's closer.",
+      "severity": "report",
+      "autoCreatable": false,
+      "rationale": "The front-loaded batch #2879 observed: every opener of a multi-issue run sent before any verdict. Nothing was lost, so it is not a defect to file, but while it lasts a dropped closer looks exactly like a queued one — the ambiguity #2781 removed. Rule 09 now defines when a turn begins so it should not recur; reporting it makes a recurrence visible instead of relying on someone noticing it by eye."
     }
   ],
   "autoCreate": {
@@ -62,7 +71,10 @@
     "label": "auto-filed",
     "dedupe": {
       "windowMinutes": 720,
-      "fingerprintFields": ["kind", "subject"],
+      "fingerprintFields": [
+        "kind",
+        "subject"
+      ],
       "rationale": "A monitor observing a standing condition re-derives the same finding every tick, so without dedupe one condition becomes one issue per tick. Detail is deliberately excluded from the fingerprint: it is the part most likely to be reworded between ticks while the finding is the same one, and including it would defeat dedupe on exactly the findings dedupe exists for. Twelve hours is long enough to cover an unattended overnight run and short enough that a genuinely recurring condition is re-reported the next day."
     },
     "rateLimit": {

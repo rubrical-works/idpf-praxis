@@ -1,12 +1,12 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 description: Configure cross-session peer messaging for this project (project)
 argument-hint: "[--on <levers>] [--off <levers>] [--quiet] [--loud] [--show] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
 # /x-session-config
-Edit the `crossSessionMessaging` object in `framework-config.json` — project-level governance of cross-session peer messaging (#2702).
+Edit the cross-session peer messaging levers (#2702). They live in `.claude/x-session.json`, gitignored per-developer state since #2774; the deprecated `crossSessionMessaging` key in `framework-config.json` is still read as a fallback and moved across on the next write.
 **MANAGED, not EXTENSIBLE:** a config editor has no per-project customization surface, so it is hub-owned and symlinked. No `USER-EXTENSION` blocks.
 ## Arguments
 | Argument | Required | Description |
@@ -30,8 +30,9 @@ node .claude/scripts/shared/x-session-config.js [--on <levers>] [--off <levers>]
 Report the envelope:
 - `--help` → the script prints usage text, not JSON. Relay it as-is and **STOP**.
 - `ok: true` → report `summary`, every `implications` entry **verbatim**, and `changed` (or that nothing changed). **STOP**.
-- `ok: false` → report every `errors` entry verbatim and **STOP**. Nothing was written; do **not** retry, and do **not** write `framework-config.json` by hand.
+- `ok: false` → report every `errors` entry verbatim and **STOP**. Nothing was written — neither file; do **not** retry, and do **not** edit either by hand.
 Takes effect: `discovery` and `upstreamMonitor` in new sessions, groups on the next `/work`, `/done`, `/review-issue` or `/resolve-review`.
+**`source: environment` → say so, and say the config was not changed (#2705).** `IDPF_X_SESSION` outranks the file, so reporting only the written levers tells the user messaging is on while nothing this session emits leaves it. The `summary` line already carries the variable, its value, and *not written to framework-config.json* — relay it verbatim, never paraphrased into "messaging is disabled".
 **No task list.** One deterministic step; `07-task-creation-timing.md` permits upfront task creation for unrouted commands, it does not require it. Creating and pruning tasks around a single script call is pure overhead.
 **Do not re-implement the helper.** Parsing, validation, conflict detection, apply and write all live in the script. Re-deriving any in prose is what this rebuild exists to stop — the write was previously re-authored per invocation, which is how the `write(cwd, config)` / `validate(config, cwd)` argument reversal was hit live.
 ## What it governs
@@ -46,6 +47,25 @@ An **absent** object still resolves to fully enabled at every level — the reso
 | `groups.work` | `/work` events 1 `work-started`, 2 `work-completed` |
 | `groups.push` | `/done` events 3 `push-started`, 4 `ci-terminal`, 5 `push-rejected` |
 | `groups.review` | `/review-issue` event 6 `review-started`, `/resolve-review` event 7 `review-resolved` |
+### Where the settings live — `.claude/x-session.json` (#2774)
+The levers are **not** in `framework-config.json` any more; they live in `.claude/x-session.json`, **gitignored**. How loud one developer wants inbound announcements is a per-developer preference, not team policy, and `framework-config.json` is committed team state six other commands rewrite — so a personal setting there either landed in the team's history or became a permanent local diff.
+**This command creates the file when absent**, and an absent `framework-config.json` no longer refuses the run: the *owns one key, not the file* rule was about `framework-config.json`. It owns the new file outright.
+**The one-shot move.** First write in a project still carrying `crossSessionMessaging` carries the values across and strips the key. **New file written first, key stripped after** — the reverse would delete settings and fail to replace them. `migrated: true` on that run. A failed strip is reported, **not** fatal: the levers are written, and failing there reports a write that did happen as a run that did not.
+**Reading falls back, and says when it did.** New file first, then the legacy key; the new file wins **outright** — never merged, because a half-migrated project must not resolve to a blend of two files nobody wrote. A run that read the legacy location says so in `implications`; relay it.
+`--show` reports `source`: `environment`, `x-session-json`, `project-config` (legacy) or `default`.
+### The session layer above all of it — `IDPF_X_SESSION` (#2705)
+Every key above is **project** state: git-tracked, shared by every session in the directory. This is the **session** layer, and it sits above them:
+```
+IDPF_X_SESSION  >  framework-config.json crossSessionMessaging  >  enabled by default
+```
+**All-or-nothing.** A recognised off-value resolves exactly as `enabled: false` — discovery, notices, upstream monitor, narration, all three groups. It accepts no lever list — per-lever tuning stays a project decision via `--off <levers>`.
+**Only `off`, `0` and `false` suppress**, case-insensitive after trimming; empty or whitespace-only counts as **absent**. **Anything else leaves messaging enabled and is reported as unrecognised** — same polarity as `tmpCleanup`, opposite to `verificationMode`. For a gate, failing an unknown value into strictness is safe; for a messaging opt-out the analogous "safe" direction is silence, and a typo that silently mutes a session is undetectable by anyone, dispatch already being invisible from the sending side (#2674). A typo must leave you audible and told.
+**This command never writes it — a guarantee, not an omission.** The override is session-scoped; `framework-config.json` is project-scoped and committed. So `run()` derives what it **writes** from the config resolved *without* the env layer, and what this **session** does from the config resolved *with* it. The two views are named `written` and `effective`; under an active override they always differ.
+| Envelope field | View | Answers |
+|---|---|---|
+| `object` | `written` | what the project file now declares |
+| `summary`, `implications`, `source`, `envOverride` | `effective` | what this session will actually do |
+Reporting either alone is false under an override: `object` alone says messaging is on while nothing leaves the session; `summary` alone says off while the file says otherwise, sending the next reader to change a key that is already correct. **Report `summary` and every `implications` entry verbatim** — that is where the variable is named and where the reader is told the value was **not** written to `framework-config.json`.
 ## Recorded decisions
 The part a script cannot carry; each exists because the alternative was tried.
 > **Groups, not per-event toggles.** Every event 3 is followed by exactly one terminal event. Per-event toggles would make "push-started on, ci-terminal off" valid config — a peer waiting forever for a message that never arrives. Grouping makes that **unrepresentable**.

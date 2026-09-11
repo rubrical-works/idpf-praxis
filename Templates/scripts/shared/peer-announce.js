@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *
@@ -52,10 +52,26 @@ const EVENTS = Object.freeze({
   // markers that /work Step 3 Review-State Gate reads before it starts.
   REVIEW_STARTED: 'review-started',
   REVIEW_RESOLVED: 'review-resolved',
-  // The review half's only CLOSER (#2722). The two events above are
-  // non-terminal on purpose and stay that way; this one describes the one
-  // review outcome that is settled rather than open-ended.
+  // The review half's only TERMINAL closer (#2722). `review-started` and
+  // `review-resolved` are non-terminal on purpose and stay that way; this one
+  // describes the one review outcome that is settled rather than open-ended.
   REVIEW_PASSED: 'review-passed',
+  // The other closer for `review-started`, and deliberately NOT terminal
+  // (#2781). Every review ends `reviewed` or `pending`, and until this event
+  // the second ending emitted nothing at all — so a peer that heard a review
+  // begin heard silence indefinitely, in a vocabulary where silence already
+  // means three incompatible things (#2674). Observed three times in one
+  // /hall-monitor session, on #2777, #2769 and #2774.
+  //
+  // #2722 declined this and its reason is ANSWERED, not overridden: "adding
+  // one would assert a completeness the sender cannot have." True of a
+  // TERMINAL pending event; untrue of a non-terminal one. Closing an opener
+  // and promising what follows are separate axes — #2716 already separated
+  // them when it moved `armed` out of the terminal outcomes so a follow-up
+  // could come. The sender knows the review finished and found something;
+  // whether resolution follows is left open, which is exactly #2722's point
+  // about `pending` being open-ended, preserved rather than contradicted.
+  REVIEW_FINDINGS: 'review-findings',
   // The CI half's real closer (#2716). Before this, the outcome reached
   // exactly ONE session — the one that armed the watch, via its own
   // background-task notification — while every other session in the working
@@ -70,6 +86,15 @@ const EVENTS = Object.freeze({
   // is the ARMING SESSION, which is back in a command context — with
   // `SendMessage` available — when its background task completes.
   CI_RESOLVED: 'ci-resolved',
+  // Scratch board fixtures exist (#2827). /qa outcome 3 can provision the
+  // issues a manual check declares under `### Fixtures`, behind consent, and
+  // then hand off to /work on them. Between those two moments a peer in the
+  // same working directory sees a fresh `ready` epic with unreviewed children
+  // — exactly what a session looking for work would pick up. The event names
+  // the numbers so a receiver leaves them alone. Non-terminal: a teardown
+  // follows on PASS, or a FAIL leaves them standing as the reproduction, and
+  // the sender cannot promise which.
+  FIXTURES_PROVISIONED: 'fixtures-provisioned',
 });
 
 /**
@@ -181,7 +206,58 @@ function commitLabel(entry) {
  * epic exists to prevent. The zero case gets its own sentence rather than a
  * count of zero appended to the same one.
  */
-function formatWorkCompleted({ issues, commits }) {
+/**
+ * THE VERIFICATION SEAM (#2790). Injected, because this file may not spawn.
+ *
+ * Observed live: a `work-completed` named `0a08fd7f` — not a current object,
+ * not a reflog entry, not dangling, so never a commit in that repository at
+ * all — while the real second commit for the same issue (`e3ea5f02`) went
+ * unnamed. The two share no prefix, so a transcription typo does not explain
+ * it. A model-composed list does, and this helper had no means to falsify one:
+ * `formatWorkCompleted` rendered whatever array it was handed.
+ *
+ * The obvious fix — check each sha against the object store here — collides
+ * with the documented property at the top of this file: no spawn, and no path
+ * that can throw into the sequence that called it. An advisory channel that
+ * can fail a command has become a gate. So the check is a PREDICATE THE CALLER
+ * SUPPLIES, and the spawn stays in `announce.js`, which is allowed one.
+ *
+ * Three outcomes, and they must stay distinguishable:
+ *   - no predicate       -> `verified: false`. Wording unchanged, so a direct
+ *                           caller sees no new prose; the envelope says the
+ *                           claim is unchecked, which is what an auditor reads.
+ *   - predicate threw    -> same as no predicate. A caller bug must not reach
+ *                           the STOP sequence, and must not silently delete
+ *                           identifiers either.
+ *   - predicate answered -> `verified: true`, and anything it rejected is
+ *                           NAMED IN THE ENVELOPE but not asserted in the text.
+ *
+ * Dropping an identifier silently would reproduce the defect one level along:
+ * a peer cannot distinguish "there was one commit" from "there were two and we
+ * declined to name one". So the sentence says the omission happened.
+ */
+function partitionCommits(list, verifyCommit) {
+  const labels = list.map(commitLabel).filter(Boolean);
+  if (typeof verifyCommit !== 'function') {
+    return { verified: false, named: labels, unresolved: [] };
+  }
+  const named = [];
+  const unresolved = [];
+  try {
+    for (const label of labels) {
+      if (verifyCommit(label)) named.push(label);
+      else unresolved.push(label);
+    }
+  } catch {
+    // Unverified, not unnamed. A predicate that throws tells us nothing about
+    // the shas, so falling back to "name none" would turn a caller bug into a
+    // silently emptied announcement — #2671 by another route.
+    return { verified: false, named: labels, unresolved: [] };
+  }
+  return { verified: true, named, unresolved };
+}
+
+function formatWorkCompleted({ issues, commits, verifyCommit, commitPartition }) {
   const list = Array.isArray(commits) ? commits : [];
   const subject = describeIssues(issues);
 
@@ -189,17 +265,28 @@ function formatWorkCompleted({ issues, commits }) {
     return `Finished on ${subject} with no commits — nothing landed in this working directory.`;
   }
 
-  const shas = list.map(commitLabel).filter(Boolean).join(', ');
+  const { named, unresolved } = commitPartition || partitionCommits(list, verifyCommit);
   const plural = list.length === 1 ? 'commit' : 'commits';
+  const head = `Finished on ${subject} — ${list.length} ${plural} in this working directory`;
 
   // A count in front of an empty list is the #2671 defect verbatim: the
   // sentence ended in ": ." and named nothing. If no entry yields an
-  // identifier, say that rather than trailing off.
-  if (!shas) {
-    return `Finished on ${subject} — ${list.length} ${plural} in this working directory (commit identifiers unavailable).`;
+  // identifier, say that rather than trailing off. Two distinct causes now
+  // land here and they are NOT the same fact: nothing parseable was handed in,
+  // versus everything handed in failed to resolve against the object store.
+  if (named.length === 0) {
+    if (unresolved.length > 0) {
+      return `${head}, but no identifier resolved in this repository; none is named.`;
+    }
+    return `${head} (commit identifiers unavailable).`;
   }
 
-  return `Finished on ${subject} — ${list.length} ${plural} in this working directory: ${shas}.`;
+  const body = `${head}: ${named.join(', ')}.`;
+  if (unresolved.length === 0) return body;
+
+  const n = unresolved.length;
+  return `${body} ${n} further ${n === 1 ? 'identifier' : 'identifiers'} did not resolve`
+    + ` in this repository and ${n === 1 ? 'is' : 'are'} not named.`;
 }
 
 /**
@@ -232,17 +319,39 @@ function formatReviewResolved({ issues }) {
  * Terminal, and it SAYS so. A `terminal: true` flag no reader of the message
  * ever sees is not a closer; the sentence is what lets a peer stop waiting.
  *
- * There is deliberately NO counterpart for the `pending` outcome. `pending`
- * genuinely is open-ended — it may be followed by /resolve-review, by
- * abandonment, or by nothing — which is exactly the case the non-terminal
- * wording above was written for. Adding one would assert a completeness the
- * sender cannot have.
+ * The `pending` counterpart is `formatReviewFindings` below, added by #2781.
+ * It is NOT terminal, which is what reconciles it with the paragraph this
+ * replaces: `pending` genuinely is open-ended — /resolve-review, abandonment
+ * or nothing may follow — so its announcement closes the `review-started`
+ * opener without claiming anything about what comes next.
  *
  * States, never instructs: availability is a fact about the issue, not a
  * task handed to the receiver. This event confers no claim and no ownership.
  */
 function formatReviewPassed({ issues }) {
   return `Review passed on ${describeIssues(issues)} — Ready for work; available to be picked up in this working directory. No further announcement will follow.`;
+}
+
+/**
+ * The pending verdict (#2781). Closes `review-started`; promises nothing.
+ *
+ * Wording carries three properties, each load-bearing:
+ *
+ *  - It states the review FINISHED, which is what closes the opener.
+ *  - It states findings are UNRESOLVED, the fact worth sending: `/work`'s
+ *    Step 3 Review-State Gate halts an unattended `--nonstop` run on exactly
+ *    this state, so a peer that cannot learn the verdict cannot anticipate
+ *    the halt.
+ *  - It does NOT carry the "No further announcement will follow" sentence
+ *    every terminal payload ends with. That omission is the whole of the
+ *    #2722 reconciliation: resolution may follow, and claiming otherwise
+ *    would be the completeness the sender cannot have.
+ *
+ * States, never instructs: no second-person direction, no task handed over.
+ * The receiver is told what the board now says, not what to do about it.
+ */
+function formatReviewFindings({ issues }) {
+  return `Review finished on ${describeIssues(issues)} — findings unresolved; the issue is not ready to be picked up. A resolution cycle may or may not follow.`;
 }
 
 function formatPushStarted({ issues }) {
@@ -379,6 +488,33 @@ function formatPushRejected({ issues }) {
   return `Correction: ${describeIssues(issues)} did NOT land — the push was rejected non-fast-forward. The commits remain local; nothing reached the remote.`;
 }
 
+/**
+ * Scratch fixtures on the board (#2827). States three facts a peer needs to
+ * not act on them: which numbers, that they are scratch, and that a /work run
+ * on them is expected from the provisioning session. It instructs only in the
+ * negative — "do not pick them up" — because that is the one action a peer
+ * could take that damages the check.
+ */
+function formatFixturesProvisioned({ issues, fixtures }) {
+  const qa = describeIssues(issues);
+  const numbers = fixtures.numbers.map((n) => `#${n}`);
+  let set;
+  let target;
+  if (fixtures.shape === 'tree' && Number.isFinite(Number(fixtures.root))) {
+    const children = numbers.filter((n) => n !== `#${fixtures.root}`);
+    set = children.length
+      ? `#${fixtures.root} with sub-issues ${children.join(', ')}`
+      : `#${fixtures.root}`;
+    target = `#${fixtures.root}`;
+  } else {
+    set = `${numbers.join(', ')} (a selection)`;
+    target = numbers.join(' ');
+  }
+  return `Scratch fixtures provisioned for QA ${qa} in this working directory: ${set}. `
+    + `Not real work items — do not pick them up. A /work run on ${target} is expected next from the session that created them; `
+    + '/qa tears them down once the check is recorded.';
+}
+
 const FORMATTERS = Object.freeze({
   [EVENTS.WORK_STARTED]: formatWorkStarted,
   [EVENTS.WORK_COMPLETED]: formatWorkCompleted,
@@ -389,15 +525,23 @@ const FORMATTERS = Object.freeze({
   [EVENTS.REVIEW_STARTED]: formatReviewStarted,
   [EVENTS.REVIEW_RESOLVED]: formatReviewResolved,
   [EVENTS.REVIEW_PASSED]: formatReviewPassed,
+  [EVENTS.REVIEW_FINDINGS]: formatReviewFindings,
+  [EVENTS.FIXTURES_PROVISIONED]: formatFixturesProvisioned,
 });
 
 /**
  * Events after which no peer should still be waiting.
  *
- * REVIEW_PASSED joins the CI/push terminals; REVIEW_STARTED and
- * REVIEW_RESOLVED deliberately do not (#2722). The asymmetry is the feature:
- * making all three review events agree would delete the only closer the
- * review half has.
+ * REVIEW_PASSED joins the CI/push terminals; REVIEW_STARTED, REVIEW_RESOLVED
+ * and REVIEW_FINDINGS deliberately do not (#2722, #2781). The asymmetry is
+ * the feature: making the review events agree would delete the only terminal
+ * closer the review half has.
+ *
+ * REVIEW_FINDINGS is the case that shows membership here is about FINALITY,
+ * not about closing an opener (#2781). It closes `review-started` exactly as
+ * REVIEW_PASSED does, and is absent from this set because a resolution cycle
+ * may follow it. A future edit adding it here would re-assert the
+ * completeness #2722 correctly refused.
  */
 // CI_TERMINAL remains a member because two of its four outcomes are still
 // terminal; the per-outcome `terminal` flag in TERMINAL_OUTCOMES is what
@@ -580,14 +724,31 @@ function buildAnnouncement(options) {
       }
     }
 
+    // FIXTURES_PROVISIONED without numbers is nothing a peer can act on: the
+    // whole content of the event is which issues to leave alone (#2827).
+    if (event === EVENTS.FIXTURES_PROVISIONED) {
+      const f = options.fixtures;
+      if (!f || typeof f !== 'object' || !Array.isArray(f.numbers) || f.numbers.length === 0) {
+        return inert(
+          'Peer announcement skipped: no fixtures to name — pass the qa-fixtures.js envelope data '
+          + 'under `fixtures` ({shape, root, numbers}).'
+        );
+      }
+    }
+
     const commits = Array.isArray(options.commits) ? options.commits : [];
+    // Partitioned once, here, so the envelope and the sentence cannot disagree
+    // about which identifiers were asserted (#2790).
+    const commitPartition = partitionCommits(commits, options.verifyCommit);
     const { recipients, skipped } = resolveRecipients(peers);
     const text = FORMATTERS[event]({
       issues,
       commits,
+      commitPartition,
       outcome: options.outcome,
       runUrl: options.runUrl,
       ciResult: options.ciResult,
+      fixtures: options.fixtures,
     });
 
     const base = {
@@ -599,6 +760,11 @@ function buildAnnouncement(options) {
       skipped,
       terminal,
       degraded,
+      // Whether the shas in `text` were checked against the object store, and
+      // which were rejected. `verified: false` is NOT a failure — it is the
+      // absence of a check, and an auditor must be able to tell the two apart.
+      verified: commitPartition.verified,
+      unresolvedCommits: commitPartition.unresolved,
     };
 
     if (recipients.length === 0) {
@@ -629,6 +795,7 @@ module.exports = {
   resolveRecipients,
   formatWorkStarted,
   formatWorkCompleted,
+  partitionCommits,
   formatPushStarted,
   formatCiTerminal,
   formatPushRejected,

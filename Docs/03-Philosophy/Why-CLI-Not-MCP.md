@@ -1,6 +1,7 @@
 # Why gh-pmu Is a CLI Extension, Not an MCP Server
 
 **Date:** 2026-08-02
+**Counts verified:** 2026-09-10
 **Topic:** The context economics of tool exposure, and why GitHub project management in IDPF lives behind a shell command rather than a Model Context Protocol server
 
 ---
@@ -19,7 +20,7 @@ This document records the reasoning so the decision does not get relitigated eve
 
 ## What gh-pmu Actually Is
 
-Measured against `gh-pmu` v1.5.1 (`rubrical-worker/gh-pmu`):
+Measured against `gh-pmu` v1.5.1 (`rubrical-worker/gh-pmu`). The command surface below was re-confirmed against **v1.5.3** on 2026-09-10 — same 20 top-level commands, same subcommand shape; the line counts are still the v1.5.1 figures and have not been re-measured.
 
 | Layer | Scale | Character |
 |-------|-------|-----------|
@@ -117,7 +118,7 @@ The three arguments above are about cost and mechanics. This one is about correc
 | All acceptance-criteria checkboxes checked for `in_review` / `done` | Refuses the transition. Bypassable by `--force`, with a loud warning. |
 | Branch assignment required for `backlog` → `ready` / `in_progress` | Refuses, and validates the branch against active trackers discovered by parsing `Branch: <name>` from issues labeled `branch`. |
 
-The care in the implementation shows what kind of code this is. `stripCodeBlocks()` removes fenced and indented blocks before counting checkboxes, so an example checklist inside a code fence in an issue body is not mistaken for acceptance criteria. `internal/framework/detect.go` knows `IDPF-Agile`, `IDPF-Structured`, and `IDPF-LTS` by name. This is domain logic about *how this framework runs projects*, encoded deterministically.
+The care in the implementation shows what kind of code this is. `stripCodeBlocks()` removes fenced and indented blocks before counting checkboxes, so an example checklist inside a code fence in an issue body is not mistaken for acceptance criteria. `internal/framework/detect.go` knows IDPF process frameworks by name — including `IDPF-Structured` and `IDPF-LTS`, which the framework has since retired, leaving `IDPF-Agile` as the only one still shipped. That the detector outlives the frameworks it detects is itself the point: this is domain logic about *how this framework runs projects*, encoded deterministically in a separately versioned binary.
 
 ### The two-layer enforcement model
 
@@ -126,14 +127,16 @@ That policy does not live in one place. It is deliberately split:
 | Layer | Governs | Nature | Size |
 |-------|---------|--------|------|
 | **gh-pmu** (`validateStatusTransition`) | Mechanical invariants — is the body empty, are the boxes checked, is a branch assigned | Deterministic; refuses at the API boundary | ~5,500 lines of Go behind a config-driven gate |
-| **`GitHub-Workflow.md`** → `.claude/rules/02-github-workflow.md` | Judgment — *when* to close, `Refs #` versus `Fixes #`, analysis-versus-work STOP, the pre-work status gate | Prose; auto-loaded into every session | 213 lines of source, 95 minimized |
+| **`GitHub-Workflow.md`** → `.claude/rules/02-github-workflow.md` | Judgment — *when* to close, `Refs #` versus `Fixes #`, analysis-versus-work STOP, the pre-work status gate | Prose; auto-loaded into every session | 234 lines of source, 106 minimized |
 
 Neither layer is sufficient alone, and **they reference each other explicitly.** When gh-pmu refuses a move with unchecked boxes, its suggestion text reads:
 
 > `Complete these items before moving to in_review, or use --force to bypass.`
 > `Claude: Review GitHub-Workflow rules before using --force.`
 
-The tool knows it is being driven by an LLM and hands control back to the prose rules. And the prose rules answer: `.claude/rules/08-work-execution.md` Step 4b enumerates exactly which `--force` uses are legitimate — epic parents, external closures, branch trackers, test-plan approvals, and the two intentionally-open gate markers (`→ QA: #N`, `→ GATE: review|release`) — and forbids the rest.
+The tool knows it is being driven by an LLM and hands control back to the prose rules. And the prose rules answer: `.claude/rules/08-work-execution.md` Step 4b enumerates exactly which `--force` uses are legitimate — epic parents, external closures, branch trackers, and the intentionally-open gate markers (`→ QA: #N`, `→ GATE: review`, `→ GATE: release`) — and forbids the rest.
+
+That list is maintained, not decorative. Test-plan approvals were on it until **#2784** removed them, on the reasoning that their gates are *resolved* by `/review-test-plan` — computed, confirmed, and checked off — rather than bypassed, and that `/work` redirects such an issue before ever reaching Step 4b. An entry permitting a bypass described a path that should not exist.
 
 `--force` is calibrated friction. It exists, it warns, and a separate reviewed document says when you may reach for it.
 
@@ -167,7 +170,7 @@ The case is not one-sided, and pretending otherwise would make this document use
 
 **Structured errors.** MCP returns typed failures. The CLI returns exit codes and stderr prose that commands must parse. IDPF works around this with the JSON envelope convention (`{ ok, context, warnings, errors }`) in its preamble scripts — a convention that exists partly *because* shell tools do not provide it natively.
 
-**No shell quoting.** This is the strongest practical argument. MCP passes strings in JSON, which would obsolete `-F file`, `--body-stdout`, `--body-stdin`, and the temp-file dance entirely. IDPF maintains roughly 200 lines of [Windows shell safety rules](../../Reference/Windows-Shell-Safety.md) — backticks in heredocs, `--flag=value` attachment, absolute-path mangling, `.tmp-{issue}.md` conventions — a large fraction of which exists purely because CLIs handle multiline text badly. That cost is real and recurring.
+**No shell quoting.** This is the strongest practical argument. MCP passes strings in JSON, which would obsolete `-F file`, `--body-stdout`, `--body-stdin`, and the temp-file dance entirely. IDPF maintains over 500 lines of [Windows shell safety rules](../../Reference/Windows-Shell-Safety.md) — backticks in heredocs, `--flag=value` attachment, absolute-path mangling, `.tmp-{issue}.md` conventions — a large fraction of which exists purely because CLIs handle multiline text badly. That cost is real, recurring, and has grown since this document was first written.
 
 **Non-shell clients.** Claude Desktop and claude.ai have no bash tool. An MCP server is the *only* way to reach them. If IDPF ever targets those surfaces, this calculus changes.
 

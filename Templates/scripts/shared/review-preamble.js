@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -153,9 +153,11 @@ function parseArgs(args) {
 
 // ─── Review Number Computation ───
 
+// Standalone marker line only (#2880): a marker quoted in the body's prose is
+// not a recorded review and must not advance the number.
 function computeReviewNumber(body) {
   if (!body) return 1;
-  const match = body.match(/\*\*Reviews:\*\*\s*(\d+)/);
+  const match = body.match(REVIEWS_MARKER_PATTERN);
   return match ? parseInt(match[1], 10) + 1 : 1;
 }
 
@@ -166,7 +168,7 @@ function checkEarlyExit(issue, force) {
   const hasReviewedLabel = labels.includes('reviewed');
 
   if (hasReviewedLabel && !force) {
-    const reviewMatch = (issue.body || '').match(/\*\*Reviews:\*\*\s*(\d+)/);
+    const reviewMatch = (issue.body || '').match(REVIEWS_MARKER_PATTERN);
     const reviewCount = reviewMatch ? parseInt(reviewMatch[1], 10) : 0;
     return { earlyExit: true, reviewCount };
   }
@@ -293,15 +295,71 @@ function loadCriteria(issueType, projectDir, modeOverride) {
 
 // ─── Extension Loading ───
 
-function loadExtensions(withArg, projectDir, withoutArg) {
+// Which question section each review type consumes (#2812). The same
+// `Domains/*/review-criteria.md` file serves several reviewers; the type
+// decides which of its sections is the relevant one.
+//
+// `test-plan` maps to null deliberately: the domain files declare no
+// test-plan section, so there is nothing to parse and nothing to warn about.
+// Mapping it to a section that does not exist would warn on all 11 domains
+// for an absence that is correct.
+const SECTION_BY_REVIEW_TYPE = {
+  proposal: 'Proposal Review Questions',
+  prd: 'PRD Review Questions',
+  'test-plan': null
+};
+
+const DEFAULT_QUESTION_SECTION = 'Issue Review Questions';
+
+/**
+ * Resolve the criteria section a review type consumes.
+ *
+ * @param {string} [reviewType] - `context.type` from the envelope
+ * @returns {string|null} Section name, or null when the type consumes none
+ */
+function sectionForReviewType(reviewType) {
+  return Object.prototype.hasOwnProperty.call(SECTION_BY_REVIEW_TYPE, reviewType)
+    ? SECTION_BY_REVIEW_TYPE[reviewType]
+    : DEFAULT_QUESTION_SECTION;
+}
+
+/**
+ * Compose the `--with` discoverability tip from the registered ids (#2812).
+ *
+ * Three prose copies of this tip lived in the specs, each listing 8 domains
+ * against a registry of 11: observability, i18n and api-design were accepted
+ * if typed and advertised nowhere. The worked example is taken from the
+ * registry too, so no domain id is written down anywhere but the registry.
+ *
+ * @param {string[]} ids - Registered domain ids
+ * @returns {string|null} Tip text, or null when nothing is registered
+ */
+function buildAvailableTip(ids) {
+  if (!ids.length) return null;
+  const example = ids.slice(0, 2).join(',');
+  return `Tip: Use --with ${example} to add domain-specific review criteria.\n`
+    + `Available: ${ids.join(', ')} (or --with all)`;
+}
+
+/**
+ * @param {string|null} withArg - `--with` value: a domain list, 'all', or 'none'
+ * @param {string} projectDir
+ * @param {string|null} [withoutArg] - `--without` value
+ * @param {string} [reviewType] - `context.type`; decides which section is parsed
+ * @returns {{extensions: object[], warnings: object[], availableTip: string|null}}
+ */
+function loadExtensions(withArg, projectDir, withoutArg, reviewType) {
   const metadataDir = path.join(projectDir, '.claude', 'metadata');
   let registry;
   try {
     const raw = fs.readFileSync(path.join(metadataDir, 'review-extensions.json'), 'utf-8');
     registry = JSON.parse(raw);
   } catch (_e) {
+    // No registry means no tip. An empty tip would advertise an empty set as
+    // though it were the complete one.
     return {
       extensions: [],
+      availableTip: null,
       warnings: [{ code: 'EXTENSIONS_LOAD_FAILED', message: 'Could not load review-extensions.json' }]
     };
   }
@@ -310,6 +368,7 @@ function loadExtensions(withArg, projectDir, withoutArg) {
   const extensions = [];
   const warnings = [];
   const withNone = withArg === 'none';
+  const availableTip = buildAvailableTip(Object.keys(available));
 
   // Auto-inclusion: resolve activeDomains + relevantSpecialists
   const { resolveAutoInclusion } = require('./lib/load-review-extensions');
@@ -328,16 +387,51 @@ function loadExtensions(withArg, projectDir, withoutArg) {
     }
   }
 
-  // If no explicit --with and no auto-included domains, return empty
+  // If no explicit --with and no auto-included domains, return empty.
+  // The tip still goes out — a run with no extensions is exactly the run that
+  // needs to be told which ones exist.
   if (allDomainIds.size === 0) {
-    return { extensions: [], warnings };
+    return { extensions: [], availableTip, warnings };
   }
+
+  // Parse the criteria files rather than returning only their paths (#2812).
+  // Returning a path made Claude load all 11 files under `--with all` and
+  // self-select the right section by eye; /code-review had parsed the same
+  // files into questions since #1767.
+  const { resolveFrameworkRoot, extractSectionQuestions } = require('./lib/load-review-extensions');
+  const section = sectionForReviewType(reviewType);
+  const frameworkRoot = section ? resolveFrameworkRoot(projectDir) : null;
 
   for (const id of allDomainIds) {
     if (available[id]) {
       const ext = available[id];
       const source = autoResult.sources.get(id) || '--with';
-      extensions.push({ id, ...ext, autoSource: source });
+      const entry = { id, ...ext, autoSource: source, section, questions: null };
+
+      if (section) {
+        try {
+          const content = fs.readFileSync(path.join(frameworkRoot, ext.source), 'utf-8');
+          entry.questions = extractSectionQuestions(content, section);
+
+          // An empty section is named, never silently omitted. A reviewer
+          // handed no questions for a domain cannot otherwise tell whether the
+          // domain had nothing to say or was never read.
+          if (entry.questions.length === 0) {
+            warnings.push({
+              code: 'EXTENSION_SECTION_EMPTY',
+              message: `No "${section}" found in ${ext.source}. Domain "${id}" contributes no criteria to this review.`
+            });
+          }
+        } catch (_e) {
+          entry.questions = [];
+          warnings.push({
+            code: 'EXTENSION_CRITERIA_UNREADABLE',
+            message: `Could not read ${ext.source} for domain "${id}". Domain contributes no criteria to this review.`
+          });
+        }
+      }
+
+      extensions.push(entry);
     } else {
       warnings.push({
         code: 'EXTENSION_NOT_FOUND',
@@ -346,7 +440,7 @@ function loadExtensions(withArg, projectDir, withoutArg) {
     }
   }
 
-  return { extensions, warnings };
+  return { extensions, availableTip, warnings };
 }
 
 // ─── Envelope Builders ───
@@ -435,11 +529,65 @@ async function gatherIssueData(issueNum, deps = {}) {
   };
 }
 
+// One definition of a review comment, shared with resolve-preamble.js (#2837),
+// and one of the body marker, shared with every reader and locator (#2880).
+// computeReviewNumber and checkEarlyExit above resolve it when called, after
+// this module has loaded.
+const { REVIEW_HEADER_PATTERN, REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
+
+/**
+ * Count the review comments already posted on an issue (#2837).
+ *
+ * Only comments carrying the heading finalize emits count — REVIEW_HEADER_PATTERN,
+ * `## (Issue|Proposal|PRD|Test Plan) Review #N — YYYY-MM-DD`, the definition
+ * resolve-preamble.js already selects reviews by. The jq predicate this
+ * replaced, `^## .*Review #`, also counted `## Correction to Review #1` and any
+ * other heading that mentioned a review, and resolveReviewNumber carried that
+ * over-count into the permanent record as a skipped review number.
+ *
+ * Bodies are fetched and matched here rather than by a tighter jq regex, so the
+ * two scripts cannot drift into two spellings of one pattern. `--paginate`
+ * because the API returns 30 comments a page; with it `--jq` runs once per
+ * page, so the filter emits one JSON-encoded body per line rather than an
+ * array expression that would only ever see a single page.
+ *
+ * A failed fetch still counts 0 and an unparseable line is skipped: the count
+ * only ever raises the review number, so an undercount falls back to the body
+ * marker, which is what a failed fetch did before.
+ *
+ * @param {number} issueNum
+ * @returns {Promise<number>}
+ */
 async function countReviewComments(issueNum) {
   const raw = await execSafe(
-    `gh api repos/{owner}/{repo}/issues/${issueNum}/comments --jq="[.[] | select(.body | test(\\"^## .*Review #\\"))] | length"`
+    `gh api repos/{owner}/{repo}/issues/${issueNum}/comments --paginate --jq=".[] | .body | @json"`
   );
-  return raw ? parseInt(raw, 10) || 0 : 0;
+  if (!raw) return 0;
+  let count = 0;
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let body;
+    try {
+      body = JSON.parse(line);
+    } catch (_e) {
+      continue;
+    }
+    if (typeof body === 'string' && REVIEW_HEADER_PATTERN.test(body)) count++;
+  }
+  return count;
+}
+
+/**
+ * The next review number: the body marker's next value, unless more review
+ * comments exist than the marker records — then one past the comment count.
+ * Lifted out of main() (#2837) so the number a count produces is testable.
+ *
+ * @param {number} markerNext - computeReviewNumber(body)
+ * @param {number} commentCount - countReviewComments(issue)
+ * @returns {number}
+ */
+function resolveReviewNumber(markerNext, commentCount) {
+  return Math.max(markerNext, commentCount + 1);
 }
 
 // ─── Main ───
@@ -528,8 +676,11 @@ async function main() {
   const criteria = loadCriteria(resolvedType, process.cwd(), args.modeOverride || null);
 
   // Load extensions
-  const extensionResult = loadExtensions(args.withExtensions || null, process.cwd(), args.withoutExtensions || null);
+  const extensionResult = loadExtensions(args.withExtensions || null, process.cwd(), args.withoutExtensions || null, resolvedType);
   criteria.extensions = extensionResult.extensions;
+  // The discoverability tip travels in the envelope so the specs name no
+  // domain ids at all (#2812).
+  criteria.availableTip = extensionResult.availableTip;
 
   // Surface env-filter warnings in the envelope too (#2516) — the filter has
   // to be observable to a caller reading stdout, not only to a direct
@@ -542,7 +693,7 @@ async function main() {
     type: resolvedType,
     redirect: null,
     reviewMode,
-    reviewNumber: Math.max(reviewNumber, commentCount + 1),
+    reviewNumber: resolveReviewNumber(reviewNumber, commentCount),
     hasReviewedLabel: (issue.labels || []).some(l => l.name === 'reviewed'),
     force: args.force || false
   };
@@ -568,11 +719,14 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   computeReviewNumber,
+  resolveReviewNumber,
+  countReviewComments,
   checkEarlyExit,
   gatherIssueData,
   loadCriteria,
   resolveEnvironment,
   loadExtensions,
+  sectionForReviewType,
   buildSuccessEnvelope,
   buildErrorEnvelope
 };

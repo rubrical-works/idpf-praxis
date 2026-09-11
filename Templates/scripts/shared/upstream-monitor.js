@@ -30,7 +30,7 @@
  * Host, alternatives and the AC-8 reasoning:
  * Construction/Design-Decisions/2026-08-30-upstream-push-monitor-host-and-push-window.md
  *
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * Refs #2667
  */
 
@@ -38,7 +38,10 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const { resolveCrossSessionConfig } = require('./lib/cross-session-config.js');
+const {
+  resolveCrossSessionConfig,
+  readCrossSessionConfig,
+} = require('./lib/cross-session-config.js');
 
 const CONFIG_RELATIVE = '.claude/metadata/upstream-monitor.json';
 const SYNC_HELPER_RELATIVE = '.claude/scripts/shared/branch-sync-check.js';
@@ -257,18 +260,17 @@ function poll(root = repoRoot(), config = loadConfig(root)) {
  * loud problem for a silent one.
  */
 function armingDecision({ root = repoRoot(), frameworkConfig } = {}) {
-  let config = frameworkConfig;
-  if (config === undefined) {
-    try {
-      config = JSON.parse(
-        fs.readFileSync(path.join(root, FRAMEWORK_CONFIG_RELATIVE), 'utf8')
-      );
-    } catch {
-      config = {};
-    }
-  }
-
-  const state = resolveCrossSessionConfig(config);
+  // TWO PATHS, and which one runs turns on whether the caller supplied a config.
+  //
+  // Supplied  -> the caller already holds it, so honour it exactly and use the
+  //              pure resolver. Reading files behind a caller that passed an
+  //              explicit config would silently ignore what it passed.
+  // Absent    -> resolve from disk through the full chain (#2774):
+  //              IDPF_X_SESSION > .claude/x-session.json > the legacy
+  //              framework-config.json key. This is the real-caller path.
+  const state = frameworkConfig === undefined
+    ? readCrossSessionConfig(root)
+    : resolveCrossSessionConfig(frameworkConfig);
 
   if (state.upstreamMonitor) {
     return { arm: true, reason: 'enabled', notice: null };

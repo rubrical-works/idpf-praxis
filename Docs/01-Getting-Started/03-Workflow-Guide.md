@@ -373,22 +373,26 @@ PRD/Dark-Mode-Support/
   └── Diagrams/                    ← UML diagrams
 ```
 
-**Next step:** Review the test plan, approve it, optionally review the PRD, then create the backlog.
+**Next step:** Review the PRD, then review and approve the test plan, then create the backlog.
 
-### Review Order: Test Plan First, Then PRD
+### Review Order: PRD First, Then Test Plan
 
-Review the **test plan before the PRD**. This is counterintuitive — the PRD generates the test plan, so why not review the PRD first? Because test plans expose PRD gaps concretely. A vague requirement like "preserve existing configuration" looks fine in a PRD. When you try to write test cases for it, you realize: preserve what exactly? Comments? Ordering? Anchors?
+Review the **PRD before the test plan**. The test plan is derived from the PRD's acceptance criteria — every test case maps to an AC — so a test-plan verdict taken against an unreviewed PRD can be invalidated by that PRD's own review. Two gates now enforce this order:
+
+- `/review-test-plan` checks whether the source PRD has been reviewed before evaluating a single criterion, and offers to run `/review-prd` first when it has not. `--force` does not bypass this check — it re-reviews the test plan, it says nothing about the PRD.
+- `/create-backlog` checks the PRD tracker's `PRD reviewed` box and the test-plan approval issue. It offers `/review-prd` when the box is unchecked; a bypass is possible but is recorded in the tracker body.
 
 ```
-/review-test-plan #56        ← Review test plan first — findings reveal PRD gaps
+/review-prd #55              ← Review PRD first — checks the "PRD reviewed" gate on #55
+/resolve-review #55          ← Fix findings, re-review (as needed)
+/review-test-plan #56        ← Review test plan against the reviewed PRD
                               ← Approve: close #56 (check boxes + move to done)
-/review-prd #55              ← Review PRD second (optional, non-blocking)
-/create-backlog #55          ← Blocked until #56 is closed
+/create-backlog #55          ← Blocked until "PRD reviewed" is checked and #56 is closed
 ```
 
-The **test plan approval issue** (labeled `test-plan` + `approval-required`) is the blocking gate — `/create-backlog` will not proceed until it is closed. This is an approval gate issue, not a work item: close it by checking its checklist boxes and moving it to `done` directly (no `/work` needed).
+The **test plan approval issue** (labeled `test-plan` + `approval-required`) is the final gate — `/create-backlog` will not proceed until it is closed. This is an approval gate issue, not a work item: close it by checking its checklist boxes and moving it to `done` directly (no `/work` needed).
 
-The PRD review is recommended but optional. It does not block `/create-backlog`. However, reviewing the PRD second lets you incorporate test plan findings, making the requirements as clean as possible before generating stories.
+Test plans still expose PRD gaps concretely — a vague requirement like "preserve existing configuration" looks fine in a PRD until you try to write test cases for it: preserve what exactly? Comments? Ordering? Anchors? When `/review-test-plan` surfaces a gap like that, the review is recorded against the reviewed PRD, and you loop back: fix the PRD, `/review-prd #55 --force`, then re-run `/review-test-plan #56 --force`. The order protects the approval from being taken against requirements that then change; it does not prevent the test plan from improving them.
 
 ---
 
@@ -618,10 +622,10 @@ Here's a complete example of building a feature from idea to release:
 5c. /catalog-screens                      ← Create or discover screen specs (optional, UI projects)
 5d. /mockups #10                          ← Design screen mockups (optional, UI projects)
 6.  /create-prd #10                       ← Generate requirements + test plan
-7.  /review-test-plan #16                 ← Review test plan (exposes PRD gaps)
-8.  Close #16                             ← Approve test plan (check boxes + done)
-9.  /review-prd #15                       ← Review PRD — optional (incorporate findings)
-10. /create-backlog #15                   ← Create epics + stories (blocked until #16 closed)
+7.  /review-prd #15                       ← Review PRD first (checks the "PRD reviewed" gate)
+8.  /review-test-plan #16                 ← Review test plan against the reviewed PRD
+9.  Close #16                             ← Approve test plan (check boxes + done)
+10. /create-backlog #15                   ← Create epics + stories (blocked until PRD reviewed and #16 closed)
 11. /create-branch release/v1.0.0         ← Create working branch
 12. /assign-branch #20 #21 #22           ← Assign stories to branch
 13. /work #20                             ← Implement first story (TDD)

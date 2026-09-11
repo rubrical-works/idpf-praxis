@@ -13,7 +13,7 @@
       "pattern": "→ QA: #\\d+",
       "meaning": "Closure deferred to a QA sub-issue.",
       "precedent": "Step 4a, Option A / #2472",
-      "closure": "The box stays open until its QA sub-issue closes (see .claude/scripts/shared/lib/qa-config.json closurePath); the parent reaches done only once the box is checked."
+      "closure": "The box stays open until its QA sub-issue closes (see .claude/scripts/shared/lib/qa-config.json closurePath); the parent reaches done only once the box is checked. An obsolete verdict from /qa Step 1 (#2825) closes it in the struck form `- [x] ~~<acText>~~ → QA: #N (obsolete: <reason>)` — a released gate, not verified — with the marker kept verbatim so this pattern still matches."
     },
     {
       "id": "gate-review",

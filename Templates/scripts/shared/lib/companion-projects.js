@@ -18,7 +18,7 @@
  * projects from the hub framework root, so an undeclared external `require`
  * would throw MODULE_NOT_FOUND at module load.
  *
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * Refs #2665
  */
 
@@ -378,21 +378,57 @@ function resolveFilingTarget(charterContent, target) {
  */
 function resolveBoardFields(entry, options = {}) {
   const e = entry || {};
+
+  // BOARD COORDINATES ARE RETURNED ALONGSIDE THE FIELDS MAP (#2775).
+  //
+  // Before this, the return carried the fields map and nothing else, and the
+  // specs said "set them" -- on what item, on which board, with what command?
+  // Nothing named a mechanism, so a fully registered companion was still filed
+  // onto the LOCAL board. `file-companion-issue.js` needs `owner`/`number` to
+  // call `gh project item-add`, and getting them from here rather than
+  // re-splitting the charter cell at each call site keeps one parse.
+  //
+  // `board` is populated whenever the charter row has one, INCLUDING on the
+  // unresolved paths: a caller that could not read the fields map may still
+  // legitimately add the item to the board without setting fields, and that is
+  // a better outcome than not adding it at all.
+  const board = parseBoardCoordinates(e.board);
+
   if (!e.board) {
-    return { resolved: false, fields: null, reason: 'no board is registered for this companion' };
+    return {
+      resolved: false, fields: null, board: null,
+      reason: 'no board is registered for this companion',
+    };
   }
   const reader = options.reader || defaultBoardConfigReader;
   try {
     const cfg = reader(e);
     const fields = cfg && cfg.fields;
     if (!fields || Object.keys(fields).length === 0) {
-      return { resolved: false, fields: null, reason: 'target configuration carries no fields map' };
+      return {
+        resolved: false, fields: null, board,
+        reason: 'target configuration carries no fields map',
+      };
     }
-    return { resolved: true, fields, reason: null };
+    return { resolved: true, fields, board, reason: null };
   } catch (err) {
     const reason = (err && err.message ? String(err.message) : String(err)).split('\n')[0];
-    return { resolved: false, fields: null, reason };
+    return { resolved: false, fields: null, board, reason };
   }
+}
+
+/**
+ * Split a charter `Board` cell into `{owner, number}` (#2775).
+ *
+ * Returns null for anything that is not `owner/number`. The validator already
+ * rejects a malformed cell at registration time, so this is the read-side
+ * guard for a hand-edited charter -- and returning null rather than a partial
+ * object keeps "no usable board" a single condition for the caller.
+ */
+function parseBoardCoordinates(board) {
+  if (typeof board !== 'string' || !BOARD_PATTERN.test(board)) return null;
+  const [owner, number] = board.split('/');
+  return { owner, number: Number(number) };
 }
 
 /** The line a command prints when board fields could not be resolved. Names
@@ -436,5 +472,6 @@ module.exports = {
   verifyReachability,
   resolveFilingTarget,
   resolveBoardFields,
+  parseBoardCoordinates,
   formatUnresolvedBoardFields
 };

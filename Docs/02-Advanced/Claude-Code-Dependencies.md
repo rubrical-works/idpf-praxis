@@ -91,6 +91,10 @@ This line previously asserted the behaviour with nothing having checked it. Meas
 
 **How it works:** Claude Code fires JavaScript hooks in response to events. Hooks are registered in `.claude/settings.local.json` under the `hooks` key. Each hook specifies an event type, a matcher pattern, and a command to execute.
 
+**The count is of PERMANENT registrations. One hook is deliberately excluded: `/idpf-measure`'s `measure-tap.js` (#2803).** The tap exists only between `--start` and `--stop`, so counting it would make this heading correct only while nobody is measuring. Because `.claude/settings.local.json` is git-tracked in this repository, arming took the registration count from 9 to 10 and turned the guard that derives this heading red for **every** session sharing the working directory — a hard gate under `/work` Step 4f, so one developer's measurement blocked everyone else's unrelated work.
+
+The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP_COMMAND` rather than a filename match, and it is **not** a general licence to omit hooks from this section: every permanent hook is still derived from disk, and adding or removing one without updating this heading still fails.
+
 **Counting basis: registrations in this repository's `.claude/settings.local.json`.** Three defensible counts exist here and they disagree, so the number above says which one it is:
 
 | Basis | Count | What it counts |

@@ -22,10 +22,32 @@
       },
       "additionalProperties": {
         "type": "array",
-        "description": "Recognized flags for this command, each in long form",
+        "description": "Recognized flags for this command, each in long form. An entry is EITHER a plain string — the original shape, meaning the flag claims exactly one following token — OR an object naming the flag and its attachment mode (#2770). The union is what keeps every entry written before #2770 valid and unchanged in meaning; the two shapes may be mixed freely within one command's array.",
         "items": {
-          "type": "string",
-          "pattern": "^--[A-Za-z][A-Za-z0-9-]*$"
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Long-form flag claiming exactly one following token as its value. Equivalent to {\"flag\": \"--x\", \"attach\": \"token\"}.",
+              "pattern": "^--[A-Za-z][A-Za-z0-9-]*$"
+            },
+            {
+              "type": "object",
+              "description": "Long-form flag with an explicit attachment mode.",
+              "required": ["flag"],
+              "additionalProperties": false,
+              "properties": {
+                "flag": {
+                  "type": "string",
+                  "pattern": "^--[A-Za-z][A-Za-z0-9-]*$"
+                },
+                "attach": {
+                  "enum": ["token", "rest-of-line"],
+                  "default": "token",
+                  "description": "How much of the prompt this flag claims as its value. `token` (the default, and the meaning of a plain string entry) claims exactly one following token — correct for --with security, --mode solo, --assignee @me. `rest-of-line` claims every remaining token, which is what lets a flag take prose rather than a single value; /proposal --update is the motivating case, where `--update rename the risk section` previously bound only `rename` and returned the rest to the issue title. A `rest-of-line` value STOPS AT THE NEXT FLAG-SHAPED TOKEN, so `--update rewrite the intro --assignee octocat` binds `rewrite the intro` and leaves --assignee to claim its own value. That termination is not a convenience: extraction is governed by token shape, and Reference/GitHub-Workflow.md guarantees no flag-shaped token is ever silently discarded, so absorbing a following flag into prose would break that guarantee one level down — the same defect at the value layer that rest-of-line exists to fix. The `--flag=value` form carries its own value and never claims following tokens, whatever the declared attachment."
+                }
+              }
+            }
+          ]
         },
         "uniqueItems": true
       }

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Shared review format constants, emoji markers, section headers, and regex patterns for deterministic comment formatting and parsing. Exports EMOJI, SECTION_HEADERS, PATTERNS, and formatting helpers. Used by review-finalize.js and resolve-preamble.js.
  * @checksum sha256:placeholder
  *
@@ -35,6 +35,20 @@ const SECTION_HEADERS = {
 // Matches: ## PRD Review #1 — 2026-03-12
 // Matches: ## Test Plan Review #3 — 2026-03-12
 const REVIEW_HEADER_PATTERN = /^## (Issue|Proposal|PRD|Test Plan) Review #(\d+)\s*—\s*(\d{4}-\d{2}-\d{2})/m;
+
+// The `**Reviews:** N` body marker review-finalize.js writes (#2880). One
+// definition for the five readers and the two locators that insert above it.
+//
+// Anchored to a whole line: the marker is only ever written as a line of its
+// own, and an unanchored match read — and finalize then rewrote — the first
+// occurrence anywhere, including one quoted in prose or inline code. `[ \t]`
+// rather than `\s` so a match can never run past the end of its line (under the
+// `m` flag `\s*$` swallows the following newlines, and a replace would delete
+// them); `\r?` so a CRLF body still matches. Non-global, so exec, match and
+// replace act on the first standalone line only and carry no lastIndex state.
+// Matches: **Reviews:** 3
+// Does not match: the issue carries `**Reviews:** 1` in the body
+const REVIEWS_MARKER_PATTERN = /^\*\*Reviews:\*\*[ \t]*(\d+)[ \t]*\r?$/m;
 
 // Matches malformed headers: ## Issue Review #undefined — 2026-03-13
 const MALFORMED_REVIEW_HEADER_PATTERN = /^## (Issue|Proposal|PRD|Test Plan) Review #(undefined|NaN|null)\s*—\s*(\d{4}-\d{2}-\d{2})/m;
@@ -160,6 +174,7 @@ module.exports = {
   SECTION_USER_EVALUATED,
   SECTION_RECOMMENDATION,
   REVIEW_HEADER_PATTERN,
+  REVIEWS_MARKER_PATTERN,
   MALFORMED_REVIEW_HEADER_PATTERN,
   REVIEW_TYPES,
   FINDING_LINE_PATTERN,

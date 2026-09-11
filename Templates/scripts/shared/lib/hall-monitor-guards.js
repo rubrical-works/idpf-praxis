@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.101.0
+ * @framework-script 0.102.0
  * @description Dedupe and rate-limit guards bounding /hall-monitor's --auto-create (#2768). Pure and synchronous: no I/O, no spawn, no filesystem write, and no throwing path. Decides only WHETHER filing is permitted; the monitor owns the decision to act and performs the filing itself.
  * @checksum sha256:placeholder
  *

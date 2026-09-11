@@ -1,8 +1,8 @@
 ---
-version: "v0.101.0"
+version: "v0.102.0"
 allowed-tools: Bash, AskUserQuestion
 description: "Assign or remove issues from a branch: [#issue...] [branch/...] [--add-ready] [--remove] (project)"
-argument-hint: "[#issue...] [branch/name] [--add-ready] [--remove]"
+argument-hint: "[#issue...] [branch/name] [--add-ready] [--remove] [--confirm-remove]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -11,11 +11,7 @@ Assign issues to a branch.
 node .claude/scripts/shared/assign-branch.js "$ARGUMENTS"
 ```
 ## Handling "NO_BRANCH_FOUND" Output
-If the script outputs `NO_BRANCH_FOUND`, no open branches exist. It also outputs:
-1. **CONTEXT:** — last version, issue labels, user input
-2. **SUGGESTIONS:** — formatted `number|branch|description`
-
-On this output:
+`NO_BRANCH_FOUND` means no open branches exist. The script also outputs **CONTEXT:** (last version, issue labels, user input) and **SUGGESTIONS:** lines formatted `number|branch|description`.
 1. Parse SUGGESTIONS lines for branch options
 2. Use `AskUserQuestion` — present `(recommended)` first, include descriptions, "Other" for custom name
 3. After selection, create the branch:
@@ -23,16 +19,12 @@ On this output:
    gh pmu branch start --name "<selected-branch>"
    ```
 4. Re-run the original assign-branch command
-## Example Flow
-```
-NO_BRANCH_FOUND
-SUGGESTIONS:
-1|patch/v0.15.1|Next patch version (bug fixes only) (recommended)
-2|release/v0.16.0|Next minor version (new features)
-```
-1. AskUserQuestion with: "patch/v0.15.1 (Recommended)", "release/v0.16.0"
-2. User selects → `gh pmu branch start --name "patch/v0.15.1"`
-3. Re-run original command
+## Handling "CONFIRM_REMOVE" Output
+`--remove` is two steps, and the second is a distinct invocation. The first prints the affected issues, the marker `CONFIRM_REMOVE`, a JSON payload `{issues, epicSubIssues}`, and the completing command — `assign-branch.js <issues...> --confirm-remove`.
+Present the listed issues via `AskUserQuestion` — removal is not reversible from here, as the issue keeps no record of which branch it was on. On confirmation, run that command; declining ends the flow with nothing mutated.
+`--confirm-remove` performs the removal and prints the `{removed, total, results}` envelope, exiting non-zero if `removed < total`. Each result carries `ok` and `operations`; an operation string appears only for an operation that actually completed, and `error` names any that did not.
+**Why the second step is a flag (#2814):** `main()` printed `CONFIRM_REMOVE` and returned, and `removeIssues` was exported but never called from `main()`, so the gate had no other side — the only way to complete a removal was to `require()` the module.
+**An issue no open tracker claims is reported, not guessed at.** `resolveTrackerForIssues` maps children from the tracker side, since an issue carries no usable back-pointer to its parent. An unmapped issue has its label and status cleared and its operations say `no branch tracker found for #N (nothing to unlink)` — never a claimed unlink.
 ## Normal Output
 If branches exist, report the result directly.
 ## Errors
