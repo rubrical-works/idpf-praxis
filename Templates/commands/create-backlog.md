@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 description: Create GitHub epics/stories from PRD (project)
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -226,7 +226,7 @@ Link to epic: `gh pmu sub add {epic_number} {story_number} || true`. Cleanup: `r
 |---|---|
 | **Description** | PRD user story (As a / I want / So that) |
 | **Relevant Skills** | No input. Renders `N/A` when configured — the list is project-wide, not story-specific (#2817) |
-| **E2E** | `Inception/Test-Strategy.md` → Framework → E2E. Single authority; no `framework-config.json` key, no detection heuristic |
+| **E2E** | `framework-config.json` `testing.suites[]` → the suite whose `role` is `e2e` — the declaration (#2851). Inverts the #2817 row, which named `Inception/Test-Strategy.md` and forbade a config key: that Framework table is now **rendered from** this declaration, so reading it would be reading a view. No detection heuristic |
 | **Acceptance Criteria** | PRD AC checkbox list |
 | **Files to modify** | PRD `## Technical Notes` + per-story codebase analysis — see derivation below |
 | **Documentation** | Standard checkboxes **verbatim** — closed set, see below |

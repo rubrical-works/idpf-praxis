@@ -1,6 +1,6 @@
 {
   "$schema": "./imported-skills-schema.json",
-  "lastUpdated": "2026-09-10T02:30:35.946Z",
+  "lastUpdated": "2026-09-13T16:03:22.783Z",
   "count": 16,
   "skills": [
     "ci-cd-pipeline-design",
@@ -21,22 +21,22 @@
     "test-writing-patterns"
   ],
   "shas": {
-    "tdd-process": "fcf544b57cf0d76086cbe9e71d7426515df5db7a",
-    "ci-cd-pipeline-design": "e242b0396907fef0a4e5e19dbfc4973e0997c83a",
-    "command-spec-audit": "5d478ffbde58d68abf7a8bd831c40053441f5bd1",
-    "common-errors": "8c19ed6729cbee517603ac5b708122b1d5ff619e",
-    "drawio-generation": "528dcb1f844300be3e6d753b85000eb0974c6bcb",
-    "electron-development": "25c4795f280274201890ae4db3131d04e77e1543",
-    "error-handling-patterns": "a467f5f23d8a88683b5a52a6be1e4251a12fe08f",
-    "test-writing-patterns": "ee5dd6b1f65f46cbd927723c7892ebe2eb4d5c44",
-    "tdd-failure-recovery": "c386804d9c42b55973ec9d292b210c3e88dc00c0",
-    "tdd-green-phase": "8eb5e9e096c9f164666bcb788892f724516d4f17",
-    "tdd-red-phase": "da469b51b7f421edaec8078c5afd1cff6976fea9",
-    "tdd-refactor-phase": "1cb06eb99859ef03019f85f2b01d32e6c0d8ccc8",
-    "code-path-discovery": "12ba6a762442255ef2a549e4934865cb3e41c784",
+    "tdd-process": "da04e22a6cbec1c3e54f065ff693c61669b32458",
+    "ci-cd-pipeline-design": "3d024c8d104ea98454a0cf6b326cdf99d0751a70",
+    "command-spec-audit": "35f8fc014a4bdf2f6bd6f0c184defeb840d43c5f",
+    "common-errors": "c2fdb4b375f804a6dd871910e6b21a5ce9475491",
+    "drawio-generation": "ad0452cefa12a7db2fb45902c50bf441fa8a12bc",
+    "electron-development": "3df7af4a49c0f9b8b5af67379dd5f451aeac40e6",
+    "error-handling-patterns": "2db43ab20b1eb5a63410b53c455ee785388fbd98",
+    "test-writing-patterns": "81ebf93c3696546188f60c19a11896a692a63fa5",
+    "tdd-failure-recovery": "d0e13f859c04291289ec0878f9ba10e53a799409",
+    "tdd-green-phase": "f879eb36aaafc64dd6034b694b8f7cb7269fcd98",
+    "tdd-red-phase": "1bd5ae646fb365a2f8eb614635bcac748e70eb84",
+    "tdd-refactor-phase": "a2a3366dc50e2615eed5152e7439b937dc4742c9",
+    "code-path-discovery": "788517824ef07a92599e24f6d182addd7476c3ed",
     "hal-2026": "dc1ec97d8157a1db792fb7f7924855077c017059",
-    "engage-exocortex": "e4290de685db3fb4933c8dc6d887fbd8e10f7b06",
-    "tdd-refactor-coverage-audit": "7ed153dc3be189a920e02d59f6bd976b6eaa59f8",
-    "codebase-analysis": "d4bf8d884add44a88a13c6a89b5abf8da2a36a22"
+    "engage-exocortex": "c45ab16a36a1d12cc16b0a5c6c5e3cd5073eb5fe",
+    "tdd-refactor-coverage-audit": "8f05f9bc192a63fb3bfbc4f24a9ed373f2f3d48e",
+    "codebase-analysis": "9365705c7e3d33c39ad1adb1980683c2c0fcca29"
   }
 }

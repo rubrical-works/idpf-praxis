@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 description: Read or edit activeDomains for this project
 argument-hint: "--add {domain} | --remove {domain} | --list"
 copyright: "Rubrical Works (c) 2026"

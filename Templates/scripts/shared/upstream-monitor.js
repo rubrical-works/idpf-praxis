@@ -30,7 +30,7 @@
  * Host, alternatives and the AC-8 reasoning:
  * Construction/Design-Decisions/2026-08-30-upstream-push-monitor-host-and-push-window.md
  *
- * @framework-script 0.102.0
+ * @framework-script 0.103.0
  * Refs #2667
  */
 

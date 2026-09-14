@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.102.0",
+  "version": "0.103.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "created": "2025-11-30",
   "frameworks": [
@@ -252,6 +252,7 @@
           "announce.js",
           "assign-branch.js",
           "branch-sync-check.js",
+          "charter-testing-audit.js",
           "ci-add.js",
           "ci-analyze.js",
           "ci-apply.js",
@@ -313,6 +314,7 @@
           "switch-branch.js",
           "task-tools-check.js",
           "test-plan-approval-gates.js",
+          "testing-drift-check.js",
           "transfer-issue.js",
           "tree-review-gate.js",
           "update-release-notes.js",
@@ -334,6 +336,7 @@
           "announcement-issues.js",
           "branch-review-gate.js",
           "bulk-discover-screens.js",
+          "charter-template.js",
           "checkbox-scan.js",
           "classify-changed-files.js",
           "code-review-manifest-schema.json",
@@ -369,6 +372,7 @@
           "git.js",
           "hall-monitor-guards.js",
           "hall-monitor-presence.js",
+          "harness-registry.js",
           "input-validation.js",
           "issue-ref-match.js",
           "issue-type.js",
@@ -395,6 +399,7 @@
           "screenshot-token-candidates.js",
           "shell-safe.js",
           "specialist-resolver.js",
+          "test-runner.js",
           "tmp-cleanup.js",
           "token-drift-report.js",
           "token-propagation.js",
@@ -822,6 +827,21 @@
           "name": "stats-config-schema",
           "source": ".claude/metadata/stats-config-schema.json",
           "description": "JSON Schema for stats-config.json"
+        },
+        {
+          "name": "test-harnesses",
+          "source": ".claude/metadata/test-harnesses.json",
+          "description": "Role-keyed harness registry read by /charter harness selection — up to 3 harnesses per role per language, plus an unbounded platforms map (#2847)"
+        },
+        {
+          "name": "test-harnesses-local-schema",
+          "source": ".claude/metadata/test-harnesses-local-schema.json",
+          "description": "Permissive JSON schema (Draft 2020-12) for the project-local .claude/local-metadata/test-harnesses.json — open role, unknown keys preserved and surfaced, deliberately not a clone of the strict shipped schema (#2848)"
+        },
+        {
+          "name": "test-harnesses-schema",
+          "source": ".claude/metadata/test-harnesses-schema.json",
+          "description": "JSON schema (Draft 2020-12) for test-harnesses.json — closed role enum, no additional properties, at most 3 per role (#2847)"
         },
         {
           "name": "test-plan-approval-gates",

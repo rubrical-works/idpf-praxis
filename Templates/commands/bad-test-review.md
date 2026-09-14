@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 description: Evaluate tests for charter alignment and functional authenticity (project)
 argument-hint: "[--full] [--status]"
 copyright: "Rubrical Works (c) 2026"
@@ -112,16 +112,20 @@ For each suspicious pattern:
 **Pairing rules are NOT defined here.** They live in `resources/test-coverage-conventions.json` in the installed `tdd-refactor-coverage-audit` skill — source extensions mapped to test-path templates for ten languages, plus the shared `ignoredSourcePatterns`. Read that file and apply it as written.
 **Do NOT define a second set of pairing rules.** `/work` Step 6a consumes the same conventions file, so a second definition drifts from it silently — no test fails when two documents disagree. Project overrides belong in `framework-config.json` under `testCoverageAudit`, per that file's `_meta`, not in this spec.
 **Conventions file absent — report and skip:** `Skipped coverage-gap pass: tdd-refactor-coverage-audit conventions not installed.` Continue to Step 7. NEVER substitute an inline pairing table: that is the second definition this section exists to prevent.
-**Finding categories** — two, never one:
+**Finding categories** — three:
 | Category | Key | Description | Severity |
 |----------|-----|-------------|----------|
 | **Missing unit test** | `missing-unit-test` | Source in the Step 3b inventory with no paired unit test | High |
-| **Missing e2e test** | `missing-e2e-test` | Source with no paired e2e test, **in a project that declares an e2e runner** | Medium |
+| **Undeclared contract test** | `undeclared-contract` | A test classified as contract by the document named below with no `@subject` in its leading comment block — the audit counts it a module orphan | Low (advisory) |
+| **Missing e2e test** | `missing-e2e-test` | A **flow the project declares** that no spec covers — no `@covers` in any flow-location spec names it — **in a project that declares an e2e runner** | Medium |
+**Anchored to the flow, not the source — one finding per declared flow, never per source file (#2865).** A flow spec pairs by `@covers` and names a **journey**, not a source, so "no e2e file pairs to `src/checkout.js`" is a **stem** question asked of a class that does not pair by stem: true of a thoroughly covered codebase, and therefore silent. Re-anchored, cardinality is the **number of flows**, not files, and every instance names a closeable gap.
+**The no-runner suppression below is the tell, and it stays.** It exists because this finding already floods "proportional to codebase size" — the right instinct one level too low. The flood never came from the missing runner but from asking a stem question about flows, so it returns in full once a runner *is* declared, unsuppressed. The two rules answer different questions: the suppression handles *no e2e layer at all*, this clause *an e2e layer exists and a declared flow is uncovered*.
 **Why the severities differ.** Not two grades of one problem. A source with no unit test at all is precisely what 6a and 6b are structurally unable to find — the same **High** carried by `Hardcoded return` and `Mock-only validation`. A missing e2e test on an already unit-tested module is a journey-coverage gap, usually remedied by one harness-level test. Collapsing both would flatten a triage order the remedies genuinely differ on.
 **Resolving the e2e runner declaration.** `detectTechStack()` cannot answer this (Step 3b). Resolve in order, stopping at the first that answers:
-1. **`CHARTER.md`**, already loaded at Step 5 — its technology-stack and testing-expectations sections are the project's own declaration. Authoritative.
-2. **The dependency manifest**, corroboration only when the charter is silent — for example `@playwright/test`, `cypress`, `@wdio/cli`, `nightwatch`, `testcafe` (Node); `pytest-playwright`, `selenium` (Python); `capybara` (Ruby).
-**No e2e runner declared — emit one notice, not per-file findings:** `No e2e runner declared in CHARTER.md or the dependency manifest — e2e coverage gaps not evaluated.`
+1. **`framework-config.json` `testing.suites[]`** — the suite whose `role` is `e2e`. Authoritative (#2851): it is the declaration `/charter` writes at selection, and it carries the `full` command, not merely a framework name.
+2. **`CHARTER.md`**, already loaded at Step 5 — its technology-stack and testing-expectations sections, corroboration only when the declaration is silent. Authoritative before #2851; now a second opinion, because a project can describe in prose an e2e layer that nothing runs.
+3. **The dependency manifest**, corroboration only when both are silent — for example `@playwright/test`, `cypress`, `@wdio/cli`, `nightwatch`, `testcafe` (Node); `pytest-playwright`, `selenium` (Python); `capybara` (Ruby).
+**No e2e runner declared — emit one notice, not per-file findings:** `No e2e suite declared in framework-config.json testing.suites[], and none in CHARTER.md or the dependency manifest — e2e coverage gaps not evaluated.`
 Suppress every `missing-e2e-test` finding. Reporting N sources as missing e2e on a project with no e2e layer is noise proportional to codebase size and buries the `missing-unit-test` findings that are actionable. Emitted **once per run** — never per-file.
 `missing-unit-test` is **NOT** gated this way: Step 3 discovered a unit-test layer by construction, so an absent unit test is always a real finding.
 **Accessibility domain active with no e2e runner — capped-review notice.** When `framework-config.json` `activeDomains` includes `accessibility` **and** no e2e runner resolved, emit this in addition to the one-notice line:
@@ -136,6 +140,7 @@ The accessibility domain's own guidance is unreachable in this project.
 - **Not a clean result.** Clean means the review looked and found nothing; this means it structurally could not look. Clean here is false assurance about the one domain whose evidence lives in the rendered page.
 - **Not one of the suppressed per-file `missing-e2e-test` findings.** Those are suppressed *because* no e2e layer was declared; this says that same absence carries a second, larger consequence the suppression would otherwise hide.
 Emitted once per run; absent when no accessibility domain is active.
+**`undeclared-contract` classifies by the document, never this spec (#2904).** Apply `{frameworkPath}/Reference/Contract-Test-Classification.md` to each test in the Step 3b inventory; a contract test with no `@subject` in its leading comment block is one finding, naming the artifact(s) it asserts against as suggested subjects. `/qa`, `/add-story` and `/work` Step 3 cite the same document, so findings and authoring prompts cannot disagree. Low: the test verifies something; only its classification is missing.
 **Coverage-gap findings are advisory — they do not block.** Reported, issued under Step 8, recorded in the manifest; a run carrying gaps and no 6a/6b findings still completes normally.
 Advisory because the alternative fails worst where it matters most: a first adoption can carry hundreds of unpaired sources through no fault of the change in hand, and a blocking pass would fail on arrival and be switched off, taking the 6a and 6b findings with it. `/work` Step 6a is advisory for the same reason at narrower scope.
 **Advisory is not silent.** Steps 7 and 8b state gap counts every run, **including when zero**. A pass that prints nothing when it finds nothing is indistinguishable from one that never ran — the failure this command exists to remove. Where the pass was skipped (no tech at 3b, conventions absent at 6c) report the skip and its reason, NEVER a zero: those are different claims.

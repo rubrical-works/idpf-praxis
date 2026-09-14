@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 description: Add story to epic with charter compliance (project)
 argument-hint: "[epic-number] (e.g., 42 or #42)"
 copyright: "Rubrical Works (c) 2026"
@@ -133,7 +133,7 @@ N/A
 **CLOSED SET (#2508).** These two checkboxes are the complete Documentation section. **Do not add or invent additional Documentation checkboxes** — none may be inferred from the story text, the PRD, or what seems obviously needed. `/create-backlog` applies the same rule when materializing this template. **Release-phase work is never a Documentation checkbox:** `/prepare-release` owns the CHANGELOG end to end (writes the section, commits it, carries its own `- [ ] CHANGELOG updated`); tagging, release notes, and asset verification are the same. A story-level checkbox for any of them cannot close inside the story *and* duplicates an obligation another command already discharges. Authoritative list: `phaseFeasibility.ownedElsewhere` in `.claude/metadata/ac-feasibility-prompts.json`. Documentation work that genuinely belongs to this story goes in **Acceptance Criteria** as a deliverable that closes here.
 ### TDD Test Cases
 **Note:** Test cases added when story work begins. See test plan for related cases.
-**E2E:** {E2E framework from `Inception/Test-Strategy.md` → Framework → E2E}
+**E2E:** {E2E harness from `framework-config.json` `testing.suites[]` → the suite whose `role` is `e2e`}
 ### Definition of Done
 - [ ] All acceptance criteria met
 - [ ] TDD test cases pass
@@ -144,7 +144,7 @@ N/A
 **Parent Epic:** #{epic_num}
 ```
 **Relevant Skills renders `N/A` when skills ARE configured (#2817).** The section used to emit the whole `projectSkills` array into every story; there is no relevance filter here or in `/create-backlog`, so all stories got the same list — ten identical copies in a ten-story epic — and the name was a misnomer, the content being project-wide. It was also a third copy: the session lists available skills, and `/work` loads TDD skills from `.claude/skills/tdd-process/tdd-checklist.json`, not the story body. The unconfigured branch stays: it is the only actionable half.
-**E2E — `Inception/Test-Strategy.md` is the source, and the only source.** `Templates/artifacts/test-plan-template.md` already treats that Framework table as authoritative for E2E; reading it here makes two consumers of one artifact agree. **Do NOT add a `framework-config.json` key and do NOT detect a framework from repository contents** — that is the second convention source this spec forbids elsewhere. Three states, and the last two stay distinguishable:
+**E2E — the source is `framework-config.json` `testing.suites[]`, the suite whose `role` is `e2e` (#2851).** **This inverts the #2817 instruction that stood here**, which named `Inception/Test-Strategy.md` as the only source and forbade a `framework-config.json` key. That was right while the prose artifact was the only declaration; since #2849 the config carries `testing.suites[]` and since #2851 the Framework table is **rendered from it**, so reading the prose means reading a view and calling it the source. The reason is recorded rather than the rule deleted, because nothing else stops it being reinstated. `Inception/Test-Strategy.md` remains **corroboration** when the config declares nothing. Three states, and the last two stay distinguishable:
 | `Inception/Test-Strategy.md` | Emit |
 |---|---|
 | Framework table has an E2E row | The framework named there, verbatim |
@@ -175,6 +175,7 @@ For each acceptance criterion implicating a code path, resolve the **candidate t
 1. Infer from the criterion which source paths the change touches.
 2. Apply each `testPatterns` entry, substituting `{dir}`/`{stem}` from the source path.
 3. Keep paths the project's convention produces — a mirrored tree (`src/x/y.js` → `tests/x/y.test.js`) rather than colocation means the pattern matching that layout is the candidate.
+4. **A criterion verified against a non-code artifact** (command spec, registry, manifest, workflow file) implicates a **contract** test, paired by declaration not stem: name the artifact as its `@subject` in the story, as `{frameworkPath}/Reference/Contract-Test-Classification.md` directs.
 **Candidates, not certainties** — the code does not exist yet, so a path is a prediction; an author reading one as a requirement creates the wrong file and treats the mismatch as a spec error.
 **When no candidate path resolves** (no code path implicated, language absent from the conventions file, or `Test-Strategy.md` missing with no organization from the fallback), emit `No candidate test path could be resolved for: {criterion}` and say why. **Never omit the paths silently** — a story with no test paths and no statement why is indistinguishable from one where nobody considered tests.
 **Advisory: does not block story creation**; no resolution outcome changes any status transition.

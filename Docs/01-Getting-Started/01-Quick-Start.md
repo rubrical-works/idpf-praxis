@@ -75,14 +75,15 @@ Session Initialized
 
 If this is a new project, the assistant will immediately ask you to create a charter. The charter defines your project's vision, tech stack, and scope boundaries. It's mandatory — the framework won't let you skip it.
 
-The assistant asks 5 questions:
+The assistant asks 4 questions:
 1. What are you building?
 2. What problem does it solve?
 3. What's your tech stack?
-4. What's in scope and out of scope?
-5. How will you test?
+4. What's in scope for v1?
 
-Answer naturally. The assistant creates `CHARTER.md` and supporting documents. This takes 2-3 minutes and only happens once.
+Then it asks how each part of your stack is tested. For every language (or platform, such as mobile) in your tech stack, it offers a list of test harnesses for each role — unit tests and end-to-end tests — and you pick one. An answer is required: choose a listed harness, **None of these** (you describe your own command), or **none applicable** (recorded so it's clear nobody forgot to ask). If a harness needs extra tooling — Playwright's browsers, for example — the assistant checks for it and offers to install it one confirmed step at a time.
+
+Answer naturally. The assistant creates `CHARTER.md` and supporting documents, and records your test choices in `framework-config.json`. This takes a few minutes and only happens once.
 
 ---
 

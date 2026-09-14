@@ -1,18 +1,19 @@
 # Session Startup Instructions
-**Version:** v0.102.0
+**Version:** v0.103.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
-`.claude/hooks/startup-hook.js` runs startup deterministically: gathers session info, runs eight checks (upgrade, statusline, config-integrity, branch-sync, dependency, task-tools, gh-auth, peers) in parallel on a staged 15s/30s/45s/60s ladder, emits the **Session Initialized** block to:
+`.claude/hooks/startup-hook.js` runs startup deterministically: gathers session info, runs nine checks (upgrade, statusline, config-integrity, branch-sync, dependency, task-tools, gh-auth, peers, testing-drift) in parallel on a staged 15s/30s/45s/60s ladder, emits the **Session Initialized** block to:
 - **stderr** — colored copy for debug/transcript inspection. **Not** auto-surfaced in the Claude Code UI (hook exits 0; upstream docs cover stderr only for exit 2 — do not rely on it). Claude's echo is the only channel reaching the user.
 - **`additionalContext`** — plain text in Claude's context: the block plus a verbatim-echo instruction, and post-hook actions (charter read + summary when active, domain specialist load, `/charter` if pending). The charter summary **is** a post-hook content read: when `charterStatus` is `Active`, Claude reads `CHARTER.md` after echoing the block and emits a concise prose summary. The block carries only the `Charter Status:` line (#2484 reversed #2475's precomputed `Charter Vision:`/`Charter Focus:` lines, clipped at 200 chars).
-**Six of eight run unconditionally; `upgrade` and `peers` do not.** Two gates, on unrelated conditions — the registered count is a function of **two** settings, not one.
+**Six of nine run unconditionally; `upgrade`, `peers` and `testing-drift` do not.** Three gates, on unrelated conditions — the registered count is a function of **three** conditions, not one.
 | Check | Registered when |
 |---|---|
 | statusline, config-integrity, branch-sync, dependency, task-tools, gh-auth | always |
 | `upgrade` | `framework-config.json` `selfHosted` is not `true` |
 | `peers` | `crossSessionMessaging.discovery` resolves true (#2702) |
-Deployed project + discovery on → eight; self-hosted + discovery on → seven; self-hosted + discovery off → six. **Never read a row count as a check count without knowing both settings** — this paragraph previously read "six of seven; `upgrade` does not", false the moment #2702 gated `peers`, and read as asserting `peers` was unconditional.
+| `testing-drift` | `charterStatus` is `Active` (#2903) |
+Deployed project + discovery on + active charter → nine; self-hosted + discovery on + active charter → eight; self-hosted + discovery off + pending charter → six. **Never read a row count as a check count without knowing all three conditions** — this paragraph previously read "six of seven; `upgrade` does not", false the moment #2702 gated `peers`, and read as asserting `peers` was unconditional.
 Condition is on **registration**, not output: a skipped check contributes **no row** to the block, not an empty or "skipped" one. Row count alone cannot distinguish skipped from failed-to-run. **Exception:** `peers` with `discovery: false` **does** emit a row saying it did not look — absence there would otherwise be indistinguishable from "no peers found" (see below).
 ## Branch Sync Offer
 `behind` makes `additionalContext` carry an **offer**, not just a status line — `06-runtime-triggers.md` *offer, don't force*: the hook asks, never mutates.
@@ -132,6 +133,31 @@ Linux ticks are **boot-relative**: an entry surviving a reboot can collide with 
 | **Different machine** | **No** | **No** |
 | Another user, same machine | **No — no cross-user path** | **No** |
 Last two rows are not limitations awaiting a fix: scope is one machine, one user, one working directory, corroborated by the per-UID POSIX socket path.
+## Testing Drift Row (#2903)
+Reports two stack-dependent conditions nothing else re-checks once written: **stack drift** in the charter's `testing` declaration and **coverage-audit overrides** that no longer fit the imported skill. Delegates to `.claude/scripts/shared/testing-drift-check.js`; the hook renders its `formatRows()` output verbatim.
+| Finding | Row |
+|---|---|
+| Drift `clean`, overrides `none`/`clean` | **No row** — the common case |
+| Drift `drift` | `Testing Drift:` naming each newly gained *(key/role)* with no suite and each orphaned suite; remedy `/charter refresh` |
+| Override findings | `Coverage Overrides:` naming each finding and its remedy |
+| Either part `undetermined` | Says what could not be established, and that this is **not** an all-clear |
+| Timeout or crash | `Testing Drift: ⚠️ check timed out` / `check failed to run` |
+**Registered only when `charterStatus` is `Active`** — drift is measured against the charter's `testing` declaration; no active charter, nothing to drift from.
+**Drift is delegated, never re-derived.** `charter-testing-audit.js` `audit()` (#2854, platforms since #2900) computes newly gained pairs and orphaned suites; built for "a developer or CI job", it had no automatic caller.
+**The row repeats every session drift persists, and is never an offer.** Drift does not clear on its own, and a project declining `/charter refresh` — or with no `testing.suites[]` yet — would be asked every session. So nothing is asked: the row names the remedy, `additionalContext` adds no prompt, no decline is recorded, no suppression state stored.
+**Override detection is static** — `testCoverageAudit`, the imported `test-coverage-conventions.json`, `git ls-files`. It never runs the coverage audit, which reads `git diff <since>..HEAD`; a session start has no commit range.
+**What an override means depends on the imported audit, so the check reads its capability.** idpf-skills-dev#335 moved test classification ahead of the skip lists: `ignoredSourcePatterns` governs sources only, `excludePaths` is the one test-skip rule, each skip listed in `diagnostics.skippedTestFiles`. The check reads the imported `test-coverage-audit.js` source for that marker — **capability, not version number**; a version comparison misclassifies a local build.
+| Imported audit | Entry | Reported as |
+|---|---|---|
+| post-#335 | `ignoredSourcePatterns` entry, ≥1 tracked match, **all** test-shaped | **no-op** — keeps no source out; remove it |
+| post-#335 | `ignoredSourcePatterns` entry also matching a real source | **not reported** — doing work |
+| post-#335 | entry matching no tracked file | **not reported** — may anticipate a future path |
+| post-#335 | `excludePaths` entry matching tests | **not reported** — the documented test-skip rule |
+| pre-#335 | `ignoredSourcePatterns` or `excludePaths` entry matching tests | **hiding** those tests from flow/contract classification until the #335 update is imported |
+| any | same-key `additionalLanguages` entry whose `testPatterns` are a strict subset of the bundled entry's | **narrowing** — `mergeConfig` replaces a language wholesale (#2866) |
+**This repo's `tests/**` is the worked "not reported" case.** Measured 2026-09-13 on the post-#335 audit: removing it adds `tests/helpers/mock-exec.js`, `mock-factories.js`, `review-rule.js` as unpaired sources (184→187). Pre-#335 it hid every test; post-#335 it keeps three helpers out. Keying on "matches tests" alone reports a correct entry every session.
+**No row means something was looked at.** No `testCoverageAudit` block → `none`, no row, skill not read. Overrides present with the skill not imported, its audit script unreadable, or tracked files unlistable → `undetermined`. An `additionalLanguages`-only override never lists tracked files.
+**Advisory and read-only, always.** Never writes `framework-config.json`, `CHARTER.md` or `testing.suites[]`, never runs a remedy, never blocks startup.
 ## Trash Row (#2771)
 Reports stale `.tmp-*` scratch files removed from the project root. **The one startup step that mutates the tree** — every other check is advisory and read-only, so this section exists mainly to say why the exception is here and how far it reaches.
 | Outcome | Row |

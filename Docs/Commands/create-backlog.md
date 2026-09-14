@@ -21,6 +21,7 @@ Create GitHub epics and stories from an approved PRD, with TDD test case skeleto
 - **Blocked by two gates:** (1) PRD must have the "PRD reviewed" checkbox checked in the tracker body — offers to run `/review-prd` or bypass with notation; (2) the test plan approval issue must be closed before epics/stories are created.
 - Parses `PRD/{name}/PRD-{name}.md` to extract epics and stories, then creates matching GitHub issues using `gh pmu create` (automatically added to project board).
 - Test case skeletons from the approved `Test-Plan-{name}.md` are embedded directly in each story's body, using the correct syntax for the project's language and test framework.
+- Each story's **E2E** line is taken from `framework-config.json` `testing.suites[]` — the suite whose `role` is `e2e`, as declared by `/charter` harness selection. No e2e framework is detected or guessed.
 - Epic priority is set to the highest priority among its child stories.
 - After creation, runs keyword matching against story content and suggests relevant skills to install — can be skipped or selectively accepted.
 - Moves the PRD tracker to `in_progress` status; the tracker stays open until `/complete-prd` is run.

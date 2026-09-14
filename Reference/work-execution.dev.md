@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.102.0
+**Version:** v0.103.0
 **Source:** Reference/work-execution.md (dev-preserve variant, #2395)
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow. This variant preserves FRAMEWORK-ONLY blocks for self-hosted dev; the stripped variant ships via `.min-mirror/Reference/work-execution.md` to user projects.
 ## Execution Instructions
@@ -107,7 +107,7 @@ Trigger is the **workflow moment**, NOT the mechanism: fires identically inline 
 **Fires per sub-issue** under `--nonstop` on an epic/branch tracker, at the same workflow moment as the two gates, not once per invocation naming the tracker.
 **Never a gate.** Fire-and-forget; nothing awaits delivery or ack. `buildAnnouncement` has no throwing path and returns inert on malformed input; a failed send is reported, work proceeds. An advisory channel that can fail a command has become a gate.
 For each AC (or batch): mark `in_progress` → TDD cycle → run the project's tests **scoped to the touched directory tree** — all scoped tests must pass → mark `completed` → **COMMIT** `Refs #$ISSUE — <description>`.
-**Scoping is expressed in the project's own terms.** Take the project's declared verification commands (`resolveVerificationCommands()` — Step 4f) and narrow each to the touched tree **however that runner expresses narrowing** — path argument, filter flag, package selector. No way to narrow, or narrowing not obvious → run that command unnarrowed: a slower correct run beats a faster invented one. Scoping optimises feedback speed; the gate is Step 4f, which is not optional.
+**Scoping is expressed in the project's own terms.** Route the suites `resolveSuites()` returns through `scopedInvocations()` (`.claude/scripts/shared/lib/test-runner.js` — Step 4f), narrowing each to the touched tree **however that runner expresses narrowing** — path argument, filter flag, package selector. No way to narrow, or narrowing not obvious → run that command unnarrowed: a slower correct run beats a faster invented one. Scoping optimises feedback speed; the gate is Step 4f, which is not optional.
 **Full-suite verification** runs once per sub-issue between Step 4c and Step 5, invoking **every** command the project declares (Step 4f — `verificationCommands`, falling back to a single `testCommand`). Catches cross-cutting regressions scoped runs miss. Any failure blocks `in_review`; commit a fix and re-run.
 **Commit-per-deliverable gate:** Commit when each AC's deliverable is complete. ACs that decompose a single deliverable (schema + its enums; validator + its reject path; helper's public API + error contract) ship in one commit. ACs that introduce independent deliverables ship separately. **Gate:** do not start the next AC until the previous deliverable is committed.
 **Mid-AC commit checkpoint (#2557):** the gate above fires only at AC boundaries. A long investigative phase (source reading, repeated build/deploy/verify cycles, design pivots) reaches no boundary for many tool-turns, so nothing prompts a commit and work accumulates until a later commit sweeps it up under a message attributing it to the wrong issue. This checkpoint fires **during** an AC, before its deliverable is complete.
@@ -121,6 +121,7 @@ Applies to **standard single-issue `/work`**, not only epic/`--nonstop` — the 
 **Direct-work path (no Agent spawn):** If you implement inline without spawning an Agent, the Sub-Agent Review Gate is N/A. This exemption is scoped to the *Sub-Agent Review Gate only* — the **Pre-Work Status Gate** above fires on the direct-work path exactly as on the Agent path (#2483). The file-read verification intent is satisfied by **Step 4 (Ground in file state — re-read each modified file before evaluating its AC)**, mandatory regardless of path. When `strictTDD=true`, Step 4 re-reads become a hard gate: do not check an AC box from memory. The two gates are complementary, not redundant.
 **TDD Execution (`tddChecklist` loaded):** execute each `{phase}.required` item, enforce `{phase}.gate` before proceeding. On `failure-recovery.triggers` match, execute `failure-recovery.steps`. **Deep Reference:** if phase gate fails first attempt, Read `{phase}.deepReference.skill` SKILL.md, retry. Missing skill → warn, proceed.
 **TDD fallback (`tddChecklist==null`):** RED=failing test, GREEN=minimal pass, REFACTOR=analyze duplication/naming/complexity, report decision, keep tests passing.
+**Contract tests (#2904):** a new test whose subject is a non-code artifact declares `@subject` in its leading comment block as `{frameworkPath}/Reference/Contract-Test-Classification.md` directs.
 **Host-process verification mode (`verificationMode: "host-process"`, #2556).** Distinct from the fallback above, and the distinction is the point: there `tddChecklist` is missing; here it **loads validly** and its RED gate is unsatisfiable, so `==null` never fires and nothing else catches it.
 **Trigger: the code under test cannot be executed outside a live host process.** Unity/Unreal/Godot, embedded and firmware, any plugin or mod running inside a host it does not own. **NOT "no automated tests exist"** — a project that could run tests but has not written them stays on `automated-tests` and stays strict; keying on absent tests turns a narrow carve-out into a universal opt-out.
 | Phase | Strict (`automated-tests`) | Carve-out (`host-process`) |
@@ -171,13 +172,13 @@ Helper registration is off-band. **Run the registrar; do not edit by hand (#2620
 node .claude/scripts/framework/register-helper.js <path-to-helper> [--gated]
 ```
 `--gated` wraps the entry in an `enableGitHubWorkflow` closure in `constants.js`; omit for a plain string. **Idempotent** — safe after a partial manual edit, no-op when already registered.
-It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.102.0` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
+It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.103.0` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
 > **Why a script, not a longer checklist (#2620):** the `shared/lib` key contains a slash and **cannot** be dot-accessed; a dot form reads `undefined` silently and `|| []` turns that into a plausible `false`. That hazard was already documented here and still paid by hand every time — most recently #2600 for `lib/checkbox-scan.js`. Documentation cannot fix a transcription error it has already warned about; a tool can.
 Runs before Step 5. Applies in default and `--nonstop`.
 <!-- FRAMEWORK-ONLY-END -->
 #### Step 4f: Full-Suite Regression Sweep
 After Step 4c (and 4d/4e if they fired), run the project's declared verification set before Step 5. Every command must pass. Failure blocks `in_review` — commit a fix (`Refs #$ISSUE`) and re-run. Complements per-AC scoped tests with a cross-cutting regression check at the sub-issue boundary.
-**The commands come from the project, never from this rule.** Resolve **once** via `resolveVerificationCommands()` (`.claude/scripts/shared/lib/framework-config.js`) → `{commands, source}`:
+**The commands come from the project, never from this rule.** Resolve **once** via `resolveSuites()` (`.claude/scripts/shared/lib/test-runner.js`) — it turns `testing.suites[]`, `verificationCommands` and the `testCommand` shorthand into one suite list and reports the form, so this step never branches on the declaration; `sweepInvocations()` returns the set to run. `framework-config.js` `resolveVerificationCommands()` is a thin delegate over the same resolution → `{commands, source}`:
 | `source` | Meaning | Action |
 |---|---|---|
 | `verificationCommands` | ordered array declared | Run **every declared command**, in declaration order |
@@ -191,6 +192,8 @@ Verification sweep (3 commands declared):
   FAIL  <declared command 3>
 ```
 Any failure blocks Step 5. Run the whole set even after one fails — one re-run surfacing three failures beats three fix-and-rerun cycles.
+**Report each phase's verdict verbatim from `classifyRunResult()`; never re-derive it.** `prepare` is ordered before `full`. Non-zero `prepare` → `prerequisite failed` naming the phase, and that suite's `full` is **not run** — tests against an unbuilt tree report a failure that is not the code's. Non-zero `full` → `tests failed`. Block `in_review` whenever a verdict carries `blocksReview: true`. The helper decides the verdict; this rule reports and blocks on it — re-deriving it would give one outcome two definitions.
+**`manual-only` suites are listed as declared-but-not-run.** Excluded from both invocation sets by construction, so naming them keeps a declared-but-never-run suite visible; unnamed, it is indistinguishable from one never declared.
 **`verificationCommands` takes precedence; `testCommand` is the single-command fallback.** Array absent, empty, or not an array → resolver **falls back** to `testCommand`, so a project that never adopts the array behaves exactly as before. The resolver owns precedence — do not re-derive here, do not read either key directly.
 **Nothing declared (`source: "none"`) — no `verificationCommands` array, and no `testCommand` is declared either → report the gap; do not substitute one.** Emit:
 ```

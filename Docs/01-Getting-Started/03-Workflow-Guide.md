@@ -91,19 +91,24 @@ Not every project uses every stage. Small fixes can skip straight to a `/bug` or
 
 **What happens:**
 - If your project has existing code, the assistant analyzes it (**Extraction Mode**) to detect your tech stack, architecture, and patterns
-- If starting fresh, the assistant asks 5 essential questions (**Inception Mode**): what you're building, the problem it solves, your tech stack, scope boundaries, and testing approach
+- If starting fresh, the assistant asks 4 essential questions (**Inception Mode**): what you're building, the problem it solves, your tech stack, and scope boundaries
 - For complex projects, up to 4 follow-up questions are asked based on what it detects (e.g., multi-service architecture, compliance needs)
+- In both modes, the assistant then runs **harness selection**: for each language or platform in your stack and each test role (unit, end-to-end), you pick a test harness from a list. For code projects selection is mandatory — the accepted answers are a listed harness, **None of these** (you supply the command), or **none applicable** (recorded as a deliberate "no"). In Extraction Mode, test commands found in `package.json`, a `Makefile`, `pyproject.toml`, or your CI workflow are offered as starting points, with the file they came from.
+- After selection, the assistant checks that each harness's tooling is actually installed (for Playwright it uses `/playwright-check`). Anything missing is offered as a guided install, one confirmed command at a time. If an install fails or you decline it, the harness stays declared but is marked `manual-only` with an "install pending" note, so it doesn't fail every `/work` run in the meantime
+
+Your choices are written to `testing.suites[]` in `framework-config.json` — the one declaration `/work` reads to know how to test your project (see Stage 8). To re-run only this step later, use `/charter --testing`; to preview it without writing anything, add `--dry-run`, and add `--check` as well for a non-interactive check suited to CI (it never prompts and reports either `clean` or `drift`).
 
 **What it creates:**
 ```
 CHARTER.md                     ← Main charter (vision, tech, scope)
+domain-entities.json           ← Key entities, generated from the charter (project root)
 Inception/
   ├── Charter-Details.md       ← Detailed vision and problem statement
   ├── Tech-Stack.md            ← Languages, frameworks, dependencies
   ├── Scope-Boundaries.md      ← In-scope and out-of-scope items
   ├── Constraints.md           ← NFRs, compliance, security
   ├── Architecture.md          ← System structure
-  ├── Test-Strategy.md         ← TDD approach, coverage targets
+  ├── Test-Strategy.md         ← TDD approach, coverage targets; Framework table generated from testing.suites[]
   └── Milestones.md            ← Delivery milestones (TBD)
 Construction/
   ├── Test-Plans/
@@ -123,8 +128,10 @@ Transition/
 
 As your project evolves:
 - `/charter update` — Modify specific sections (vision, scope, tech stack)
-- `/charter refresh` — Re-analyze the codebase and merge findings
+- `/charter refresh` — Re-analyze the codebase and merge findings. For testing, refresh acts only on what changed: a newly added language or role gets harness selection for that pair alone, existing choices are never re-asked or overwritten, suites that no longer match any file are reported (never removed), and "install pending" suites are re-checked with an offer to put them back in the gate once their tooling is present
 - `/charter validate` — Check if current work aligns with charter scope
+
+**Testing drift at startup.** When your charter is active, the session startup block adds a `Testing Drift:` row if your stack has gained a language or role with no declared suite, or a declared suite matches no files. The row names `/charter refresh` as the remedy. A `Coverage Overrides:` row may also appear when test-coverage settings in `framework-config.json` no longer fit the installed coverage-audit skill. Both rows are advisory — nothing is changed for you, and no row appears when everything is in order.
 
 ---
 
@@ -494,17 +501,24 @@ Naming the same issue twice assigns it once, including when you list an issue ex
 5. Extracts acceptance criteria into a todo list
 6. Loads the process framework (IDPF-Agile dispatches to TDD: RED-GREEN-REFACTOR)
 7. The AI implements the work, checking off acceptance criteria as they're met
-8. Runs every verification command your project declares (see below) — all must pass
+8. Runs every test suite your project declares (see below) — all must pass
 9. When all criteria pass, moves the issue to `in_review`
 10. **STOPS** — waits for you to say "done"
 
-**Declaring your verification commands:** `/work` never guesses how to test your project. It runs the commands listed under `verificationCommands` in `framework-config.json`, in order, and reports each result separately, so one passing command cannot hide another that failed:
+**Declaring your test suites:** `/work` never guesses how to test your project. It runs the suites declared under `testing.suites[]` in `framework-config.json` — normally written for you by harness selection at `/charter` (Stage 1) — in order, and reports each result separately, so one passing suite cannot hide another that failed:
 
 ```json
-"verificationCommands": ["npm run lint", "npx jest"]
+"testing": {
+  "suites": [
+    { "id": "js-jest", "role": "unit", "match": ["tests/**/*.test.js"], "full": "npx jest" },
+    { "id": "none-javascript-e2e", "role": "e2e", "kind": "manual", "execution": "manual-only", "note": "none applicable" }
+  ]
+}
 ```
 
-A project that declares nothing is told so — the sweep is skipped and the move to `in_review` proceeds unverified. Declare at least one command to make this gate real.
+Each gate suite names the files it covers (`match`) and the command that runs it (`full`). Suites marked `manual-only` — "none applicable" records and harnesses whose tooling is still pending install — are never run; they are listed in the report as declared-but-not-run so they stay visible.
+
+Projects that declared tests before harness selection existed keep working: a `verificationCommands` array (or a single `testCommand`) is still honoured when no `testing` block is present. When both `testing` and `verificationCommands` are declared, `testing` takes precedence. A project that declares nothing is told so — the sweep is skipped and the move to `in_review` proceeds unverified. Run `/charter --testing` to make this gate real.
 
 **The TDD cycle (IDPF-Agile):** The assistant performs this autonomously — you don't need to understand TDD to use the framework. For reference, the cycle is:
 ```
@@ -572,6 +586,11 @@ All three levels of review are valid. The depth of your review is a quality mult
 
 **What happens (5 phases):**
 
+### Before Phase 1: Incomplete Issues
+- Previews what closing the branch will do with `gh pmu branch close <branch> --dry-run`, and shows the output as-is — every open issue still on the branch (other than Parking Lot items) that the close would move back to Backlog
+- If nothing is listed, says so explicitly
+- If issues are listed, asks you to **transfer** them to another branch (with `/transfer-issue`), **continue anyway** (the assistant names which issues will be moved to Backlog with their branch cleared), or **stop** before anything has changed
+
 ### Phase 1: Analysis
 - Analyzes all commits since the last tag
 - Recommends a version number based on changes (MINOR for features, PATCH for fixes)
@@ -579,7 +598,6 @@ All three levels of review are valid. The depth of your review is a quality mult
 
 ### Phase 2: Validation
 - Validates framework files and scripts
-- Checks for incomplete issues on the branch
 
 ### Phase 3: Prepare
 - Updates version files: `CHANGELOG.md`, `README.md`, `framework-config.json`
@@ -590,7 +608,7 @@ All three levels of review are valid. The depth of your review is a quality mult
 ### Phase 4: Git Operations
 - Creates a PR to `main`
 - You approve and merge the PR
-- Closes the branch tracker issue
+- Shows the close preview again (work may have moved since the start), then closes the branch tracker issue
 - Tags the release on `main` (e.g., `v1.0.0`)
 - Pushes the tag
 - Updates GitHub Release notes

@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 description: Dedicate a session to observing cross-session activity (project)
 argument-hint: "[--auto-create] [--force]"
 copyright: "Rubrical Works (c) 2026"

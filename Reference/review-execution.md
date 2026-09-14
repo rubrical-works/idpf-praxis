@@ -1,5 +1,5 @@
 # Review Execution Rule
-**Version:** v0.102.0
+**Version:** v0.103.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` — the hybrid shell + rule architecture from #2329/#2368 applied to the review pair (#2737). Shells carry arguments, prerequisites and error handling; this carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks (#2746).** `/review-issue` carried three points — `pre-review`, `criteria-customize`, `post-review` — all retired: never filled here, 0 of 28 recipes targeted them, and the declarative need is already served by `review-criteria.json`, `review-mode-criteria.json` and `review-extensions.json`, which the preamble reads. Removes the one command spanning two deployment mechanisms, so this rule matches rule 08's shape with no exception to document. The names live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.

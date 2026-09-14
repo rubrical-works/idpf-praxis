@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.102.0
+ * @framework-script 0.103.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -338,30 +338,27 @@ function resolveVerificationMode(cwd = process.cwd()) {
  * @returns {{commands: string[], source: 'verificationCommands'|'testCommand'|'none'}}
  */
 function resolveVerificationCommands(cwd = process.cwd()) {
-  const NONE = { commands: [], source: 'none' };
+  // Function-scoped require, deliberately (#2852 AC3): test-runner.js requires
+  // THIS module from inside `resolveSuites`, so a top-level require in either
+  // direction would be a load-time cycle leaving one module half-initialised
+  // for the other. Scoping both to call time makes the order irrelevant.
+  const { resolveSuites } = require('./test-runner.js');
 
-  let config;
-  try {
-    config = read(cwd);
-  } catch {
-    return NONE;
-  }
-  if (!config) return NONE;
+  // Thin delegate since #2852. The precedence rule — `testing` >
+  // `verificationCommands` > `testCommand` > none — lives in ONE place, so
+  // `/qa` Step 4 and every other caller inherits it rather than each growing a
+  // second resolution rule that drifts.
+  const { suites, source } = resolveSuites(cwd);
 
-  const declared = config.verificationCommands;
-  if (Array.isArray(declared)) {
-    const commands = declared.filter((c) => typeof c === 'string' && c.trim() !== '');
-    if (commands.length > 0) {
-      return { commands, source: 'verificationCommands' };
-    }
-  }
+  // A `manual-only` suite is declared-but-not-run, so it contributes no
+  // command. Filtering here rather than in the resolver keeps the suite list
+  // complete for callers that need to REPORT what was skipped.
+  const commands = suites
+    .filter((s) => s.execution !== 'manual-only')
+    .map((s) => s.full)
+    .filter((c) => typeof c === 'string' && c.trim() !== '');
 
-  const single = config.testCommand;
-  if (typeof single === 'string' && single.trim() !== '') {
-    return { commands: [single], source: 'testCommand' };
-  }
-
-  return NONE;
+  return { commands, source };
 }
 
 /**
@@ -408,6 +405,53 @@ function resolveTmpCleanup(cwd = process.cwd()) {
   return tmpCleanupEnabled(config);
 }
 
+/**
+ * The defaults a declared suite acquires when it omits them (#2849).
+ *
+ * Applied by `normalizeSuite`, and documented a second time in the schema's
+ * per-property `description` fields. The duplication is deliberate and
+ * asserted by `framework-config.test.js`: a reader of the schema alone must be
+ * able to learn what an omitted key means, while every CONSUMER gets the value
+ * from here — a JSON Schema `default` keyword documents but does not apply
+ * unless ajv is run with `useDefaults`, which this helper deliberately does not
+ * enable (it would mutate the caller's config as a side effect of validating).
+ */
+const SUITE_DEFAULTS = Object.freeze({
+  role: 'unit',
+  execution: 'gate',
+  kind: 'framework',
+});
+
+/**
+ * Apply the suite defaults, returning a new object (#2849).
+ *
+ * **Returns a copy; never mutates the input.** Callers pass suites straight out
+ * of their own parsed config, and #2852's `resolveSuites` calls this on every
+ * suite — normalizing in place would silently rewrite the caller's config
+ * object and make a later `write()` persist defaults the project never
+ * declared.
+ *
+ * **Never throws.** The caller is a gate helper, so a malformed suite must be
+ * reportable rather than an exception raised mid-sweep; a non-object resolves
+ * to a suite carrying only the defaults, which then fails schema validation
+ * visibly rather than crashing.
+ *
+ * `resolveSuites` and every other consumer call this rather than re-deriving
+ * the defaults, so there is exactly one place the answer lives.
+ *
+ * @param {object} suite - A declared suite, possibly partial
+ * @returns {object} A new suite with `role`, `execution` and `kind` populated
+ */
+function normalizeSuite(suite) {
+  const src = (suite && typeof suite === 'object' && !Array.isArray(suite)) ? suite : {};
+  return {
+    ...src,
+    role: src.role === undefined ? SUITE_DEFAULTS.role : src.role,
+    execution: src.execution === undefined ? SUITE_DEFAULTS.execution : src.execution,
+    kind: src.kind === undefined ? SUITE_DEFAULTS.kind : src.kind,
+  };
+}
+
 module.exports = {
   read,
   resolveVerificationMode,
@@ -415,6 +459,8 @@ module.exports = {
   resolveTmpCleanup,
   VERIFICATION_MODES,
   DEFAULT_VERIFICATION_MODE,
+  normalizeSuite,
+  SUITE_DEFAULTS,
   validate,
   write,
   ensureReviewSweep,

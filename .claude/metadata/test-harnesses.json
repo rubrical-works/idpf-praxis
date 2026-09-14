@@ -1,0 +1,133 @@
+{
+  "$schema": "./test-harnesses-schema.json",
+  "_meta": {
+    "schemaVersion": 1,
+    "languageCount": 8,
+    "rankingSource": "PRD/Unit-And-E2E-Test-Lifecycle/PRD-Unit-And-E2E-Test-Lifecycle.md — the ecosystem-standard e2e set enumerated in Story 1.1, plus the unit/integration harnesses each ecosystem ships or overwhelmingly defaults to. Not a popularity survey: entries are the harnesses a project in that language is most likely to already have, which is what makes an offered default adoptable.",
+    "rankingSnapshot": "2026-09-11"
+  },
+  "languages": {
+    "typescript": {
+      "unit": [
+        { "id": "ts-vitest", "role": "unit", "name": "Vitest", "kind": "framework", "full": "npx vitest run", "scoped": { "mode": "path" } },
+        { "id": "ts-jest", "role": "unit", "name": "Jest", "kind": "framework", "full": "npx jest", "scoped": { "mode": "path" } },
+        { "id": "ts-node-test", "role": "unit", "name": "node --test", "kind": "framework", "full": "node --test", "scoped": { "mode": "path" } }
+      ],
+      "e2e": [
+        { "id": "ts-playwright", "role": "e2e", "name": "Playwright", "kind": "framework", "full": "npx playwright test", "requires": [{"id": "@playwright/test", "kind": "package", "check": "npx playwright --version", "install": "npm install -D @playwright/test"}, {"id": "chromium", "kind": "browser", "check": "npx playwright install --dry-run chromium", "install": "npx playwright install chromium"}], "scoped": { "mode": "path" } },
+        { "id": "ts-cypress", "role": "e2e", "name": "Cypress", "kind": "framework", "full": "npx cypress run", "scoped": { "mode": "path" } },
+        { "id": "ts-webdriverio", "role": "e2e", "name": "WebdriverIO", "kind": "framework", "full": "npx wdio run wdio.conf.ts", "scoped": { "mode": "none", "onScoped": "skip" } }
+      ],
+      "integration": [
+        { "id": "ts-vitest-integration", "role": "integration", "name": "Vitest (integration project)", "kind": "framework", "full": "npx vitest run --project integration", "scoped": { "mode": "path" } }
+      ],
+      "compile-check": [
+        { "id": "ts-tsc", "role": "compile-check", "name": "tsc --noEmit", "kind": "script", "full": "npx tsc --noEmit", "scoped": { "mode": "none" } }
+      ]
+    },
+    "javascript": {
+      "unit": [
+        { "id": "js-vitest", "role": "unit", "name": "Vitest", "kind": "framework", "full": "npx vitest run", "scoped": { "mode": "path" } },
+        { "id": "js-jest", "role": "unit", "name": "Jest", "kind": "framework", "full": "npx jest", "scoped": { "mode": "path" } },
+        { "id": "js-node-test", "role": "unit", "name": "node --test", "kind": "framework", "full": "node --test", "scoped": { "mode": "path" } }
+      ],
+      "e2e": [
+        { "id": "js-playwright", "role": "e2e", "name": "Playwright", "kind": "framework", "full": "npx playwright test", "requires": [{"id": "@playwright/test", "kind": "package", "check": "npx playwright --version", "install": "npm install -D @playwright/test"}, {"id": "chromium", "kind": "browser", "check": "npx playwright install --dry-run chromium", "install": "npx playwright install chromium"}], "scoped": { "mode": "path" } },
+        { "id": "js-cypress", "role": "e2e", "name": "Cypress", "kind": "framework", "full": "npx cypress run", "scoped": { "mode": "path" } },
+        { "id": "js-webdriverio", "role": "e2e", "name": "WebdriverIO", "kind": "framework", "full": "npx wdio run wdio.conf.js", "scoped": { "mode": "none", "onScoped": "skip" } }
+      ],
+      "integration": [],
+      "compile-check": []
+    },
+    "python": {
+      "unit": [
+        { "id": "py-pytest", "role": "unit", "name": "pytest", "kind": "framework", "full": "pytest -q", "scoped": { "mode": "path" } },
+        { "id": "py-unittest", "role": "unit", "name": "unittest", "kind": "framework", "full": "python -m unittest discover", "scoped": { "mode": "none" } }
+      ],
+      "e2e": [
+        { "id": "py-pytest-playwright", "role": "e2e", "name": "pytest-playwright", "kind": "framework", "full": "pytest -q --browser chromium", "requires": [{"id": "pytest-playwright", "kind": "package", "check": "python -m pytest --version", "install": "pip install pytest-playwright"}, {"id": "chromium", "kind": "browser", "check": "python -m playwright install --dry-run chromium", "install": "python -m playwright install chromium"}], "scoped": { "mode": "path" } },
+        { "id": "py-selenium", "role": "e2e", "name": "Selenium", "kind": "framework", "full": "pytest -q tests/e2e", "scoped": { "mode": "path" } },
+        { "id": "py-robot", "role": "e2e", "name": "Robot Framework", "kind": "framework", "full": "robot tests/", "scoped": { "mode": "path" } }
+      ],
+      "integration": [],
+      "compile-check": [
+        { "id": "py-mypy", "role": "compile-check", "name": "mypy", "kind": "script", "full": "mypy .", "scoped": { "mode": "path" } }
+      ]
+    },
+    "go": {
+      "unit": [
+        { "id": "go-test", "role": "unit", "name": "go test", "kind": "framework", "full": "go test ./...", "scoped": { "mode": "package" } }
+      ],
+      "e2e": [
+        { "id": "go-subprocess-e2e", "role": "e2e", "name": "go test (subprocess invocation)", "kind": "framework", "full": "go test ./e2e/...", "scoped": { "mode": "package" } }
+      ],
+      "integration": [
+        { "id": "go-test-integration", "role": "integration", "name": "go test -tags=integration", "kind": "framework", "full": "go test -tags=integration ./...", "scoped": { "mode": "package" } }
+      ],
+      "compile-check": [
+        { "id": "go-vet", "role": "compile-check", "name": "go vet", "kind": "script", "full": "go vet ./...", "scoped": { "mode": "package" } }
+      ]
+    },
+    "rust": {
+      "unit": [
+        { "id": "rust-cargo-test", "role": "unit", "name": "cargo test", "kind": "framework", "full": "cargo test", "scoped": { "mode": "package" } }
+      ],
+      "e2e": [
+        { "id": "rust-subprocess-e2e", "role": "e2e", "name": "cargo test (subprocess invocation)", "kind": "framework", "full": "cargo test --test e2e", "scoped": { "mode": "none" } }
+      ],
+      "integration": [
+        { "id": "rust-cargo-test-integration", "role": "integration", "name": "cargo test --tests", "kind": "framework", "full": "cargo test --tests", "scoped": { "mode": "package" } }
+      ],
+      "compile-check": [
+        { "id": "rust-clippy", "role": "compile-check", "name": "cargo clippy", "kind": "script", "full": "cargo clippy -- -D warnings", "scoped": { "mode": "package" } }
+      ]
+    },
+    "java": {
+      "unit": [
+        { "id": "java-junit5", "role": "unit", "name": "JUnit 5", "kind": "framework", "full": "mvn -q test", "scoped": { "mode": "package" } }
+      ],
+      "e2e": [
+        { "id": "java-selenium", "role": "e2e", "name": "Selenium", "kind": "framework", "full": "mvn -q verify -Pe2e", "scoped": { "mode": "none", "onScoped": "skip" } },
+        { "id": "java-playwright", "role": "e2e", "name": "Playwright for Java", "kind": "framework", "full": "mvn -q test -Dtest=*E2ETest", "requires": [{"id": "com.microsoft.playwright:playwright", "kind": "package", "check": "mvn -q dependency:get -Dartifact=com.microsoft.playwright:playwright:LATEST -o"}, {"id": "chromium", "kind": "browser", "install": "mvn exec:java -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args=\"install chromium\""}], "scoped": { "mode": "none", "onScoped": "skip" } }
+      ],
+      "integration": [
+        { "id": "java-failsafe", "role": "integration", "name": "Maven Failsafe", "kind": "framework", "full": "mvn -q verify", "scoped": { "mode": "package" } }
+      ],
+      "compile-check": []
+    },
+    "kotlin": {
+      "unit": [
+        { "id": "kotlin-junit5", "role": "unit", "name": "JUnit 5", "kind": "framework", "full": "gradle test", "scoped": { "mode": "package" } }
+      ],
+      "e2e": [
+        { "id": "kotlin-selenium", "role": "e2e", "name": "Selenium", "kind": "framework", "full": "gradle e2eTest", "scoped": { "mode": "none", "onScoped": "skip" } },
+        { "id": "kotlin-playwright", "role": "e2e", "name": "Playwright for Java", "kind": "framework", "full": "gradle test --tests \"*E2ETest\"", "requires": [{"id": "com.microsoft.playwright:playwright", "kind": "package"}, {"id": "chromium", "kind": "browser", "install": "gradle playwrightInstall"}], "scoped": { "mode": "none", "onScoped": "skip" } }
+      ],
+      "integration": [],
+      "compile-check": []
+    },
+    "csharp": {
+      "unit": [
+        { "id": "cs-xunit", "role": "unit", "name": "xUnit", "kind": "framework", "full": "dotnet test", "scoped": { "mode": "package" } },
+        { "id": "cs-nunit", "role": "unit", "name": "NUnit", "kind": "framework", "full": "dotnet test", "scoped": { "mode": "package" } }
+      ],
+      "e2e": [
+        { "id": "cs-playwright-dotnet", "role": "e2e", "name": "Playwright .NET", "kind": "framework", "full": "dotnet test --filter Category=E2E", "requires": [{"id": "Microsoft.Playwright", "kind": "package", "check": "dotnet list package --include-transitive", "install": "dotnet add package Microsoft.Playwright"}, {"id": "chromium", "kind": "browser", "install": "pwsh bin/Debug/net8.0/playwright.ps1 install chromium"}], "scoped": { "mode": "none", "onScoped": "skip" } },
+        { "id": "cs-selenium", "role": "e2e", "name": "Selenium", "kind": "framework", "full": "dotnet test --filter Category=E2E", "scoped": { "mode": "none", "onScoped": "skip" } }
+      ],
+      "integration": [],
+      "compile-check": [
+        { "id": "cs-build", "role": "compile-check", "name": "dotnet build", "kind": "script", "full": "dotnet build --no-restore", "scoped": { "mode": "none" } }
+      ]
+    }
+  },
+  "platforms": {
+    "mobile": {
+      "e2e": [
+        { "id": "mobile-detox", "role": "e2e", "name": "Detox", "kind": "framework", "full": "npx detox test", "scoped": { "mode": "none", "onScoped": "skip" } },
+        { "id": "mobile-appium", "role": "e2e", "name": "Appium", "kind": "framework", "full": "npx wdio run wdio.appium.conf.js", "scoped": { "mode": "none", "onScoped": "skip" } },
+        { "id": "mobile-maestro", "role": "e2e", "name": "Maestro", "kind": "framework", "full": "maestro test .maestro/", "scoped": { "mode": "none", "onScoped": "skip" } }
+      ]
+    }
+  }
+}

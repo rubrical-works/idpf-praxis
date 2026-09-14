@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": ".claude/metadata/test-harnesses-local-schema.json",
+  "title": "Project-Local Test Harness Registry Schema",
+  "description": "PERMISSIVE schema for .claude/local-metadata/test-harnesses.json (#2848) — the project's own additions to the shipped registry. DELIBERATELY NOT A CLONE OF THE STRICT SCHEMA: the shipped registry closes its role enum and forbids unknown keys because it is the curated set, but a project adding a `smoke` role or a vendor-specific field is exactly what this file is for. Unknown roles and unknown keys are PRESERVED and surfaced in the merge report, never rejected and never dropped. A strict clone here would reproduce #2596 one layer down. THE FILE IS AUTHORED AND COMMITTED, not gitignored: it records which harnesses an organisation or an unusual stack standardises on, which is team state every clone needs — a gitignored file would make selection behave differently for each developer on the same repository, with nothing to explain the difference. Merged by .claude/scripts/shared/lib/harness-registry.js, which never throws: a malformed file degrades to the shipped registry with a warning naming the file and the error.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "_meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional. `schemaVersion` older than the shipped registry's produces one warning naming that the file predates current keys; the merge still applies what it can.",
+      "properties": {
+        "schemaVersion": { "type": "integer", "minimum": 0 },
+        "note": { "type": "string" }
+      }
+    },
+    "languages": {
+      "type": "object",
+      "description": "Language key to role map. A language absent from the shipped registry is added whole.",
+      "additionalProperties": { "$ref": "#/$defs/roleMap" }
+    },
+    "platforms": {
+      "type": "object",
+      "description": "Platform key to role map, on the same terms as languages.",
+      "additionalProperties": { "$ref": "#/$defs/roleMap" }
+    }
+  },
+  "$defs": {
+    "roleMap": {
+      "type": "object",
+      "description": "Role to harness list. OPEN, unlike the shipped schema's closed set: a project-defined role such as `smoke` or `contract` is valid here and is surfaced in the merge report so it is visible rather than silently accepted.",
+      "additionalProperties": { "$ref": "#/$defs/harnessList" }
+    },
+    "harnessList": {
+      "type": "array",
+      "description": "No maxItems: the shipped cap of 3 per role is a curation rule for the offered set, not a limit on what a project may declare for itself.",
+      "items": { "$ref": "#/$defs/harness" }
+    },
+    "harness": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id"],
+      "description": "Only `id` is required, because an entry may be a pure removal: `{ \"id\": \"ts-jest\", \"hidden\": true }` hides a shipped option and carries nothing else. An entry that both id-matches and sets `hidden` resolves deterministically — hidden wins, the replacement body is ignored, and the merge report names the conflict.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Matches a shipped harness id to replace or hide it; a new id appends."
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "true removes the id-matched shipped harness from the offered set. Hiding an id that matches nothing shipped is reported as a warning rather than passing silently, since a typo would otherwise read as a successful hide."
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "description": "OPEN string with no enum, unlike the shipped schema. A role beyond the shipped four is preserved and surfaced."
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "full": { "type": "string", "minLength": 1 },
+        "scoped": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

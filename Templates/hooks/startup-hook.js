@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.102.0
+ * @framework-script 0.103.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -95,6 +95,12 @@ function readJson(filePath) {
 // callers — see .claude/scripts/shared/lib/specialist-resolver.js.
 const { resolveSpecialist, isSafeSpecialistName } = require('../scripts/shared/lib/specialist-resolver.js');
 
+// Charter template detection is one rule shared with the /charter spec and
+// Charter-Enforcement.md (#2893). This hook used to restate its own regex,
+// matching only {{UPPER_SNAKE}}, so the bootstrap charter Praxis Hub Manager
+// writes — {Capitalized Words} placeholders — reported Active.
+const { isCharterTemplate } = require('../scripts/shared/lib/charter-template.js');
+
 function gatherSessionInfo(cwd) {
   const date = new Date().toISOString().slice(0, 10);
 
@@ -122,9 +128,7 @@ function gatherSessionInfo(cwd) {
   if (fs.existsSync(charterPath)) {
     try {
       const content = fs.readFileSync(charterPath, 'utf8');
-      // Template markers indicate unfilled placeholder
-      const isTemplate = /\{\{[A-Z_]+\}\}/.test(content) || /TODO: Fill in/i.test(content);
-      charterStatus = isTemplate ? 'Pending' : 'Active';
+      charterStatus = isCharterTemplate(content) ? 'Pending' : 'Active';
     } catch {
       charterStatus = 'Pending';
     }
@@ -512,6 +516,20 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       // A lone session is the overwhelmingly common case; a line every startup
       // announcing it is noise in a block of short factual status lines.
     }
+    if (r.name === 'testing-drift') {
+      // #2903. Rows carried verbatim from the helper's formatRows — the wording
+      // has one home. Drift does not clear on its own, so the row repeats every
+      // session it persists; it is a fact about the tree, never an offer.
+      const rows = r.parsed?.data?.rows;
+      if (rows?.drift) lines.push(`- Testing Drift: ${w(rows.drift)}`);
+      if (rows?.overrides) lines.push(`- Coverage Overrides: ${w(rows.overrides)}`);
+      if (!rows && r.error === 'timeout') {
+        lines.push(`- Testing Drift: ${e('⚠️ check timed out')}`);
+      } else if (!rows && r.status === 'error') {
+        lines.push(`- Testing Drift: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      }
+      // clean / none → omit, matching dependency's healthy.
+    }
   }
 
   // Discovery disabled by config (#2702). The peers check is never registered
@@ -586,7 +604,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 
   // Check failures (other than the checks rendered inline above, which already
   // emit their own timeout/error lines — listing one here too double-reports it)
-  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers', 'gh-auth']);
+  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers', 'gh-auth', 'testing-drift']);
   const failedOther = checkResults.filter((r) =>
     r.status === 'error' && !INLINE_RENDERED.has(r.name)
   );
@@ -864,6 +882,13 @@ async function main() {
   // disabled-by-config Peers row in place of the result this would produce.
   if (info.crossSessionMessaging.discovery) {
     checks.push({ name: 'peers', script: '.claude/scripts/shared/peers-check.js' });
+  }
+  // #2903: drift is measured against the charter's testing declaration, so a
+  // project without an active charter has nothing to drift from — gated on the
+  // charter rather than registered unconditionally. The check never prompts and
+  // never writes; its row names /charter refresh and nothing else.
+  if (info.charterStatus === 'Active') {
+    checks.push({ name: 'testing-drift', script: '.claude/scripts/shared/testing-drift-check.js' });
   }
 
   // Filter to existing scripts (graceful degradation)

@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.102.0
+ * @framework-script 0.103.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
  * @checksum sha256:placeholder
  */
 
+const fs = require('fs');
+const path = require('path');
 const { computeFenceMask } = require('./lib/checkbox-scan.js');
 const { parseCompanionTable, splitTableRow } = require('./lib/companion-projects.js');
 
@@ -796,8 +798,6 @@ function collectGlobMatches(fs, path, absBase, pattern) {
  *   unresolved: Array<{location: string, reason: string}>}>}
  */
 function verifyEntityCounts(entities) {
-  const fs = require('fs');
-  const path = require('path');
   const results = [];
 
   for (const [key, entity] of Object.entries(entities)) {
@@ -1176,8 +1176,69 @@ function scanOutOfTableCounts(charterContent, entities, countVerification) {
   return candidates.sort((a, b) => a.line - b.line || a.entity.localeCompare(b.entity));
 }
 
+const ENTITIES_FILENAME = 'domain-entities.json';
+const ENTITIES_TARGET_OUTSIDE_PROJECT = 'ENTITIES_TARGET_OUTSIDE_PROJECT';
+
+/**
+ * Resolve where domain-entities.json is written: beside CHARTER.md at the
+ * project root, in every layout (#2894).
+ *
+ * The path is not the defect — the spec always prescribed the project root.
+ * What nothing did was check it. In a deployed project `.claude/metadata/` is
+ * a junction into the shared hub, so a write that lands there succeeds
+ * silently and puts per-project state into machine-wide state. The guard
+ * compares the target's *real* path against the project root's real path and
+ * refuses with a named error rather than writing through a link.
+ *
+ * @param {string} projectRoot - Directory holding CHARTER.md
+ * @param {object} [options]
+ * @param {function} [options.realpath=fs.realpathSync] - Injectable so the
+ *   escape can be tested without building a junction fixture
+ * @returns {string} Absolute write target
+ * @throws {Error} code ENTITIES_TARGET_OUTSIDE_PROJECT when the target's real
+ *   path lies outside the project root; realpath errors other than ENOENT are
+ *   rethrown unchanged
+ */
+function resolveEntitiesWriteTarget(projectRoot, { realpath = fs.realpathSync } = {}) {
+  if (!projectRoot || typeof projectRoot !== 'string') {
+    throw new Error('resolveEntitiesWriteTarget: projectRoot is required');
+  }
+  const root = path.resolve(projectRoot);
+  const target = path.join(root, ENTITIES_FILENAME);
+  const realRoot = realpath(root);
+
+  // An existing file may itself be a link; an absent one (first generation)
+  // is judged by the directory it would be created in.
+  let realTarget;
+  try {
+    realTarget = realpath(target);
+  } catch (err) {
+    if (!err || err.code !== 'ENOENT') throw err;
+    realTarget = path.join(realpath(path.dirname(target)), ENTITIES_FILENAME);
+  }
+
+  const rel = path.relative(realRoot, realTarget);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    const err = new Error(
+      `${ENTITIES_FILENAME} would be written to ${realTarget}, outside the project root ${realRoot}. ` +
+      'Refusing to write through a link into shared state; remove the link and regenerate.'
+    );
+    err.code = ENTITIES_TARGET_OUTSIDE_PROJECT;
+    throw err;
+  }
+  return target;
+}
+
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-module.exports = { generateFromCharter, verifyEntityCounts, scanOutOfTableCounts, buildValidationRules };
+module.exports = {
+  generateFromCharter,
+  verifyEntityCounts,
+  scanOutOfTableCounts,
+  buildValidationRules,
+  resolveEntitiesWriteTarget,
+  ENTITIES_FILENAME,
+  ENTITIES_TARGET_OUTSIDE_PROJECT
+};

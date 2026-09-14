@@ -10,6 +10,12 @@
     "frameworkPath"
   ],
   "additionalProperties": false,
+  "not": {
+    "required": [
+      "testing",
+      "testCommand"
+    ]
+  },
   "properties": {
     "$schema": {
       "type": "string",
@@ -161,6 +167,139 @@
       },
       "minItems": 1,
       "description": "The ordered set of verification commands /work Step 4f runs before the in_review move, each invoked verbatim and reported separately (#2733).  WHY AN ARRAY RATHER THAN A WIDER `testCommand`: a project's verification is frequently more than one command -- a linter, one or more test runners, an audit gate -- and `testCommand` could express only one of them. In this repository that meant Step 4f ran 1 of the 4 steps CI runs, and could not reach the 29 test files Jest is CONFIGURED to ignore via testPathIgnorePatterns, so no flag change to a single command could have covered them.  The RULE STILL NAMES NO RUNNER. Widening the declaration rather than the rule is what preserves #2595's reasoning: a rule naming `npm run lint` is correct for Node and silently wrong for Go, Rust, .NET and Python. The project supplies every command; the framework supplies none.  PRECEDENCE: when this key is present and non-empty it is used and `testCommand` is ignored. When it is absent, empty, or not an array, Step 4f falls back to the single `testCommand`, so behaviour for every project that never adopts this key is unchanged. When neither is declared the gap is REPORTED and the sweep is skipped -- never replaced by a substituted runner.  ORDER IS THE PROJECT'S: commands run in declaration order. Put the cheapest or most frequently-failing first if fast feedback matters; nothing here reorders them.  OPTIONAL, and absent is a valid steady state. Praxis Hub Manager does not seed it, so most projects will not have it."
+    },
+    "testing": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The project's declared test suites (#2849) — the single machine-readable declaration every consumer reads, so one typo fails at WRITE time rather than at the gate, where a malformed suite is indistinguishable from a passing sweep.  PRECEDENCE: `testing` and the `testCommand` shorthand are MUTUALLY EXCLUSIVE and a config carrying both is rejected — two declarations of the same thing have no defined winner, and silently preferring one would leave the other looking effective. `verificationCommands` remains valid ALONGSIDE `testing` as the ordered-array form the resolver already honours (with `testCommand` its single-command fallback); when both `testing` and `verificationCommands` are declared, `testing` TAKES PRECEDENCE, because it carries per-suite role, scoping and execution that a bare command list cannot express.  OPTIONAL, and absent is a valid steady state: every project that has not run harness selection omits it, and Step 4f falls back exactly as before. Written only through .claude/scripts/shared/lib/framework-config.js, which validates before writing; no command spec writes this key with a raw `fs` call.",
+      "properties": {
+        "sweepScope": {
+          "type": "string",
+          "enum": [
+            "all",
+            "touched"
+          ],
+          "default": "all",
+          "description": "Which suites the full sweep runs. `all` (the default when absent) runs every gate suite; `touched` runs only those whose `match[]` covers a changed file. Absent means `all` — a config records what was narrowed, never what was left wide."
+        },
+        "suites": {
+          "type": "array",
+          "description": "The declared suites, in the order they run. Order is the project's: nothing here reorders them.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Stable identifier for this suite, unique within the array. Reported per-suite by the Step 4f sweep so one passing suite never masks another failing."
+              },
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What this suite verifies. The shipped roles are `unit`, `e2e`, `integration` and `compile-check`. DELIBERATELY AN OPEN STRING, NOT AN ENUM: a project may introduce a role through its local harness registry (#2848), and an enum here would reject the suite that selection then writes — the schema invalidating its own output. Defaults to `unit` when omitted; the default is applied by `normalizeSuite` in framework-config.js, not by this `default` keyword, so every consumer gets it whether or not it validates through ajv."
+              },
+              "match": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Glob patterns naming the files this suite covers. REQUIRED for a `gate` suite (the default), optional for `manual-only`."
+              },
+              "full": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The command that runs this suite in full, invoked verbatim. REQUIRED for a `gate` suite (the default), optional for `manual-only`. A command string rather than a runner name, for the reason `testCommand` records: any enumeration would be a list of the ecosystems this framework happens to know about today."
+              },
+              "scoped": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "How this suite narrows to the touched tree. Absent means it does not narrow and the `full` command is used.",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "path",
+                      "package",
+                      "none",
+                      "custom"
+                    ],
+                    "description": "The v1 scoping modes. `filter` is reserved and deliberately DEFERRED, so it is absent from this enum: an unrecognised mode must be reported rather than silently skipped."
+                  },
+                  "onScoped": {
+                    "type": "string",
+                    "enum": [
+                      "skip",
+                      "full"
+                    ],
+                    "description": "What a `none` mode does at scoped time — `skip` this suite, or run its `full` command."
+                  }
+                }
+              },
+              "prepare": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Prerequisite command run before this suite, when it needs one."
+              },
+              "sweep": {
+                "type": "boolean",
+                "description": "Per-suite sweep opt-out. Absent means included in the sweep."
+              },
+              "execution": {
+                "type": "string",
+                "enum": [
+                  "gate",
+                  "manual-only"
+                ],
+                "default": "gate",
+                "description": "Whether this suite runs at the gate. Defaults to `gate` when omitted. A `manual-only` suite is NEVER invoked at any scope and is reported as declared-but-not-run — which is also why `match[]` and `full` are optional for it: it is how the \"none applicable\" record is written for a role a project has no harness for, and that record has no command and no file set by construction."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "framework",
+                  "script",
+                  "golden",
+                  "manual"
+                ],
+                "default": "framework",
+                "description": "The assurance tier of this suite. Defaults to `framework` when omitted. Surfaced in the gate's report and read by NO policy branch — it describes the suite, it does not change what runs."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for this suite's commands, when it is not the project root."
+              },
+              "note": {
+                "type": "string",
+                "description": "Free text for a human reader. Never parsed."
+              }
+            },
+            "if": {
+              "not": {
+                "required": [
+                  "execution"
+                ],
+                "properties": {
+                  "execution": {
+                    "const": "manual-only"
+                  }
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "match",
+                "full"
+              ]
+            }
+          }
+        }
+      }
     },
     "tmpCleanup": {
       "type": "boolean",

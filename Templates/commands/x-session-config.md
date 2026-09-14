@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 description: Configure cross-session peer messaging for this project (project)
 argument-hint: "[--on <levers>] [--off <levers>] [--quiet] [--loud] [--show] [--help]"
 copyright: "Rubrical Works (c) 2026"

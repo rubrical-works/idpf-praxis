@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 description: Instrument a command run and report where its time went (project)
 argument-hint: "--start | --stop | --report"
 copyright: "Rubrical Works (c) 2026"

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.102.0
- * @description Check for third-party framework/dependency upgrades. Reads CHARTER.md or Tech-Stack.md for dependency list, queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
+ * @framework-script 0.103.0
+ * @description Check for third-party framework/dependency upgrades. Detects ecosystems from manifest files at the project root (never from CHARTER.md or Tech-Stack.md prose), queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -150,87 +150,185 @@ function getEcosystemDependencyFiles(ecosystemName) {
 }
 
 /**
- * Detect ecosystems from charter or tech-stack document content.
- * Scans the text for keywords that match known ecosystems.
- * @param {string} content - Content of CHARTER.md or Tech-Stack.md
- * @returns {string[]} Array of detected ecosystem names (deduplicated)
+ * Ecosystems come from manifest files at the project root, and only from them
+ * (#2895). A prose scan of CHARTER.md / Tech-Stack.md used to decide first:
+ * it substring-matched keywords ("goal" → Go, "JavaScript" → Java, "trust" →
+ * Rust) and, because the manifest check ran only when prose found nothing,
+ * one spurious word also suppressed the ecosystem actually present.
  */
-function detectEcosystems(content) {
-  if (!content) return [];
 
-  const lower = content.toLowerCase();
-  const detected = new Set();
+/** Marker the upgrade-check writer puts on the artifact it generates. */
+const TECH_STACK_MARKER = '*Auto-detected by upgrade-check.';
 
-  for (const eco of ECOSYSTEM_REGISTRY) {
-    for (const keyword of eco.keywords) {
-      if (lower.includes(keyword)) {
-        detected.add(eco.name);
-        break;
-      }
-    }
+/** The codebase-analysis skill's empty-result statement, verbatim. */
+const EMPTY_RESULT_STATEMENT = 'No stack detected - no manifest file present at the analyzed root.';
+
+/**
+ * List the project root, or [] when it cannot be read. A listing failure only
+ * loses glob manifests (`*.csproj`); literal manifests are still opened.
+ */
+function listRootEntries(projectDir) {
+  try {
+    const entries = fs.readdirSync(projectDir);
+    return Array.isArray(entries) ? entries : [];
+  } catch {
+    return [];
   }
+}
 
-  return Array.from(detected);
+/** Match a root entry against a dependency-file pattern supporting `*` only. */
+function matchesManifestPattern(entry, pattern) {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/\\\\]*');
+  return new RegExp(`^${escaped}$`).test(entry);
 }
 
 /**
- * Detect ecosystems by checking for dependency files in the project directory.
- * Fallback when no charter or tech-stack doc is available.
+ * Detect ecosystems from the manifest files present at the project root.
+ * Glob entries are resolved against the root listing rather than skipped, so a
+ * .NET project with only `App.csproj` is not reported as having no manifest.
  * @param {string} projectDir - Project root directory
- * @returns {string[]} Array of detected ecosystem names
+ * @returns {Array<{name: string, files: string[]}>} Registry order; each
+ *   detection names only the manifest files actually found
+ */
+function detectManifests(projectDir) {
+  const entries = listRootEntries(projectDir);
+  const detections = [];
+
+  for (const eco of ECOSYSTEM_REGISTRY) {
+    const files = [];
+    for (const depFile of eco.dependencyFiles) {
+      if (depFile.includes('*')) {
+        for (const entry of entries.filter(e => matchesManifestPattern(e, depFile)).sort()) {
+          if (!files.includes(entry)) files.push(entry);
+        }
+        continue;
+      }
+      if (readFileSafe(path.join(projectDir, depFile)) !== null) files.push(depFile);
+    }
+    if (files.length > 0) detections.push({ name: eco.name, files });
+  }
+
+  return detections;
+}
+
+/**
+ * Detect ecosystem names from manifest files at the project root.
+ * @param {string} projectDir - Project root directory
+ * @returns {string[]} Array of detected ecosystem names, registry order
  */
 function detectEcosystemsFromFiles(projectDir) {
-  const detected = [];
-
-  for (const eco of ECOSYSTEM_REGISTRY) {
-    for (const depFile of eco.dependencyFiles) {
-      // Skip glob patterns (e.g., *.csproj)
-      if (depFile.includes('*')) continue;
-
-      const depPath = path.join(projectDir, depFile);
-      if (readFileSafe(depPath) !== null) {
-        detected.push(eco.name);
-        break;
-      }
-    }
-  }
-
-  return detected;
+  return detectManifests(projectDir).map(d => d.name);
 }
 
 /**
- * Generate a basic Inception/Tech-Stack.md document from detected ecosystems.
- * @param {string[]} ecosystems - Array of ecosystem names
+ * Generate Inception/Tech-Stack.md from manifest detections.
+ *
+ * Every row cites the manifest files that were opened — never the registry's
+ * full list for that ecosystem — and nothing else: no source extensions,
+ * Dockerfile or CI evidence. With no detection it writes the codebase-analysis
+ * skill's empty-result statement and names no technology.
+ * @param {Array<{name: string, files: string[]}>} detections - From detectManifests()
  * @returns {string} Markdown content for the tech stack document
  */
-function generateTechStackContent(ecosystems) {
+function generateTechStackContent(detections) {
+  const rows = (detections || []).filter(d => d && Array.isArray(d.files) && d.files.length > 0);
   const lines = [
     '# Tech Stack',
     '',
-    '*Auto-detected by upgrade-check. Update as needed.*',
+    `${TECH_STACK_MARKER} Update as needed.*`,
     ''
   ];
 
-  if (ecosystems.length === 0) {
-    lines.push('No ecosystems auto-detected. Add your tech stack details here.');
+  if (rows.length === 0) {
+    lines.push(EMPTY_RESULT_STATEMENT);
     lines.push('');
     return lines.join('\n');
   }
 
   lines.push('## Detected Ecosystems');
   lines.push('');
-  lines.push('| Ecosystem | Dependency Files | Registry |');
-  lines.push('|-----------|-----------------|----------|');
+  lines.push('| Ecosystem | Manifest Found | Registry |');
+  lines.push('|-----------|----------------|----------|');
 
-  for (const ecoName of ecosystems) {
-    const eco = ECOSYSTEM_REGISTRY.find(e => e.name === ecoName);
+  for (const detection of rows) {
+    const eco = ECOSYSTEM_REGISTRY.find(e => e.name === detection.name);
     if (eco) {
-      lines.push(`| ${eco.name} | ${eco.dependencyFiles.join(', ')} | ${eco.registry} |`);
+      lines.push(`| ${eco.name} | ${detection.files.join(', ')} | ${eco.registry} |`);
     }
   }
 
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * Compare an existing Tech-Stack.md against the manifest result.
+ *
+ * Only a file carrying the upgrade-check marker is compared: a hand-written
+ * file is the project's own statement of intent, not a detection that can be
+ * wrong. Recorded ecosystems are read from the first cell of table rows and
+ * limited to registry names, so the comparison never re-derives prose.
+ * @param {string} content - Existing Tech-Stack.md content
+ * @param {string[]} detected - Ecosystem names from the manifests
+ * @returns {{marked: boolean, recorded: string[], detected: string[],
+ *   missing: string[], extra: string[], agrees: boolean}}
+ */
+function compareTechStackArtifact(content, detected) {
+  const text = typeof content === 'string' ? content : '';
+  const marked = text.includes(TECH_STACK_MARKER);
+  const names = new Set(ECOSYSTEM_REGISTRY.map(e => e.name));
+  const recorded = [];
+
+  for (const line of text.split(/\r?\n/)) {
+    const cell = line.match(/^\|\s*([^|]+?)\s*\|/);
+    if (cell && names.has(cell[1]) && !recorded.includes(cell[1])) recorded.push(cell[1]);
+  }
+
+  const missing = detected.filter(n => !recorded.includes(n));
+  const extra = recorded.filter(n => !detected.includes(n));
+  return { marked, recorded, detected: [...detected], missing, extra, agrees: missing.length === 0 && extra.length === 0 };
+}
+
+/**
+ * Decide the ecosystem list and the Tech-Stack.md outcome for a project.
+ *
+ * An absent Inception/Tech-Stack.md is written from the manifests (including
+ * the empty-result form). An existing file is never rewritten; when it carries
+ * the upgrade-check marker and disagrees with the manifests, the disagreement
+ * is returned for the check to report.
+ * @param {string} projectDir - Project root directory
+ * @returns {{detections: Array<{name: string, files: string[]}>, ecosystems: string[],
+ *   techStackSource: string, written: boolean,
+ *   disagreement: null|{recorded: string[], detected: string[], missing: string[], extra: string[]}}}
+ */
+function resolveTechStack(projectDir) {
+  const detections = detectManifests(projectDir);
+  const ecosystems = detections.map(d => d.name);
+  const techStackPath = path.join(projectDir, 'Inception', 'Tech-Stack.md');
+  const existing = readFileSafe(techStackPath);
+
+  if (existing === null) {
+    fs.mkdirSync(path.join(projectDir, 'Inception'), { recursive: true });
+    fs.writeFileSync(techStackPath, generateTechStackContent(detections));
+    return {
+      detections,
+      ecosystems,
+      techStackSource: 'Inception/Tech-Stack.md (auto-generated)',
+      written: true,
+      disagreement: null
+    };
+  }
+
+  const cmp = compareTechStackArtifact(existing, ecosystems);
+  return {
+    detections,
+    ecosystems,
+    techStackSource: 'Inception/Tech-Stack.md',
+    written: false,
+    disagreement: cmp.marked && !cmp.agrees
+      ? { recorded: cmp.recorded, detected: cmp.detected, missing: cmp.missing, extra: cmp.extra }
+      : null
+  };
 }
 
 // ======================================
@@ -397,55 +495,38 @@ async function main() {
     process.exit(0);
   }
 
-  // Read tech stack info
-  let techContent = '';
-  let techStackSource = null;
-  const charterPath = path.join(projectDir, 'CHARTER.md');
-  const techStackPath = path.join(projectDir, 'Inception', 'Tech-Stack.md');
+  // Ecosystems come from root manifests only; CHARTER.md and Tech-Stack.md
+  // prose never add or suppress one (#2895). The same list drives the artifact
+  // and the registry queries below.
+  const {
+    detections,
+    ecosystems,
+    techStackSource,
+    disagreement
+  } = resolveTechStack(projectDir);
 
-  const techStackContent = readFileSafe(techStackPath);
-  if (techStackContent !== null) {
-    techContent = techStackContent;
-    techStackSource = 'Inception/Tech-Stack.md';
-  } else {
-    const charterContent = readFileSafe(charterPath);
-    if (charterContent !== null) {
-      techContent = charterContent;
-      techStackSource = 'CHARTER.md';
-    }
-  }
-
-  let ecosystems = detectEcosystems(techContent);
-
-  // Fallback: detect from dependency files if no ecosystems found in docs
-  if (ecosystems.length === 0) {
-    ecosystems = detectEcosystemsFromFiles(projectDir);
-  }
-
-  // If Tech-Stack.md is absent but we detected ecosystems, generate it
-  if (techStackContent === null && ecosystems.length > 0) {
-    const inceptionDir = path.join(projectDir, 'Inception');
-    fs.mkdirSync(inceptionDir, { recursive: true });
-    fs.writeFileSync(techStackPath, generateTechStackContent(ecosystems));
-    techStackSource = 'Inception/Tech-Stack.md (auto-generated)';
-  }
+  // A marked artifact disagreeing with the manifests is reported, never
+  // silently rewritten — it may be a fabrication from the old prose scan.
+  const disagreementNote = disagreement
+    ? ` Inception/Tech-Stack.md (auto-detected) lists ${disagreement.recorded.join(', ') || 'no ecosystem'}` +
+      ` but the manifests show ${disagreement.detected.join(', ') || 'none'}; the file was not rewritten.`
+    : '';
 
   if (ecosystems.length === 0) {
     console.log(JSON.stringify({
       success: true,
-      message: 'No recognized ecosystems detected in project.',
-      data: { ecosystems: [], outdated: [], techStackSource }
+      message: `${EMPTY_RESULT_STATEMENT}${disagreementNote}`,
+      data: { ecosystems: [], outdated: [], techStackSource, techStackDisagreement: disagreement }
     }));
     writeCheckConfig(projectDir, { lastCheck: new Date().toISOString() });
     process.exit(0);
   }
 
-  // Detect dependency files
+  // Query each ecosystem's registry for the manifest files actually found
   const outdated = [];
   const checked = [];
 
-  for (const eco of ecosystems) {
-    const depFiles = getEcosystemDependencyFiles(eco);
+  for (const { name: eco, files: depFiles } of detections) {
     const ecoInfo = ECOSYSTEM_REGISTRY.find(e => e.name === eco);
 
     for (const depFile of depFiles) {
@@ -473,13 +554,15 @@ async function main() {
   // Output result
   console.log(JSON.stringify({
     success: true,
-    message: outdated.length > 0
+    message: (outdated.length > 0
       ? `Found ${outdated.length} outdated package(s)`
-      : 'All packages are up-to-date',
+      : 'All packages are up-to-date') + (disagreementNote ? `.${disagreementNote}` : ''),
     data: {
       ecosystems,
       checked: checked.length,
-      outdated
+      outdated,
+      techStackSource,
+      techStackDisagreement: disagreement
     }
   }));
 }
@@ -503,9 +586,11 @@ module.exports = {
   compareVersions,
   isCooldownExpired,
   getEcosystemDependencyFiles,
-  detectEcosystems,
   detectEcosystemsFromFiles,
+  detectManifests,
   generateTechStackContent,
+  compareTechStackArtifact,
+  resolveTechStack,
   parseDependencyVersions,
   queryLatestVersion,
   readCheckConfig,

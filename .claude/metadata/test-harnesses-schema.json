@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": ".claude/metadata/test-harnesses-schema.json",
+  "title": "Test Harness Registry Schema",
+  "description": "Strict schema for .claude/metadata/test-harnesses.json (#2847). /charter selection offers harnesses from that registry rather than a hardcoded name table, so this schema is what stops a typo reaching the prompt. ROLE-KEYED because the cap is per role per entry: at most 3 harnesses in any one role, and an entry or role carrying zero is valid — the cap is an upper bound, never a requirement. A separate, PERMISSIVE schema validates the project-local registry at .claude/local-metadata/test-harnesses.json (#2848); a strict clone of this file there would be a defect, not a simplification.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_meta", "languages", "platforms"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Relative path to this schema."
+    },
+    "_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "languageCount", "rankingSource", "rankingSnapshot"],
+      "description": "Provenance. `languageCount` is asserted against the actual `languages` entry count rather than a hard-coded number, so a deliberate list change updates both together while an accidental truncation still fails.",
+      "properties": {
+        "schemaVersion": { "type": "integer", "minimum": 1 },
+        "languageCount": { "type": "integer", "minimum": 0 },
+        "rankingSource": { "type": "string", "minLength": 1 },
+        "rankingSnapshot": { "type": "string", "minLength": 1 }
+      }
+    },
+    "languages": {
+      "type": "object",
+      "description": "Language key to its role map. Open set: a language may be added without a schema change.",
+      "additionalProperties": { "$ref": "#/$defs/roleMap" }
+    },
+    "platforms": {
+      "type": "object",
+      "description": "Platform key to its role map — deliberately unbounded, so a platform beyond `mobile` needs no schema change.",
+      "additionalProperties": { "$ref": "#/$defs/roleMap" }
+    }
+  },
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "description": "One piece of tooling a harness needs. `check` and `install` are OPTIONAL because not every requirement has a portable command: a system library installed by the platform package manager has no single one, and inventing a command that will be run and fail is worse than declaring the requirement and handing it to the user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What is needed, spelled as the ecosystem spells it — a package name, a browser name, a driver binary."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["package", "browser", "driver", "system"],
+          "description": "CLOSED, for the same reason the role enum is: an unrecognised kind would reach the guided-install flow, which branches on it to decide whether a missing item is installable here at all."
+        },
+        "check": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Command whose exit status answers whether this requirement is present. Absent means presence cannot be established by command — report it as unverified, never as satisfied."
+        },
+        "install": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The exact command that installs this requirement, shown verbatim for confirmation and used as the retry command on failure. Absent means no command is declared and the step is handed to the user."
+        }
+      }
+    },
+    "roleMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The four shipped roles. CLOSED: an unrecognised role must fail here rather than reach selection, where it would be offered and then written into a suite no gate knows how to run.",
+      "properties": {
+        "unit": { "$ref": "#/$defs/harnessList" },
+        "e2e": { "$ref": "#/$defs/harnessList" },
+        "integration": { "$ref": "#/$defs/harnessList" },
+        "compile-check": { "$ref": "#/$defs/harnessList" }
+      }
+    },
+    "harnessList": {
+      "type": "array",
+      "maxItems": 3,
+      "description": "At most three harnesses per role. Zero is valid and common — most languages have no dominant integration or compile-check harness, and an empty list says so honestly rather than forcing an invented entry.",
+      "items": { "$ref": "#/$defs/harness" }
+    },
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "name", "kind", "full", "scoped"],
+      "properties": {
+        "requires": {
+          "type": "array",
+          "description": "The tooling this harness needs before it can run: packages, browsers, drivers, system libraries (#2858). OPTIONAL, and deliberately so — most unit harnesses are already a project dependency and imply nothing extra, so requiring the key would put an empty array on 43 entries where `[]` and 'nobody wrote one yet' read identically. Absent means the resolution step has nothing to check for this harness, which is a different statement from 'checked and found nothing missing'.",
+          "items": { "$ref": "#/$defs/requirement" }
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable identifier, unique within its role list."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["unit", "e2e", "integration", "compile-check"],
+          "description": "Repeats the key this harness sits under. The redundancy is deliberate: a harness read out of the map on its own is still self-describing, and a test asserts the two agree."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name shown in the selection prompt, spelled as the ecosystem spells it."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["framework", "script", "golden", "manual"],
+          "description": "Assurance tier, matching the suite `kind` enum in framework-config.schema.json (#2849) so selection can copy it onto the suite it writes."
+        },
+        "full": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The command that runs this harness in full. A command string rather than a runner name, for the reason `testCommand` records: any enumeration would be a list of the ecosystems this framework happens to know about today."
+        },
+        "scoped": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How this harness narrows to a touched tree, copied onto the suite selection writes.",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["path", "package", "none", "custom"],
+              "description": "The v1 scoping modes. `filter` is reserved and deliberately absent, matching test-runner.js (#2852)."
+            },
+            "onScoped": {
+              "type": "string",
+              "enum": ["skip", "full"],
+              "description": "What a `none` mode does at scoped time."
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Template for `custom` mode, with the placeholders test-runner.js expands."
+            }
+          }
+        }
+      }
+    }
+  }
+}

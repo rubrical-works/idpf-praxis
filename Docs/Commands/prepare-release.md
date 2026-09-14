@@ -24,7 +24,9 @@ Validate, create a PR to main, merge, and tag for deployment.
 - If run from `main`, automatically creates a `release/vX.Y.Z` branch before proceeding; if already on a release branch, continues in place
 - Five phases: Analysis → Validation → Prepare (CHANGELOG, README, version files) → Git Operations (PR, merge, tag) → Close & Cleanup (deployment comment, branch deletion, GitHub Release)
 - Multiple confirmation checkpoints: version, validation passed, PR approval, ready to tag, deployment verified
-- Checks for incomplete issues on the current branch before starting; does not proceed past CI failures
+- Checks for incomplete issues before starting by previewing the branch close itself (`gh pmu branch close "$BRANCH" --dry-run`), so the list shown is exactly what Step 4.3 will move to Backlog. With no issues listed it says so explicitly; otherwise it names them and asks: **Transfer** (move them with `/transfer-issue`, then re-check), **Continue anyway** (states which issues Step 4.3 will move to Backlog and have their Branch field cleared), or **Stop** (halt before Phase 1, nothing changed)
+- Step 4.3 previews the close again and shows the list before closing the branch tracker, so the close never moves an issue you have not seen
+- Does not proceed past CI failures
 - If `update-release-notes.js` already created the GitHub release after tagging (Step 4.8), skips duplicate creation in Step 5.3
 - The post-tag checklist includes verifying that `.claude/rules/` content actually reaches context in a freshly-installed project. The session startup block is not evidence of this: it renders through a different channel and renders correctly even when no rule has loaded
 - The CHANGELOG lead — the prose between the version heading and `**Upgrade notes:**` — is copied verbatim into the GitHub release body, so Step 3.1 requires one short user-facing paragraph saying what changed for the user. Bug narrative, root-cause explanation and post-mortems of the release run belong in the release test plan, not the lead; the release-notes script emits its own feature/change/fix counts, so the lead does not repeat them

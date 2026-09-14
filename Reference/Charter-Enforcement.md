@@ -1,5 +1,5 @@
 # Charter Enforcement
-**Version:** v0.102.0
+**Version:** v0.103.0
 **Purpose:** Define checkpoints where charter validation should occur and how to handle scope conflicts.
 Charter enforcement validates that work items align with the project's defined scope. Validation is **conversational, not blocking** -- users can choose to expand scope, proceed anyway, or revise work.
 ## Checkpoint Detection
@@ -17,7 +17,7 @@ Validate charter scope at these checkpoints:
 ```
 On user action:
   1. Check if CHARTER.md exists -> If NO: Skip validation
-  2. Check if template (regex: /{[a-z][a-z0-9-]*}/) -> If TEMPLATE: Skip validation
+  2. Check if template: `node .claude/scripts/shared/lib/charter-template.js CHARTER.md` (the one shared rule — never restate its pattern, #2893) -> If TEMPLATE (template: true): Skip validation
   3. Identify checkpoint type:
      - File creation in Proposal/ -> Proposal checkpoint
      - File creation in PRD/ -> PRD checkpoint

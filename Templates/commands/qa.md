@@ -1,5 +1,5 @@
 ---
-version: "v0.102.0"
+version: "v0.103.0"
 allowed-tools: Bash, Read, AskUserQuestion, Skill, SendMessage
 description: Verify one qa-required issue through a bounded set of outcomes and offer to close it with recorded evidence (project)
 argument-hint: "#issue [--assign]"
@@ -83,10 +83,39 @@ Nothing in the framework matches a described behaviour to a test; pairing is a s
 A candidate test already exercises `### Steps to Perform`. Run it, scoped, and report the result as evidence.
 - **Green** → Step 4.
 - **Fail** → report verbatim, **STOP**. A failing test is a **real finding** about the parent's change; nothing closed, nothing moved.
-**The match is justified, not asserted:** evidence names the test file, the **assertion within** it, and *why* it covers `### Steps to Perform`. A named test with no stated correspondence is the wrong-test failure wearing a citation.
+**The candidate set is class-aware: a `flow` match counts, found by annotation (#2865).** Step 3a's skill classifies each candidate `module`, `flow` or `contract`; outcome 1 takes the first two:
+- **`module`** — stem-paired, as before. Unchanged.
+- **`flow`** — a spec whose leading-block `@covers` names **the parent issue or one of its ACs**. Filename is irrelevant: that class pairs by annotation, so a stem-shaped search never finds it.
+**Additive — a module match is still a match.** Narrowing to flow breaks every stem-paired QA issue.
+**Missing a flow match yields the wrong OUTCOME, not a missed match.** Outcome 1 falls to outcome 2, which offers to **author** a test that exists; the duplicate is a stem-named module test pairing against a source the flow spec already covers — the command meant to find coverage duplicating it.
+**The match is justified, not asserted:** evidence names the test file, the **assertion within** it, and *why* it covers `### Steps to Perform`. A named test with no stated correspondence is the wrong-test failure wearing a citation. **Unchanged for a `flow` match, and matters more there:** a flow spec is named for a journey, so its name reads as relevant to almost anything.
 #### Outcome 2: No coverage, automatable
-Name what a test would assert and where it would live, then **offer** to author it (`06-runtime-triggers.md`, *offer, don't force*) via `AskUserQuestion`.
-- **Decline** → report the gap, **STOP**, mutating nothing.
+Name what a test would assert, **resolve where it goes**, then **offer** to author it (`06-runtime-triggers.md`, *offer, don't force*) via `AskUserQuestion`.
+**Placement is resolved, never chosen (#2860).** Outcome 2 is reached exactly when Step 3a returned no covering candidate; it resolves against **the same authority**, never judgment. A test placed by judgment is born unpaired: the audit reports the source uncovered and the test an orphan — both true, neither actionable.
+1. **Conventions** — `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` merged with `framework-config.json` `testCoverageAudit` via the skill's `mergeConfig`: the single pairing authority, the one `/add-story` Phase 4 Step 3a names. **Do not declare a second convention source** — a second rule set drifts from the reader silently, invisible until two commands disagree about where a test belongs.
+2. **Language** — `detectLanguage` over the implicated source from Step 3a's `### Files Changed` set.
+3. **Candidate path** — `expandTestPatterns` for that language, `{dir}`/`{stem}` from the source path. **Never re-derive the substitution in prose.**
+4. **Class** — `classifyTestFile` says whether the location is `module` or `flow`.
+**A flow check resolves to the declared e2e suite, not a module stem.** A check is a **flow** when it crosses modules, or the parent's `### Files Changed` names **more than one source with no single owner**:
+- Location from `framework-config.json` `testing.suites[]` — the entry whose `role` is `e2e` — at its `match[]` globs. The project declares the layout; this spec names no directory.
+- Propose a **flow-named** spec — named for the journey, not a source stem — carrying the `@covers` annotation below.
+- **A stem-named module test is never the answer for a flow.** It pairs against a source it does not exercise, so the audit reports that source covered and the real gap disappears — worse than the orphan it avoids, since nothing is left to report.
+**No path resolves → name which condition failed, then ask.** Three conditions, each **by name**, never one "could not resolve" line — they have three different remedies:
+| Condition | Meaning |
+|---|---|
+| the **language is absent from the conventions** | the merged authority has no entry; remedy is an `additionalLanguages` entry, not a guessed path |
+| **no source could be inferred** | the parent carries no `### Files Changed`, or nothing in it owns the described steps |
+| **no e2e suite** is declared for a flow | `testing.suites[]` has no `role: e2e` entry, so the location is undeclared — remedy is harness selection, not a directory invented here |
+Ask where the test should live via `AskUserQuestion`. **It never places silently** — an unexplained path is indistinguishable from a resolved one until the audit disagrees.
+**The path is shown in the offer, before authoring** — the **resolved path**, or on the unresolved branch the **user-supplied** path from the answer — so placement is confirmed with the authoring decision.
+**An absent input is named by path; if two are absent the report names both (#2861).** Two inputs can be missing **independently** and degrade identically — placement asked, not resolved — so each is named: an unexplained question is indistinguishable from never resolving, and a **degraded** run reads as normal.
+| Absent | Consequence | Report |
+|---|---|---|
+| `.claude/skills/tdd-refactor-coverage-audit/` | no conventions, no primitives, no candidate path. Skills are **copied** per project, so one that never imported it has neither | name the directory, fall to asking placement — the named-cause degradation Step 3a applies to outcome 1 |
+| `.claude/rules/08-work-execution.md` | the accept path delegates its pipeline to rule `08` **by reference**; absent from context it resolves to nothing and the TDD cycle, gates and sweep go unrun | name the rule file; say the pipeline cannot be followed by reference |
+**When both are absent, name both — never one:** naming one sends the reader to fix half a problem and report success; the unnamed half fails silently. **Ask placement either way; never guess a path** — that reinstates the defect above where it is least likely to be noticed.
+**Rule `08` goes missing without being deleted.** A junctioned `.claude/rules` (#2736, until `px-manager#1146`) resolves for `cat`/`ls` but is invisible to auto-discovery: present and readable, never in context — naming only the file sends a reader hunting something that is not missing.
+- **Decline** → report the gap and where it would have gone, **STOP**, mutating nothing.
 - **Accept** → the story pipeline, **by reference**:
 > Run **Steps 3, 3b, 4c, 4d, 4e and 4f** of `08-work-execution.md` unchanged — TDD cycle with commit-per-deliverable, documentation judgment, `### Files Changed` append with scope-drift gate, minimization and registration where they fire, full verification sweep — then return here. **Step 4 and Step 4a are excluded**: a QA issue has no AC section, so Step 4 would pass **vacuously** and 4a would run `qa-extract.js` over a QA issue. Step 4 of this issue is the closure condition below.
 **Why not `Skill("work", …)`:** rule `08` is auto-loaded, so the pointer costs nothing; re-invoking `/work` needs a `--no-redirect` flag it does not parse, and adding one recreates the **routing loop**. Rejected; not re-proposed.
@@ -94,6 +123,13 @@ Name what a test would assert and where it would live, then **offer** to author 
 **Commit contract for the authored test** — provenance in two places:
 - **Commit message** — `Refs #N — <what the test verifies>`, **before the closing report**, so a QA issue never closes citing a test that exists only in the working tree.
 - **In-file comment** naming the QA issue it discharges and the **parent AC**. Without it the test has **no stated reason to exist** and the next coverage audit deletes it as **redundant** — silently re-opening the manual check, with the QA issue long closed.
+**A flow spec carries that provenance as an ANNOTATION, in its leading comment block (#2864).** A **flow spec** sits in a `classes.flow` location; write the comment above as the reader's own tags, per the `flowAnnotation` grammar in the imported `test-coverage-conventions.json`:
+- `@covers #<qa-issue>` and `@covers <parent AC reference>` — **repeatable**, so neither displaces the other.
+- `@flow <name>` where the journey has a stable name.
+**Position is the requirement, not decoration.** The reader parses the **leading comment block only** — a tag below it is prose, so a tag inside a test-case string cannot silently pair a spec. A comment placed lower satisfies the clause above and still leaves the spec **`flow.undeclared`**: an orphan at the next audit.
+**Reference the grammar; never restate the tags here.** They arrive by `/fw-import-skills`; a second definition drifts at the next import, invisibly, until a spec stops pairing.
+**A module test is unaffected by `@covers`** — the classifier reads flow tags only in a flow location, so a `@covers` tag on one declares nothing; module tests keep the plain in-file comment.
+**A contract test carries `@subject` instead (#2904).** When the authored test's subject is a non-code artifact — a contract test as `{frameworkPath}/Reference/Contract-Test-Classification.md` defines one — declare each subject with `@subject` in its leading comment block, beside the provenance comment. That document owns classification, placement and grammar; **do not decide the class by judgment here** or restate its rule. Undeclared, the next audit counts it a module orphan.
 #### Outcome 3: Manual-only
 Verifiable only by a person (deployed hub, real remote, second OS, re-scan, visual check). **STOP with a structured report and leave a closure path.** Do not move the issue, check a box, or touch the parent's gate line. The report names:
 1. **The steps requiring a person**, and why automation does not reach them.

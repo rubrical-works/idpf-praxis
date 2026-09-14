@@ -23,6 +23,8 @@ Add a new story to an epic with charter compliance validation and automatic test
 - Validates the story description against `CHARTER.md` scope before creating the issue. Warns on potential out-of-scope items and asks for confirmation to proceed.
 - Creates the story issue with a full canonical template (Description, Relevant Skills, Acceptance Criteria, TDD Test Cases, Definition of Done). All sections are required; use "N/A" rather than omitting any.
 - Requires a **Files to modify** section listing only the files this story's criteria implicate. A purely behavioral story uses the section marker with `N/A` — omitting the section entirely is not equivalent.
+- The story's **E2E** line names the harness from the suite whose `role` is `e2e` in `framework-config.json` `testing.suites[]` — the declaration `/charter` harness selection writes. `Inception/Test-Strategy.md` is consulted only as corroboration when the config declares nothing; no framework name is ever invented.
+- When an acceptance criterion is verified against a non-code artifact (a command spec, registry, manifest or workflow file), the story names that artifact as the contract test's `@subject`, following `Reference/Contract-Test-Classification.md`.
 - If the epic belongs to a PRD, automatically updates the PRD tracker issue and the PRD document file with the new story.
 - Optionally suggests and installs relevant skills based on technologies mentioned in the story.
 - Links the new story to its parent epic as a sub-issue.
