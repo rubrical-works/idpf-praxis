@@ -31,6 +31,16 @@
       "description": "The one RECEIVE-side lever (#2735). Governs how verbosely this session narrates an inbound peer announcement. ABSENT OR true IS TODAY BEHAVIOUR (verbose): the receiving session may expand a one-line announcement into issue lookup, likely-files enumeration and collision-surface analysis. false is quiet: the one-line acknowledgement is KEPT, the surrounding commentary is not. Polarity is load-bearing — a lever named quietNotices would invert the absence rule and silently make every project that never wrote this object go quiet. Not implied by discovery:false, which reasons about announcing TO undiscovered peers and says nothing about narrating what is RECEIVED; it IS forced off by enabled:false. Distinct from notices, which suppresses sender-side dispatch caveats — a different axis, not a stronger version of the same one. Written by /x-session-config --quiet / --loud.",
       "x-installDefault": false
     },
+    "overlapNotices": {
+      "type": "boolean",
+      "description": "Governs whether /overwatch sends a targeted overlap notice to the sessions whose in-flight issues declare the same files in their Files to modify sections (#2914). Each involved session is attributed from the from-name of the work-started announcement the monitor received for its issue; an issue it cannot attribute is reported to the monitor's own user and never messaged. false is today's report-only behaviour: the overlap is still found and reported, and no session is messaged. It is not a lifecycle announcement and the monitor still emits none. Resolved off by enabled:false and by discovery:false, because a monitor that discovered no peers has no one to notify. Dedupe and rate-limit thresholds stay in .claude/metadata/overwatch-signals.json; only the whether-to-send decision is a project decision, because that directory is a read-only hub junction in deployed projects. Not backported to the deprecated crossSessionMessaging block (#2783).",
+      "x-installDefault": true
+    },
+    "broadcast": {
+      "type": "boolean",
+      "description": "Announcement routing (#2915). ABSENT OR true IS TODAY'S BEHAVIOUR: every lifecycle announcement composed by announce.js goes to every addressable peer. false selects TARGETED routing: when a live /overwatch marker names a pid that is among the addressable recipients, the announcement goes to that monitor only and every other peer is skipped with reason routed-to-monitor. It falls back to broadcast, never to silence, when there is no marker, the marker is stale, the monitor pid is not addressable, or another recipient shares the monitor's name. Named so that absence is today's behaviour: a lever called targetedRouting would resolve true when absent and silently make every project targeted. A routing mode, not an emission switch, so enabled:false and discovery:false do not flip it. Known cost: a monitor that holds, declines or lets messages expire is undetectable from the sender (#2674), and under targeted routing that leaves every session uninformed. Not backported to the deprecated crossSessionMessaging block (#2783).",
+      "x-installDefault": true
+    },
     "groups": {
       "type": "object",
       "additionalProperties": false,

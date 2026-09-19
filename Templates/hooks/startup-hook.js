@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -37,10 +37,10 @@ const {
 // but Node built-ins.
 const tmpCleanup = require('../scripts/shared/lib/tmp-cleanup.js');
 
-// #2769: the .hall-monitor.json presence marker. Read-only and advisory — this
+// #2769: the .overwatch.json presence marker. Read-only and advisory — this
 // module never deletes, so a stale marker survives to be reported and is
 // cleaned up by the next monitor's start-time overwrite, not by the hook.
-const hallMonitorPresence = require('../scripts/shared/lib/hall-monitor-presence.js');
+const overwatchPresence = require('../scripts/shared/lib/overwatch-presence.js');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ANSI color helpers
@@ -169,7 +169,7 @@ function gatherSessionInfo(cwd) {
     // #2769. Cheap: one stat and one JSON parse, no spawn, so it runs inline
     // with the rest of the synchronous gather rather than joining the check
     // ladder. Never throws.
-    hallMonitor: hallMonitorPresence.readPresence(cwd),
+    overwatch: overwatchPresence.readPresence(cwd),
     specialist,
     specialistPath,
   };
@@ -237,19 +237,22 @@ const TIMEOUT_STAGES = [15000, 30000, 45000, 60000]; // monotonic milestones fro
  *
  * Uses monotonic timestamps (Date.now()) so a check resolving between
  * deadlines does not desync the warning ladder.
+ *
+ * Each check is `{ name, script, args? }`; `args` are appended to the spawned
+ * `node script` argv, one entry each (shell: false). Omitted → no extra args (#2907).
  */
 async function runChecksParallel(checks, stages = TIMEOUT_STAGES) {
   const startTs = Date.now();
   const pending = new Map(); // name → { promise, child, settled, result, resolve }
 
-  for (const { name, script } of checks) {
+  for (const { name, script, args = [] } of checks) {
     const handle = { settled: false, result: null, child: null, resolve: null };
     handle.promise = new Promise((resolve) => {
       // Capture resolve so the final-stage timeout handler can settle the
       // promise. Without this the 'exit' early-return on settled means a
       // timed-out check never resolves and Promise.all hangs forever (#2457).
       handle.resolve = resolve;
-      const child = spawn('node', [script], {
+      const child = spawn('node', [script, ...args], {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
       });
@@ -475,7 +478,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
         ? ` — ${formatEffectiveState(messaging)}`
         : '';
 
-      // #2769: a live `/hall-monitor` in this directory sets every session
+      // #2769: a live `/overwatch` in this directory sets every session
       // here to quiet narration, so a session starting now must know that
       // BEFORE the first announcement arrives rather than inferring it
       // afterwards. A STALE marker is named too, and for the opposite reason:
@@ -486,12 +489,12 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       // hand-made info objects across the test suite and by callers predating
       // this, so an absent value must behave exactly as before: no text, no
       // throw. Same contract `trash` and `crossSessionMessaging` have.
-      const hm = info.hallMonitor;
+      const hm = info.overwatch;
       let monitorSuffix = '';
       if (hm && hm.active) {
-        monitorSuffix = ` — hall-monitor live (#${hm.pid})`;
+        monitorSuffix = ` — overwatch live (#${hm.pid})`;
       } else if (hm && typeof hm.reason === 'string' && hm.reason.startsWith('stale')) {
-        monitorSuffix = ` — stale hall-monitor marker (#${hm.pid})`;
+        monitorSuffix = ` — stale overwatch marker (#${hm.pid})`;
       }
 
       const suffix = `${messagingSuffix}${monitorSuffix}`;
@@ -515,6 +518,19 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       // none → omit, matching dependency's healthy and task-tools' enabled.
       // A lone session is the overwhelmingly common case; a line every startup
       // announcing it is noise in a block of short factual status lines.
+    }
+    if (r.name === 'hook-health') {
+      // #2917. Row carried verbatim from hook-heartbeat.js formatHealthRow — the
+      // wording has one home. Null when every hook is healthy, and when the only
+      // non-healthy hooks have no record yet (an event hook that never fired).
+      const row = r.parsed?.data?.row;
+      if (row) {
+        lines.push(`- Hook Health: ${e(row)}`);
+      } else if (!r.parsed?.data && r.error === 'timeout') {
+        lines.push(`- Hook Health: ${e('⚠️ check timed out')}`);
+      } else if (!r.parsed?.data && r.status === 'error') {
+        lines.push(`- Hook Health: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      }
     }
     if (r.name === 'testing-drift') {
       // #2903. Rows carried verbatim from the helper's formatRows — the wording
@@ -604,7 +620,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 
   // Check failures (other than the checks rendered inline above, which already
   // emit their own timeout/error lines — listing one here too double-reports it)
-  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers', 'gh-auth', 'testing-drift']);
+  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers', 'gh-auth', 'hook-health', 'testing-drift']);
   const failedOther = checkResults.filter((r) =>
     r.status === 'error' && !INLINE_RENDERED.has(r.name)
   );
@@ -855,17 +871,23 @@ function buildAdditionalContext(info, plainBlock, checkResults = []) {
 // Main entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function main() {
-  const cwd = process.cwd();
-  const info = gatherSessionInfo(cwd);
-
+/**
+ * Build the list of checks to run from gatherSessionInfo's result. Pure, so the
+ * registration conditions and per-check args can be asserted without spawning.
+ * @param {object} info
+ * @returns {Array<{name: string, script: string, args?: string[]}>}
+ */
+function buildChecks(info) {
   // Build the list of checks to run (skip upgrade-check if self-hosted)
   const checks = [];
   if (!info.selfHosted) {
     checks.push({ name: 'upgrade', script: '.claude/scripts/shared/upgrade-check.js' });
   }
   checks.push({ name: 'statusline', script: '.claude/scripts/shared/statusline-check.js' });
-  checks.push({ name: 'config-integrity', script: '.claude/scripts/shared/config-integrity-check.js' });
+  // #2907: pass the version gatherSessionInfo already read, so the check does not
+  // run `gh pmu --version` a second time. Passed even when empty — the check
+  // reads an empty value as "the hook could not tell" and probes itself.
+  checks.push({ name: 'config-integrity', script: '.claude/scripts/shared/config-integrity-check.js', args: [`--pmu-version=${info.ghPmuVersion || ''}`] });
   checks.push({ name: 'branch-sync', script: '.claude/scripts/shared/branch-sync-check.js' });
   checks.push({ name: 'dependency', script: '.claude/scripts/shared/dependency-check.js' });
   checks.push({ name: 'task-tools', script: '.claude/scripts/shared/task-tools-check.js' });
@@ -876,6 +898,11 @@ async function main() {
   // check derives its requirement from that file: a project without one
   // requires nothing and returns `verified` without spawning `gh` at all.
   checks.push({ name: 'gh-auth', script: '.claude/scripts/shared/gh-auth-check.js' });
+  // #2917: registered UNCONDITIONALLY. Every hook fails open, so a broken one is
+  // otherwise indistinguishable from one that ran and found nothing to do; no
+  // project setting makes that silence acceptable. The check load-checks each
+  // deployed hook and reads its heartbeat; it never writes.
+  checks.push({ name: 'hook-health', script: '.claude/scripts/shared/hook-health-check.js' });
   // #2702: discovery is a project decision. `false` means the check does not
   // run at all — not that it runs and its output is discarded — so no session
   // registry is read and nothing is scanned. renderBlock emits the
@@ -890,6 +917,14 @@ async function main() {
   if (info.charterStatus === 'Active') {
     checks.push({ name: 'testing-drift', script: '.claude/scripts/shared/testing-drift-check.js' });
   }
+  return checks;
+}
+
+async function main() {
+  const cwd = process.cwd();
+  const info = gatherSessionInfo(cwd);
+
+  const checks = buildChecks(info);
 
   // Filter to existing scripts (graceful degradation)
   const validChecks = checks.filter((c) => fs.existsSync(path.join(cwd, c.script)));
@@ -927,6 +962,7 @@ module.exports = {
   resolveSpecialist,
   isSafeSpecialistName,
   runChecksParallel,
+  buildChecks,
   sweepStaleTempFiles,
   renderBlock,
   buildAdditionalContext,
@@ -936,7 +972,12 @@ module.exports = {
 };
 
 if (require.main === module) {
+  // Heartbeat (#2917): recorded at exit, AFTER this run's Hook Health check has
+  // read the previous state — the row reports what happened before this session.
+  let heartbeat = { fail() {} };
+  try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('startup-hook'); } catch (_) { /* reported by the load check */ }
   main().catch((err) => {
+    heartbeat.fail(err);
     process.stderr.write(error(`startup-hook failed: ${err.message}\n`));
     // Still emit valid hookSpecificOutput so the harness gets a response
     process.stdout.write(JSON.stringify({

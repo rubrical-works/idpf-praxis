@@ -1,6 +1,6 @@
 {
   "$schema": "./extension-points-schema.json",
-  "generatedAt": "2026-09-13T23:20:31.533Z",
+  "generatedAt": "2026-09-18T23:07:24.316Z",
   "version": "1.0.0",
   "commandCount": 18,
   "extensionPointCount": 77,
@@ -58,7 +58,7 @@
   "commands": {
     "bug": {
       "type": "EXTENSIBLE",
-      "description": "Create a bug issue with standard template (project)",
+      "description": "Create a bug issue from the IDPF framework's standard template.",
       "extensionPoints": [
         {
           "name": "pre-create",
@@ -77,7 +77,7 @@
     },
     "catalog-screens": {
       "type": "EXTENSIBLE",
-      "description": "Discover and catalog screen elements from source code (project)",
+      "description": "Discover and catalog screen elements from source code, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-catalog",
@@ -102,7 +102,7 @@
     },
     "ci": {
       "type": "EXTENSIBLE",
-      "description": "Manage GitHub Actions CI workflows interactively (project)",
+      "description": "Manage GitHub Actions CI workflows interactively, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-add",
@@ -139,7 +139,7 @@
     },
     "create-branch": {
       "type": "EXTENSIBLE",
-      "description": "Create a branch with tracker issue (project)",
+      "description": "Create a branch with a tracker issue, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-create",
@@ -158,7 +158,7 @@
     },
     "create-prd": {
       "type": "EXTENSIBLE",
-      "description": "Transform proposal into Agile PRD",
+      "description": "Transform a proposal into an Agile PRD using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-analysis",
@@ -225,7 +225,7 @@
     },
     "design-system": {
       "type": "EXTENSIBLE",
-      "description": "Produce DTCG-compliant design tokens with pluggable adapter architecture (project)",
+      "description": "Produce DTCG-compliant design tokens with a pluggable adapter architecture, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "discovery-adapters",
@@ -244,7 +244,7 @@
     },
     "destroy-branch": {
       "type": "EXTENSIBLE",
-      "description": "Safely delete branch with confirmation (project)",
+      "description": "Safely delete a branch after confirmation, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-destroy",
@@ -269,7 +269,7 @@
     },
     "done": {
       "type": "EXTENSIBLE",
-      "description": "Complete issues with criteria verification and status transitions (project)",
+      "description": "Complete issues with criteria verification and status transitions, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-done",
@@ -294,7 +294,7 @@
     },
     "enhancement": {
       "type": "EXTENSIBLE",
-      "description": "Create an enhancement issue with standard template (project)",
+      "description": "Create an enhancement issue from the IDPF framework's standard template.",
       "extensionPoints": [
         {
           "name": "pre-create",
@@ -313,7 +313,7 @@
     },
     "merge-branch": {
       "type": "EXTENSIBLE",
-      "description": "Merge branch to main with gated checks (project)",
+      "description": "Merge a branch to main through the IDPF framework's gated checks.",
       "extensionPoints": [
         {
           "name": "pre-gate",
@@ -356,7 +356,7 @@
     },
     "mockups": {
       "type": "EXTENSIBLE",
-      "description": "Create text-based or diagrammatic screen mockups (project)",
+      "description": "Create text-based or diagrammatic screen mockups, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-mockup",
@@ -375,7 +375,7 @@
     },
     "paths": {
       "type": "EXTENSIBLE",
-      "description": "Collaborative path analysis for proposals and enhancements (project)",
+      "description": "Analyze paths collaboratively for proposals and enhancements, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-paths",
@@ -400,7 +400,7 @@
     },
     "prepare-beta": {
       "type": "EXTENSIBLE",
-      "description": "Tag beta from feature branch (no merge to main)",
+      "description": "Tag a beta from a feature branch without merging to main, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-phase-1",
@@ -467,7 +467,7 @@
     },
     "prepare-release": {
       "type": "EXTENSIBLE",
-      "description": "Prepare release with PR, merge to main, and tag",
+      "description": "Prepare a release by opening a PR, merging to main, and tagging, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-phase-1",
@@ -558,7 +558,7 @@
     },
     "proposal": {
       "type": "EXTENSIBLE",
-      "description": "Create a proposal document and tracking issue (project)",
+      "description": "Create a proposal document and tracking issue, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-create",
@@ -577,7 +577,7 @@
     },
     "review-prd": {
       "type": "EXTENSIBLE",
-      "description": "Review a PRD with tracked history (project)",
+      "description": "Review a PRD with tracked history, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-review",
@@ -602,7 +602,7 @@
     },
     "review-proposal": {
       "type": "EXTENSIBLE",
-      "description": "Review a proposal with tracked history (project)",
+      "description": "Review a proposal with tracked history, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-review",
@@ -627,7 +627,7 @@
     },
     "review-test-plan": {
       "type": "EXTENSIBLE",
-      "description": "Review a test plan against its PRD (project)",
+      "description": "Review a test plan against its PRD, using the IDPF framework.",
       "extensionPoints": [
         {
           "name": "pre-review",

@@ -1,7 +1,7 @@
 ---
-version: "v0.103.0"
+version: "v0.104.0"
 allowed-tools: Bash
-description: Switch branch context (project)
+description: Switch the branch context, using the IDPF framework.
 argument-hint: "[branch-name]"
 copyright: "Rubrical Works (c) 2026"
 ---

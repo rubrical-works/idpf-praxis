@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -78,6 +78,18 @@ const RECORD_ONLY_EVENTS = Object.freeze([
 
 const DISPATCH_STATES = Object.freeze(['pending', 'sent', 'failed', 'skipped']);
 
+/**
+ * The RECEIPT axis (#2922), separate from dispatch and never folded into it.
+ *
+ * `dispatch: 'sent'` means the SendMessage call succeeded; it says nothing
+ * about whether the receiver read the message (#2674). A receipt reply from a
+ * live /overwatch is the one case where that becomes observable, and only
+ * for that hop. `sent` + `unconfirmed` and `sent` + `received` are different
+ * facts, so collapsing them would throw away the distinction this axis exists
+ * to record.
+ */
+const RECEIPT_STATES = Object.freeze(['unconfirmed', 'received']);
+
 /** Dispatch states that mean "this announcement did not go out". */
 const NOT_DISPATCHED = Object.freeze(['pending', 'failed']);
 
@@ -109,6 +121,24 @@ function normalizeIssues(issues) {
  * Never throws. This is called from inside the Step 3 gate sequence and the
  * Step 6 STOP sequence, neither of which an advisory record may abort.
  */
+/**
+ * The owning session's pid, or `null` when the caller could not identify one
+ * (#2896).
+ *
+ * No `process.pid` fallback. Inside announce.js that is a child process that
+ * lives for one announcement, so every entry got a unique value and
+ * `reconcile`'s multi-session caveat fired after any two announcements — true
+ * of no single-session run, and identical in output to the real case. And no
+ * `Number(...)` coercion guard: `Number(null)` is `0`, so an explicit `null`
+ * used to be recorded as a pid. `reconcile` already filters to finite values,
+ * so a `null` entry cannot manufacture a second session.
+ */
+function normalizeSessionPid(value) {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 function record(entry, options = {}) {
   try {
     const event = entry && entry.event;
@@ -130,8 +160,10 @@ function record(entry, options = {}) {
       ts: new Date().toISOString(),
       event,
       issues,
-      sessionPid: Number.isFinite(Number(options.sessionPid)) ? Number(options.sessionPid) : process.pid,
+      sessionPid: normalizeSessionPid(options.sessionPid),
       dispatch: 'pending',
+      // Composed is neither dispatched nor received; both axes start pessimistic.
+      receipt: 'unconfirmed',
       detail: null,
     };
     if (recordOnly) row.recordOnly = true;
@@ -217,6 +249,39 @@ function updateDispatch(id, outcome = {}, options = {}) {
     if (e.id === id) {
       e.dispatch = result;
       if (outcome.detail !== undefined) e.detail = outcome.detail;
+      found = true;
+    }
+  }
+  if (!found) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
+
+  try {
+    const file = ledgerPath(options.cwd || process.cwd());
+    fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+    return { ok: true, id };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : 'ledger rewrite failed' };
+  }
+}
+
+/**
+ * Record that a receipt reply arrived for one announcement (#2922).
+ *
+ * Touches the receipt axis only — a reply says the monitor read the message,
+ * not that the send succeeded differently than recorded. An unknown id is
+ * REFUSED and names itself, for the same reason updateDispatch refuses one:
+ * applying it to the most recent entry would attribute a receipt to whichever
+ * announcement happened to be last.
+ */
+function updateReceipt(id, details = {}, options = {}) {
+  const { entries, exists } = readLedger({ ...options, includeRecordOnly: true });
+  if (!exists) return { ok: false, error: 'No ledger to update.' };
+
+  let found = false;
+  for (const e of entries) {
+    if (e.id === id) {
+      e.receipt = 'received';
+      e.receiptFrom = typeof details.from === 'string' && details.from.trim() !== '' ? details.from.trim() : null;
+      e.receiptAt = new Date().toISOString();
       found = true;
     }
   }
@@ -329,8 +394,11 @@ module.exports = {
   OPENER,
   CLOSER,
   ledgerPath,
+  normalizeSessionPid,
   record,
   readLedger,
   updateDispatch,
+  updateReceipt,
+  RECEIPT_STATES,
   reconcile,
 };

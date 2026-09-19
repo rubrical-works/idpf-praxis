@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: Resolve review findings for an issue (project)
+version: "v0.104.0"
+description: Resolve an issue's review findings, using the IDPF framework.
 argument-hint: "#issue [--prior-art]"
 copyright: "Rubrical Works (c) 2026"
 ---

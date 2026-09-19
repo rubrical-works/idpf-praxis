@@ -1,8 +1,19 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.103.0",
+  "version": "0.104.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
+  "consumerCompatibility": {
+    "praxisHubManager": {
+      "manifestContract": 2,
+      "contractIntroduced": "0.104.0",
+      "reason": "Contract 2 replaced extensibleCommands, managedCommands and deploymentFiles.commands.{core,workflow,managed} with the single deploymentFiles.commands.registry (#2942). A hub that reads only the retired keys finds none of them.",
+      "detectableBy": "Two directions, and BOTH must be implemented. UPWARD (manifest ahead of consumer): compare this manifestContract against the highest contract the consumer implements and refuse, or warn, when the manifest is ahead. DOWNWARD (consumer ahead of manifest): a manifest with no consumerCompatibility key is contract 1 — see absentContractMeans — and the consumer serves it on the contract-1 read path (top-level extensibleCommands / managedCommands and deploymentFiles.commands.core/.workflow) instead of refusing it.",
+      "limitation": "Scoped to the UPWARD direction and NOT retroactive, which is the field's central caveat rather than a gap in it. A consumer predating contract 2 does not read this field either, so it cannot self-detect: it reads the retired keys, finds them absent, and — if it coalesces with `|| []` — deploys zero commands while reporting success. That silent failure is what the field makes impossible from contract 2 onward and cannot prevent for versions already shipped. It is also the one real ordering constraint left: a contract-2 consumer must ship NO LATER than the first manifest declaring contract 2, because old-consumer-meets-new-manifest is the only combination neither direction can detect. The reverse order is safe — backwardCompatibility makes a new consumer serve old manifests.",
+      "absentContractMeans": 1,
+      "backwardCompatibility": "A consumer implementing contract N MUST keep serving every contract below N. This is PERMANENT, not transitional: installed hub roots are frozen per version (px-manager#831) and cannot be repointed retroactively, so contract-1 hubs never age out and a coordinated release cannot retire them. Refusing a contract-1 manifest is a DEFECT, not a safety measure — Praxis Hub Manager serves several hub versions at once, so a consumer that refuses contract 1 refuses every hub installed before 0.104.0, which is every hub that exists today. Fail loudly on a contract-2 manifest whose registry is missing — that is corruption. Never on a manifest that is merely older."
+    }
+  },
   "created": "2025-11-30",
   "frameworks": [
     "IDPF-Agile"
@@ -166,81 +177,349 @@
   "deploymentFiles": {
     "commands": {
       "source": ".claude/commands/",
-      "core": [
-        "change-domain-expert.md",
-        "playwright-check.md"
-      ],
-      "workflow": [
-        "add-story.md",
-        "assign-branch.md",
-        "audit-commands.md",
-        "bad-test-review.md",
-        "bug.md",
-        "catalog-screens.md",
-        "charter.md",
-        "ci.md",
-        "code-review.md",
-        "complete-prd.md",
-        "create-backlog.md",
-        "create-branch.md",
-        "create-prd.md",
-        "design-system.md",
-        "destroy-branch.md",
-        "domain-config.md",
-        "done.md",
-        "enhancement.md",
-        "extensions.md",
-        "hall-monitor.md",
-        "idpf-measure.md",
-        "idpf-stats.md",
-        "issue-reset.md",
-        "merge-branch.md",
-        "mockups.md",
-        "paths.md",
-        "pivot.md",
-        "plan-workstreams.md",
-        "prepare-beta.md",
-        "prepare-release.md",
-        "proposal.md",
-        "qa.md",
-        "resolve-review.md",
-        "review-issue.md",
-        "review-prd.md",
-        "review-proposal.md",
-        "review-test-plan.md",
-        "split-story.md",
-        "switch-branch.md",
-        "transfer-issue.md",
-        "work.md",
-        "x-session-config.md"
-      ],
-      "managed": [
-        "add-story.md",
-        "assign-branch.md",
-        "audit-commands.md",
-        "bad-test-review.md",
-        "change-domain-expert.md",
-        "charter.md",
-        "code-review.md",
-        "complete-prd.md",
-        "create-backlog.md",
-        "domain-config.md",
-        "extensions.md",
-        "hall-monitor.md",
-        "idpf-measure.md",
-        "idpf-stats.md",
-        "issue-reset.md",
-        "pivot.md",
-        "plan-workstreams.md",
-        "playwright-check.md",
-        "qa.md",
-        "resolve-review.md",
-        "review-issue.md",
-        "split-story.md",
-        "switch-branch.md",
-        "transfer-issue.md",
-        "work.md",
-        "x-session-config.md"
+      "registry": [
+        {
+          "id": "add-story",
+          "file": "add-story.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "assign-branch",
+          "file": "assign-branch.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "audit-commands",
+          "file": "audit-commands.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "audit-core-docs",
+          "file": "audit-core-docs.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "bad-test-review",
+          "file": "bad-test-review.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "bluf",
+          "file": "bluf.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "bug",
+          "file": "bug.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "catalog-screens",
+          "file": "catalog-screens.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "change-domain-expert",
+          "file": "change-domain-expert.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "charter",
+          "file": "charter.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "ci",
+          "file": "ci.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "code-review",
+          "file": "code-review.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "complete-prd",
+          "file": "complete-prd.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "create-backlog",
+          "file": "create-backlog.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "create-branch",
+          "file": "create-branch.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "create-prd",
+          "file": "create-prd.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "design-system",
+          "file": "design-system.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "destroy-branch",
+          "file": "destroy-branch.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "domain-config",
+          "file": "domain-config.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "done",
+          "file": "done.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "enhancement",
+          "file": "enhancement.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "extensions",
+          "file": "extensions.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "fw-add-recipe",
+          "file": "fw-add-recipe.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-audit-commands",
+          "file": "fw-audit-commands.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-audit-extensions",
+          "file": "fw-audit-extensions.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-audit-hallucination",
+          "file": "fw-audit-hallucination.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-audit-idpf-stats",
+          "file": "fw-audit-idpf-stats.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-audit-lang",
+          "file": "fw-audit-lang.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-audit-minimization",
+          "file": "fw-audit-minimization.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-gap-analysis",
+          "file": "fw-gap-analysis.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-import-skills",
+          "file": "fw-import-skills.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-minimize-files",
+          "file": "fw-minimize-files.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "fw-self-diag",
+          "file": "fw-self-diag.md",
+          "marker": "none",
+          "env": "dev"
+        },
+        {
+          "id": "idpf-measure",
+          "file": "idpf-measure.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "idpf-stats",
+          "file": "idpf-stats.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "issue-reset",
+          "file": "issue-reset.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "merge-branch",
+          "file": "merge-branch.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "mockups",
+          "file": "mockups.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "overwatch",
+          "file": "overwatch.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "paths",
+          "file": "paths.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "pivot",
+          "file": "pivot.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "plan-workstreams",
+          "file": "plan-workstreams.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "playwright-check",
+          "file": "playwright-check.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "prepare-beta",
+          "file": "prepare-beta.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "prepare-release",
+          "file": "prepare-release.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "proposal",
+          "file": "proposal.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "qa",
+          "file": "qa.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "resolve-review",
+          "file": "resolve-review.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "review-issue",
+          "file": "review-issue.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "review-prd",
+          "file": "review-prd.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "review-proposal",
+          "file": "review-proposal.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "review-test-plan",
+          "file": "review-test-plan.md",
+          "marker": "extensible",
+          "env": "both"
+        },
+        {
+          "id": "split-story",
+          "file": "split-story.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "switch-branch",
+          "file": "switch-branch.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "transfer-issue",
+          "file": "transfer-issue.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "work",
+          "file": "work.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
+          "id": "x-session-config",
+          "file": "x-session-config.md",
+          "marker": "managed",
+          "env": "both"
+        }
       ]
     },
     "scripts": {
@@ -251,6 +530,7 @@
           "analyze-commits.js",
           "announce.js",
           "assign-branch.js",
+          "bluf-preamble.js",
           "branch-sync-check.js",
           "charter-testing-audit.js",
           "ci-add.js",
@@ -271,6 +551,7 @@
           "cleanup-release-assets.js",
           "config-integrity-check.js",
           "create-epic.js",
+          "daily-log-collect.js",
           "dependency-check.js",
           "done-preamble.js",
           "done-verify.js",
@@ -281,6 +562,7 @@
           "generate-domain-entities.js",
           "generate-test-plan.js",
           "gh-auth-check.js",
+          "hook-health-check.js",
           "idpf-measure.js",
           "log-changed-files.js",
           "mockup-ac-generator.js",
@@ -333,6 +615,7 @@
         "files": [
           "active-label.js",
           "announce-ledger.js",
+          "announce-routing.js",
           "announcement-issues.js",
           "branch-review-gate.js",
           "bulk-discover-screens.js",
@@ -370,9 +653,8 @@
           "gh-pmu-config.js",
           "gh.js",
           "git.js",
-          "hall-monitor-guards.js",
-          "hall-monitor-presence.js",
           "harness-registry.js",
+          "hook-heartbeat.js",
           "input-validation.js",
           "issue-ref-match.js",
           "issue-type.js",
@@ -383,6 +665,10 @@
           "measure-wiring.js",
           "navigation-graph.js",
           "output.js",
+          "overwatch-guards.js",
+          "overwatch-overlap.js",
+          "overwatch-presence.js",
+          "overwatch-receipt.js",
           "paths-ac-generator.js",
           "paths-marker.js",
           "peer-unreachable-reasons.js",
@@ -664,16 +950,6 @@
           "description": "JSON schema for framework-config.json; validated at write time by framework-config.js helper (#2292)"
         },
         {
-          "name": "hall-monitor-signals",
-          "source": ".claude/metadata/hall-monitor-signals.json",
-          "description": "Observation vocabulary, finding dispositions and the dedupe/rate-limit guards bounding /hall-monitor --auto-create (#2768)"
-        },
-        {
-          "name": "hall-monitor-signals-schema",
-          "source": ".claude/metadata/hall-monitor-signals-schema.json",
-          "description": "JSON schema (Draft 2020-12) for hall-monitor-signals.json (#2768)"
-        },
-        {
           "name": "imported-skills",
           "source": ".claude/metadata/imported-skills.json",
           "description": "Registry of skills imported from idpf-praxis-skills"
@@ -682,6 +958,16 @@
           "name": "imported-skills-schema",
           "source": ".claude/metadata/imported-skills-schema.json",
           "description": "JSON Schema for imported-skills.json"
+        },
+        {
+          "name": "overwatch-signals",
+          "source": ".claude/metadata/overwatch-signals.json",
+          "description": "Observation vocabulary, finding dispositions and the dedupe/rate-limit guards bounding /overwatch --auto-create (#2768)"
+        },
+        {
+          "name": "overwatch-signals-schema",
+          "source": ".claude/metadata/overwatch-signals-schema.json",
+          "description": "JSON schema (Draft 2020-12) for overwatch-signals.json (#2768)"
         },
         {
           "name": "paths-config",
@@ -917,54 +1203,6 @@
       "description": "Extension recipe directories consumed by explicit reads from .claude/scripts/. Symlinked deliberately: explicit reads traverse a Windows junction correctly, so the auto-discovery failure that forced rules to copied (#2736) does not apply here. Fourth member of Praxis Hub Manager SYMLINK_DIRS and the only one deploymentFiles did not declare (#2744); px-manager#1152 derives the set from this rather than a hardcoded constant."
     }
   },
-  "extensibleCommands": [
-    "bug",
-    "catalog-screens",
-    "ci",
-    "create-branch",
-    "create-prd",
-    "design-system",
-    "destroy-branch",
-    "done",
-    "enhancement",
-    "merge-branch",
-    "mockups",
-    "paths",
-    "prepare-beta",
-    "prepare-release",
-    "proposal",
-    "review-prd",
-    "review-proposal",
-    "review-test-plan"
-  ],
-  "managedCommands": [
-    "add-story",
-    "assign-branch",
-    "audit-commands",
-    "bad-test-review",
-    "change-domain-expert",
-    "charter",
-    "code-review",
-    "complete-prd",
-    "create-backlog",
-    "domain-config",
-    "extensions",
-    "hall-monitor",
-    "idpf-measure",
-    "idpf-stats",
-    "issue-reset",
-    "pivot",
-    "plan-workstreams",
-    "playwright-check",
-    "qa",
-    "resolve-review",
-    "review-issue",
-    "split-story",
-    "switch-branch",
-    "transfer-issue",
-    "work",
-    "x-session-config"
-  ],
   "deprecatedCommands": [
     {
       "file": "switch-role.md",

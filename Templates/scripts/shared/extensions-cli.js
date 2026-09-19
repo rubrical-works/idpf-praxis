@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Script-driven CLI for extension point operations. Replaces AI-interpreted markdown specs for read-only subcommands (list, view, diff, validate), reducing execution from 3-16+ tool calls to 1 Bash call. Used by /extensions command.
  * @checksum sha256:placeholder
  *
@@ -367,7 +367,8 @@ function runValidate() {
   }
 
   const commands = registry.commands || {};
-  const extensibleCommands = manifest.extensibleCommands || [];
+  // #2942: derived from the single command registry rather than a parallel array.
+  const extensibleCommands = (manifest.deploymentFiles?.commands?.registry || []).filter(e => e.marker === 'extensible').map(e => e.id);
 
   // Scan all command files
   const fileData = scanAllCommandFiles();
@@ -506,7 +507,7 @@ function runValidate() {
 
   // ---- MANIFEST CHECKS ----
 
-  // Check 6: Manifest to registry — all extensibleCommands in manifest have registry entries
+  // Check 6: Manifest to registry — all extensible-marked commands in the manifest have extension-registry entries
   {
     const failures = [];
     for (const cmdName of extensibleCommands) {
@@ -529,7 +530,7 @@ function runValidate() {
     const manifestSet = new Set(extensibleCommands);
     for (const cmdName of Object.keys(commands)) {
       if (!manifestSet.has(cmdName)) {
-        failures.push(`registry has '${cmdName}' but not in manifest extensibleCommands`);
+        failures.push(`registry has '${cmdName}' but is not marked extensible in the manifest command registry`);
       }
     }
     if (failures.length === 0) {

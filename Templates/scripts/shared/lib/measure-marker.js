@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * measure-marker.js
  *
  * Collection-marker lifecycle for `/idpf-measure` (#2794).
@@ -11,7 +11,7 @@
  *
  * ## Liveness is borrowed, never re-derived
  *
- * Staleness is decided by `hall-monitor-presence.js` `readPresence`, which
+ * Staleness is decided by `overwatch-presence.js` `readPresence`, which
  * already carries two rules that are easy to get subtly wrong: start stamps are
  * boot-relative, so a marker surviving a reboot can collide with a live value;
  * and win32 exposes no process creation time, so its `livenessBasis` is
@@ -30,7 +30,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const { readPresence, resolveSessionPid } = require('./hall-monitor-presence.js');
+const { readPresence, resolveSessionPid } = require('./overwatch-presence.js');
 
 /** Must match the .gitignore entry, or --start litters every git status. */
 const MARKER_FILENAME = '.idpf-measure.json';
@@ -87,7 +87,7 @@ function writeMarker(root, opts) {
   // presence.active — could never fire. A concurrent session's --stop then
   // deleted a live collection, observed here on 2026-09-06 with data loss.
   //
-  // Identity comes from the SAME resolver /hall-monitor uses (#2795) rather than
+  // Identity comes from the SAME resolver /overwatch uses (#2795) rather than
   // a second copy: this module already borrows liveness from that file by #2794
   // AC8, and one question deserves one answer.
   const sessionPid = resolveSessionPid(o.env || process.env);
@@ -146,7 +146,7 @@ function readMarker(root) {
 /**
  * Disarm. Removes the marker unless it belongs to a live foreign process.
  *
- * The ownership test follows /hall-monitor's precedent: without it, this
+ * The ownership test follows /overwatch's precedent: without it, this
  * session's `--stop` would delete a marker a concurrent session had just
  * written, leaving that session collecting with nothing left to stop it. A
  * STALE foreign marker is removed without `--force` — its owner is gone, and

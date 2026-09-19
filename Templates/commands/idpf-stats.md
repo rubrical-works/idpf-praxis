@@ -1,14 +1,14 @@
 ---
-version: "v0.103.0"
-description: Generate session statistics report with development velocity metrics
-argument-hint: "[--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save]"
+version: "v0.104.0"
+description: Generate an IDPF session statistics report with development velocity metrics.
+argument-hint: "[--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save] [--daily-log [prose]]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
 <!-- MANAGED -->
 # /idpf-stats
 
-Session statistics from git history, GitHub issues, and test counts. Renders ASCII tables for volume, testing, throughput, and issue categorization.
+Session statistics from git history, GitHub issues, and test counts. Renders ASCII tables for volume, testing, throughput, and issue categorization. `--daily-log` instead writes a per-day work log for product, QA and engineering managers (Step 5).
 
 **Scope:** Framework dev and user projects — deployed.
 
@@ -28,9 +28,10 @@ Session statistics from git history, GitHub issues, and test counts. Renders ASC
 | `--until` | Now | End date `YYYY-MM-DD` |
 | `--repos` | — | Comma-separated dirs. With no value, uses cached list. |
 | `--repos-edit` | — | Interactive add/remove on cached list |
-| `--save` | — | Save report to `idpf-stats/YYYY-MM-DD.md` |
+| `--save` | — | Save report to `Construction/Reports/Stats/YYYY-MM-DD.md` (or range filename) |
+| `--daily-log [prose]` | today | Management-facing daily work log per day instead of the stats tables (Step 5). Optional prose sets the days (`for every weekday last week`), running to the next flag-shaped token. No prose → today. Current repository only. |
 
-**Examples:** `/idpf-stats`, `/idpf-stats --today`, `/idpf-stats --date 2026-04-06`, `/idpf-stats --since 2026-03-10 --until 2026-03-14`, `/idpf-stats --repos /path/a,/path/b`, `/idpf-stats --repos-edit`, `/idpf-stats --save`.
+**Examples:** `/idpf-stats`, `/idpf-stats --today`, `/idpf-stats --date 2026-04-06`, `/idpf-stats --since 2026-03-10 --until 2026-03-14`, `/idpf-stats --repos /path/a,/path/b`, `/idpf-stats --repos-edit`, `/idpf-stats --save`, `/idpf-stats --daily-log`, `/idpf-stats --daily-log for every weekday last week`.
 
 ### Work Day Calculation
 
@@ -49,6 +50,8 @@ Range is anchored to **local timezone**, never UTC. Modes:
 **`--today` vs `--date <today>`:** `--today` at 15:00 then 18:00 grows the range. `--date 2026-04-06` is fixed but misses commits made after the run. Use `--today` for "today so far"; use `--date` after the day ends.
 
 ## Workflow
+
+**`--daily-log` present → run Step 5 only.** Steps 1–4 are the standard stats report; the daily log has its own collector, report and output location, and ignores every other flag except its prose.
 
 ### Step 1: Collect Metrics
 
@@ -270,18 +273,18 @@ File Type Breakout
 
 ### Step 3c: Save Report (`--save`)
 
-1. Create `idpf-stats/` at project root if missing
-2. Filename: single day → `idpf-stats/YYYY-MM-DD.md`; range → `idpf-stats/YYYY-MM-DD--YYYY-MM-DD.md`
+1. Create `Construction/Reports/Stats/` at project root if it doesn't exist
+2. Filename: single day → `Construction/Reports/Stats/YYYY-MM-DD.md`; range → `Construction/Reports/Stats/YYYY-MM-DD--YYYY-MM-DD.md`
 3. Write markdown report with:
-   - Emoji headers: 📊 Volume, 🧪 Testing, ⚡ Throughput, 📁 Issue Breakdown
-   - Markdown tables
-   - 🟢 🟡 🔴 velocity indicators
-   - Velocity Assessment with multiplier and benchmark assumptions
+   - Emoji headers: 📊 Activity (SPACE), 🧪 Testing, ⚡ Throughput, 🚀 DORA Metrics, 📁 Issue Breakdown
+   - Markdown tables; 🟢 🟡 🔴 velocity indicators
+   - Velocity Assessment with trailing-baseline deviation, benchmark medians, population and source
+   - DORA Metrics with tier placements, proxy markers and the cited tier source
    - Code:Docs ratio assessment
    - File Type Breakout as final section
 4. Report: `"Saved to {filepath}"`
 
-**Note:** `idpf-stats/` is project-local (not symlinked), never deployed to dist. Should be `.gitignore`'d in user projects but tracked in framework dev repos.
+**Note:** `Construction/Reports/` is committed project history in user projects, like `Construction/Code-Reviews/` — do not gitignore it. Project-local, never deployed to dist. Saved reports moved here from the old stats report directory (#2925); the `<framework_root>/idpf-stats/repos.json` cache did not move.
 
 ### Step 4: Edge Case — Empty Report
 
@@ -295,6 +298,66 @@ No activity found in the specified time range.
 
 Do not render empty tables.
 
+### Step 5: Daily Log (`--daily-log`)
+
+**Trigger:** `--daily-log` present. One report per day for product, QA and engineering managers: what shipped, what is ready to test, what is blocked, which bugs were found or fixed. Every issue, number and claim must trace to a collected fact — derive, never compose (#2790).
+
+**Current repository only.** Ignores `--repos`, `--repos-edit` and the auto-detected `<framework_root>/idpf-stats/repos.json` list. The collector names each source set aside in `ignored`; when non-empty, say in the run output they were ignored and the log covers the current repository only.
+
+#### 5a: Resolve the Days
+- **Bare `--daily-log` (no prose):** today, over the same range as `--today`. Interpret nothing; run without a confirmation prompt.
+- **Prose:** resolve the phrase into an explicit date list of `YYYY-MM-DD` local dates (`for every weekday last week` → five dates). Show it and confirm via `AskUserQuestion` before any report is generated (proceed, or correct the list). A declined list generates nothing: no collection, no files. A phrase that cannot be resolved into dates stops with a message that names the phrase — never guess a range.
+
+#### 5b: Collect
+```bash
+node .claude/scripts/shared/daily-log-collect.js --dates 2026-09-08,2026-09-09 > .tmp-daily-log-facts.json
+```
+Omit `--dates` for today; pass `--repos`/`--repos-edit` through if typed so they are reported as ignored. `ok: false` → report `invalid` and STOP. Each day uses Step 1's `--date` semantics (local, `T00:00:00`–`T23:59:59`).
+
+Each `days[]` entry: `issues` (`transitioned`, `movedToInReview`, `movedToDone`, `closed`), `bugs`/`qaRequired` (`opened`, `closed`), `reviews` (`passed`, `findings`), `releases`, `blockers`, `activity`, `referencedIssues`, `unavailable`, `warnings`. Section order from `sections` (`dailyLog` in `stats-config.json`).
+
+**A `null` fact is unavailable, never `0` or "none" (#2675)** — render it with its `unavailable` reason. **`blockers` is current state** (`asOf: collection-time`), not that day's — say so for a past day. Relay `warnings` (possibly truncated search, issue lookup failure).
+
+#### 5c: Plan the Files
+`plan` decides what is written — one file per day, never a combined range file:
+
+| `plan` list | Meaning | Action |
+|---|---|---|
+| `writes` | Day had activity | Write `Construction/Reports/Daily-Logs/YYYY-MM-DD.md`; re-running a day overwrites only that file |
+| `skipped` | Every probe answered, found nothing | No file; list the date as skipped in the run summary |
+| `undetermined` | Nothing found, but probes failed | No file; list the date with its reasons — not a quiet day |
+
+#### 5d: Draft Each Day
+Draft each `plan.writes` day from its facts, sections in this order:
+```markdown
+# Daily Log — YYYY-MM-DD
+
+## Product
+What shipped or changed for users: issues moved to Done or closed, with titles; releases tagged.
+
+## Quality
+Tests added, bugs opened and closed, qa-required gates opened and closed, review outcomes (passed; findings raised).
+
+## Engineering
+In-flight work (moved to In review), open blockers, releases, and risk the facts support.
+
+## Activity
+> {caveat from the reportSections entry named by dailyLog.activityCaveatFrom}
+
+Commits, files changed, lines added and removed by type, tests added.
+```
+- **Activity is last, with the SPACE caveat beneath its heading.** Counts only — no rates, ratings or tier placements; a management audience is the one most likely to read a count as a verdict.
+- Name issues `#N — title` from the facts. An empty section says so in one line; do not pad.
+
+#### 5e: Verify Citations, Then Save
+Write each draft to `.tmp-daily-log-YYYY-MM-DD.md`, then check it:
+```bash
+node .claude/scripts/shared/daily-log-collect.js --verify-citations .tmp-daily-log-2026-09-08.md --facts .tmp-daily-log-facts.json
+```
+`unknown` non-empty (exit 1) → this blocks the save for that day, naming each unknown issue: remove or correct every citation absent from the facts and verify again. Never save a report citing an issue the collector did not return.
+
+Write each report only after its check passes: create `Construction/Reports/Daily-Logs/` when absent, write the file, remove the `.tmp-daily-log-*` files. Report written paths, skipped dates, undetermined dates with reasons, and ignored sources.
+
 ## Error Handling
 
 | Condition | Behavior |
@@ -307,5 +370,8 @@ Do not render empty tables.
 | No test files | Testing table with zeros — a readable tree with no tests is a measured zero |
 | A probe could not run | Value is `null`; render `unavailable`, never `0`, and report `unavailable[metric]` (#2675) |
 | Script execution fails | Report failure, continue with available data |
+| `--daily-log` phrase cannot be resolved to dates | Report the phrase, STOP — never guess a range |
+| `--daily-log` date list declined | Generate nothing, STOP |
+| `--verify-citations` returns unknown issues | Block that day's save; name each unknown issue; correct and re-verify |
 
 **End of /idpf-stats Command**

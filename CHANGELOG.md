@@ -8,6 +8,92 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.104.0] - 2026-09-18
+
+New this release: `/hall-monitor` is now `/overwatch`, and it does more than watch. It confirms
+receipt of each announcement routed to it, tells two sessions when their issues declare the same
+files, and flags a final announcement that a later event contradicts. Setting `broadcast: false`
+routes announcements to a live `/overwatch` alone. `/bluf` gives a short conclusion-first brief for
+one or more issues, `/idpf-stats --daily-log` writes a day's work log for a manager to read, and
+session startup now reports hooks that cannot load or keep failing.
+
+**Upgrade notes:**
+
+- **Requires Praxis Hub Manager v0.22.0-beta.2 or later (#2942).** The five command lists in
+  `framework-manifest.json` are replaced by one `deploymentFiles.commands.registry`, and the
+  manifest declares `consumerCompatibility.praxisHubManager.manifestContract: 2`. An earlier Praxis
+  Hub Manager reads only the retired keys and can install this release with no commands while
+  reporting success. v0.22.0-beta.2 reads the registry (px-manager#1254) and still serves earlier
+  framework versions (px-manager#1255).
+
+- **`/hall-monitor` is renamed `/overwatch` (#2928).** Invoke `/overwatch`. Its marker file is now
+  `.overwatch.json`; an existing `.hall-monitor.json` is still read.
+
+- **Two new cross-session levers in `.claude/x-session.json` (#2914, #2915).** `broadcast: false`
+  sends announcements only to a live `/overwatch`, falling back to broadcast when none is found;
+  `overlapNotices` controls the overlap notices `/overwatch` sends. Both default to on when absent,
+  so nothing changes until you set them. `/x-session-config` shows and toggles both.
+
+- **Framework code moved out of `USER-EXTENSION` blocks (#2913).** `/create-branch`'s config-clean
+  check and `/destroy-branch`'s workstream detection shipped inside extension blocks; they now sit
+  outside them, and the blocks ship empty. A project copy still carrying that text inside its
+  blocks runs the step twice — clear it from the block.
+
+- **`/idpf-stats --save` writes to `Construction/Reports/Stats/` (#2925).** `/charter` creates
+  `Construction/Reports/{Daily-Logs,Stats}` at inception, and `/charter refresh` offers them.
+
+### Added
+
+- `/overwatch` receipt replies: the sender records `received` for an announcement only when a
+  receipt arrives (#2922)
+- `/overwatch` overlap notices to sessions whose in-flight issues declare the same files (#2914)
+- `/overwatch` `terminal-claim-contradicted` signal for a final announcement a later event
+  contradicts (#2902)
+- Targeted announcement routing with broadcast fallback, `announce-routing.js` (#2915)
+- `/bluf` — a short conclusion-first brief per issue, keyed to the issue's type (#2932, #2935)
+- `/idpf-stats --daily-log` and `daily-log-collect.js` (#2925)
+- Hook heartbeats (`lib/hook-heartbeat.js`) and the startup Hook Health row (#2917)
+- `consumerCompatibility` contract declaration in `framework-manifest.json` (#2942)
+
+### Changed
+
+- Every command description rewritten as a complete sentence naming IDPF (#2908)
+- `/hall-monitor` renamed `/overwatch` across the command, libraries, metadata, marker and docs
+  (#2928)
+- Command deployment is declared once in `deploymentFiles.commands.registry`, with `marker` and
+  `env` per command (#2942); `/audit-commands` and `/prepare-release` validation read it (#2946)
+- Startup passes its `gh pmu` version to the config-integrity check instead of running it twice
+  (#2907)
+- `/prepare-release`'s Summary Checklist no longer carries per-feature manual steps (#2940)
+- (maintainer) `/fw-minimize-files` carries frontmatter-only command edits forward without
+  regeneration (#2921); the release gate checks that no framework-owned path ships in a deployed
+  command (#2943); a hands-on probe of `PostToolUse` `updatedToolOutput` and `PostToolBatch` is
+  recorded (#2918); proposal: CHARTER and Inception Content Ownership (#2937)
+
+### Fixed
+
+- `package.json` declares Apache-2.0, matching `LICENSE`, `NOTICE` and the READMEs (#2916)
+- Rule 02 no longer licenses raw `gh pmu create` in place of `/bug` and `/enhancement` (#2934)
+- `work-completed` names only the current branch's commits (#2888)
+- `ci-resolved` refuses an unrecognised CI outcome instead of announcing a failure (#2892)
+- The announcement ledger records the session's pid, not a child process's (#2896)
+- `/done` detects a push trigger declared with `paths` only, instead of skipping CI (#2897)
+- `/prepare-beta`'s CI wait is scoped to the beta branch (#2889)
+- `/overwatch --force` no longer claims a displaced monitor is running when liveness is
+  unconfirmed (#2868)
+- `/charter` entity-count verification no longer reports false mismatches for file locations and
+  exclusion prose (#2919)
+- (maintainer) `validate-helpers.js` and release validation no longer read the retired command-list
+  keys (#2946, #2948); rule 04's hook counts and runtime dependencies corrected (#2920); two Stage 2
+  audience tests read a fixture instead of git history, with a guard against the pattern (#2947)
+
+### Removed
+
+- Gemini CLI compatibility: `/fw-transform-gemini`, its tests and every live reference; the
+  Gemini CLI Extension Packaging proposal is withdrawn (#2941, #2111)
+
+---
+
 ## [0.103.0] - 2026-09-13
 
 New this release: `/charter` asks how each part of your stack is tested and records the answer as
@@ -2428,7 +2514,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.103.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.104.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -2721,7 +2807,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.103.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.104.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -3092,13 +3178,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.103.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.103.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.103.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.104.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.104.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.104.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.103.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.104.0` placeholder (#1479)
 
 ---
 
@@ -3796,15 +3882,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.103.0 placeholder after packaging
+- **#1059** - Skills retain v0.104.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.103.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.104.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.103.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.104.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -3964,7 +4050,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.103.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.104.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -4072,7 +4158,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.103.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.104.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -4103,8 +4189,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.103.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.103.0` placeholder
+- **#933** - v0.104.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.104.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -4245,7 +4331,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.103.0` placeholder
+  - Changed hardcoded version to `v0.104.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -4285,7 +4371,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.103.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.104.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -4362,10 +4448,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.103.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.104.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.103.0` placeholder
+- **#821** - README-DIST.md now uses `v0.104.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -4482,7 +4568,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.103.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.104.0 placeholder
 
 ---
 
@@ -4530,7 +4616,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.103.0 placeholders to 209 framework source files
+- Restored v0.104.0 placeholders to 209 framework source files
 
 ---
 
@@ -4598,12 +4684,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.103.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.104.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.103.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.104.0` format for consistent replacement
 
 ---
 
@@ -4672,7 +4758,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.103.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.104.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

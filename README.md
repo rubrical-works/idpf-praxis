@@ -26,8 +26,6 @@ A structured framework for building software with an AI assistant. You define wh
 | [Claude Code](https://claude.ai/code) | AI assistant that executes the framework |
 | [Praxis Hub Manager](https://github.com/rubrical-works/px-manager) | Desktop app for hub and project management |
 
-> **Gemini CLI support** is currently in development as an extension package.
-
 ---
 
 ## Installation

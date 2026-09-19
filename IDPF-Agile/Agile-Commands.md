@@ -1,5 +1,5 @@
 # Agile-Driven Development Framework - Commands
-**Version:** v0.103.0
+**Version:** v0.104.0
 **Module:** Commands (loaded on-demand)
 ## Complete Command Reference (49 commands)
 Authoritative source: `.claude/commands/`. Use `/fw-self-diag` for a live audit.
@@ -15,7 +15,6 @@ Authoritative source: `.claude/commands/`. Use `/fw-self-diag` for a live audit.
 | **Skills & Extensions** | `/fw-skill-validate`, `/extensions`, `/fw-add-recipe`, `/change-domain-expert` |
 | **CI/CD** | `/ci`, `/playwright-check` |
 | **Documentation** | `/fw-minimize-files`, `/idpf-stats` |
-| **Gemini** | `/fw-transform-gemini` |
 ## Backlog Management Commands
 All backlog commands work against GitHub issues. No local backlog files are created.
 **Prerequisites:** `.gh-pmu.json` configured in repository root, `gh pmu` extension installed

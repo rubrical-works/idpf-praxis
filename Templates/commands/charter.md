@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: View, create, or manage project charter
+version: "v0.104.0"
+description: View, create, or manage this project's charter, using the IDPF framework.
 argument-hint: "[update [--register-proj|--deregister-proj|--list-proj]|refresh|validate|--create-domain-entities|--testing [--dry-run [--check]]]"
 copyright: "Rubrical Works (c) 2026"
 ---
@@ -226,7 +226,7 @@ What review mode should be used for this project?
 | Review mode? | framework-config.json → reviewMode |
 | Active domains? | framework-config.json → activeDomains |
 **Process:**
-1. Create lifecycle dirs: `mkdir -p Inception Construction/Test-Plans Construction/Design-Decisions Construction/Tech-Debt Transition`
+1. Create lifecycle dirs: `mkdir -p Inception Construction/Test-Plans Construction/Design-Decisions Construction/Tech-Debt Construction/Reports/Daily-Logs Construction/Reports/Stats Transition`
 2. Generate CHARTER.md (Vision, Tech Stack, In Scope, Status: Draft). **Required (#2379):** title exactly `# Project Charter: {name}`; include `## Key Entities` table `| Entity | Count | Location |` with ≥1 row (use `TBD` for unknown Count). Wrong title or missing section → generator returns structured `{error, hint}` / `{warning, entities:{}}`.
 3. Generate Inception/ artifacts (Charter-Details, Tech-Stack, Scope-Boundaries, Constraints, Architecture, Test-Strategy, Milestones) — **in intent voice per the Artifact voice rule at the head of Inception Mode.** `Tech-Stack.md` is sourced from the Q3 answer alone.
 4. Construction/ structure with .gitkeep and README.md
@@ -283,6 +283,7 @@ This is the only step that clears a pending suite; selection never revisits an a
 - Writes happen **only on confirmation**, to `testing.suites[]` through the helper — **never to `verificationCommands`**, a **read-only comparison** source here (#2850 retired every `/charter` write of it; an existing key is read as legacy by `resolveSuites`).
 **This is the only hook reaching an already-complete charter.** `/charter` with no arguments shows a summary and never re-runs generation, so neither Inception nor Extraction reaches a project past its first session — refresh is where an existing project acquires a declaration, and where drift between the two hand-authored surfaces is caught. Not hypothetical: this repository's `Inception/Test-Strategy.md` and its `framework-config.json` disagreed about what runs, with nothing checking them.
 5b. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
+5d. **Report directories (#2925):** when `Construction/Reports/Daily-Logs` or `Construction/Reports/Stats` is absent, offer to create the absent ones (`/idpf-stats --daily-log` and `--save` write there); create only on acceptance, change nothing on decline — `/idpf-stats` also creates its directory on demand, so declining never breaks a later report. Pre-#2925 charters reach these directories only through this step.
 6. Trigger skill/recipe suggestions. Detect new default skills not in `projectSkills` — copy from `{frameworkPath}/.claude/skills/`, add additively, report. Tech stack changed → keyword-based suggestions (NEW only).
 ### /charter validate
 1. Load CHARTER.md and Inception/Scope-Boundaries.md

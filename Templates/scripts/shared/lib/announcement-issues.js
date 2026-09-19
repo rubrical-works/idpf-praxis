@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  *
  * Which issues a `/done` push announcement names (#2772).
  *
@@ -43,7 +43,7 @@
  * `done-ci-announcement.test.js` matches spec strings across the three pipeline
  * stages, which cannot show that a range yields the right set. Same precedent
  * as `branch-review-gate.js`, `decideSweep`/`decideFlagSweep`, and
- * `decideStart` in `hall-monitor-presence.js`.
+ * `decideStart` in `overwatch-presence.js`.
  *
  * Node built-ins and relative `shared/lib` requires only, per the runtime
  * dependency contract in `04-deployment-awareness.md`.

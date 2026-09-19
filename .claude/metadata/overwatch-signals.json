@@ -1,8 +1,8 @@
 {
-  "$schema": "./hall-monitor-signals-schema.json",
+  "$schema": "./overwatch-signals-schema.json",
   "version": 1,
   "_meta": {
-    "description": "Thresholds and dispositions for /hall-monitor (#2768). Externalized so dedupe, rate limiting and finding severity can be tuned without a spec edit (#2318 precedent, same shape as commit-checkpoint-signals.json).",
+    "description": "Thresholds and dispositions for /overwatch (#2768). Externalized so dedupe, rate limiting and finding severity can be tuned without a spec edit (#2318 precedent, same shape as commit-checkpoint-signals.json).",
     "issue": 2768
   },
   "observation": {
@@ -42,7 +42,7 @@
       "description": "Two in-flight issues declare the same file in their Files to modify sections.",
       "severity": "report",
       "autoCreatable": false,
-      "rationale": "Overlap is a collision risk, not a defect. Reporting it early is the whole value; filing a bug about it names no broken behaviour."
+      "rationale": "Overlap is a collision risk, not a defect. Reporting it early is the whole value; filing a bug about it names no broken behaviour. It is the one finding the monitor also sends to the sessions involved, as a targeted overlap notice gated by the overlapNotices lever and bounded by overlapNotices below (#2914)."
     },
     {
       "kind": "stale-generated-output",
@@ -64,6 +64,13 @@
       "severity": "report",
       "autoCreatable": false,
       "rationale": "The front-loaded batch #2879 observed: every opener of a multi-issue run sent before any verdict. Nothing was lost, so it is not a defect to file, but while it lasts a dropped closer looks exactly like a queued one — the ambiguity #2781 removed. Rule 09 now defines when a turn begins so it should not recur; reporting it makes a recurrence visible instead of relying on someone noticing it by eye."
+    },
+    {
+      "kind": "terminal-claim-contradicted",
+      "description": "A terminal announcement for an issue is followed by any further announcement naming that same issue. Keys on terminality generally, not on review-passed alone.",
+      "severity": "report",
+      "autoCreatable": false,
+      "rationale": "The contradiction is a property of the announcement vocabulary, not of either peer. A forced re-review is legitimate — /review-issue --force is the supported way to re-review, and rule 09 suppresses its review-started opener by design so a nested re-review is not announced as a fresh one. Both halves work as specified; what overclaims is the word terminal, which is true of a review cycle and false of an issue. Filing would blame a session that followed the rules, so this reports. Distinct from opener-while-previous-unmatched, the nearest kind and the one most likely to be mistaken for it: that one fires on an opener whose own closer has not arrived, and is about ordering within a cycle. This one fires after a cycle has CLOSED, on an event that contradicts a claim the closer already made. A run can produce either without the other."
     }
   ],
   "autoCreate": {
@@ -84,6 +91,18 @@
     "priorArtRequired": true,
     "onAlreadyShipped": "skip",
     "note": "A sweep is mandatory before any auto-filed bug and an already-shipped verdict skips the filing. Duplicate filing is a known failure in this repo — the whole --prior-art subsystem exists because of it — and an unattended filer has no human check standing between it and the board."
+  },
+  "overlapNotices": {
+    "dedupe": {
+      "windowMinutes": 720,
+      "rationale": "A scope overlap is a standing condition: it holds for as long as both issues are in flight, and the monitor re-derives it on every tick. Without dedupe one overlap becomes one message per tick to two sessions that were already told. The fingerprint is the recipient, the issue pair and the overlapping path set, so a WIDENED overlap is a new notice while an unchanged one is not. Twelve hours matches autoCreate.dedupe: long enough to cover an unattended run, short enough that an overlap still standing the next day is raised again."
+    },
+    "rateLimit": {
+      "maxPerRecipient": 3,
+      "windowMinutes": 60,
+      "rationale": "Bounds how many notices one working session receives in an hour, whatever the monitor's analysis produces. Each notice costs the recipient a turn, and a session drowning in notices stops reading them, which removes the one that mattered. Three distinct overlaps an hour is well above what a healthy working directory produces, so the cap is invisible in the common case."
+    },
+    "note": "Whether to send at all is NOT here: it is the overlapNotices lever in .claude/x-session.json, resolved by cross-session-config.js, because .claude/metadata/ is a read-only hub junction in deployed projects and a project must be able to turn notices off. These thresholds only bound a send the lever already allows. Unreadable thresholds refuse every send and fall back to report-only, as autoCreate does (#2914)."
   },
   "enhancementOffers": {
     "autoFile": false,

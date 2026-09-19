@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
- * @description Dedupe and rate-limit guards bounding /hall-monitor's --auto-create (#2768). Pure and synchronous: no I/O, no spawn, no filesystem write, and no throwing path. Decides only WHETHER filing is permitted; the monitor owns the decision to act and performs the filing itself.
+ * @framework-script 0.104.0
+ * @description Dedupe and rate-limit guards bounding /overwatch's --auto-create (#2768). Pure and synchronous: no I/O, no spawn, no filesystem write, and no throwing path. Decides only WHETHER filing is permitted; the monitor owns the decision to act and performs the filing itself.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -14,7 +14,7 @@
  *
  * `--auto-create` files bugs from an unattended loop. Two failure modes follow
  * directly from that, and neither is a judgment call, so both are data in
- * `.claude/metadata/hall-monitor-signals.json` rather than prose in the spec:
+ * `.claude/metadata/overwatch-signals.json` rather than prose in the spec:
  *
  *   DEDUPE     A monitor observing a STANDING condition re-derives the same
  *              finding on every tick. Without dedupe one condition becomes one
@@ -32,7 +32,7 @@
 /**
  * Why there is no throwing path.
  *
- * `/hall-monitor` is advisory — it observes and reports, and must never abort
+ * `/overwatch` is advisory — it observes and reports, and must never abort
  * because a guard disliked its input. Every malformed shape resolves to a
  * refusal carrying a stated reason, the same discipline `peer-announce.js`
  * applies for the same reason.
@@ -75,7 +75,7 @@ function fingerprintFinding(finding, fields) {
  * @param {Object} options.finding  - the candidate finding
  * @param {Array}  options.filings  - [{fingerprint, at}] already filed this session
  * @param {number} options.now      - epoch ms
- * @param {Object} options.signals  - parsed hall-monitor-signals.json
+ * @param {Object} options.signals  - parsed overwatch-signals.json
  * @returns {{allowed: boolean, reason: string, fingerprint: string}}
  */
 function evaluateAutoCreate(options) {

@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.103.0
+**Version:** v0.104.0
 **Source:** Reference/work-execution.md (dev-preserve variant, #2395)
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow. This variant preserves FRAMEWORK-ONLY blocks for self-hosted dev; the stripped variant ships via `.min-mirror/Reference/work-execution.md` to user projects.
 ## Execution Instructions
@@ -164,7 +164,8 @@ Gate layer is the **second** line of defence. An out-of-phase AC should usually 
 <!-- FRAMEWORK-ONLY-START -->
 #### Step 4d: Minimize Touched Command Specs (FRAMEWORK-ONLY — dev repo)
 Trigger: any commit made in Steps 3/3b for the current sub-issue touched `CommandsSrc/*.md`. Detect via `git diff --name-only <sub-issue-start-sha>..HEAD -- CommandsSrc/`.
-For each touched source: (1) invoke `/fw-minimize-files CommandsSrc/<file>.md` via the **Skill tool** (`fw-minimize-files`) — generative LLM task; do not substitute a script call. (2) Verify Stage 1 output `.claude/commands/<file>.md` and Stage 2 output `.min-mirror/Templates/commands/<file>.md` (FRAMEWORK-ONLY stripped) — unless the file is in `getStage2ExcludedFiles()` (via `node .claude/scripts/framework/minimize-helper.js stage2-excluded`). (3) Commit regenerated Stage 1+2 outputs with the source: `Refs #$ISSUE — minimize <file>.md`. Runs before Step 5 so the sub-issue lands with synced source + outputs. Applies in default and `--nonstop`.
+**Frontmatter-only fast path first (#2921):** `node .claude/scripts/framework/minimize-helper.js carry-frontmatter CommandsSrc/<file>.md ...` over the touched set carries each file whose body is byte-identical to the recorded source revision (swaps only changed frontmatter fields in Stage 1+2, writes the record) and refuses, with code and reason, any it cannot show safe. **Every refused file goes through (1) generatively, as before.** Carried files skip (1)–(2) and join (3); rebuild the extension registry (`node .claude/scripts/framework/build-extension-registry.js`) after either path.
+For each touched source not carried: (1) invoke `/fw-minimize-files CommandsSrc/<file>.md` via the **Skill tool** (`fw-minimize-files`) — generative LLM task; do not substitute a script call (`validate-single-file` raw copies fail the Phase 2h-post ratio and 2h-post2 structural gates; `carry-frontmatter` is not such a substitute — it carries an already-minimized body and refuses when the body changed). (2) Verify Stage 1 output `.claude/commands/<file>.md` and Stage 2 output `.min-mirror/Templates/commands/<file>.md` (FRAMEWORK-ONLY stripped) — unless the file is in `getStage2ExcludedFiles()` (via `node .claude/scripts/framework/minimize-helper.js stage2-excluded`). (3) Commit regenerated Stage 1+2 outputs with the source: `Refs #$ISSUE — minimize <file>.md`. Runs before Step 5 so the sub-issue lands with synced source + outputs. Applies in default and `--nonstop`.
 #### Step 4e: Register Added Helpers (FRAMEWORK-ONLY — dev repo)
 Trigger: any commit added a new `.js` under `.claude/scripts/shared/` or `.claude/scripts/shared/lib/`. Detect via `git diff --name-status <sub-issue-start-sha>..HEAD -- .claude/scripts/shared/` filtered to status `A`.
 Helper registration is off-band. **Run the registrar; do not edit by hand (#2620):**
@@ -172,7 +173,7 @@ Helper registration is off-band. **Run the registrar; do not edit by hand (#2620
 node .claude/scripts/framework/register-helper.js <path-to-helper> [--gated]
 ```
 `--gated` wraps the entry in an `enableGitHubWorkflow` closure in `constants.js`; omit for a plain string. **Idempotent** — safe after a partial manual edit, no-op when already registered.
-It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.103.0` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
+It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.104.0` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
 > **Why a script, not a longer checklist (#2620):** the `shared/lib` key contains a slash and **cannot** be dot-accessed; a dot form reads `undefined` silently and `|| []` turns that into a plausible `false`. That hazard was already documented here and still paid by hand every time — most recently #2600 for `lib/checkbox-scan.js`. Documentation cannot fix a transcription error it has already warned about; a tool can.
 Runs before Step 5. Applies in default and `--nonstop`.
 <!-- FRAMEWORK-ONLY-END -->

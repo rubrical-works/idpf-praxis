@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  *
  * Resolver for the `crossSessionMessaging` project config (#2702).
  *
@@ -81,7 +81,7 @@
 'use strict';
 
 /** Top-level boolean levers, in display order. */
-const LEVERS = ['enabled', 'discovery', 'notices', 'upstreamMonitor', 'noticeNarration'];
+const LEVERS = ['enabled', 'discovery', 'notices', 'upstreamMonitor', 'noticeNarration', 'overlapNotices', 'broadcast'];
 
 /** Announcement groups, in event order. */
 const GROUPS = ['work', 'push', 'review'];
@@ -183,7 +183,8 @@ function readEnvOverride(env) {
  *   exports IDPF_X_SESSION in their own shell does not turn the suite red.
  * @returns {{
  *   enabled: boolean, discovery: boolean, notices: boolean,
- *   upstreamMonitor: boolean, noticeNarration: boolean,
+ *   upstreamMonitor: boolean, noticeNarration: boolean, overlapNotices: boolean,
+ *   broadcast: boolean,
  *   groups: {work: boolean, push: boolean, review: boolean},
  *   fullyEnabled: boolean, implications: string[],
  *   source: 'environment'|'project-config'|'default',
@@ -214,6 +215,20 @@ function resolveCrossSessionConfig(config, env) {
     // above and silently make every project that never wrote this object go
     // quiet — the exact failure the header warns about, one key down.
     noticeNarration: !isOff(xsm.noticeNarration),
+    // Targeted overlap notices from /overwatch to the sessions whose
+    // in-flight issues declare the same files (#2914). Off restores the
+    // monitor's report-only behaviour. Named so that true is the enabled
+    // state, for the absence rule above.
+    overlapNotices: !isOff(xsm.overlapNotices),
+    // Announcement ROUTING, not emission (#2915). true sends to every
+    // addressable peer, today's behaviour; false selects targeted routing to a
+    // live /overwatch, falling back to broadcast when there is none. Named
+    // so absence is today's behaviour — `targetedRouting` would resolve true
+    // when absent and silently make every project targeted. Deliberately NOT
+    // cascaded by the master switch or discovery below: those already silence
+    // every announcement, and forcing this false would report a routing mode
+    // nobody chose, for sends that are not happening.
+    broadcast: !isOff(xsm.broadcast),
     groups: {
       work: !isOff(rawGroups.work),
       push: !isOff(rawGroups.push),
@@ -276,6 +291,7 @@ function resolveCrossSessionConfig(config, env) {
     state.notices = false;
     state.upstreamMonitor = false;
     state.noticeNarration = false;
+    state.overlapNotices = false;
     for (const g of GROUPS) state.groups[g] = false;
     // Only claim the CONFIG key is off when the config key is what turned it
     // off. Under an environment override the cascade is identical but the cause
@@ -300,15 +316,21 @@ function resolveCrossSessionConfig(config, env) {
     // reasons about announcing TO peers never discovered, which says nothing
     // about how this session narrates what it RECEIVES -- and a session can
     // still receive announcements with its own discovery off.
+    //
+    // overlapNotices IS folded in (#2914): a notice is sent TO a peer, and a
+    // monitor with discovery off has discovered none to send it to.
     for (const g of GROUPS) state.groups[g] = false;
+    state.overlapNotices = false;
     state.implications.push(
-      'discovery is off, so all three announcement groups resolve off — '
+      'discovery is off, so all three announcement groups and overlap notices resolve off — '
       + 'announcing to peers that were never discovered is not meaningful. '
       + 'The upstream monitor is unaffected; it polls the git upstream, not peers.'
     );
   }
 
   // Per AC 11: "not fully enabled" is any group off, or the master switch off.
+  // overlapNotices does not move it, like notices and upstreamMonitor: the flag
+  // answers "are all announcement groups emitting" (#2914).
   // Both of the branches above already zero the groups, so this one expression
   // covers all three ways of getting there.
   state.fullyEnabled = state.enabled && GROUPS.every((g) => state.groups[g]);
@@ -466,6 +488,10 @@ function formatEffectiveState(state) {
   if (state.notices === false) off.push('notices');
   if (state.upstreamMonitor === false) off.push('upstream monitor');
   if (state.noticeNarration === false) off.push('notice narration (quiet)');
+  // Under discovery:false the cause is already named above, as for the groups.
+  if (state.overlapNotices === false && state.discovery !== false) off.push('overlap notices');
+  // Not an off switch: announcements still go out, to a live monitor only.
+  if (state.broadcast === false) off.push('broadcast (targeted routing to a live overwatch)');
 
   if (off.length === 0) return 'cross-session messaging: fully enabled';
   return `cross-session messaging: partially disabled by config — off: ${off.join(', ')}`;

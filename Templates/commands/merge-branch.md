@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: Merge branch to main with gated checks (project)
+version: "v0.104.0"
+description: Merge a branch to main through the IDPF framework's gated checks.
 argument-hint: "[--skip-gates] [--dry-run]"
 copyright: "Rubrical Works (c) 2026"
 ---
@@ -38,7 +38,6 @@ If present, closed at end.
 ---
 
 <!-- USER-EXTENSION-START: pre-gate -->
-<!-- Setup: prepare environment before gate checks -->
 <!-- USER-EXTENSION-END: pre-gate -->
 
 ## Phase 1: Gates
@@ -57,8 +56,6 @@ npm test 2>/dev/null || echo "No test script configured"
 **FAIL if tests fail.** Skip if no script.
 
 <!-- USER-EXTENSION-START: gates -->
-<!-- Custom gates: add project-specific validation here -->
-<!-- Example: coverage threshold, lint checks, security scans -->
 <!-- USER-EXTENSION-END: gates -->
 
 ### Summary
@@ -68,7 +65,6 @@ npm test 2>/dev/null || echo "No test script configured"
 **Any failure → STOP.**
 
 <!-- USER-EXTENSION-START: post-gate -->
-<!-- Post-gate: actions after all gates pass -->
 <!-- USER-EXTENSION-END: post-gate -->
 
 ---
@@ -84,15 +80,6 @@ gh pr create --base main --head $(git branch --show-current) \
 ```
 
 <!-- USER-EXTENSION-START: post-pr-create -->
-<!-- BUILT-IN: ci-wait (disabled by default)
-### Wait for CI
-
-```bash
-node .claude/scripts/shared/wait-for-ci.js
-```
-
-**If CI fails, STOP and report.**
--->
 <!-- USER-EXTENSION-END: post-pr-create -->
 
 ### Step 2.2a: Mergeability Gate
@@ -125,7 +112,6 @@ git pull origin main
 ```
 
 <!-- USER-EXTENSION-START: post-merge -->
-<!-- Post-merge: actions after PR is merged -->
 <!-- USER-EXTENSION-END: post-merge -->
 
 ### Step 2.6: Workstream Detection (Post-Merge)
@@ -154,7 +140,6 @@ git branch -d $BRANCH
 ```
 
 <!-- USER-EXTENSION-START: post-close -->
-<!-- Post-close: notifications, announcements -->
 <!-- USER-EXTENSION-END: post-close -->
 
 ---

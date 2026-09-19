@@ -1,7 +1,7 @@
 ---
-version: "v0.103.0"
+version: "v0.104.0"
 allowed-tools: Bash, AskUserQuestion
-description: "Assign or remove issues from a branch: [#issue...] [branch/...] [--add-ready] [--remove] (project)"
+description: Assign issues to a branch or remove them from it, using the IDPF framework.
 argument-hint: "[#issue...] [branch/name] [--add-ready] [--remove] [--confirm-remove]"
 copyright: "Rubrical Works (c) 2026"
 ---

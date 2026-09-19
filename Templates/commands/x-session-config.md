@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: Configure cross-session peer messaging for this project (project)
+version: "v0.104.0"
+description: Configure this project's IDPF cross-session peer messaging.
 argument-hint: "[--on <levers>] [--off <levers>] [--quiet] [--loud] [--show] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
@@ -18,7 +18,7 @@ Edit the cross-session peer messaging levers (#2702). They live in `.claude/x-se
 | `--show` | No | Prints the resolved state. **Writes nothing.** |
 | `--help` | No | Prints usage and the lever names. **Writes nothing.** |
 | *(none)* | — | Changes nothing, but still writes the resolved object and displays it. |
-**Levers:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `work`, `push`, `review` — the last three addressing `groups.*` without the prefix. **Non-interactive:** asks nothing, blocks on nothing.
+**Levers:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `noticeNarration`, `overlapNotices`, `broadcast`, `work`, `push`, `review` — the last three addressing `groups.*` without the prefix. **Non-interactive:** asks nothing, blocks on nothing.
 **`--show` is the read-only mode.** A bare invocation writes by design, so without it there is no way to look without changing the file. It reports exactly what a bare run would have written — a preview, not a second opinion.
 **`--show` with `--on`/`--off` is rejected** — opposite intents, and silently honouring one produces output that looks like a write but was not. "Did it write?" stays answerable from the flags alone.
 **`--help` takes precedence over every other flag**, `--show` and an invalid lever included — the likeliest reason to type it is not knowing the lever names, so `--help --off nonsense` prints help rather than complaining.
@@ -31,12 +31,12 @@ Report the envelope:
 - `--help` → the script prints usage text, not JSON. Relay it as-is and **STOP**.
 - `ok: true` → report `summary`, every `implications` entry **verbatim**, and `changed` (or that nothing changed). **STOP**.
 - `ok: false` → report every `errors` entry verbatim and **STOP**. Nothing was written — neither file; do **not** retry, and do **not** edit either by hand.
-Takes effect: `discovery` and `upstreamMonitor` in new sessions, groups on the next `/work`, `/done`, `/review-issue` or `/resolve-review`.
+Takes effect: `discovery` and `upstreamMonitor` in new sessions, groups on the next `/work`, `/done`, `/review-issue` or `/resolve-review`, `overlapNotices` on a running `/overwatch`'s next tick, `broadcast` on the next announcement `announce.js` composes.
 **`source: environment` → say so, and say the config was not changed (#2705).** `IDPF_X_SESSION` outranks the file, so reporting only the written levers tells the user messaging is on while nothing this session emits leaves it. The `summary` line already carries the variable, its value, and *not written to framework-config.json* — relay it verbatim, never paraphrased into "messaging is disabled".
 **No task list.** One deterministic step; `07-task-creation-timing.md` permits upfront task creation for unrouted commands, it does not require it. Creating and pruning tasks around a single script call is pure overhead.
 **Do not re-implement the helper.** Parsing, validation, conflict detection, apply and write all live in the script. Re-deriving any in prose is what this rebuild exists to stop — the write was previously re-authored per invocation, which is how the `write(cwd, config)` / `validate(config, cwd)` argument reversal was hit live.
 ## What it governs
-An **absent** object still resolves to fully enabled at every level — the resolver's rule, for hand-written configs, configs predating a lever, and projects that never run this. The helper does not rely on it: **every invocation writes the complete eight-lever object**, bare and `--on all` included. A bare invocation is therefore a mutation — first run produces a diff, **idempotent** thereafter.
+An **absent** object still resolves to fully enabled at every level — the resolver's rule, for hand-written configs, configs predating a lever, and projects that never run this. The helper does not rely on it: **every invocation writes the complete ten-lever object**, bare and `--on all` included. A bare invocation is therefore a mutation — first run produces a diff, **idempotent** thereafter.
 | Key | Governs |
 |---|---|
 | `enabled` | Master switch. False resolves every lever below to off. |
@@ -44,6 +44,8 @@ An **absent** object still resolves to fully enabled at every level — the reso
 | `notices` | Dispatch-caveat and skip-reason lines printed once per announcement. False leaves dispatch unchanged. |
 | `upstreamMonitor` | Whether the background upstream-push poller arms. Intervals and backoff stay in `.claude/metadata/upstream-monitor.json`. |
 | `noticeNarration` | **The one receive-side lever (#2735).** How verbosely *this* session narrates an announcement it **receives**. Absent/`true` = today's verbose behaviour; `false` keeps the one-line acknowledgement, drops the commentary. Not implied by `discovery: false`; forced off by `enabled: false`. |
+| `overlapNotices` | Whether `/overwatch` sends a targeted overlap notice to the sessions whose in-flight issues declare the same files (#2914). `false` is report-only: reported to the monitor's user, no session messaged. Resolved off by `enabled: false` and `discovery: false`. Dedupe and rate limit stay in `.claude/metadata/overwatch-signals.json`. |
+| `broadcast` | **Routing mode, not an off switch (#2915).** Absent or `true`: every announcement `announce.js` composes (`/work`, review events) goes to every addressable peer — today's behaviour. `--off broadcast` selects **targeted** routing: with a live `/overwatch` whose pid is an addressable, uniquely named peer, announcements go to it alone and other peers are skipped as `routed-to-monitor`. No live monitor, stale marker, unaddressable monitor or shared monitor name → **falls back to broadcast**, never silence, and the notice names why. `/done` push/CI events and `/qa`'s fixtures event bypass `announce.js` and still broadcast. **Known cost:** a monitor holding, declining or letting messages expire is undetectable from the sender (#2674), so no session hears anything. Unchanged by `enabled: false` / `discovery: false`. |
 | `groups.work` | `/work` events 1 `work-started`, 2 `work-completed` |
 | `groups.push` | `/done` events 3 `push-started`, 4 `ci-terminal`, 5 `push-rejected` |
 | `groups.review` | `/review-issue` event 6 `review-started`, `/resolve-review` event 7 `review-resolved` |
@@ -79,7 +81,7 @@ The helper validates before writing and returns `ok: false` **without touching t
 | Situation | Reported as |
 |---|---|
 | `framework-config.json` missing | `No framework-config.json at <path>.` Never created — this command owns one key, not the file. |
-| Unknown lever | Names the token and lists the seven valid levers. Never fuzzy-matched. |
+| Unknown lever | Names the token and lists the valid levers. Never fuzzy-matched. |
 | A lever in both `--on` and `--off` | Names the conflicting lever. |
 | A flag with no value, or an unknown flag | Named, never ignored — silently dropping one would report success having changed nothing. |
 | Schema-invalid result | `Write refused: …` with the validator's message. |

@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: Audit project command specs for LLM processing reliability (project)
+version: "v0.104.0"
+description: Audit this project's command specs for LLM processing reliability, using the IDPF framework.
 argument-hint: "[all|<command-name>|<group description>]"
 copyright: "Rubrical Works (c) 2026"
 ---
@@ -26,15 +26,15 @@ No argument → prompt for scope.
 3. **Track Progress:** Mark tasks `in_progress` → `completed`
 ## Workflow
 ### Step 1: Load Manifest and Classify Commands
-Read `{frameworkPath}/framework-manifest.json` (`frameworkPath` from `framework-config.json`), extract `managedCommands` and `extensibleCommands`.
+Read `{frameworkPath}/framework-manifest.json` (`frameworkPath` from `framework-config.json`), extract `deploymentFiles.commands.registry` — per command: `id` (no extension), `file` (`.md`), `marker` (`managed`/`extensible`/`none`). Registry absent → report the manifest predates it, STOP; never treat every command as local.
 
 List all `.md` in `.claude/commands/`. Classify each:
 
 | Category | Source | Audit Scope |
 |----------|--------|-------------|
-| **Managed** | In `managedCommands` | **Skip** — hub-managed |
-| **Extensible** | In `extensibleCommands` | **Extension points only** — `USER-EXTENSION` blocks |
-| **Local** | Not in either array | **Full spec audit** |
+| **Managed** | Registry `marker: managed` | **Skip** — hub-managed |
+| **Extensible** | Registry `marker: extensible` | **Extension points only** — `USER-EXTENSION` blocks |
+| **Local** | No `managed`/`extensible` registry entry | **Full spec audit** |
 
 Report classification summary.
 ### Step 2: Resolve Scope

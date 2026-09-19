@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * idpf-measure.js
  *
  * CLI for `/idpf-measure` (#2794). Binds the three helpers together:

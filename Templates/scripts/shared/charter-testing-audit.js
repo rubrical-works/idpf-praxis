@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * charter-testing-audit.js — audit a `testing` declaration without writing it (#2854).
  *
  * #2850 made harness selection MANDATORY: an empty answer is rejected and the

@@ -163,17 +163,19 @@ Every opener has a closer, so a session that hears "work started on #101" will a
 
 **Turning it down.** `/x-session-config` controls what this project sends. Each group of announcements is a separate lever (`work`, `push`, `review`), discovery itself is one, and the background poller that watches the git upstream is another. `/x-session-config --quiet` addresses the other direction: a receiving session keeps the one-line acknowledgement of an inbound announcement but drops the commentary around it (issue lookups, likely-file lists, overlap analysis). `--show` prints the resolved state without writing anything. Absent settings mean everything is on.
 
-**Watching the whole floor.** `/hall-monitor` dedicates a session to receiving. It performs no work and announces nothing of its own; it consumes the announcements the other sessions already broadcast, correlates them against local commits, and reports what no working session is positioned to see: commits nobody announced, a "work started" with no matching completion, two in-flight issues declaring overlapping files. With `--auto-create` it will file bugs for findings marked filable, behind a dedupe window and a per-session cap and always after a prior-art sweep; enhancements are offered, never filed unattended. A monitor sees only what is addressed to it. A direct message between two other sessions is point-to-point, and the report says so rather than implying full coverage.
+**Watching the whole floor.** `/overwatch` dedicates a session to receiving. It performs no work and broadcasts no announcements of its own; it consumes the announcements the other sessions already broadcast, correlates them against local commits, and reports what no working session is positioned to see: commits nobody announced, a "work started" with no matching completion, two in-flight issues declaring overlapping files. That last finding it also sends, as an overlap notice, to the two sessions working those issues and to no one else, so the sessions about to collide hear about it directly (`/x-session-config --off overlapNotices` keeps it report-only). With `--auto-create` it will file bugs for findings marked filable, behind a dedupe window and a per-session cap and always after a prior-art sweep; enhancements are offered, never filed unattended. A monitor sees only what is addressed to it. A direct message between two other sessions is point-to-point, and the report says so rather than implying full coverage.
 
 In the role layout above, a monitor is a fourth terminal:
 
 ```
 Terminal 1 (Git)     Terminal 2 (Review)   Terminal 3 (Review)   Terminal 4 (Monitor)
 > runp_claude        > runp_claude         > runp_claude         > runp_claude
-/work #101           /review-issue #105    /review-issue #108    /hall-monitor
+/work #101           /review-issue #105    /review-issue #108    /overwatch
 ```
 
-It is optional. The announcements reach Sessions A, B and C whether or not anyone is monitoring; the monitor adds a reader, not a transport.
+It is optional. By default the announcements reach Sessions A, B and C whether or not anyone is monitoring, and the monitor adds a reader, not a transport.
+
+**Targeted routing** changes that, and only if you ask for it. With `/x-session-config --off broadcast`, the announcements `/work`, `/review-issue` and `/resolve-review` make go to the monitor alone: Terminal 4 receives everything, and Sessions A, B and C stop hearing each other directly, learning about collisions from the monitor's overlap notices instead. `/done` and `/qa` still send to every session. When no monitor is running, or it cannot be addressed safely, sending falls back to broadcast, so turning broadcast off never makes a session go silent on its own. One thing cannot be detected: the sending sessions cannot tell when the monitor is holding or declining its messages, and then no session hears anything, so switch broadcast back on when nobody is watching Terminal 4.
 
 ---
 
@@ -213,7 +215,7 @@ But in IDPF workflows, review is often the bottleneck. A release with twenty sto
 | Board management (`/assign-branch`) | GitHub API | As many as needed |
 | Implementation (`/work`, `/done`) | Git + local files | One |
 | Releases (`/prepare-release`) | Git + local files | One |
-| Observation (`/hall-monitor`) | Announcements + git (read-only) | One, optional |
+| Observation (`/overwatch`) | Announcements + git (read-only) | One, optional |
 
 One session commits. The rest review. No worktrees required.
 

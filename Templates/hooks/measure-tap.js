@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * measure-tap.js
  *
  * PostToolUse hook for `/idpf-measure` (#2794). Appends one JSONL record per
@@ -113,6 +113,14 @@ function recordEvent(payload, root) {
   }
 }
 
+// Heartbeat (#2917): records this hook's outcome under the project root for the
+// startup Hook Health row. Installed only when run as the hook — the test suite
+// requires this module and must not write a heartbeat for its own process.
+let heartbeat = { fail() {}, setCwd() {} };
+if (require.main === module) {
+  try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('measure-tap'); } catch (_) { /* reported by the load check */ }
+}
+
 async function main() {
   let input = '';
   for await (const chunk of process.stdin) {
@@ -126,12 +134,14 @@ async function main() {
     return; // unparseable input — record nothing, block nothing
   }
 
+  heartbeat.setCwd(data && data.cwd);
   recordEvent(data);
 }
 
 if (require.main === module) {
-  main().catch(() => {
-    // Never block a tool call.
+  main().catch((err) => {
+    // Never block a tool call. Recorded, not raised (#2917).
+    heartbeat.fail(err);
   });
 }
 

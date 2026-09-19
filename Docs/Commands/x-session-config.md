@@ -11,7 +11,7 @@ Sessions working in the same directory announce what they are doing to each othe
 | `--off <levers>` | No | Comma-separated lever names, or `all`. Turns each off. |
 | `--on <levers>` | No | Comma-separated lever names, or `all`. Turns each on. |
 
-**Lever names:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `work`, `push`, `review`.
+**Lever names:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `noticeNarration`, `overlapNotices`, `broadcast`, `work`, `push`, `review`.
 
 ## Usage
 
@@ -21,11 +21,12 @@ Sessions working in the same directory announce what they are doing to each othe
 /x-session-config --off work,review    # several at once
 /x-session-config --on all             # turn everything back on
 /x-session-config --off all            # turn everything off
+/x-session-config --off broadcast      # send announcements to a running /overwatch only
 ```
 
 ## Key Behaviors
 
-- **Every run writes the settings to `framework-config.json`, then shows you what it wrote** — including a run with no arguments. The file always ends up stating all seven settings explicitly, so you can read it without knowing what a missing entry would have meant.
+- **Every run writes the settings to `framework-config.json`, then shows you what it wrote** — including a run with no arguments. The file always ends up stating every setting explicitly, so you can read it without knowing what a missing entry would have meant.
 - The first run in a project that has never been configured will therefore show up as a change to `framework-config.json`. Runs after that write the same thing again and produce no change.
 - Not configuring this project at all is still perfectly valid: with no settings present, everything is on. The same is true of any individual setting that is missing — including one added by a future release, which will be on by default without you editing anything.
 - Settings are validated before being saved. If a value would produce an invalid file, the save is refused rather than written.
@@ -42,6 +43,10 @@ Sessions working in the same directory announce what they are doing to each othe
 | `review` | `/review-issue` and `/resolve-review` stop announcing. |
 | `notices` | The "delivery is not confirmed" caveat lines stop printing. Messages are still sent. |
 | `upstreamMonitor` | The background poller that watches for upstream pushes does not start. |
+| `overlapNotices` | A running `/overwatch` stops messaging the sessions whose issues declare the same files. It still reports the overlap to its own user. |
+| `broadcast` | Announcements are no longer sent to every session. Instead they go to a running `/overwatch` only (targeted routing). If no monitor is running, or it cannot be addressed safely, they go to every session as before, and the send says why. |
+
+**About targeted routing.** It covers what `/work`, `/review-issue` and `/resolve-review` announce; `/done` and `/qa` still send to every session. The monitor passes on what matters, such as overlapping files, but if the monitor session is holding or declining its messages nobody can tell from the sending side, and then no session hears anything. Turn `broadcast` back on if you are not actively watching the monitor.
 
 Push announcements are one setting rather than three, deliberately. A push announcement is always followed by exactly one result announcement, and separate switches would let you enable the first without the second — leaving other sessions waiting for a result that never comes. Review announcements are one setting for the same reason.
 

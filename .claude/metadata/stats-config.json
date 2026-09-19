@@ -293,5 +293,30 @@
   "baseline": {
     "windowDays": 90,
     "minDataPoints": 5
+  },
+  "dailyLog": {
+    "description": "Settings for /idpf-stats --daily-log (#2925), read by daily-log-collect.js. The report is written for product, QA and engineering managers; its Activity section reuses the volume section caveat and carries no throughput, velocity rating or DORA content.",
+    "reportDir": "Construction/Reports/Daily-Logs",
+    "statsReportDir": "Construction/Reports/Stats",
+    "sections": [
+      "Product",
+      "Quality",
+      "Engineering",
+      "Activity"
+    ],
+    "activityCaveatFrom": "volume",
+    "labels": {
+      "bug": "bug",
+      "qaRequired": "qa-required",
+      "blocked": [
+        "blocked"
+      ]
+    },
+    "statuses": {
+      "inReview": "In review",
+      "done": "Done"
+    },
+    "issueSearchLimit": 200,
+    "graphqlBatchSize": 25
   }
 }

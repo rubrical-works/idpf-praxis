@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: Create GitHub epics/stories from PRD (project)
+version: "v0.104.0"
+description: Create GitHub epics and stories from a PRD, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
 ---

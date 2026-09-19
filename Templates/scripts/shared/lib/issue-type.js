@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Centralize label-based issue type detection and review command routing. Exports getIssueType(). Used by review-preamble.js and work-preamble.js for type dispatch.
  * @checksum sha256:placeholder
  *
@@ -21,11 +21,40 @@ const TYPE_LABELS = ['bug', 'enhancement', 'story', 'epic'];
 
 /**
  * Determine issue type and review routing from labels.
- * @param {Object} issueData - Parsed JSON from gh issue view --json labels
+ *
+ * Accepts both label shapes: `gh issue view` emits `[{name}]` objects and
+ * `gh pmu view` emits flat strings. Tolerating both is the same choice
+ * `isEligibleForInterdependence` made in #2682 — a caller handing over the
+ * other CLI's representation has given readable input, and answering it beats
+ * failing on it.
+ *
+ * Unreadable input warns (#2935). Before this, `generic` was the answer for
+ * BOTH "this issue carries no type label" and "I could not read the labels you
+ * gave me", and a bare return value cannot carry that distinction. `/bluf`
+ * shipped against the second meaning while its author read the first: every
+ * issue classified `generic`, no error, no warning, and a plausible brief.
+ * That is #2682's defect one level down, which its code comment predicted.
+ * The warn is the side-channel that keeps the two answers distinguishable.
+ *
+ * An absent or empty `labels` is NOT unreadable — "this issue has no labels"
+ * is a real question with a real answer, and warning there would cry wolf on
+ * the common case.
+ *
+ * @param {Object} issueData - Parsed JSON from `gh issue view` or `gh pmu view`
  * @returns {{ type: string|null, redirect: string|null }}
  */
 function getIssueType(issueData) {
-  const labels = (issueData.labels || []).map(l => l.name);
+  const rawLabels = (issueData && issueData.labels) || [];
+  const labels = rawLabels
+    .map(l => (typeof l === 'string' ? l : l && typeof l.name === 'string' ? l.name : null))
+    .filter(Boolean);
+
+  if (rawLabels.length > 0 && labels.length === 0) {
+    console.warn(
+      '[issue-type] getIssueType: no readable label names in input; ' +
+      'returning generic. Expected string[] or {name:string}[].'
+    );
+  }
 
   // Redirect labels take precedence
   for (const label of labels) {

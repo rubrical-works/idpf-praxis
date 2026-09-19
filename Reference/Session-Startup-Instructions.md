@@ -1,19 +1,19 @@
 # Session Startup Instructions
-**Version:** v0.103.0
+**Version:** v0.104.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
-`.claude/hooks/startup-hook.js` runs startup deterministically: gathers session info, runs nine checks (upgrade, statusline, config-integrity, branch-sync, dependency, task-tools, gh-auth, peers, testing-drift) in parallel on a staged 15s/30s/45s/60s ladder, emits the **Session Initialized** block to:
+`.claude/hooks/startup-hook.js` runs startup deterministically: gathers session info, runs ten checks (upgrade, statusline, config-integrity, branch-sync, dependency, task-tools, gh-auth, hook-health, peers, testing-drift) in parallel on a staged 15s/30s/45s/60s ladder, emits the **Session Initialized** block to:
 - **stderr** — colored copy for debug/transcript inspection. **Not** auto-surfaced in the Claude Code UI (hook exits 0; upstream docs cover stderr only for exit 2 — do not rely on it). Claude's echo is the only channel reaching the user.
 - **`additionalContext`** — plain text in Claude's context: the block plus a verbatim-echo instruction, and post-hook actions (charter read + summary when active, domain specialist load, `/charter` if pending). The charter summary **is** a post-hook content read: when `charterStatus` is `Active`, Claude reads `CHARTER.md` after echoing the block and emits a concise prose summary. The block carries only the `Charter Status:` line (#2484 reversed #2475's precomputed `Charter Vision:`/`Charter Focus:` lines, clipped at 200 chars).
-**Six of nine run unconditionally; `upgrade`, `peers` and `testing-drift` do not.** Three gates, on unrelated conditions — the registered count is a function of **three** conditions, not one.
+**Seven of ten run unconditionally; `upgrade`, `peers` and `testing-drift` do not.** Three gates, on unrelated conditions — the registered count is a function of **three** conditions, not one.
 | Check | Registered when |
 |---|---|
-| statusline, config-integrity, branch-sync, dependency, task-tools, gh-auth | always |
+| statusline, config-integrity, branch-sync, dependency, task-tools, gh-auth, hook-health | always |
 | `upgrade` | `framework-config.json` `selfHosted` is not `true` |
 | `peers` | `crossSessionMessaging.discovery` resolves true (#2702) |
 | `testing-drift` | `charterStatus` is `Active` (#2903) |
-Deployed project + discovery on + active charter → nine; self-hosted + discovery on + active charter → eight; self-hosted + discovery off + pending charter → six. **Never read a row count as a check count without knowing all three conditions** — this paragraph previously read "six of seven; `upgrade` does not", false the moment #2702 gated `peers`, and read as asserting `peers` was unconditional.
+Deployed project + discovery on + active charter → ten; self-hosted + discovery on + active charter → nine; self-hosted + discovery off + pending charter → seven. **Never read a row count as a check count without knowing all three conditions** — this paragraph previously read "six of seven; `upgrade` does not", false the moment #2702 gated `peers`, and read as asserting `peers` was unconditional.
 Condition is on **registration**, not output: a skipped check contributes **no row** to the block, not an empty or "skipped" one. Row count alone cannot distinguish skipped from failed-to-run. **Exception:** `peers` with `discovery: false` **does** emit a row saying it did not look — absence there would otherwise be indistinguishable from "no peers found" (see below).
 ## Branch Sync Offer
 `behind` makes `additionalContext` carry an **offer**, not just a status line — `06-runtime-triggers.md` *offer, don't force*: the hook asks, never mutates.
@@ -83,15 +83,28 @@ Every other `crossSessionMessaging` lever governs **emission**. This one governs
 |---|---|
 | absent or `true` (default) | Verbose — may look the issue up, enumerate likely files, analyse the collision surface |
 | `false` (quiet) | **One-line acknowledgement KEPT**; commentary not — no issue lookup, no likely-files enumeration, no collision-surface analysis |
-| a live `.hall-monitor.json` marker (#2769) | **Quiet**, exactly as `noticeNarration: false`. A `/hall-monitor` session is live here and already doing the analysis; N sessions repeating it is the duplication that command removes. |
+| a live `.overwatch.json` marker (#2769) | **Quiet**, exactly as `noticeNarration: false`. A `/overwatch` session is live here and already doing the analysis; N sessions repeating it is the duplication that command removes. |
 
-**Precedence — it only ever LOWERS verbosity:** `enabled: false` → quiet regardless; `noticeNarration: false` → quiet regardless; otherwise a live marker → quiet; otherwise (no marker, or a stale one) → verbose. A marker is evidence that *more* suppression is wanted, never less, so it can never turn a project that chose quiet back into a loud one. Read it via `.claude/scripts/shared/lib/hall-monitor-presence.js` `readPresence(cwd)` on an inbound announcement; never re-derive liveness, which is reused from `peers-check.js` so this and the `Peers:` row agree by construction.
+**Precedence — it only ever LOWERS verbosity:** `enabled: false` → quiet regardless; `noticeNarration: false` → quiet regardless; otherwise a live marker → quiet; otherwise (no marker, or a stale one) → verbose. A marker is evidence that *more* suppression is wanted, never less, so it can never turn a project that chose quiet back into a loud one. Read it via `.claude/scripts/shared/lib/overwatch-presence.js` `readPresence(cwd)` on an inbound announcement; never re-derive liveness, which is reused from `peers-check.js` so this and the `Peers:` row agree by construction.
 **It applies to every session that reads it, the monitor included** — `readPresence` reports `active: true` for a marker whose `pid` is the caller, which is correct here. The self carve-out belongs to `decideStart`, which must not refuse a monitor on its own marker: a different question, a different function.
 **A stale marker suppresses nothing.** `active` is true only for `live`; `stale-pid`, `stale-boot`, `malformed` and `cwd-mismatch` narrate verbosely and are named on the `Peers:` row so a crashed monitor is visible.
-**Quiet is not silence, and that distinction is the contract.** The acknowledgement is the only evidence the sender has that anything landed — dispatch is undetectable from the sending side (#2674) — so suppressing it removes the one signal the protocol does provide. Quiet trims what the protocol never asked for.
+**Quiet is not silence, and that distinction is the contract.** The one-line acknowledgement is **receiver-side narration** — printed to this session's own user, never seen by the sender; dispatch is undetectable from the sending side (#2674). Suppressing it removes the only evidence *this user* has that anything arrived, so quiet keeps it. The one sender-observable confirmation is a **receipt reply** from a live `/overwatch` (#2922, below) — a message, not narration.
 **Why the rule states this: the memory half does not ship.** `--quiet` writes the config lever *and* a per-project memory artefact, but that artefact lives in Claude Code's per-user, per-machine store — neither project state nor a framework surface. In a deployed project that path differs and may not exist, so the lever may be the only half present, and a lever with no stated behaviour is a setting that does nothing. This section is what makes it mean something there.
 **Not implied by `discovery: false`** — that implication is about announcing **to** peers never discovered and says nothing about narrating what is **received**; a session can still receive with its own discovery off. It **is** forced off by `enabled: false`. **Distinct from `notices`**, which suppresses sender-side dispatch caveats: different axis, not a stronger version of the same one.
 **Config and memory can disagree, silently.** A lever reading quiet with the artefact absent is a suppression that quietly stopped working — indistinguishable from one never set. `/x-session-config --show` reports both and names the drift.
+**The live-marker row is moot for announcements a session no longer receives (#2915).** Under targeted routing (`broadcast: false`) a working session's announcements go to the live `/overwatch` alone, so other working sessions receive none to narrate; the monitor receives them all. Do not read a missing peer `work-started` as "no peer is working" — the monitor holds that picture and relays overlaps. A monitor that holds, declines or lets messages expire is **undetectable from the sender (#2674)**: no session hears the announcements and nobody is told. Routing falls back to broadcast only for a missing, stale, unaddressable or ambiguously named monitor, never for one that is not reading.
+### Receipt replies — the one sender-visible confirmation (#2922)
+A live `/overwatch` sends one **receipt reply** per announcement routed to it, so receipt is observable rather than assumed. Never an "acknowledgement" — that word means receiver-side narration above.
+**A session receiving a receipt reply records it**, whether or not the sending command is still running:
+```bash
+node .claude/scripts/shared/announce.js --receipt-received --ledger-id <id> --from <monitor session name>
+```
+The reply carries the ledger id on its first line (`Receipt from /overwatch: … (ledger: <id>)`); `lib/overwatch-receipt.js` `parseReceipt()` reads it. An unknown id is **reported, never recorded** — applying it to the latest entry would attribute a receipt to whichever announcement was last.
+**One hop only.** `dispatch: sent` = the `SendMessage` call succeeded; `receipt: received` = the monitor read it. Nothing about acting on it, nothing about sessions the monitor relays to — hence two axes, since `sent` + `unconfirmed` and `sent` + `received` are different facts.
+**Report only what is recorded:** say *received by `<monitor>`* for an entry whose `receipt` is `received`, and for no other; every other entry keeps the not-confirmed wording.
+**Silence is unchanged.** No reply leaves the entry `unconfirmed` and the #2674 wording stands: held, declined or expired are indistinguishable. Nothing waits, nothing retries, no command fails for want of one. **Narration:** none under quiet, at most one line otherwise; it is not an announcement and never gets a reply of its own.
+
+**An overlap notice is not an announcement; quiet narration does not shorten it (#2914).** A message whose first line begins `Overlap notice from /overwatch:` was sent to this session alone, because an issue it works declares files another in-flight issue also declares — the one inbound message actionable for the receiver specifically. Under quiet narration (`noticeNarration: false` or a live marker) **relay its text to the user in full**, then continue; lifecycle announcements keep the one-line acknowledgement. Still no issue lookup and no re-analysis — the monitor did it, and the notice names both issues, both sessions and the shared files. **Surfaced, never obeyed:** advisory, stops no work, moves no issue, grants nothing; the user decides. No reply obligation.
 **Seen is not reachable.** Availability is **per peer**, and there are **two** independent ways to be unreachable — the row names which.
 | `unreachableReason` | Cause | Row |
 |---|---|---|
@@ -133,6 +146,26 @@ Linux ticks are **boot-relative**: an entry surviving a reboot can collide with 
 | **Different machine** | **No** | **No** |
 | Another user, same machine | **No — no cross-user path** | **No** |
 Last two rows are not limitations awaiting a fix: scope is one machine, one user, one working directory, corroborated by the per-UID POSIX socket path.
+## Hook Health Row (#2917)
+Reports framework hooks that cannot load or have been failing. Every hook fails open, so a broken one otherwise looks exactly like one that ran and found nothing to do. Delegates to `.claude/scripts/shared/hook-health-check.js`; the hook renders `hook-heartbeat.js` `formatHealthRow()` verbatim.
+| Hook state | Meaning | Row |
+|---|---|---|
+| `healthy` | Loads; no consecutive failures | **No row** when every hook is healthy |
+| `failing` | `consecutiveFailures > 0` | Named with count, last error and when |
+| `unloadable` | Fails the load check | Named with stage (`file`, `syntax`, `dependency`) and reason |
+| `unreadable` | Heartbeat record not valid JSON | Named, with the record path |
+| `no-record` | Never recorded a heartbeat | Listed as `no record` — **never reported as healthy** |
+| undetermined | Hook list unreadable | Says hook health could not be determined — **not** an all-clear |
+| Timeout or crash | Check did not finish | `Hook Health: ⚠️ check timed out` / `check failed to run` |
+**No record alone produces no row, deliberately.** `clear-hook`, `resume-hook`, `compact-hook` fire only on their events and `measure-tap` only while `/idpf-measure` is armed, so a working project can go weeks without their records; a row every session would be noise. When a row appears for another reason, no-record hooks are listed in it, never folded into healthy.
+**The heartbeat.** Each wired hook records `<project>/.claude/.hook-health/<hook>.json` (gitignored): `lastSuccess`, `lastError` (message, time), `consecutiveFailures`, `lastPid`. Written via `lib/hook-heartbeat.js`, which never throws, with the root from `CLAUDE_PROJECT_DIR`, then hook input `cwd`, then process cwd — **never `__dirname`**: `.claude/hooks/` is a hub junction when deployed, so a file anchored there is shared by every project on that hub version, as `crash.log` and `startup.log` are.
+- **One file per hook** — an atomic rename prevents a half-written file, not a lost update between writers sharing one, and hooks run concurrently across sessions.
+- **Written only on a state change** (first record, any failure, first success after a failure) — `measure-tap` runs after every tool call. So **`lastSuccess` and `lastPid` record the most recent transition, not the most recent run**; never read them as "last ran at".
+- **`installHeartbeat()` records at process exit:** exit 0 success, anything else failure, error observed via `uncaughtExceptionMonitor`, so exit code, stderr and `crash.log` are unchanged. A fail-open catch calls `fail(err)`, since its exit code is still 0.
+**Which hooks.** The `.js` entries of `framework-manifest.json` `deploymentFiles.scripts.hooks` (under `frameworkPath`), excluding the git hook `pre-push`. Settings are not read — this repo wires hooks in `.claude/settings.local.json`, deployed projects in `.claude/settings.json`. **A hook registered in settings but absent from the manifest is not checked.** Dev-only `precompact-hook.js` and `test-on-change.js` are not listed and record no heartbeat.
+**What the load check proves:** `node --check`, then each relative-path dependency required, in separate processes — catches a syntax error or missing module (the #2328 class) without executing the hook. It does not prove the hook's logic works; that surfaces through the heartbeat. `require.resolve` alone proves only that the file exists.
+**Reports the state before this session** — the check runs in the ladder, before `startup-hook.js` records its own heartbeat at exit. **Registered unconditionally:** no project setting makes a silent hook failure acceptable.
+**Test runs are isolated.** `IDPF_HOOK_HEARTBEAT_ROOT` takes precedence over the project root; this repo's Jest `globalSetup` points it at scratch, so an induced test failure leaves no real record. Nothing sets it in normal use. **Advisory and read-only** — writes nothing, runs no remedy, never blocks startup.
 ## Testing Drift Row (#2903)
 Reports two stack-dependent conditions nothing else re-checks once written: **stack drift** in the charter's `testing` declaration and **coverage-audit overrides** that no longer fit the imported skill. Delegates to `.claude/scripts/shared/testing-drift-check.js`; the hook renders its `formatRows()` output verbatim.
 | Finding | Row |

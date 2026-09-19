@@ -19,7 +19,7 @@ prerequisites:
 ### Wait for CI
 
 ```bash
-node .claude/scripts/shared/wait-for-ci.js
+node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 900
 ```
 
 **If CI fails, STOP and report the error.**

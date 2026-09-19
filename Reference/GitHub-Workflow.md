@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.103.0
+**Version:** v0.104.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions.
 ## Project Configuration
@@ -33,7 +33,12 @@ Trigger is the **workflow moment**, NOT the mechanism — an actor-keyed rephras
 | After user says "Done" | `Fixes #XXX`, `Closes #XXX`, `Resolves #XXX` | -- |
 GitHub automatically closes issues when `Fixes/Closes/Resolves #XXX` commits merge to default branch, bypassing the STOP checkpoint.
 ## Workflow Routing
-**Slash Command Preference:** Prefer slash commands over raw `gh pmu`. Fall back to raw for debugging, unsupported ops, or complex bulk operations.
+**Slash Command Preference:** Prefer slash commands over raw `gh pmu` for board operations. Fall back to raw for debugging, unsupported operations, user request, or bulk operations with complex flags.
+**Issue-creating commands are not substitutable.** `/bug`, `/enhancement` and `/proposal` are the mechanism for filing their issue types — not the preferred one of two options — and a raw `gh pmu create` does not satisfy them. The preference above governs board operations; this governs filing.
+**What a bypass loses:** the issue template; the AC feasibility gates `verificationGate` and `phaseFeasibility` (`.claude/metadata/ac-feasibility-prompts.json`); prior-art handling; the priority default; the reports-number-and-STOPs contract. None is visible on the created issue — it lands on the board correctly labelled and nothing reports a problem. A consequence a reader can check is what makes a prohibition hold; "prefer slash commands" names none.
+**Needing several filings is not a qualifying fallback reason.** `Skill` transfers control and does not return, so at most one issue-creating command runs per turn. More than one filing means more than one turn, never abandoning the command: file one, report its number, STOP, and name the filings still outstanding.
+**The prohibition is scoped to those three commands.** `gh pmu create` remains the prescribed form for a standalone QA issue (§ QA-Issue Creation Ownership) and for the board operations the preference covers. The same literal is correct there and wrong here because the clauses answer different questions.
+Three axes meet here and satisfying one says nothing about the others. **Which board is reached** — § QA-Issue Creation Ownership, including its `--target` companion-filing exception. **Which CLI form is used** — `gh pmu` versus the bare `gh issue` creation form. **Which command does the filing** — this clause, slash command versus raw invocation.
 **Trigger Word Routing (Create Issue First):**
 | Trigger | Command | Description |
 |---------|---------|-------------|

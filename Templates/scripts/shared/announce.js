@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Derive, compose and record a /work or review-lifecycle peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
@@ -50,6 +50,7 @@ const { execFileSync } = require('child_process');
 const { buildAnnouncement, EVENTS } = require('./peer-announce.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 const ledger = require('./lib/announce-ledger.js');
+const { appendLedgerId } = require('./lib/overwatch-receipt.js');
 
 const WORK_EVENTS = Object.freeze({
   'work-started': EVENTS.WORK_STARTED,
@@ -151,6 +152,68 @@ function git(args, cwd) {
 }
 
 /**
+ * The refs a working branch may have been cut from, in lookup order.
+ * `origin/HEAD` is resolved first and prepended when it exists.
+ */
+const BASE_REF_CANDIDATES = Object.freeze(['origin/main', 'origin/master', 'main', 'master']);
+
+/**
+ * Where this branch left the default branch — the lower bound of the commit
+ * range a `work-completed` may name (#2888).
+ *
+ * Observed: `Finished on #2873 — 2 commits`, one from this run and one
+ * (`e25996f2`) already merged to main and shipped in v0.102.0 before the
+ * branch existed. The search ran over ALL history, so any issue touched in an
+ * earlier session had its old commits announced as if they had just landed.
+ * Object-store verification cannot catch it: both identifiers are real.
+ *
+ * The merge-base with the DEFAULT branch, not `@{upstream}`: a working
+ * branch's upstream is itself, pushed, so `@{u}..HEAD` would drop this run's
+ * commits the moment an earlier `/done` pushed them — the opposite error.
+ *
+ * Every candidate that resolves is measured and the NEAREST merge-base wins.
+ * A stale local `main` gives an older merge-base than a fetched `origin/main`,
+ * and the commits between the two — released ones included — would fall back
+ * inside the range. The nearest branch point is never too wide.
+ *
+ * No candidate resolves → `ok: false`. The fallback is NOT all history: that
+ * is the defect, and a named-nothing announcement with a warning is honest
+ * where an unbounded one is not.
+ */
+function resolveCommitBase(options = {}) {
+  const { cwd } = options;
+  const refs = [];
+  try {
+    const sym = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], cwd).trim();
+    if (sym) refs.push(sym.replace(/^refs\/remotes\//, ''));
+  } catch { /* no origin/HEAD — the fixed candidates still apply */ }
+  for (const ref of BASE_REF_CANDIDATES) if (!refs.includes(ref)) refs.push(ref);
+
+  let nearest = null;
+  for (const ref of refs) {
+    try {
+      git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], cwd);
+      const base = git(['merge-base', 'HEAD', ref], cwd).trim();
+      if (!base) continue;
+      const distance = Number(git(['rev-list', '--count', `${base}..HEAD`], cwd).trim());
+      if (!Number.isFinite(distance)) continue;
+      if (!nearest || distance < nearest.distance) nearest = { base, ref, distance };
+    } catch {
+      // Ref absent, or no common history with HEAD — not a candidate.
+    }
+  }
+
+  if (!nearest) {
+    return {
+      ok: false,
+      error: `no base branch could be resolved (looked for ${refs.join(', ')}), so commits were not searched `
+        + '— an unbounded search would name commits from earlier runs (#2888)',
+    };
+  }
+  return { ok: true, base: nearest.base, ref: nearest.ref };
+}
+
+/**
  * The commit set for one issue, straight out of git.
  *
  * `execFileSync` with an argument array, never a shell string: the grep
@@ -159,19 +222,31 @@ function git(args, cwd) {
  * that ever reaches this with a non-numeric issue. `issueRefGrepPattern`
  * throws on a non-numeric issue, which is caught below.
  *
- * Boundary-anchored via the shared helper (#2467): an unbounded grep makes
- * `Refs #116` collect every `Refs #1169`, and this payload is exactly where
- * that misattribution would be announced to peers as fact.
+ * TWO BOUNDARIES, and they are not the same thing. The ISSUE-NUMBER boundary
+ * comes from the shared helper (#2467): an unanchored grep makes `Refs #116`
+ * collect every `Refs #1169`. The COMMIT-RANGE boundary is `<base>..HEAD` from
+ * `resolveCommitBase` (#2888): without it a correctly anchored grep still
+ * collects the same issue's commits from earlier, already-released runs. This
+ * comment once said "boundary-anchored" of the first alone, which read as if
+ * the range were bounded when it was not.
  */
 function deriveCommits(issue, options = {}) {
   try {
     const pattern = issueRefGrepPattern(issue);
-    const raw = git(['log', '--oneline', `--grep=${pattern}`], options.cwd);
+    const boundary = resolveCommitBase(options);
+    if (!boundary.ok) {
+      return { ok: false, commits: [], shas: [], error: boundary.error };
+    }
+    const range = `${boundary.base}..HEAD`;
+    const raw = git(['log', '--oneline', `--grep=${pattern}`, range], options.cwd);
     const commits = raw.split('\n').map((l) => l.trim()).filter(Boolean);
     return {
       ok: true,
       commits,
       shas: commits.map((l) => l.split(/\s+/)[0]).filter(Boolean),
+      base: boundary.base,
+      baseRef: boundary.ref,
+      range,
     };
   } catch (err) {
     return {
@@ -256,7 +331,51 @@ function suppressedResult({ event, issue, reason, warnings }) {
  * refused — accepting an event beside the label would hand the choice back to
  * the caller. `force` suppresses `review-started` only.
  */
-function compose({ event, issue, peers, cwd, commits: supplied, force = false, labelAssigned } = {}) {
+/**
+ * The routing inputs for this working directory (#2915): the resolved
+ * `broadcast` lever and the overwatch presence reading. Read here, not in
+ * peer-announce.js, which stays pure. Any failure resolves to broadcast — the
+ * behaviour every session had before routing existed.
+ */
+function readRouting(cwd) {
+  try {
+    const { readCrossSessionConfig } = require('./lib/cross-session-config.js');
+    const state = readCrossSessionConfig(cwd || process.cwd());
+    if (state.broadcast !== false) return { broadcast: true, presence: null };
+    const { readPresence } = require('./lib/overwatch-presence.js');
+    return { broadcast: false, presence: readPresence(cwd || process.cwd()) };
+  } catch {
+    return { broadcast: true, presence: null };
+  }
+}
+
+/**
+ * The owning Claude session's pid, for the ledger's `sessionPid` (#2896).
+ *
+ * `CLAUDE_PID`, the source `peers-check.js` and `overwatch-presence.js`
+ * use to recognise their own session, so ledger pids match the startup
+ * `Peers:` row — and the one that fixed the identical `/idpf-measure` defect
+ * (#2796). Not `process.pid`: this script is a child spawned per
+ * announcement, so its pid identifies nothing past its own exit.
+ * `CLAUDE_CODE_SESSION_ID` was not chosen because the field is a pid, and
+ * renaming it would strand ledgers already on disk.
+ *
+ * The env bag is injected. #2808 and #2809 are tests that read the ambient
+ * `CLAUDE_PID`, passed inside a Claude Code session and failed in CI.
+ *
+ * Unset or not a positive integer → `null`, which the ledger records as
+ * unidentified and `reconcile` never counts as a session.
+ */
+function resolveSessionPid(env = process.env) {
+  const raw = env && env.CLAUDE_PID;
+  if (raw === undefined || raw === null) return null;
+  const trimmed = String(raw).trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const pid = Number(trimmed);
+  return pid > 0 ? pid : null;
+}
+
+function compose({ event, issue, peers, cwd, commits: supplied, force = false, labelAssigned, routing: suppliedRouting, env = process.env } = {}) {
   const warnings = [];
   const hasLabel = labelAssigned !== undefined;
 
@@ -313,12 +432,19 @@ function compose({ event, issue, peers, cwd, commits: supplied, force = false, l
     }
   }
 
+  const routingInputs = suppliedRouting && typeof suppliedRouting === 'object'
+    ? suppliedRouting
+    : readRouting(cwd);
+
   const announcement = buildAnnouncement({
     event: resolved,
     issues: [issueNumber],
     commits,
+    commitSource,
     peers,
     verifyCommit: makeCommitVerifier({ cwd }),
+    broadcast: routingInputs.broadcast,
+    presence: routingInputs.presence,
   });
 
   if (announcement.unresolvedCommits && announcement.unresolvedCommits.length > 0) {
@@ -328,9 +454,17 @@ function compose({ event, issue, peers, cwd, commits: supplied, force = false, l
     );
   }
 
-  const recorded = ledger.record({ event: name, issues: [issueNumber] }, { cwd });
+  const recorded = ledger.record({ event: name, issues: [issueNumber] }, { cwd, sessionPid: resolveSessionPid(env) });
   if (!recorded.ok) {
     warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); pairing cannot be audited for this event.`);
+  }
+
+  // #2922: stamp the composed text with its ledger id, at the END of the first
+  // line, so a /overwatch receipt reply can name the entry it received and
+  // the sender can record it. Every existing consumer is unaffected: the
+  // monitor classifies events by the start of the line.
+  if (recorded.ok && announcement && typeof announcement.text === 'string') {
+    announcement.text = appendLedgerId(announcement.text, recorded.id);
   }
 
   return {
@@ -338,6 +472,9 @@ function compose({ event, issue, peers, cwd, commits: supplied, force = false, l
     event: name,
     issue: issueNumber,
     commitSource,
+    // Where the announcement went and, for a fallback, why (#2915). Top-level
+    // so a caller can tell a targeted send from "no peers" without parsing text.
+    routing: announcement.routing || null,
     announcement,
     ledgerId: recorded.ok ? recorded.id : null,
     // AC3. The caller has one more thing to do after SendMessage returns, and
@@ -369,9 +506,27 @@ function closeDispatch({ ledgerId, result, detail, cwd } = {}) {
   return { ok: true, report };
 }
 
+/**
+ * Record a receipt reply against its ledger entry (#2922).
+ *
+ * Called by the session that RECEIVES the reply, which is usually after the
+ * command that sent the announcement has ended — so this is an entry point of
+ * its own rather than part of the compose path.
+ */
+function recordReceipt({ ledgerId, from, cwd } = {}) {
+  const updated = ledger.updateReceipt(ledgerId, { from }, { cwd });
+  if (!updated.ok) {
+    return { ok: false, error: updated.error, report: `Receipt NOT recorded: ${updated.error}` };
+  }
+  return {
+    ok: true,
+    report: `Announcement received by ${from || 'the overwatch'} — recorded. This confirms that hop only; it claims nothing about sessions the monitor relays to.`,
+  };
+}
+
 function parseArgs(argv) {
   const out = {
-    event: null, issue: null, dispatchResult: null, ledgerId: null,
+    event: null, issue: null, dispatchResult: null, ledgerId: null, receiptReceived: false, from: null,
     detail: null, force: false, schema: false, unrecognizedFlags: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -380,6 +535,8 @@ function parseArgs(argv) {
     else if (a === '--issue' && argv[i + 1]) out.issue = parseInt(argv[++i], 10);
     else if (a === '--dispatch-result' && argv[i + 1]) out.dispatchResult = argv[++i];
     else if (a === '--ledger-id' && argv[i + 1]) out.ledgerId = argv[++i];
+    else if (a === '--receipt-received') out.receiptReceived = true;
+    else if (a === '--from' && argv[i + 1]) out.from = argv[++i];
     else if (a === '--detail' && argv[i + 1]) out.detail = argv[++i];
     else if (a === '--force') out.force = true;
     // finalize's labelAssigned, verbatim. The literal `null` is the #2694
@@ -396,7 +553,9 @@ function parseArgs(argv) {
     else if (/^--[a-zA-Z]/.test(a)) out.unrecognizedFlags.push(a);
   }
 
-  if (out.schema || out.dispatchResult) return out;
+  // The three entry points that are not a composition: they carry a ledger id,
+  // not an event, so the event/issue validation below does not apply to them.
+  if (out.schema || out.dispatchResult || out.receiptReceived) return out;
 
   const hasLabel = Object.prototype.hasOwnProperty.call(out, 'labelAssigned');
   if (out.event && hasLabel) {
@@ -432,6 +591,7 @@ function main() {
         'announce.js --event review-started|review-resolved --issue <N> [--force]',
         'announce.js --label-assigned reviewed|pending|null --issue <N>   (the review verdict: finalize\'s labelAssigned selects review-passed, review-findings or nothing)',
         'announce.js --dispatch-result sent|failed|skipped --ledger-id <id> [--detail "<text>"]',
+        'announce.js --receipt-received --ledger-id <id> [--from <monitor session name>]   (a /overwatch receipt reply arrived for that announcement)',
       ],
       envelope: {
         ok: 'boolean',
@@ -439,8 +599,10 @@ function main() {
         suppressed: 'true when the script decided to send nothing (review-started under --force, labelAssigned null or unrecognised)',
         reason: 'string — why nothing was sent, when suppressed',
         commitSource: 'derived | supplied | unavailable | not-applicable',
+        routing: '{broadcast, applied: broadcast|targeted, monitorPid, monitorName, fallbackReason} — where the announcement went (#2915)',
         announcement: 'the peer-announce.js envelope, including text, recipients, shouldSend, notice, verified, unresolvedCommits',
         ledgerId: 'string|null — pass back with --dispatch-result',
+        receipt: 'ledger axis beside dispatch: unconfirmed until a /overwatch receipt reply is recorded with --receipt-received, then received (#2922)',
         dispatchReport: 'the exact command that closes the dispatch outcome out',
         warnings: 'string[] — relay verbatim',
       },
@@ -451,6 +613,12 @@ function main() {
   if (args.error) {
     process.stderr.write(args.error + '\n');
     process.exit(2);
+  }
+
+  if (args.receiptReceived) {
+    const result = recordReceipt({ ledgerId: args.ledgerId, from: args.from });
+    process.stdout.write(JSON.stringify({ ...result, unrecognizedFlags: args.unrecognizedFlags }, null, 2) + '\n');
+    process.exit(result.ok ? 0 : 1);
   }
 
   if (args.dispatchResult) {
@@ -477,12 +645,16 @@ if (require.main === module) main();
 
 module.exports = {
   SUPPORTED,
+  readRouting,
   REVIEW_EVENTS,
   VERDICT_BY_LABEL,
   selectVerdictEvent,
+  resolveSessionPid,
+  resolveCommitBase,
   deriveCommits,
   makeCommitVerifier,
   compose,
   closeDispatch,
+  recordReceipt,
   parseArgs,
 };

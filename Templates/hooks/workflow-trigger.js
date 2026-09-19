@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -58,6 +58,16 @@ try {
     `[${new Date().toISOString()}] pid=${process.pid} cwd=${process.cwd()}\n`
   );
 } catch (_) { /* swallow breadcrumb failure */ }
+
+// Heartbeat (#2917): records this hook's outcome under the project root for the
+// startup Hook Health row. Installed only when run as the hook — the test suite
+// requires this module and must not write a heartbeat for its own process.
+let heartbeat = { fail() {}, setCwd() {} };
+if (require.main === module) {
+  try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('workflow-trigger'); } catch (_) { /* reported by the load check */ }
+}
+// crash.log above is unchanged: an uncaught error still writes it and exits 1,
+// and the heartbeat records the same error through its exit recorder.
 
 // Cache file location (#2322: anchored to __dirname for CWD invariance)
 const CACHE_FILE = path.resolve(__dirname, '.command-cache.json');
@@ -157,6 +167,7 @@ process.stdin.on('data', chunk => input += chunk);
 process.stdin.on('end', () => {
     try {
         const data = JSON.parse(input);
+        heartbeat.setCwd(data && data.cwd);
         const prompt = (data.prompt || '').trim();
         const promptLower = prompt.toLowerCase();
 
@@ -574,7 +585,8 @@ process.stdin.on('end', () => {
 
         process.exit(0);
     } catch (_e) {
-        // Intentionally ignored
+        // Intentionally ignored — fail open. Recorded, not raised (#2917).
+        heartbeat.fail(_e);
         process.exit(0);
     }
 });

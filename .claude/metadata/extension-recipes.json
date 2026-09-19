@@ -1,6 +1,6 @@
 {
   "$schema": "./extension-recipes-schema.json",
-  "generatedAt": "2026-09-13T23:20:31.690Z",
+  "generatedAt": "2026-09-18T23:07:24.512Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -15,7 +15,7 @@
             "pre-tag",
             "post-prepare"
           ],
-          "template": "### Wait for CI\n\n```bash\nnode .claude/scripts/shared/wait-for-ci.js\n```\n\n**If CI fails, STOP and report the error.**\n\nCommon failures:\n- Build errors: Check compilation output\n- Test failures: Run tests locally to debug\n- Lint errors: Run linter with --fix",
+          "template": "### Wait for CI\n\n```bash\nnode .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 900\n```\n\n**If CI fails, STOP and report the error.**\n\nCommon failures:\n- Build errors: Check compilation output\n- Test failures: Run tests locally to debug\n- Lint errors: Run linter with --fix",
           "prerequisites": [
             "wait-for-ci.js (included with framework)",
             "\"GitHub Actions workflows configured (run /ci to check status)\""

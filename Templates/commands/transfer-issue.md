@@ -1,7 +1,7 @@
 ---
-version: "v0.103.0"
+version: "v0.104.0"
 allowed-tools: Bash
-description: Transfer issue between branches (project)
+description: Transfer an issue between branches, using the IDPF framework.
 argument-hint: "<issue-number> [--to branch]"
 copyright: "Rubrical Works (c) 2026"
 ---

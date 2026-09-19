@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *
@@ -39,6 +39,18 @@
  * dependency contract — never an external package.
  */
 const { summarizeUnreachable } = require('./lib/peer-unreachable-reasons.js');
+// Pure routing decision (#2915). The presence reading and the resolved lever are
+// SUPPLIED by the caller, so this module still reads no file and spawns nothing.
+const { routeRecipients, ROUTED_SKIP_REASON } = require('./lib/announce-routing.js');
+
+/**
+ * One classification of a run conclusion, shared with the producer (#2892).
+ * `formatCiResolved` names failing workflows by the same rule `ci-watch.js`
+ * uses to compute `overall`, so the sentence and the verdict cannot disagree.
+ * ci-watch.js runs its CLI only under `require.main === module`, so requiring
+ * it has no side effect.
+ */
+const { classifyConclusion } = require('./ci-watch.js');
 
 const EVENTS = Object.freeze({
   WORK_STARTED: 'work-started',
@@ -61,7 +73,7 @@ const EVENTS = Object.freeze({
   // the second ending emitted nothing at all — so a peer that heard a review
   // begin heard silence indefinitely, in a vocabulary where silence already
   // means three incompatible things (#2674). Observed three times in one
-  // /hall-monitor session, on #2777, #2769 and #2774.
+  // /overwatch session, on #2777, #2769 and #2774.
   //
   // #2722 declined this and its reason is ANSWERED, not overridden: "adding
   // one would assert a completeness the sender cannot have." True of a
@@ -257,7 +269,21 @@ function partitionCommits(list, verifyCommit) {
   return { verified: true, named, unresolved };
 }
 
-function formatWorkCompleted({ issues, commits, verifyCommit, commitPartition }) {
+/**
+ * Appended when the commit list came from the caller rather than from git
+ * (#2888). `verified` proves each named identifier exists, never that the list
+ * is complete, and a peer reads only the prose — `announce.js`'s top-level
+ * `commitSource` never reaches it. Absent or `derived` adds nothing, so every
+ * existing sentence is unchanged.
+ */
+const SUPPLIED_COMMITS_CLAUSE = ' The commit list was supplied by the caller, not derived from git, so it may be incomplete.';
+
+function formatWorkCompleted({ issues, commits, verifyCommit, commitPartition, commitSource }) {
+  const sentence = composeWorkCompleted({ issues, commits, verifyCommit, commitPartition });
+  return commitSource === 'supplied' ? `${sentence}${SUPPLIED_COMMITS_CLAUSE}` : sentence;
+}
+
+function composeWorkCompleted({ issues, commits, verifyCommit, commitPartition }) {
   const list = Array.isArray(commits) ? commits : [];
   const subject = describeIssues(issues);
 
@@ -448,6 +474,24 @@ function stepNames(failedSteps) {
     .filter((name) => typeof name === 'string' && name.length > 0);
 }
 
+/**
+ * The `overall` values `formatCiResolved` can render truthfully (#2892).
+ *
+ * `buildAnnouncement` refuses every other value, so the formatter has no
+ * fall-through: before this, anything not `success` reached the failure branch
+ * and was announced as a terminal red — `cancelled` and `timeout` natively from
+ * `ci-watch.js`, `no-run-found` from a translating caller. The next unmapped
+ * value is refused loudly rather than announced wrongly.
+ */
+const CI_RESOLVED_OUTCOMES = Object.freeze(['success', 'failure', 'cancelled', 'timeout', 'no-run-found']);
+
+/** Names of the workflows whose own conclusion classifies as `kind`. */
+function workflowsClassifiedAs(workflows, kind) {
+  return workflows
+    .filter((w) => w && classifyConclusion(w.conclusion) === kind)
+    .map((w) => String(w.name || 'unnamed workflow'));
+}
+
 function formatCiResolved({ issues, ciResult }) {
   const subject = describeIssues(issues);
   const result = ciResult && typeof ciResult === 'object' ? ciResult : null;
@@ -464,10 +508,31 @@ function formatCiResolved({ issues, ciResult }) {
     return `CI passed for ${subject}${detail}. No further announcement will follow.`;
   }
 
+  // Only what was observed: no run appeared within the wait window. A branch
+  // filter, paths-ignore or a disabled workflow are all possible and none was
+  // established, so none is named.
+  if (result.overall === 'no-run-found') {
+    return `No CI run was found for ${subject} within the wait window; the cause was not determined. No further announcement will follow.`;
+  }
+
+  if (result.overall === 'cancelled') {
+    const names = workflowsClassifiedAs(workflows, 'cancelled');
+    const detail = names.length > 0 ? ` (${names.join(', ')})` : '';
+    return `CI was cancelled for ${subject}${detail}; it was stopped before producing a result. No further announcement will follow.`;
+  }
+
+  // ci-watch's `timeout` is its watch deadline, not the run's result: the run
+  // may still pass or fail, and this session will not observe which.
+  if (result.overall === 'timeout') {
+    const names = workflowsClassifiedAs(workflows, 'timeout');
+    const detail = names.length > 0 ? ` (${names.join(', ')})` : '';
+    return `The CI watch for ${subject} stopped waiting before the run finished${detail}; its result was not observed. No further announcement will follow.`;
+  }
+
   // Naming the failed step is what makes a red actionable rather than merely
   // alarming — it is the one detail a peer cannot cheaply recover itself.
   const failures = workflows
-    .filter((w) => w && w.conclusion && w.conclusion !== 'success')
+    .filter((w) => w && classifyConclusion(w.conclusion) === 'failure')
     .map((w) => {
       const steps = stepNames(w.failedSteps);
       return steps.length > 0 ? `${w.name} (${steps.join(', ')})` : String(w.name || 'unnamed workflow');
@@ -583,6 +648,20 @@ const TERMINAL_EVENTS = new Set([
  * anything.
  */
 const DISPATCH_CAVEAT = 'delivery is not confirmed — a receiving session may hold, decline, or let a message expire';
+
+/**
+ * Why targeted routing fell back to broadcast, as a clause (#2915). Keyed by
+ * announce-routing.js FALLBACK_REASONS; the stale marker reasons are named
+ * verbatim so the notice points at the same state the startup Peers row shows.
+ */
+function describeFallback(reason) {
+  switch (reason) {
+    case 'no-marker': return 'no live overwatch';
+    case 'monitor-not-addressable': return 'the live overwatch is not an addressable peer';
+    case 'monitor-name-ambiguous': return 'another peer shares the overwatch name, so it cannot be addressed safely';
+    default: return `the overwatch marker is ${reason}`;
+  }
+}
 
 /**
  * Name a malformed `peers` value precisely enough to locate the mistake (#2678).
@@ -709,17 +788,25 @@ function buildAnnouncement(options) {
     // unreadable, terminally, leaving no correction possible.
     //
     // The reachable cause is a FIELD NAME, not a corrupt payload: `ci-watch.js`
-    // emits `{overall, workflows, failedSteps}` on stdout and the /done spec
-    // named those three fields with no wrapper, so a session following the spec
-    // passed them flat. The notice therefore names `ciResult` — the caller has
+    // stdout carries `overall` and `workflows` and the /done spec named them
+    // with no wrapper, so a session following the spec passed them flat. The notice therefore names `ciResult` — the caller has
     // to change a key, and a notice that only said "unreadable" would not say
     // which one.
     if (event === EVENTS.CI_RESOLVED) {
       const ci = options.ciResult;
       if (!ci || typeof ci !== 'object' || typeof ci.overall !== 'string') {
         return inert(
-          'Peer announcement skipped: CI outcome could not be read — pass the result '
-          + 'under `ciResult` ({overall, workflows, failedSteps}), not as top-level fields.'
+          'Peer announcement skipped: CI outcome could not be read — pass ci-watch.js stdout unaltered '
+          + 'under `ciResult` (it carries overall and workflows on every path), not as top-level fields.'
+        );
+      }
+      // A readable value the formatter cannot render truthfully is refused,
+      // not sent to the failure branch (#2892) — the same reasoning as the
+      // CI_TERMINAL unknown-outcome guard above.
+      if (!CI_RESOLVED_OUTCOMES.includes(ci.overall)) {
+        return inert(
+          `Peer announcement skipped: CI outcome ${JSON.stringify(ci.overall)} is not one ci-resolved can report `
+          + `truthfully (expected one of ${CI_RESOLVED_OUTCOMES.join(', ')}).`
         );
       }
     }
@@ -740,11 +827,19 @@ function buildAnnouncement(options) {
     // Partitioned once, here, so the envelope and the sentence cannot disagree
     // about which identifiers were asserted (#2790).
     const commitPartition = partitionCommits(commits, options.verifyCommit);
-    const { recipients, skipped } = resolveRecipients(peers);
+    // Routing runs AFTER availability (#2915): it narrows the addressable set,
+    // never widens it. Absent `broadcast` is today's behaviour, unchanged.
+    const routed = routeRecipients({
+      ...resolveRecipients(peers),
+      broadcast: options.broadcast,
+      presence: options.presence,
+    });
+    const { recipients, skipped, routing } = routed;
     const text = FORMATTERS[event]({
       issues,
       commits,
       commitPartition,
+      commitSource: options.commitSource,
       outcome: options.outcome,
       runUrl: options.runUrl,
       ciResult: options.ciResult,
@@ -765,7 +860,17 @@ function buildAnnouncement(options) {
       // absence of a check, and an auditor must be able to tell the two apart.
       verified: commitPartition.verified,
       unresolvedCommits: commitPartition.unresolved,
+      routing,
     };
+
+    // Routed-away peers are REACHABLE; only the rest are summarised as
+    // unreachable. Mixing them would describe a routed peer as "not reachable
+    // for an unrecorded reason", which is false.
+    const unreachableSkipped = skipped.filter((p) => !(p && p.skipReason === ROUTED_SKIP_REASON));
+    const routedCount = skipped.length - unreachableSkipped.length;
+    const unreachableClause = unreachableSkipped.length > 0
+      ? ` ${unreachableSkipped.length} peer(s) skipped: ${summarizeUnreachable(unreachableSkipped)}.`
+      : '';
 
     if (recipients.length === 0) {
       // Said ONCE, not once per skipped peer. Repeating it per peer turns a
@@ -776,11 +881,19 @@ function buildAnnouncement(options) {
       return { ...base, shouldSend: false, notice };
     }
 
+    if (routing.applied === 'targeted') {
+      // A targeted send must never read like "no peers" — it names the monitor.
+      const notice = `Dispatched to 1 peer — routed to overwatch ${routing.monitorName} (#${routing.monitorPid}); `
+        + `${DISPATCH_CAVEAT}. ${routedCount} peer(s) not sent to: routed to the overwatch.${unreachableClause}`;
+      return { ...base, shouldSend: true, notice };
+    }
+
     // Dispatch is the only fact available here, so it is the only one stated.
-    const dispatch = `Dispatched to ${recipients.length} peer(s); ${DISPATCH_CAVEAT}.`;
-    const notice = skipped.length > 0
-      ? `${dispatch} ${skipped.length} peer(s) skipped: ${summarizeUnreachable(skipped)}.`
-      : dispatch;
+    const route = routing.fallbackReason
+      ? ` — targeted routing fell back to broadcast (${describeFallback(routing.fallbackReason)}; ${routing.fallbackReason})`
+      : '';
+    const dispatch = `Dispatched to ${recipients.length} peer(s)${route}; ${DISPATCH_CAVEAT}.`;
+    const notice = `${dispatch}${unreachableClause}`;
 
     return { ...base, shouldSend: true, notice };
   } catch (err) {

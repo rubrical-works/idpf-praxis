@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Resolve the PRD tracker issue for a test-plan approval issue. Exports resolvePrdTracker(). Tries the explicit PRD Tracker marker, then a tracker referencing the approval issue, then the PRD file path. Never throws; a miss is a not-found result.
  * @checksum sha256:placeholder
  *

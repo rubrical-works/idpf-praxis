@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Check .gh-pmu.json config integrity via gh pmu config verify.
  * Gates on gh-pmu >= 1.3.1 (config verify was introduced in that version).
  * Non-blocking; used during session startup.
@@ -44,6 +44,25 @@ function getPmuVersion() {
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve the gh pmu version from a hook-supplied --pmu-version=<first line of
+ * `gh pmu --version`> (#2907), probing only when that value cannot settle it.
+ * Absent flag → probe, as before. Parseable → use it, no probe. Empty or
+ * unparseable → probe: the hook's safeExec turns a timeout into '', so an empty
+ * value means "the hook could not tell", not "gh pmu is not installed".
+ * @param {string[]} argv
+ * @param {() => string|null} [probe]
+ * @returns {{ version: string|null, versionSource: 'hook'|'probe' }}
+ */
+function resolvePmuVersion(argv, probe = getPmuVersion) {
+  const flag = argv.find((a) => a.startsWith('--pmu-version='));
+  if (flag !== undefined) {
+    const match = flag.slice('--pmu-version='.length).match(/(\d+\.\d+\.\d+)/);
+    if (match) return { version: match[1], versionSource: 'hook' };
+  }
+  return { version: probe(), versionSource: 'probe' };
 }
 
 /**
@@ -115,12 +134,12 @@ function main() {
   }
 
   // Check gh pmu availability
-  const version = getPmuVersion();
+  const { version, versionSource } = resolvePmuVersion(args);
   if (!version) {
     console.log(JSON.stringify({
       success: true,
       message: 'gh pmu not available — skipping config integrity check.',
-      data: { status: 'skipped', reason: 'gh pmu not available' }
+      data: { status: 'skipped', reason: 'gh pmu not available', versionSource }
     }));
     return;
   }
@@ -130,7 +149,7 @@ function main() {
     console.log(JSON.stringify({
       success: true,
       message: `gh pmu ${version} does not support config verify — skipping.`,
-      data: { status: 'skipped', reason: `gh pmu version ${version} < ${MIN_VERSION}` }
+      data: { status: 'skipped', reason: `gh pmu version ${version} < ${MIN_VERSION}`, versionSource }
     }));
     return;
   }
@@ -142,7 +161,7 @@ function main() {
     console.log(JSON.stringify({
       success: true,
       message: 'Config integrity verified.',
-      data: { status: 'verified', version }
+      data: { status: 'verified', version, versionSource }
     }));
   } else if (exitCode === 2) {
     // Exit code 2 = critical drift (gh-pmu#792)
@@ -150,13 +169,13 @@ function main() {
     console.log(JSON.stringify({
       success: true,
       message: 'Critical config drift detected — project identity fields changed.',
-      data: { status: 'critical_drift', fields, version }
+      data: { status: 'critical_drift', fields, version, versionSource }
     }));
   } else {
     console.log(JSON.stringify({
       success: true,
       message: 'Config drift detected — run gh pmu config verify for details.',
-      data: { status: 'drift', exitCode, version }
+      data: { status: 'drift', exitCode, version, versionSource }
     }));
   }
 }
@@ -171,5 +190,6 @@ if (require.main === module) {
 module.exports = {
   compareSemver,
   getPmuVersion,
-  parseCriticalFields
+  parseCriticalFields,
+  resolvePmuVersion
 };

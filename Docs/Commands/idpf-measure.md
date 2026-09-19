@@ -68,4 +68,4 @@ Both `.idpf-measure.*` files are gitignored. Neither is durable — this command
 ## See Also
 
 - `/idpf-stats` — repository output and development velocity
-- `/hall-monitor` — observing what other sessions in this directory are doing
+- `/overwatch` — observing what other sessions in this directory are doing

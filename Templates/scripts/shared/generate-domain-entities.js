@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
@@ -572,6 +572,7 @@ function calculateMargin(currentCount, entityKey, previousEntities) {
 /**
  * Parse a location string, extracting exclusion annotations.
  * "Domains/ (excludes Guides/, Templates/)" → { locations: ["Domains/"], exclude: ["Guides/", "Templates/"] }
+ * "Domains/ (excludes Guides/, Templates/ infrastructure dirs)" → same exclude list; prose after a path is dropped
  * ".claude/commands/ (19 extensible, 19 managed)" → { locations: [".claude/commands/ (19 extensible, 19 managed)"], exclude: [] }
  */
 function parseLocationWithExclusions(locationRaw) {
@@ -580,7 +581,10 @@ function parseLocationWithExclusions(locationRaw) {
   if (excludeMatch) {
     // Remove the exclusion annotation from the location string
     const cleaned = locationRaw.replace(/\s*\(excludes?\s+[^)]+\)/, '').trim();
-    const exclude = excludeMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+    // Each entry is reduced to its path token: "Templates/ infrastructure dirs"
+    // → "Templates/". Trailing prose otherwise survives into the exclude list
+    // and matches no directory name, so the path is silently counted (#2919).
+    const exclude = excludeMatch[1].split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
     return {
       locations: splitOutsideParens(cleaned),
       exclude
@@ -858,9 +862,13 @@ function verifyEntityCounts(entities) {
         if (excludes.length > 0) entries = entries.filter(notExcluded);
         totalCount += entries.length;
       } else if (stat.isFile()) {
-        // Defect 2: a file used to stat successfully, match no branch, and add
-        // nothing — output identical to a path that does not exist.
-        totalCount += 1;
+        // Defect 2 (#2597): a file used to stat successfully, match no branch,
+        // and add nothing — output identical to a path that does not exist.
+        // #2597 fixed that by counting the file as 1, which made a registry
+        // file whose contents hold the items (extension-recipes.json) report a
+        // definite mismatch (#2919). A file yields no item count, so it is
+        // unverifiable; the reason text keeps it distinct from a missing path.
+        unresolved.push({ location, reason: 'file location yields no item count' });
       } else {
         unresolved.push({ location, reason: 'not a file or directory' });
       }

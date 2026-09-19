@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * block-cd.js
  *
  * PreToolUse hook that blocks `cd` commands in the Bash tool.
@@ -30,6 +30,14 @@ function isCdCommand(command) {
   return /^cd(?:\s|$|;|&|\|)/.test(trimmed);
 }
 
+// Heartbeat (#2917): records this hook's outcome under the project root for the
+// startup Hook Health row. Installed only when run as the hook — the test suite
+// requires this module and must not write a heartbeat for its own process.
+let heartbeat = { fail() {}, setCwd() {} };
+if (require.main === module) {
+  try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('block-cd'); } catch (_) { /* reported by the load check */ }
+}
+
 async function main() {
   let input = '';
   for await (const chunk of process.stdin) {
@@ -44,6 +52,7 @@ async function main() {
     return;
   }
 
+  heartbeat.setCwd(data?.cwd);
   const command = data.tool_input?.command;
   if (typeof command !== 'string') {
     return;
@@ -58,8 +67,9 @@ async function main() {
   // Silent return = allow
 }
 
-main().catch(() => {
-  // Errors should not block the tool — fail open
+main().catch((err) => {
+  // Errors should not block the tool — fail open. Recorded, not raised (#2917).
+  heartbeat.fail(err);
 });
 
 if (typeof module !== 'undefined') {

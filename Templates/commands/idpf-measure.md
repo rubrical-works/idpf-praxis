@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: Instrument a command run and report where its time went (project)
+version: "v0.104.0"
+description: Instrument an IDPF command run and report where its time went.
 argument-hint: "--start | --stop | --report"
 copyright: "Rubrical Works (c) 2026"
 ---

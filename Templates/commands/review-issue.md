@@ -1,6 +1,6 @@
 ---
-version: "v0.103.0"
-description: Review issues with type-specific criteria (project)
+version: "v0.104.0"
+description: Review issues against the IDPF framework's type-specific criteria.
 argument-hint: "#issue [#issue...] [--with ...] [--mode ...] [--force] [--prior-art]"
 copyright: "Rubrical Works (c) 2026"
 ---

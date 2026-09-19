@@ -85,9 +85,9 @@ Three places in the codebase enforce this:
 
 **`/work` spawns implementation Agents, then distrusts them.** Rule `08-work-execution.md` imposes a Sub-Agent Review Gate after any Agent returns: `git diff --name-only`, then read each modified file and verify the changes match the current acceptance criterion. The rule is explicit that the gate is *"NOT satisfied by agent summaries or passing tests alone — file content must be read and verified."* Delegation moves the typing, not the responsibility.
 
-**`/hall-monitor --auto-create` delegates bug filing to stay responsive.** Filing is multi-step — sweep, compose, create — and running it inline blocks the monitor. As the spec puts it, *"a monitor that stops monitoring while it files has stopped being one."* So filing goes to a subagent.
+**`/overwatch --auto-create` delegates bug filing to stay responsive.** Filing is multi-step — sweep, compose, create — and running it inline blocks the monitor. As the spec puts it, *"a monitor that stops monitoring while it files has stopped being one."* So filing goes to a subagent.
 
-**But the same command refuses to delegate an offer**, and the refusal is enforced by tooling rather than policy. The `framework-dev` agent declares `Read, Write, Edit, Glob, Grep, Bash, Skill` — and has no `AskUserQuestion`. A subagent therefore *cannot* make an offer, even if instructed to. `.claude/metadata/hall-monitor-signals.json` records the asymmetry plainly:
+**But the same command refuses to delegate an offer**, and the refusal is enforced by tooling rather than policy. The `framework-dev` agent declares `Read, Write, Edit, Glob, Grep, Bash, Skill` — and has no `AskUserQuestion`. A subagent therefore *cannot* make an offer, even if instructed to. `.claude/metadata/overwatch-signals.json` records the asymmetry plainly:
 
 > Bug filing is non-interactive and therefore delegable; an enhancement offer is not. The asymmetry is enforced by the tool boundary, not by preference.
 

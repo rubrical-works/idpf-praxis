@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -282,14 +282,25 @@ function hasPushWorkflows({ readDir, readFile, workflowsDir } = {}) {
 }
 
 /**
- * Check if workflow YAML content contains a push trigger with branch patterns.
+ * Check if workflow YAML content contains a push trigger that runs on branch pushes.
  * Uses line-by-line parsing (no YAML library dependency).
  *
  * Patterns detected:
- *   on: push: branches: [...]  → true (push with branches)
- *   on: push: tags: [...]      → false (tag-only)
- *   on: push:                  → true (bare push = all branches)
- *   on: pull_request:          → false (no push trigger)
+ *   on: push: branches: [...]            → true (push with branches)
+ *   on: push: tags: [...]                → false (tag-only)
+ *   on: push: branches + tags            → true (branches present)
+ *   on: push:                            → true (bare push = all branches)
+ *   on: push: paths / paths-ignore only  → true (path-filtered push = all branches, #2897)
+ *   on: push                             → true (scalar, #2897)
+ *   on: [push, pull_request]             → true (flow sequence containing push, #2897)
+ *   on: pull_request: / on: [pull_request] → false (no push trigger)
+ *
+ * In GitHub Actions, omitting `branches` under `push:` means ALL branches; only
+ * `tags` / `tags-ignore` WITHOUT `branches` restricts a push trigger to tags.
+ * Path filters narrow which pushes run, not which refs are eligible, so they
+ * never affect this verdict. Scalar and flow-sequence forms cannot carry
+ * filters, so both mean all branches. Flow-mapping `on: {push: …}` is not
+ * recognised (out of scope for #2897).
  *
  * @param {string} content - Raw YAML content
  * @returns {boolean}
@@ -300,18 +311,28 @@ function hasPushBranchTrigger(content) {
   let inPush = false;
   let pushIndent = -1;
   let hasBranches = false;
-  let pushIsBareLike = true; // becomes false if push has sub-keys
+  let hasTags = false;
 
   for (const line of lines) {
     const trimmed = line.trimEnd();
-    if (trimmed === '' || trimmed.startsWith('#')) continue;
+    if (trimmed === '' || trimmed.trimStart().startsWith('#')) continue;
 
     const indent = line.length - line.trimStart().length;
 
-    // Detect `on:` block
-    if (/^on\s*:/.test(trimmed)) {
-      inOn = true;
-      continue;
+    // Detect `on:` — block form, or a scalar / flow-sequence value on the same line
+    const onMatch = /^on\s*:\s*(.*)$/.exec(trimmed);
+    if (onMatch) {
+      const value = onMatch[1].replace(/\s+#.*$/, '').trim();
+      if (value === '') {
+        inOn = true;
+        continue;
+      }
+      const unquote = (v) => v.trim().replace(/^['"]|['"]$/g, '');
+      if (value.startsWith('[')) {
+        const items = value.replace(/^\[|\]$/g, '').split(',').map(unquote);
+        return items.includes('push');
+      }
+      return unquote(value) === 'push';
     }
 
     if (inOn && !inPush) {
@@ -322,7 +343,7 @@ function hasPushBranchTrigger(content) {
         continue;
       }
       // Another top-level key under on: (like pull_request:) — skip
-      if (indent === 0 && !trimmed.startsWith('#')) {
+      if (indent === 0) {
         inOn = false;
         continue;
       }
@@ -330,34 +351,25 @@ function hasPushBranchTrigger(content) {
 
     if (inPush) {
       // If we're back at push indent or lower, push block is over
-      if (indent <= pushIndent && trimmed !== '') {
+      if (indent <= pushIndent) {
         break;
       }
 
-      // Check for branches: or tags: inside push block
-      if (/^\s+branches\s*:/.test(line) || /^\s+branches-ignore\s*:/.test(line)) {
+      // Only branch and tag keys decide eligibility; paths / paths-ignore are
+      // orthogonal and deliberately ignored (#2897).
+      if (/^\s+branches(-ignore)?\s*:/.test(line)) {
         hasBranches = true;
-        pushIsBareLike = false;
       }
-      if (/^\s+tags\s*:/.test(line) || /^\s+tags-ignore\s*:/.test(line)) {
-        pushIsBareLike = false;
-      }
-      if (/^\s+paths\s*:/.test(line) || /^\s+paths-ignore\s*:/.test(line)) {
-        pushIsBareLike = false;
+      if (/^\s+tags(-ignore)?\s*:/.test(line)) {
+        hasTags = true;
       }
     }
   }
 
   if (!inPush) return false;
 
-  // Bare push (no sub-keys) triggers on all branches
-  if (pushIsBareLike) return true;
-
-  // Has explicit branches: → triggers on push with branches
-  if (hasBranches) return true;
-
-  // No branches: means tag-only or paths-only → does not trigger on branch push
-  return false;
+  // Tag-only: tags / tags-ignore present with no branches filter
+  return hasBranches || !hasTags;
 }
 
 // --- Output Formatting ---
@@ -386,26 +398,56 @@ function formatOutput(result) {
  * @returns {string} JSON string with overall conclusion
  */
 function formatMultiOutput(results) {
-  // Determine overall conclusion: failure > cancelled > timeout > success
-  let overall = 'unknown';
+  return JSON.stringify({ overall: overallConclusion(results), workflows: results }, null, 2);
+}
 
-  if (results.length > 0) {
-    overall = 'success';
-    for (const r of results) {
-      if (r.conclusion === 'failure') {
-        overall = 'failure';
-        break; // Failure is highest priority
-      }
-      if (r.conclusion === 'cancelled' && overall !== 'failure') {
-        overall = 'cancelled';
-      }
-      if (r.conclusion === 'timeout' && overall === 'success') {
-        overall = 'timeout';
-      }
-    }
+/**
+ * GitHub run conclusions named, in code, as not a failure (#2892). A run
+ * concluding `neutral` or `skipped` ran nothing it could fail. Every conclusion
+ * absent from this list is not-success — so a conclusion GitHub introduces
+ * later fails closed instead of reading as green.
+ */
+const NON_FAILING_CONCLUSIONS = Object.freeze(['success', 'neutral', 'skipped']);
+
+/**
+ * GitHub run conclusions that mean the run itself failed (#2892). `timed_out`
+ * is GitHub's job time limit, distinct from ci-watch's own `timeout`, which is
+ * only the watch deadline and says nothing about the run's result.
+ */
+const FAILING_CONCLUSIONS = Object.freeze(['failure', 'timed_out', 'startup_failure']);
+
+/**
+ * Classify one run conclusion into the vocabulary `overall` uses (#2892).
+ * @param {string} conclusion - GitHub conclusion, or ci-watch's `timeout`
+ * @returns {'success'|'failure'|'cancelled'|'timeout'|'unknown'}
+ */
+function classifyConclusion(conclusion) {
+  if (NON_FAILING_CONCLUSIONS.includes(conclusion)) return 'success';
+  if (FAILING_CONCLUSIONS.includes(conclusion)) return 'failure';
+  if (conclusion === 'cancelled') return 'cancelled';
+  if (conclusion === 'timeout') return 'timeout';
+  return 'unknown';
+}
+
+/**
+ * The strongest non-success classification found, else success (#2892).
+ *
+ * Starts from `'unknown'` for an empty set (#2541) and never assumes success:
+ * `success` is reached only when every run classifies as non-failing. Priority
+ * is failure > cancelled > timeout > unknown > success — so `action_required`
+ * or an unrecognised conclusion beside passing runs yields `unknown`, which
+ * `mapExitCode` sends to 1, rather than the false green the old loop produced.
+ *
+ * @param {Array<Object>} results - Run result objects carrying `conclusion`
+ * @returns {string} Overall conclusion
+ */
+function overallConclusion(results) {
+  if (!Array.isArray(results) || results.length === 0) return 'unknown';
+  const classes = results.map((r) => classifyConclusion(r && r.conclusion));
+  for (const c of ['failure', 'cancelled', 'timeout', 'unknown']) {
+    if (classes.includes(c)) return c;
   }
-
-  return JSON.stringify({ overall, workflows: results }, null, 2);
+  return 'success';
 }
 
 // --- Polling Logic ---
@@ -505,8 +547,11 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
   // Phase 1: Wait for runs to appear
   const runs = await waitForRuns(fullSha, { poll: 10, maxWait, branch: effectiveBranch, runGh });
 
+  // Every output path carries `overall` and `workflows` (#2892), so a caller
+  // passes stdout unaltered as `ciResult`. The single- and zero-run shapes keep
+  // their existing top-level fields alongside, for callers reading those.
   if (runs.length === 0) {
-    const result = { found: false, conclusion: 'no-run-found' };
+    const result = { found: false, conclusion: 'no-run-found', overall: 'no-run-found', workflows: [] };
     return { output: formatOutput(result), exitCode: mapExitCode('no-run-found') };
   }
 
@@ -552,11 +597,14 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
 
   const results = [...collected.values()];
 
-  // Single run: simple output. Multiple: multi-workflow output.
+  // Single run: its own fields plus overall/workflows (#2892). The exit code
+  // follows `overall`, so one classification decides it on every path —
+  // previously a raw `timed_out` or `skipped` reached mapExitCode unclassified.
   if (results.length === 1) {
+    const overall = overallConclusion(results);
     return {
-      output: formatOutput(results[0]),
-      exitCode: mapExitCode(results[0].conclusion)
+      output: formatOutput({ ...results[0], overall, workflows: results }),
+      exitCode: mapExitCode(overall)
     };
   }
 
@@ -606,6 +654,10 @@ module.exports = {
   hasPushWorkflows,
   formatOutput,
   formatMultiOutput,
+  classifyConclusion,
+  overallConclusion,
+  NON_FAILING_CONCLUSIONS,
+  FAILING_CONCLUSIONS,
   findRuns,
   getRun,
   getFailedSteps,

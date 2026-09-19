@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -53,7 +53,7 @@ const {
  * them with, and `--off groups.push` is more to type and more to get wrong.
  */
 const LEVERS = [
-  'enabled', 'discovery', 'notices', 'upstreamMonitor', 'noticeNarration',
+  'enabled', 'discovery', 'notices', 'upstreamMonitor', 'noticeNarration', 'overlapNotices', 'broadcast',
   'work', 'push', 'review',
 ];
 
@@ -218,9 +218,16 @@ function helpText() {
     '  this session narrates an announcement it RECEIVES. Quiet keeps the',
     '  one-line acknowledgement and drops the commentary around it.',
     '',
+    '  overlapNotices governs whether /overwatch messages the sessions',
+    '  whose in-flight issues declare the same files. Off is report-only.',
+    '',
+    '  broadcast is a routing mode, not an off switch. Off sends announcements',
+    '  to a live /overwatch only, falling back to every peer when there is',
+    '  no live, addressable monitor.',
+    '',
     'Notes:',
     '  Every invocation except --show and --help writes the complete',
-    '  eight-lever object, a bare invocation included, so the first run in an',
+    '  ten-lever object, a bare invocation included, so the first run in an',
     '  unconfigured project produces a diff and is idempotent thereafter.',
     '  --show cannot be combined with --on or --off.',
     '  An absent object resolves to fully enabled at every level.',
@@ -230,6 +237,7 @@ function helpText() {
     '  x-session-config --off work,review',
     '  x-session-config --on all',
     '  x-session-config --quiet',
+    '  x-session-config --off broadcast    targeted routing to a live overwatch',
   ].join('\n');
 }
 
@@ -359,7 +367,7 @@ function memoryStatus(cwd, quiet, action, result) {
   };
 }
 
-/** Read the seven-lever shape out of a resolved state, dropping derived fields. */
+/** Read the complete lever shape out of a resolved state, dropping derived fields. */
 function toObject(state) {
   return {
     enabled: state.enabled,
@@ -367,6 +375,8 @@ function toObject(state) {
     notices: state.notices,
     upstreamMonitor: state.upstreamMonitor,
     noticeNarration: state.noticeNarration,
+    overlapNotices: state.overlapNotices,
+    broadcast: state.broadcast,
     groups: {
       work: state.groups.work,
       push: state.groups.push,
@@ -375,7 +385,7 @@ function toObject(state) {
   };
 }
 
-/** Flat lever view of the seven-lever object, for change detection. */
+/** Flat lever view of the complete object, for change detection. */
 function flatten(obj) {
   const flat = {};
   for (const l of TOP_LEVERS) flat[l] = obj[l];
@@ -384,7 +394,7 @@ function flatten(obj) {
 }
 
 /**
- * Apply `--on` / `--off` over a seven-lever object.
+ * Apply `--on` / `--off` over the complete lever object.
  *
  * `--off` first, then `--on`. The order is immaterial in practice because a
  * lever named in both is rejected at parse time, but fixing it keeps the

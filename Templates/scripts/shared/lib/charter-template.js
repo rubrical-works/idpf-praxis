@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.103.0
+ * @framework-script 0.104.0
  * @description The one rule deciding whether CHARTER.md is an unfilled template (#2893).
  * Consulted by the startup hook, the /charter spec and Charter-Enforcement.md.
  * @checksum sha256:placeholder

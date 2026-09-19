@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "hall-monitor-signals-schema.json",
+  "$id": "overwatch-signals-schema.json",
   "title": "Hall Monitor Signals",
-  "description": "Contract for /hall-monitor (#2768): what the monitor observes, which findings it can raise, and the guards that bound --auto-create. The monitor is advisory and read-only; nothing here grants it authority to mutate the working tree.",
+  "description": "Contract for /overwatch (#2768): what the monitor observes, which findings it can raise, and the guards that bound --auto-create. The monitor is advisory and read-only; nothing here grants it authority to mutate the working tree.",
   "type": "object",
-  "required": ["version", "observation", "findings", "autoCreate", "enhancementOffers"],
+  "required": ["version", "observation", "findings", "autoCreate", "overlapNotices", "enhancementOffers"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
@@ -98,6 +98,34 @@
         "onAlreadyShipped": {
           "const": "skip",
           "description": "An already-shipped verdict skips the filing rather than downgrading it."
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "overlapNotices": {
+      "type": "object",
+      "description": "Thresholds bounding targeted overlap notices from /overwatch to the sessions involved (#2914). Whether to send is the overlapNotices lever in .claude/x-session.json, not a value here.",
+      "required": ["dedupe", "rateLimit"],
+      "additionalProperties": false,
+      "properties": {
+        "dedupe": {
+          "type": "object",
+          "required": ["windowMinutes", "rationale"],
+          "additionalProperties": false,
+          "properties": {
+            "windowMinutes": { "type": "integer", "minimum": 1 },
+            "rationale": { "type": "string", "minLength": 1 }
+          }
+        },
+        "rateLimit": {
+          "type": "object",
+          "required": ["maxPerRecipient", "windowMinutes", "rationale"],
+          "additionalProperties": false,
+          "properties": {
+            "maxPerRecipient": { "type": "integer", "minimum": 1 },
+            "windowMinutes": { "type": "integer", "minimum": 1 },
+            "rationale": { "type": "string", "minLength": 1 }
+          }
         },
         "note": { "type": "string" }
       }

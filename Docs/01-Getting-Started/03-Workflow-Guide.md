@@ -805,7 +805,7 @@ This prevents issues from closing before they're truly complete.
 | Release | `/prepare-release` | Full release workflow |
 | Merge | `/merge-branch` | Merge branch without release tagging |
 | Coordinate | `/x-session-config` | Control what concurrent sessions announce to each other |
-| Observe | `/hall-monitor` | Dedicate a session to watching cross-session activity |
+| Observe | `/overwatch` | Dedicate a session to watching cross-session activity |
 
 ---
 

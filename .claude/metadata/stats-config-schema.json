@@ -126,6 +126,41 @@
           "description": "Fewer usable points than this in the window reports not-collected with a reason — never 0, and never a median computed from too little history."
         }
       }
+    },
+    "dailyLog": {
+      "type": "object",
+      "description": "Settings for /idpf-stats --daily-log (#2925), read by daily-log-collect.js. Every key is optional; the collector's defaults match the values shipped in stats-config.json.",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "reportDir": { "type": "string", "description": "Where one daily log per active day is written, as <reportDir>/YYYY-MM-DD.md." },
+        "statsReportDir": { "type": "string", "description": "Where --save writes the standard stats report." },
+        "sections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Report sections in render order. Activity is last so metrics never lead a report written for managers."
+        },
+        "activityCaveatFrom": { "type": "string", "description": "reportSections id whose caveat is printed beneath the Activity heading." },
+        "labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bug": { "type": "string" },
+            "qaRequired": { "type": "string" },
+            "blocked": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "statuses": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inReview": { "type": "string" },
+            "done": { "type": "string" }
+          }
+        },
+        "issueSearchLimit": { "type": "integer", "minimum": 1, "description": "--limit for each gh issue search; a search returning exactly this many is reported as possibly truncated." },
+        "graphqlBatchSize": { "type": "integer", "minimum": 1, "description": "Issues per GraphQL detail query." }
+      }
     }
   }
 }

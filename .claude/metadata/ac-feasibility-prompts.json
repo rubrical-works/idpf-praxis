@@ -6,8 +6,8 @@
     "guidance": "Deliverable ACs name a file, function, section, or behavior. Verification ACs name a test, a parity check, a comparison, or an assertion. Many ACs mix both — split them."
   },
   "verificationGate": {
-    "question": "For each verification AC, name the mechanism explicitly (e.g., 'Jest unit test', 'contract-parity token-presence assertion', 'manual release-checklist step', 'subprocess CLI invocation'). Then: does any existing test in this repo use that mechanism?",
-    "actionIfNo": "Either (a) rewrite the AC to use a mechanism already in use, (b) commit to a feasibility spike — a throwaway test that proves the mechanism works — and reference its issue number, or (c) name an honest weaker mechanism (manual checklist, contract-parity, etc.) that does exist.",
+    "question": "For each verification AC, name the mechanism explicitly (e.g., 'Jest unit test', 'contract-parity token-presence assertion', 'one-time manual check in a qa-required issue', 'subprocess CLI invocation'). Then: does any existing test in this repo use that mechanism?",
+    "actionIfNo": "Either (a) rewrite the AC to use a mechanism already in use, (b) commit to a feasibility spike — a throwaway test that proves the mechanism works — and reference its issue number, or (c) name an honest weaker mechanism (contract-parity, or a one-time manual check) that does exist. WHERE a manual check lives is part of naming it: a feature-specific manual check belongs in its own standalone qa-required issue, which is a gate with an owner and a closure condition. NEVER append it to /prepare-release's Summary Checklist — that checklist is release mechanics, it ships to downstream projects where a framework-owned step has no audience and cannot be removed, and it has no admission rule, no audience test and no retirement condition, so entries accumulate and outlive the fix they were verifying (#2940).",
     "triggerPhrases": [
       "Agent subagent",
       "Agent following",
