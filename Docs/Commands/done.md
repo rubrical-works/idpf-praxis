@@ -30,6 +30,7 @@ Complete one or more issues — transitions from `in_review` to `done`, pushes, 
 - For multiple issues (explicit list, `--all`, or batch selection), pushes only once after the last issue (batch push optimization).
 - After push, spawns background CI monitoring via `ci-watch.js` and reports results when they arrive (pass/fail/timeout per workflow). The timeout is 10 minutes.
 - Posts a work summary comment on each closed issue listing changed files and the commit link.
+- **Tells other sessions about the push.** It sends a push-started announcement, then one saying how CI resolved. These are routed like every other announcement: with `broadcast: false` and a live `/overwatch`, they go to the monitor alone. Otherwise they fall back to every peer, and the reason is named. Each announcement is recorded, so an `/overwatch` receipt can be matched to it.
 
 ## About `--yes`
 

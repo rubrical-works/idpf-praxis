@@ -17,10 +17,14 @@
       "review-resolved",
       "review-passed",
       "review-findings",
-      "fixtures-provisioned"
+      "fixtures-provisioned",
+      "branch-merge-starting",
+      "beta-starting",
+      "release-starting",
+      "branch-destroy-starting"
     ],
     "gitPollFallbackSeconds": 1200,
-    "note": "The eleven events are what peer-announce.js broadcasts to every addressable peer, so a discoverable idle session receives them with no new transport. Direct SendMessage between two OTHER sessions is point-to-point and unobservable — the monitor sees only what is addressed to it, and must say so rather than implying wider coverage. This list is enumerated rather than read from the EVENTS object, so a new event is invisible to the monitor until added here (#2781)."
+    "note": "The fifteen events are what peer-announce.js broadcasts to every addressable peer (the four branch-operation notices, #2960, reach every peer even under targeted routing), so a discoverable idle session receives them with no new transport. Direct SendMessage between two OTHER sessions is point-to-point and unobservable — the monitor sees only what is addressed to it, and must say so rather than implying wider coverage. This list is enumerated rather than read from the EVENTS object, so a new event is invisible to the monitor until added here (#2781)."
   },
   "findings": [
     {

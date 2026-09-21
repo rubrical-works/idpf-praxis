@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *
@@ -107,7 +107,31 @@ const EVENTS = Object.freeze({
   // follows on PASS, or a FAIL leaves them standing as the reproduction, and
   // the sender cannot promise which.
   FIXTURES_PROVISIONED: 'fixtures-provisioned',
+  // Branch-operation notices (#2960). The four commands that change what every
+  // session in the directory is standing on — a merge to main, a tag push, a
+  // branch deletion — announce before their first irreversible step. One name
+  // per command because /overwatch classifies by event NAME and never parses a
+  // payload field. Routed as a FORCED broadcast (announce-routing.js), so a
+  // working peer hears it directly rather than through a monitor whose relay
+  // vocabulary has no such message. Record-only and non-pairing: a notice, not
+  // an opener, so no peer is left holding one; none is terminal, because
+  // finality at send would assert an operation that has not happened yet.
+  BRANCH_MERGE_STARTING: 'branch-merge-starting',
+  BETA_STARTING: 'beta-starting',
+  RELEASE_STARTING: 'release-starting',
+  BRANCH_DESTROY_STARTING: 'branch-destroy-starting',
 });
+
+/** The events above that are branch-operation notices; mirrors announce-ledger.js. */
+const BRANCH_OPERATION_EVENTS = new Set([
+  EVENTS.BRANCH_MERGE_STARTING,
+  EVENTS.BETA_STARTING,
+  EVENTS.RELEASE_STARTING,
+  EVENTS.BRANCH_DESTROY_STARTING,
+]);
+
+/** Branch operations that act on a tag, so a notice without one cannot name its step. */
+const TAGGED_BRANCH_OPERATIONS = new Set([EVENTS.BETA_STARTING, EVENTS.RELEASE_STARTING]);
 
 /**
  * Outcomes the terminal event can carry (#2663).
@@ -580,6 +604,52 @@ function formatFixturesProvisioned({ issues, fixtures }) {
     + '/qa tears them down once the check is recorded.';
 }
 
+/**
+ * Branch-operation notices (#2960).
+ *
+ * Each names the command, the branch and every irreversible step it is about
+ * to take, because the step is what a peer on that branch needs: a commit made
+ * after a merge or a deletion is stranded. `/merge-branch` names the remote
+ * deletion its Step 3.3 performs, not only the merge — the deletion is the step
+ * that strands a peer's later push.
+ *
+ * States, never instructs, and never claims the operation happened: each is
+ * "about to", and each ends by saying no follow-up is sent whether or not the
+ * operation completes. That sentence is about the CHANNEL, not about finality —
+ * a peer must not wait for a closer that record-only events never send.
+ */
+const BRANCH_NOTICE_TAIL = 'One-time notice: no follow-up announcement is sent, whether or not the operation completes.';
+
+function trackerClause(op) {
+  return Number.isInteger(Number(op.tracker)) && Number(op.tracker) > 0 ? ` #${Number(op.tracker)}` : '';
+}
+
+function formatBranchMergeStarting({ branchOperation: op }) {
+  const b = `\`${op.branch}\``;
+  return `/merge-branch is about to merge ${b} into main, close its branch tracker${trackerClause(op)}, `
+    + `and delete ${b} on the remote and locally, in this working directory. `
+    + `A commit made on ${b} after this point does not reach main through this merge. ${BRANCH_NOTICE_TAIL}`;
+}
+
+function formatBetaStarting({ branchOperation: op }) {
+  return `/prepare-beta is about to push tag \`${op.tag}\` from \`${op.branch}\` in this working directory; `
+    + `the branch is not merged to main. ${BRANCH_NOTICE_TAIL}`;
+}
+
+function formatReleaseStarting({ branchOperation: op }) {
+  const b = `\`${op.branch}\``;
+  return `/prepare-release is about to merge ${b} into main, close its branch tracker${trackerClause(op)}, `
+    + `push tag \`${op.tag}\` — which starts the distribution deploy — and then delete ${b} on the remote and locally, `
+    + `in this working directory. ${BRANCH_NOTICE_TAIL}`;
+}
+
+function formatBranchDestroyStarting({ branchOperation: op }) {
+  const b = `\`${op.branch}\``;
+  return `/destroy-branch is about to delete ${b} on the remote and locally — commits not merged to main are discarded — `
+    + `close its branch tracker${trackerClause(op)} as not planned, and remove its release artifacts, `
+    + `in this working directory. ${BRANCH_NOTICE_TAIL}`;
+}
+
 const FORMATTERS = Object.freeze({
   [EVENTS.WORK_STARTED]: formatWorkStarted,
   [EVENTS.WORK_COMPLETED]: formatWorkCompleted,
@@ -592,6 +662,10 @@ const FORMATTERS = Object.freeze({
   [EVENTS.REVIEW_PASSED]: formatReviewPassed,
   [EVENTS.REVIEW_FINDINGS]: formatReviewFindings,
   [EVENTS.FIXTURES_PROVISIONED]: formatFixturesProvisioned,
+  [EVENTS.BRANCH_MERGE_STARTING]: formatBranchMergeStarting,
+  [EVENTS.BETA_STARTING]: formatBetaStarting,
+  [EVENTS.RELEASE_STARTING]: formatReleaseStarting,
+  [EVENTS.BRANCH_DESTROY_STARTING]: formatBranchDestroyStarting,
 });
 
 /**
@@ -729,7 +803,18 @@ function buildAnnouncement(options) {
     const issues = Array.isArray(options.issues)
       ? options.issues.filter((n) => Number.isFinite(Number(n)))
       : [];
-    if (issues.length === 0) {
+    // A branch operation may run with no tracker issue (#2960): it is keyed by
+    // its branch, so the issue list may be empty and the branch may not.
+    const branchOp = BRANCH_OPERATION_EVENTS.has(event);
+    if (branchOp) {
+      const op = options.branchOperation;
+      if (!op || typeof op !== 'object' || typeof op.branch !== 'string' || op.branch.trim() === '') {
+        return inert('Peer announcement skipped: no branch to name — pass `branchOperation` ({branch, tag, tracker}).');
+      }
+      if (TAGGED_BRANCH_OPERATIONS.has(event) && (typeof op.tag !== 'string' || op.tag.trim() === '')) {
+        return inert(`Peer announcement skipped: ${event} names the tag it pushes — pass \`branchOperation.tag\`.`);
+      }
+    } else if (issues.length === 0) {
       return inert('Peer announcement skipped: no issue numbers supplied.');
     }
 
@@ -833,9 +918,15 @@ function buildAnnouncement(options) {
       ...resolveRecipients(peers),
       broadcast: options.broadcast,
       presence: options.presence,
+      // Branch operations reach every addressable peer whatever the lever (#2960).
+      force: branchOp ? 'branch-operation' : undefined,
     });
     const { recipients, skipped, routing } = routed;
+    const branchOperation = branchOp
+      ? { ...options.branchOperation, branch: options.branchOperation.branch.trim() }
+      : undefined;
     const text = FORMATTERS[event]({
+      branchOperation,
       issues,
       commits,
       commitPartition,
@@ -889,9 +980,13 @@ function buildAnnouncement(options) {
     }
 
     // Dispatch is the only fact available here, so it is the only one stated.
-    const route = routing.fallbackReason
-      ? ` — targeted routing fell back to broadcast (${describeFallback(routing.fallbackReason)}; ${routing.fallbackReason})`
-      : '';
+    // A forced broadcast is named as a decision, never as a fallback (#2960).
+    let route = '';
+    if (routing.forced) {
+      route = ` — forced broadcast for a branch operation, bypassing targeted routing (${routing.forced})`;
+    } else if (routing.fallbackReason) {
+      route = ` — targeted routing fell back to broadcast (${describeFallback(routing.fallbackReason)}; ${routing.fallbackReason})`;
+    }
     const dispatch = `Dispatched to ${recipients.length} peer(s)${route}; ${DISPATCH_CAVEAT}.`;
     const notice = `${dispatch}${unreachableClause}`;
 
@@ -916,6 +1011,7 @@ module.exports = {
   formatReviewResolved,
   formatReviewPassed,
   EVENTS,
+  BRANCH_OPERATION_EVENTS,
   TERMINAL_OUTCOMES,
   TERMINAL_EVENTS,
 };

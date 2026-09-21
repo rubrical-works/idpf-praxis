@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Targeted announcement routing (#2915). Given the recipient split from peer-announce.js resolveRecipients(), the resolved broadcast lever and an overwatch presence reading, decides whether an announcement goes to every addressable peer or to the live /overwatch alone. Every path short of a confirmed, uniquely addressable monitor falls back to broadcast and names why. Pure: no I/O, no throwing path.
  * @checksum sha256:placeholder
  *
@@ -46,6 +46,20 @@ const FALLBACK_REASONS = Object.freeze([
   'monitor-not-addressable', 'monitor-name-ambiguous',
 ]);
 
+/**
+ * Why an announcement may bypass targeted routing altogether (#2960).
+ *
+ * A branch operation — a merge to main, a tag push, a branch deletion —
+ * changes what every session in the directory is standing on, and a working
+ * peer needs to hear it before it happens, not through a monitor whose relay
+ * vocabulary has no such message and whose disposition is invisible (#2674).
+ *
+ * Deliberately NOT a fallback reason: a fallback is a doubt about the monitor,
+ * this is a decision about the event. `fallbackReason` stays null so the two
+ * cannot be confused, and `forced` carries the reason instead.
+ */
+const FORCED_REASONS = Object.freeze(['branch-operation']);
+
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -62,24 +76,31 @@ function nameOf(p) {
  * @param {Array}   options.skipped    - unaddressable peers, from resolveRecipients()
  * @param {boolean} [options.broadcast] - resolved lever; anything but false is broadcast
  * @param {Object}  [options.presence]  - overwatch-presence.js readPresence() result
+ * @param {string}  [options.force]     - a FORCED_REASONS value: broadcast regardless
+ *                                        of the lever and the monitor (#2960)
  * @returns {{recipients: Array, skipped: Array, routing: {broadcast: boolean,
  *            applied: 'broadcast'|'targeted', monitorPid: number|null,
- *            monitorName: string|null, fallbackReason: string|null}}}
+ *            monitorName: string|null, fallbackReason: string|null,
+ *            forced: string|null}}}
  */
 function routeRecipients(options) {
   const opts = isPlainObject(options) ? options : {};
   const recipients = Array.isArray(opts.recipients) ? opts.recipients : [];
   const skipped = Array.isArray(opts.skipped) ? opts.skipped : [];
   const broadcast = opts.broadcast !== false;
+  // An unrecognised value forces nothing: widening who hears an announcement
+  // is a decision, so only a named reason may make it.
+  const forced = FORCED_REASONS.includes(opts.force) ? opts.force : null;
 
   const unchanged = (fallbackReason) => ({
     recipients,
     skipped,
-    routing: { broadcast, applied: 'broadcast', monitorPid: null, monitorName: null, fallbackReason },
+    routing: { broadcast, applied: 'broadcast', monitorPid: null, monitorName: null, fallbackReason, forced },
   });
 
   try {
-    if (broadcast) return unchanged(null);
+    // Forced first: the monitor is one recipient among many, never the only one.
+    if (forced || broadcast) return unchanged(null);
 
     const presence = isPlainObject(opts.presence) ? opts.presence : null;
     if (!presence || presence.active !== true) {
@@ -107,6 +128,7 @@ function routeRecipients(options) {
         monitorPid: Number(monitor.pid),
         monitorName: name,
         fallbackReason: null,
+        forced: null,
       },
     };
   } catch {
@@ -116,4 +138,4 @@ function routeRecipients(options) {
   }
 }
 
-module.exports = { routeRecipients, ROUTED_SKIP_REASON, FALLBACK_REASONS };
+module.exports = { routeRecipients, ROUTED_SKIP_REASON, FALLBACK_REASONS, FORCED_REASONS };

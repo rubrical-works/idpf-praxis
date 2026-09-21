@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Run the /work Step 2b-ii tree-wide review gate chain as one call: enumerate an epic or branch tracker's children with the bare `gh pmu sub list N --json`, read each child's board status, classify every member through review-state.js, and hand the resolved set to branch-review-gate.js for the decision. `--record-bypass` writes the decline note into an epic body (never a branch tracker's). Every gh call goes through one injectable exec so the whole chain is testable against a mocked board (#2826).
  * @checksum sha256:placeholder
  *
@@ -110,6 +110,9 @@ function parseJSON(raw) {
  * Enumerate the tree with the form that works (#2751): the BARE `--json`
  * flag, reading `children[]` from the nested object it returns. Throws on any
  * failure; the caller turns that into `ok: false`.
+ *
+ * Each child keeps the GitHub `state` the listing already carries, so a
+ * `CLOSED` child can be settled before any per-member call (#2970).
  */
 function enumerateTree(issue, execFn) {
   const raw = execFn(`gh pmu sub list ${issue} --json`, { encoding: 'utf8' });
@@ -117,7 +120,11 @@ function enumerateTree(issue, execFn) {
   const children = Array.isArray(data && data.children) ? data.children : [];
   return children
     .filter((c) => c && typeof c.number === 'number')
-    .map((c) => ({ number: c.number, title: typeof c.title === 'string' ? c.title : '' }));
+    .map((c) => ({
+      number: c.number,
+      title: typeof c.title === 'string' ? c.title : '',
+      state: typeof c.state === 'string' ? c.state : null
+    }));
 }
 
 /**
@@ -174,6 +181,7 @@ function evaluateTree(args, execFn) {
   const selection = Array.isArray(args.issues);
   const setShape = selection ? 'selection' : 'tree';
   const members = [];
+  const closed = [];
 
   if (selection) {
     for (const number of args.issues) {
@@ -205,6 +213,14 @@ function evaluateTree(args, execFn) {
     ));
 
     for (const child of children) {
+      // A CLOSED child is never processable, so it costs no board-status or
+      // review-state read and never reaches the gate (#2970). Completed and
+      // not_planned alike: the listing carries no stateReason. A child with no
+      // state is resolved as before — absence never skips.
+      if (child.state === 'CLOSED') {
+        closed.push(child.number);
+        continue;
+      }
       members.push(resolveMember({ number: child.number, title: child.title }, execFn, warnings));
     }
   }
@@ -230,6 +246,7 @@ function evaluateTree(args, execFn) {
       indeterminate: verdict.indeterminate,
       unknown: verdict.unknown,
       clean: verdict.clean,
+      closed,
       members
     },
     warnings,

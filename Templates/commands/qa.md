@@ -1,5 +1,5 @@
 ---
-version: "v0.104.0"
+version: "v0.105.0"
 allowed-tools: Bash, Read, AskUserQuestion, Skill, SendMessage
 description: Verify one qa-required issue through a bounded set of outcomes and offer to close it with recorded evidence, using the IDPF framework.
 argument-hint: "#issue [--assign]"
@@ -132,10 +132,11 @@ Ask where the test should live via `AskUserQuestion`. **It never places silently
 **A contract test carries `@subject` instead (#2904).** When the authored test's subject is a non-code artifact — a contract test as `{frameworkPath}/Reference/Contract-Test-Classification.md` defines one — declare each subject with `@subject` in its leading comment block, beside the provenance comment. That document owns classification, placement and grammar; **do not decide the class by judgment here** or restate its rule. Undeclared, the next audit counts it a module orphan.
 #### Outcome 3: Manual-only
 Verifiable only by a person (deployed hub, real remote, second OS, re-scan, visual check). **STOP with a structured report and leave a closure path.** Do not move the issue, check a box, or touch the parent's gate line. The report names:
-1. **The steps requiring a person**, and why automation does not reach them.
+1. **Numbered concrete steps** requiring a person — commands to run, what to open or click, in order — and why automation does not reach them. Not a restatement of `### Steps to Perform`.
 2. **The environment** needed.
-3. **The evidence that would close the issue**.
-4. **A ready-to-paste comment template**, written to `.tmp-qa-evidence-$ISSUE.md` (remove after showing):
+3. **The evidence that would close the issue** — the observable property that separates PASS from FAIL (e.g. "the use-case diagram renders as an SVG with 3 actors"), never "looks correct".
+4. **Location** — the exact path, URL or UI location of each thing to inspect, findable without searching; a generated artifact is named here by its scratch path.
+5. **A ready-to-paste comment template**, written to `.tmp-qa-evidence-$ISSUE.md` (remove after showing):
 ```
 **QA Evidence:**
 - Date: YYYY-MM-DD
@@ -148,6 +149,13 @@ Verifiable only by a person (deployed hub, real remote, second OS, re-scan, visu
 gh issue comment $ISSUE -F .tmp-qa-evidence-$ISSUE.md
 ```
 A later `/qa #N` finds it at Step 2 — `PASS` offers to close via Step 5 naming the comment, `FAIL` reports and STOPs, absent re-emits this report.
+##### Generating the artifact before hand-off (#2973)
+When the check is on something locally producible (rendered diagram or HTML page, generated doc, command output, sample file), produce it **before** the report, so the person inspects what the change produced instead of reproducing it.
+**Only when the producer is named:** the QA body or the parent's `### Files Changed` names the producing command or file. **Never guess a command** — with nothing named, the report says the artifact could not be generated and why; likewise when it cannot be produced here (deployed hub, second OS, real remote) — say so and why, so absence is visible.
+**Where:** `.tmp-qa-artifact-$ISSUE.<ext>` (or a `.tmp-qa-artifact-$ISSUE/` directory), named under item 4 (**Location**); open or print it where practical.
+**Consent:** producing into `.tmp-*` with no side effects outside the working tree needs no question. Writing outside `.tmp-*` or touching shared state (board, remote, service) asks first via `AskUserQuestion`, same shape as the fixture gates; default is not to generate. **Never under `--nonstop`** — nobody to answer; the report is emitted without generating.
+**Cleanup:** the artifact is **kept through the STOP** and named in the report; removed when the verdict is recorded on a re-invocation (below), otherwise by the #2771 startup sweep once stale.
+**Generating the artifact is not verifying it** — the observation and the verdict stay human, recorded through the evidence template.
 ##### Recording the verdict on a re-invocation (#2835)
 The template above serves the hand-off path. On a **direct** `/qa #N` re-invocation the check has already been performed, so the paste is clerical. After the structured report raise **one** `AskUserQuestion` — *Record PASS*, *Record FAIL*, *Not yet performed*; **the default when nothing is chosen is *Not yet performed***, leaving the run untouched.
 **The observation is collected as free text, in the user's own words.** The verdict is two tokens and may be an option; *Observed result* and *Steps performed* are not — ask conversationally and record what comes back. A session-composed option describing what happened ("the prompt fired as expected") reintroduces the self-report the boundary below forbids, the person reduced to confirming this session's account of itself.
@@ -155,6 +163,7 @@ The template above serves the hand-off path. On a **direct** `/qa #N` re-invocat
 ```bash
 gh issue comment $ISSUE -F .tmp-qa-evidence-$ISSUE.md
 ```
+**Once posted, the verdict is recorded — remove any generated artifact:** `rm -rf .tmp-qa-artifact-$ISSUE*`. On *Not yet performed* it stays.
 **Then continue on Step 2's terms, in this same invocation:**
 | Recorded | Action |
 |---|---|

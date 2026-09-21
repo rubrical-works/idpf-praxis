@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -69,11 +69,45 @@ const TRACKED_EVENTS = Object.freeze([OPENER, CLOSER]);
  * and what became of its send — not a pairing verdict with a meaning of
  * "paired" that does not fit them.
  */
+/**
+ * Branch-operation notices (#2960): `/merge-branch`, `/prepare-beta`,
+ * `/prepare-release` and `/destroy-branch` announce before their first
+ * irreversible step. Record-only and non-pairing, like the review events: a
+ * closer would have to fire on every abort path — a failed `gh pr merge`, a
+ * declined `/destroy-branch` confirmation — and #2790 is the recorded case of a
+ * closer skipped on exactly such a path.
+ *
+ * The one difference: a branch operation may run with no tracker issue, so an
+ * entry may be keyed by `branch` instead. The /work events never may.
+ */
+const BRANCH_OPERATION_EVENTS = Object.freeze([
+  'branch-merge-starting',
+  'beta-starting',
+  'release-starting',
+  'branch-destroy-starting',
+]);
+
+/**
+ * The /done push group (#2972). Record-only for the reason the review events
+ * are: what they need is the record — composed, dispatch outcome, receipt —
+ * not a pairing verdict. Their own "every opener has one closer" property is
+ * `/done`'s single `groups.push` gate, which a ledger audit would restate
+ * with a second, weaker definition.
+ */
+const PUSH_EVENTS = Object.freeze([
+  'push-started',
+  'ci-terminal',
+  'ci-resolved',
+  'push-rejected',
+]);
+
 const RECORD_ONLY_EVENTS = Object.freeze([
   'review-started',
   'review-passed',
   'review-findings',
   'review-resolved',
+  ...BRANCH_OPERATION_EVENTS,
+  ...PUSH_EVENTS,
 ]);
 
 const DISPATCH_STATES = Object.freeze(['pending', 'sent', 'failed', 'skipped']);
@@ -151,8 +185,16 @@ function record(entry, options = {}) {
       };
     }
     const issues = normalizeIssues(entry.issues);
-    if (issues.length === 0) {
-      return { ok: false, error: 'No usable issue number on the entry.' };
+    const branch = BRANCH_OPERATION_EVENTS.includes(event) && typeof entry.branch === 'string' && entry.branch.trim()
+      ? entry.branch.trim()
+      : null;
+    if (issues.length === 0 && !branch) {
+      return {
+        ok: false,
+        error: BRANCH_OPERATION_EVENTS.includes(event)
+          ? 'No usable issue number or branch on the entry.'
+          : 'No usable issue number on the entry.',
+      };
     }
 
     const row = {
@@ -167,6 +209,7 @@ function record(entry, options = {}) {
       detail: null,
     };
     if (recordOnly) row.recordOnly = true;
+    if (branch) row.branch = branch;
 
     fs.appendFileSync(ledgerPath(options.cwd || process.cwd()), `${JSON.stringify(row)}\n`, 'utf8');
     return { ok: true, id: row.id, entry: row };
@@ -390,6 +433,8 @@ module.exports = {
   LEDGER_FILENAME,
   TRACKED_EVENTS,
   RECORD_ONLY_EVENTS,
+  BRANCH_OPERATION_EVENTS,
+  PUSH_EVENTS,
   DISPATCH_STATES,
   OPENER,
   CLOSER,

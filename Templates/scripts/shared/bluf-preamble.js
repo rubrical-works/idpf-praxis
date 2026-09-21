@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Resolve the issues `/bluf` briefs into one JSON envelope: fetch each number with `gh pmu view`, classify its type through lib/issue-type.js, expand an epic to its children behind a cap, and report every number it could not read rather than dropping it. Strictly read-only — it issues no mutating `gh` call of any kind. The brief itself is composed by the command spec from this envelope (#2932).
  * @checksum sha256:placeholder
  *

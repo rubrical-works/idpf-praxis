@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  *
  * `/overwatch` presence marker (#2769).
  *
@@ -61,8 +61,40 @@ const {
   procStartMatches,
 } = require('../peers-check.js');
 
-/** The marker's filename, at the project root. */
+/** The marker's file name. */
 const MARKER_FILENAME = '.overwatch.json';
+
+/**
+ * `/overwatch`'s own per-project directory (#2957), repo-relative and POSIX.
+ * It holds the marker and `config.json`. It is created on demand and never
+ * required to exist: absent means "no monitor, default config". Per-developer
+ * state, so `.gitignore` ignores the whole directory.
+ */
+const MARKER_DIR = '.claude/.overwatch';
+
+/** Where the marker is written and first read (#2957). */
+const MARKER_PATH = `${MARKER_DIR}/${MARKER_FILENAME}`;
+
+/**
+ * The pre-move location, read as a fallback for one release (#2957).
+ *
+ * Same live-state migration as #2928's rename: a monitor started before the
+ * move writes the ROOT marker and never the new path. A reader that looked only
+ * at the new path would see no monitor, so narration goes verbose and targeted
+ * routing falls back to broadcast with nothing reporting why. Remove it one
+ * release after the move ships.
+ */
+const ROOT_MARKER_FILENAME = MARKER_FILENAME;
+
+/**
+ * Absolute path the marker is written to. Creates nothing.
+ * @param {string} cwd project root
+ * @returns {string}
+ */
+function markerPath(cwd) {
+  const root = typeof cwd === 'string' && cwd ? cwd : process.cwd();
+  return path.join(root, ...MARKER_PATH.split('/'));
+}
 
 /**
  * The pre-rename marker name, read as a fallback for one release (#2928).
@@ -124,10 +156,11 @@ function predatesBoot(startedAt) {
  * @returns {{active: boolean, reason: string, pid: number|null,
  *            livenessBasis: string, corroborated: boolean,
  *            startedAt: string|null, markerFile: string|null}}
- *   `markerFile` names WHICH file answered - the current marker, the legacy one
- *   (#2928), or null when neither was readable. It is how an upgrade mid-session
- *   is visible instead of silent: a reading served by the legacy name means a
- *   pre-rename monitor is still running here.
+ *   `markerFile` names WHICH file answered, as a repo-relative POSIX path:
+ *   `MARKER_PATH` (current), the root `.overwatch.json` (pre-move, #2957), the
+ *   legacy `.hall-monitor.json` (pre-rename, #2928), or null when none was
+ *   readable. It is how an upgrade mid-session is visible instead of silent: a
+ *   reading served by a fallback means an older monitor is still running here.
  *   `active` is true ONLY for `live`. A stale marker is reported inactive AND
  *   named as stale, so a crashed monitor is visible rather than merely absent.
  *
@@ -165,20 +198,21 @@ function readPresence(cwd, markerFilename, options) {
   const root = typeof cwd === 'string' && cwd ? cwd : process.cwd();
   const explicit = typeof markerFilename === 'string' && markerFilename;
 
-  // The legacy fallback is scoped to the DEFAULT marker and nowhere else. An
+  // The fallbacks are scoped to the DEFAULT marker and nowhere else. An
   // explicit filename is a question about a DIFFERENT marker - /idpf-measure's
-  // `.idpf-measure.json` (#2794) - and falling back there would answer it with
-  // a stale overwatch marker. The new name wins whenever both exist: a legacy
-  // marker can only have been written by code that is now gone.
+  // `.idpf-measure.json` (#2794), at the project root - and falling back, or
+  // looking in `.claude/.overwatch/`, would answer it with an overwatch marker.
+  // Earlier candidates win whenever several exist: a fallback marker can only
+  // have been written by code that is now gone.
   const candidates = explicit
     ? [markerFilename]
-    : [MARKER_FILENAME, LEGACY_MARKER_FILENAME];
+    : [MARKER_PATH, ROOT_MARKER_FILENAME, LEGACY_MARKER_FILENAME];
 
   let raw;
   let filename = null;
   for (const candidate of candidates) {
     try {
-      raw = fs.readFileSync(path.join(root, candidate), 'utf8');
+      raw = fs.readFileSync(path.join(root, ...candidate.split('/')), 'utf8');
       filename = candidate;
       break;
     } catch {
@@ -384,7 +418,11 @@ function decideStart(cwd, options) {
 
 module.exports = {
   MARKER_FILENAME,
+  MARKER_DIR,
+  MARKER_PATH,
+  ROOT_MARKER_FILENAME,
   LEGACY_MARKER_FILENAME,
+  markerPath,
   PRESENCE_REASONS,
   readPresence,
   decideStart,

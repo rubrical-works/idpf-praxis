@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * prior-art-surfaces.js
  *
  * Resolves the `searchSurfaces` block of `.claude/metadata/prior-art-sweep.json`

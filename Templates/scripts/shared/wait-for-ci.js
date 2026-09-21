@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
- * by commit SHA with 60-second polling intervals and 5-minute default timeout. Detects running/queued
+ * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 10-minute hard cap. Returns structured JSON with
  * run status, conclusion, and URL. Used by /prepare-release CI gate and /work --wait.
+ *
+ * Before declaring NO_RUNS it waits out a registration window: GitHub registers a
+ * push- or tag-triggered run a few seconds after the push, so an empty first poll
+ * is re-polled every 15s for up to 90s, and a run appearing inside the window is
+ * gated on (#2952). The no_runs payload reports how long it waited.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -27,7 +32,13 @@ const EXIT_CODES = {
 // --- Constants ---
 
 const DEFAULT_TIMEOUT = 300000;   // 5 minutes
-const POLL_INTERVAL = 60000;      // 60 seconds
+const POLL_INTERVAL = 15000;      // 15 seconds — a finished run is noticed within 15s (#2952)
+// Registration window (#2952). An empty poll right after a push is usually a
+// run GitHub has not registered yet, not a run that will never exist, so the
+// gate re-polls before concluding NO_RUNS. Counted in time slept, not wall
+// clock, so the bound holds however long each gh call takes.
+const REGISTRATION_INTERVAL = 15000; // 15 seconds between empty polls
+const REGISTRATION_WINDOW = 90000;   // give up after 90 seconds with no run
 const EXTENSION_MS = 30000;       // 30 seconds per extension
 const MAX_CAP = 600000;           // 10 minutes hard cap
 const GH_CALL_TIMEOUT = 30000;    // 30s per gh call — a hung call must not eat the budget
@@ -286,7 +297,7 @@ function schema() {
             { code: EXIT_CODES.SUCCESS,         name: 'SUCCESS',         meaning: 'CI passed for the selected run.',                                                    ruleAction: 'continue' },
             { code: EXIT_CODES.FAILURE,         name: 'FAILURE',         meaning: 'CI failed, bad arguments, or gh unavailable after retries.',                          ruleAction: 'STOP' },
             { code: EXIT_CODES.TIMEOUT,         name: 'TIMEOUT',         meaning: 'Timeout with no jobs running.',                                                       ruleAction: 'STOP' },
-            { code: EXIT_CODES.NO_RUNS,         name: 'NO_RUNS',         meaning: 'No CI runs found for this branch/commit.',                                            ruleAction: 'continue' },
+            { code: EXIT_CODES.NO_RUNS,         name: 'NO_RUNS',         meaning: `No CI runs found for this branch/commit after a ${REGISTRATION_WINDOW / 1000}s registration window (re-polled every ${REGISTRATION_INTERVAL / 1000}s), or every matching run was non-executing.`, ruleAction: 'continue' },
             { code: EXIT_CODES.TIMEOUT_RUNNING, name: 'TIMEOUT_RUNNING', meaning: 'Timeout with jobs still running at the 10-minute cap; re-run --wait or check the run.', ruleAction: 'STOP' }
         ]
     };
@@ -326,6 +337,7 @@ async function run(argv = [], deps = {}) {
     try {
         const command = buildRunListCommand(filter);
         let consecutiveFailures = 0;
+        let registrationWaited = 0;
 
         while (true) {
             const elapsed = Date.now() - startTime;
@@ -375,10 +387,25 @@ async function run(argv = [], deps = {}) {
                     }));
                     return EXIT_CODES.NO_RUNS;
                 }
+                // Nothing matched at all. Keep polling until the registration
+                // window is spent — a run that is about to exist must not read
+                // as one that never will (#2952).
+                if (registrationWaited < REGISTRATION_WINDOW) {
+                    console.error(`No CI run registered${scope} yet — re-polling (${Math.round(registrationWaited / 1000)}s of ${REGISTRATION_WINDOW / 1000}s)`);
+                    await wait(REGISTRATION_INTERVAL);
+                    registrationWaited += REGISTRATION_INTERVAL;
+                    continue;
+                }
                 console.log(JSON.stringify({
                     success: false,
-                    message: `No CI runs found${scope}`,
-                    data: { status: 'no_runs', branch: parsed.branch, commit: parsed.commit }
+                    message: `No CI runs found${scope} after waiting ${Math.round(registrationWaited / 1000)}s for one to register`,
+                    data: {
+                        status: 'no_runs',
+                        branch: parsed.branch,
+                        commit: parsed.commit,
+                        waitedMs: registrationWaited,
+                        registrationWindowMs: REGISTRATION_WINDOW
+                    }
                 }));
                 return EXIT_CODES.NO_RUNS;
             }
@@ -505,6 +532,8 @@ module.exports = {
     EXIT_CODES,
     DEFAULT_TIMEOUT,
     POLL_INTERVAL,
+    REGISTRATION_INTERVAL,
+    REGISTRATION_WINDOW,
     EXTENSION_MS,
     MAX_CAP,
     GH_CALL_TIMEOUT,

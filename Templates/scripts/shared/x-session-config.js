@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -435,6 +435,95 @@ function resolveBothViews(cwd) {
 }
 
 /**
+ * Effective announcement routing right now (#2971).
+ *
+ * The `broadcast` lever records intent. Whether targeted routing is IN EFFECT
+ * depends on a live `/overwatch` at this moment. A monitor started after this
+ * session's startup, or one that has crashed since, changes the answer with no
+ * config change, and the startup `Peers:` row is a single snapshot. So this
+ * runs the decision `announce.js` runs for every announcement it composes,
+ * `routeRecipients()` over the same peer split and presence reading. It is
+ * never a second check of the marker, because two definitions of "targeted"
+ * would drift apart.
+ *
+ * `null` when there is nothing to route: broadcast on, messaging disabled, or
+ * discovery off. The spec's choice is to add no line in that case. A failed
+ * discovery or marker read is `undetermined`, never `targeted`, because an
+ * unverified "targeted" is the false all-clear this report exists to remove.
+ *
+ * @param {object} state  resolved effective state (env layer included)
+ * @param {string} cwd
+ * @param {{checkPeers?: Function, readPresence?: Function}} [probe]  injected in tests
+ * @returns {null | {mode: 'targeted'|'fallback'|'undetermined', monitor: {name: string, pid: number}|null, reason: string|null, markerPid?: number|null}}
+ */
+function effectiveRouting(state, cwd, probe = {}) {
+  if (!state || state.enabled === false || state.discovery === false || state.broadcast !== false) return null;
+
+  const undetermined = (reason) => ({ mode: 'undetermined', monitor: null, reason });
+  let peers;
+  try {
+    const check = typeof probe.checkPeers === 'function'
+      ? probe.checkPeers
+      : (o) => require('./peers-check.js').checkPeers(o);
+    const result = check({ cwd });
+    if (!result || result.state === 'unavailable' || !Array.isArray(result.peers)) {
+      return undetermined('peer registry unavailable');
+    }
+    peers = result.peers;
+  } catch (err) {
+    return undetermined(`peer discovery failed (${err && err.message ? err.message : 'unknown'})`);
+  }
+
+  let presence;
+  try {
+    const read = typeof probe.readPresence === 'function'
+      ? probe.readPresence
+      : (c) => require('./lib/overwatch-presence.js').readPresence(c);
+    presence = read(cwd);
+  } catch (err) {
+    return undetermined(`overwatch marker could not be read (${err && err.message ? err.message : 'unknown'})`);
+  }
+
+  try {
+    const { resolveRecipients } = require('./peer-announce.js');
+    const { routeRecipients } = require('./lib/announce-routing.js');
+    const { routing } = routeRecipients({ ...resolveRecipients(peers), broadcast: false, presence });
+    if (routing.applied === 'targeted') {
+      return { mode: 'targeted', monitor: { name: routing.monitorName, pid: routing.monitorPid }, reason: null };
+    }
+    const markerPid = presence && Number.isFinite(Number(presence.pid)) && presence.pid !== null ? Number(presence.pid) : null;
+    return { mode: 'fallback', monitor: null, reason: routing.fallbackReason, markerPid };
+  } catch (err) {
+    return undetermined(`routing decision failed (${err && err.message ? err.message : 'unknown'})`);
+  }
+}
+
+/** The one line that states effective routing, or null when there is none. */
+function formatRouting(routing) {
+  if (!routing) return null;
+  if (routing.mode === 'targeted') {
+    return `announcement routing: targeted — live monitor ${routing.monitor.name} (#${routing.monitor.pid})`;
+  }
+  if (routing.mode === 'fallback') {
+    const pid = routing.markerPid ? ` (#${routing.markerPid})` : '';
+    return `announcement routing: targeted configured, falling back to broadcast: ${routing.reason}${pid}`;
+  }
+  return `announcement routing undetermined: ${routing.reason} — not confirmed targeted`;
+}
+
+/** Add the routing line to an envelope's summary and implications. */
+function withRouting(envelope, routing) {
+  const line = formatRouting(routing);
+  if (!line) return { ...envelope, routing: null };
+  return {
+    ...envelope,
+    routing,
+    summary: `${envelope.summary}; ${line}`,
+    implications: [...(Array.isArray(envelope.implications) ? envelope.implications : []), line],
+  };
+}
+
+/**
  * Parse, apply, write, and report.
  *
  * @param {{cwd?: string, argv?: string[]}} [opts]
@@ -444,7 +533,7 @@ function resolveBothViews(cwd) {
  * Never throws. Every failure path returns `ok: false` with the config
  * untouched.
  */
-function run({ cwd = process.cwd(), argv = [] } = {}) {
+function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
   const fail = (errors) => ({
     ok: false, changed: [], object: null, summary: '', implications: [], errors,
   });
@@ -508,7 +597,9 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
     // environment layer; `summary` reports what this session will actually DO,
     // so it includes it.
     const { written: shownWritten, effective: shown } = resolveBothViews(cwd);
-    return {
+    // Effective routing (#2971) is read-only: it reads the peer registry and
+    // the overwatch marker, and writes nothing.
+    return withRouting({
       ok: true,
       changed: [],
       object: toObject(shownWritten),
@@ -524,7 +615,7 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
       // drift that does not exist and send the user to fix a file that is
       // already consistent.
       memory: memoryStatus(cwd, shownWritten.noticeNarration === false, null, null),
-    };
+    }, effectiveRouting(shown, cwd, routingProbe));
   }
 
   const after = applyLevers(before, parsed);
@@ -594,7 +685,7 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
     result = removeMemoryArtefact(cwd);
   }
 
-  return {
+  return withRouting({
     ok: true,
     changed,
     // The file's content, not the session's effective state — see above.
@@ -611,12 +702,13 @@ function run({ cwd = process.cwd(), argv = [] } = {}) {
     // Keyed to the written project lever, not the env-suppressed state — the
     // artefact pairs with what is on disk (#2705).
     memory: memoryStatus(cwd, written.noticeNarration === false, action, result),
-  };
+  }, effectiveRouting(state, cwd, routingProbe));
 }
 
 module.exports = {
   LEVERS, GROUP_LEVERS, parseArgs, applyLevers, toObject, helpText, run,
   memoryPaths, memoryPresent, writeMemoryArtefact, removeMemoryArtefact,
+  effectiveRouting, formatRouting,
 };
 
 if (require.main === module) {

@@ -1,5 +1,5 @@
 ---
-version: "v0.104.0"
+version: "v0.105.0"
 description: Split a story into smaller stories, using the IDPF framework.
 argument-hint: "<story-number> (e.g., 123)"
 copyright: "Rubrical Works (c) 2026"

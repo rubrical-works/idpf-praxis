@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * validate-dist.js - Distribution integrity validator
  *
  * Validates that the distribution package is complete and consistent.

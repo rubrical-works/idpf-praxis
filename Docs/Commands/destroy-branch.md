@@ -24,4 +24,5 @@ Safely abandon and permanently delete a branch — destructive operation requiri
 - Deletes: local branch, remote branch (`origin/<branch>`), release artifacts in `Releases/<prefix>/<id>/`, and closes the tracker issue as "not planned".
 - Shows unmerged commits and related artifacts before asking for confirmation so you know exactly what will be lost.
 - **Unmerged commits are permanently lost** if not pushed elsewhere; recovery may be possible via `git reflog` within ~30 days.
+- **Announces the destruction to every peer before it happens.** Other sessions in this working directory are told first, since nothing after that point can be taken back. It is a forced broadcast: every reachable session gets it, including a running `/overwatch`, even when `broadcast` is off. Only turning messaging off entirely suppresses it. The announcement is advisory: a failed send is reported and the operation continues.
 - STOP — this action cannot be undone.

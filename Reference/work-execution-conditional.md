@@ -1,5 +1,5 @@
 # /work Execution Rule — Conditional Sections
-**Version:** v0.104.0
+**Version:** v0.105.0
 **Source:** Reference/work-execution-conditional.md
 On-demand companion to `08-work-execution.md` (#2765). Loaded at Step 1d only when a section below applies; the resident rule keeps every `### Step` heading as a one-line stub so the task list and this file stay in correspondence (#2763). Not a rule: never auto-loaded, never registered under `deploymentFiles.rules`.
 ### Step 1b: Epic Complexity Assessment

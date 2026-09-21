@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.104.0
+**Version:** v0.105.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
@@ -50,102 +50,54 @@ Reports other sessions in **this same working directory**, so a concurrent worke
 | `peers` | Names each peer and how many are reachable |
 | `none` | **No row** — a lone session is the common case; a line every startup is noise |
 | `unavailable` | Registry unreadable — discovery inactive |
+**Forensics and provenance live in `{frameworkPath}/Reference/Cross-Session-Messaging.md` (#2945)** — registry fields, liveness, socket paths, build observations, availability matrix, delivery dispositions, and the reasoning behind every lever below. Nothing auto-loads it; read it when investigating. This section keeps only what the row says and what a session must do.
 ### Gated by project config (#2702)
-The `peers` check is **registered** only when `discovery` resolves true; the hook reads `readCrossSessionConfig(cwd)` from `.claude/scripts/shared/lib/cross-session-config.js` onto `info.crossSessionMessaging` and never re-derives the defaults inline. **Absence means enabled at every level** — no file, `{}`, or any omitted key inside it.
-**The levers live in `.claude/x-session.json` since #2774**, not in `framework-config.json` — that file is committed team state six other commands rewrite, and how loud one developer wants inbound announcements is a per-developer preference. It sits directly under `.claude/`, a real directory in deployed projects rather than the hub junction `.claude/metadata/` is. The deprecated `crossSessionMessaging` key is **still read** as the fallback link, still accepted by `framework-config.schema.json`, and moved across by the next `/x-session-config` write; a run that read it says so, because that project is mid-migration and the line is what makes it visible.
+Registered only when `discovery` resolves true. Read via `.claude/scripts/shared/lib/cross-session-config.js` `readCrossSessionConfig(cwd)`; never re-derive the defaults inline. **Absence means enabled at every level** — no file, `{}`, or any omitted key.
+Levers live in `.claude/x-session.json` (#2774); the deprecated `crossSessionMessaging` key in `framework-config.json` is still read as fallback, and a run that read it says so.
 | Resolved state | Row |
 |---|---|
-| `discovery` false | **A row, not silence.** Names the config key, states the registry was not read and peers were not looked for, carries the resolver's implication. The check does not run — nothing is scanned |
-| `enabled` false | Same row, cause reported as `crossSessionMessaging.enabled: false` — the key the user set, not the one false downstream of it |
-| Any group off, discovery on | Normal row plus the effective state — **including when `state` is `none`**, which otherwise emits nothing |
+| `discovery` false | **A row, not silence.** Names the config key, states the registry was not read and peers were not looked for, carries the resolver's implication |
+| `enabled` false | Same row, cause reported as `crossSessionMessaging.enabled: false` |
+| Any group off, discovery on | Normal row plus the effective state — **including when `state` is `none`** |
 | Fully enabled | Unchanged from the table above |
-**`discovery: false` must NEVER render as an absent row.** The table above already assigns absence the meaning *no peers found*; reusing it for *did not look* makes a configured project indistinguishable from a lone one — different facts, different remedies, and the whole reason the row exists.
-**The `none` + configured case is why a row appears where #2661 said it should not.** That silence is justified for an *unconfigured* lone session and only there. This row and `/x-session-config`'s opening display are the **only** two places effective state surfaces, because the emitters deliberately print no per-invocation skip notice — announcing the suppression every run is the noise the setting removes.
-**The upstream monitor is governed separately** by `upstreamMonitor`, via `upstream-monitor.js` `armingDecision()`, reported once at arm time. `discovery: false` does **not** disable it — it polls the git upstream, not peers.
+**`discovery: false` must NEVER render as an absent row** — absence already means *no peers found*. No per-invocation skip notice anywhere else; this row and `/x-session-config`'s opening display are where effective state surfaces.
+**The upstream monitor is governed separately** by `upstreamMonitor`, via `upstream-monitor.js` `armingDecision()`. `discovery: false` does not disable it.
 ### The session layer above the project config — `IDPF_X_SESSION` (#2705)
-Every key above is **project** state: `framework-config.json` is git-tracked and shared by every session in the working directory, so it cannot express a decision scoped to one session for that session's life. A per-session choice made there would be committed, silencing exactly the concurrent sessions the channel exists to coordinate. `IDPF_X_SESSION` is that missing layer, at the top of the chain:
 ```
-IDPF_X_SESSION  >  framework-config.json crossSessionMessaging  >  enabled by default
+IDPF_X_SESSION  >  .claude/x-session.json (or legacy crossSessionMessaging)  >  enabled by default
 ```
-An **absent** variable changes nothing — absence-means-enabled gains a layer, not an exception. Read through the same `resolveCrossSessionConfig()` every consumer already calls, so there is one resolution path; the second argument is an injectable env bag defaulting to `process.env`, which lets tests exercise the matrix without mutating the real environment.
-**All-or-nothing.** A recognised off-value resolves *exactly* as `crossSessionMessaging.enabled: false` — discovery, notices, upstream monitor, narration, all three groups. No lever list: per-lever tuning is a project decision via `/x-session-config --off <levers>`, and a value grammar would need its own parse, validation and unrecognised-lever rule for a quick per-session mute.
-**Only `off`, `0` and `false` suppress**, case-insensitive after trimming; empty or whitespace-only counts as **absent**. **Any other value leaves messaging enabled and is reported as unrecognised.** Same polarity as `tmpCleanup`, deliberately opposite `verificationMode`, which fails an unknown value *into* strict. For a gate, failing into strictness is safe; for a messaging opt-out the analogous "safe" direction is silence, and a typo that silently mutes a session is undetectable by anyone — dispatch is already invisible from the sending side (#2674), so no peer can distinguish a muted session from a quiet one and the muted session is told nothing either. A typo must leave you audible and told.
-**The resolver names which layer decided** — `environment`, `project-config`, or `default` — so consumers report the source rather than infer it. `crossSessionMessaging: {}` reports `default`, not `project-config`: an empty object turns nothing off, and claiming it would break the property that an empty object and an absent one resolve identically.
+Absent variable changes nothing. **Only `off`, `0` and `false` suppress** (case-insensitive, trimmed; empty = absent); a recognised off-value resolves exactly as `enabled: false` — all-or-nothing. **Any other value leaves messaging enabled and is reported as unrecognised.** The resolver names the deciding layer: `environment`, `project-config` or `default`.
 | Resolved state | Row |
 |---|---|
-| Suppressed by `IDPF_X_SESSION` | **A row naming the variable** — its value, that it was **not** written to `framework-config.json`, and that unsetting it restores discovery next session |
-| Unrecognised value | **No suppression row.** Messaging stays enabled and discovery runs; the value is reported through `implications` |
-**The row must not name a config key here.** The override zeroes `discovery` exactly as the config keys do, so the same branch fires — but reporting *disabled by config (`crossSessionMessaging.enabled: false`)* sends the reader to edit a file that does not contain the setting; they find nothing wrong and the session stays muted with no explanation left. Naming the cause is this row's whole function, so naming the **wrong** cause is worse than the silence it replaces.
-**Emission only — there is no receiving-side opt-out.** Whether a dispatched message is accepted, held, declined or left to expire is the receiving session's decision, undetectable from the sender (#2674). The registry exposes no permission, mode, bypass or approval field, so a session cannot advertise *do not message me* and senders could not honour it if it could. `IDPF_X_SESSION` stops **this** session emitting; it promises nothing about what reaches it. The one receive-side lever is `noticeNarration` below, which governs narration verbosity, not acceptance.
+| Suppressed by `IDPF_X_SESSION` | **A row naming the variable** — its value, that it was **not** written to any config file, and that unsetting it restores discovery next session |
+| Unrecognised value | **No suppression row.** Discovery runs; the value is reported through `implications` |
+**The row must not name a config key here** — that sends the reader to a file that does not contain the setting.
+**Emission only.** `IDPF_X_SESSION` stops **this** session emitting; there is no receiving-side opt-out.
 ### Inbound announcement narration — `noticeNarration` (#2735)
-Every other `crossSessionMessaging` lever governs **emission**. This one governs **reception**: how verbosely this session narrates an announcement it receives.
+Governs how verbosely this session narrates an announcement it **receives**.
 | Resolved value | Behaviour on an inbound announcement |
 |---|---|
 | absent or `true` (default) | Verbose — may look the issue up, enumerate likely files, analyse the collision surface |
-| `false` (quiet) | **One-line acknowledgement KEPT**; commentary not — no issue lookup, no likely-files enumeration, no collision-surface analysis |
-| a live `.overwatch.json` marker (#2769) | **Quiet**, exactly as `noticeNarration: false`. A `/overwatch` session is live here and already doing the analysis; N sessions repeating it is the duplication that command removes. |
-
-**Precedence — it only ever LOWERS verbosity:** `enabled: false` → quiet regardless; `noticeNarration: false` → quiet regardless; otherwise a live marker → quiet; otherwise (no marker, or a stale one) → verbose. A marker is evidence that *more* suppression is wanted, never less, so it can never turn a project that chose quiet back into a loud one. Read it via `.claude/scripts/shared/lib/overwatch-presence.js` `readPresence(cwd)` on an inbound announcement; never re-derive liveness, which is reused from `peers-check.js` so this and the `Peers:` row agree by construction.
-**It applies to every session that reads it, the monitor included** — `readPresence` reports `active: true` for a marker whose `pid` is the caller, which is correct here. The self carve-out belongs to `decideStart`, which must not refuse a monitor on its own marker: a different question, a different function.
-**A stale marker suppresses nothing.** `active` is true only for `live`; `stale-pid`, `stale-boot`, `malformed` and `cwd-mismatch` narrate verbosely and are named on the `Peers:` row so a crashed monitor is visible.
-**Quiet is not silence, and that distinction is the contract.** The one-line acknowledgement is **receiver-side narration** — printed to this session's own user, never seen by the sender; dispatch is undetectable from the sending side (#2674). Suppressing it removes the only evidence *this user* has that anything arrived, so quiet keeps it. The one sender-observable confirmation is a **receipt reply** from a live `/overwatch` (#2922, below) — a message, not narration.
-**Why the rule states this: the memory half does not ship.** `--quiet` writes the config lever *and* a per-project memory artefact, but that artefact lives in Claude Code's per-user, per-machine store — neither project state nor a framework surface. In a deployed project that path differs and may not exist, so the lever may be the only half present, and a lever with no stated behaviour is a setting that does nothing. This section is what makes it mean something there.
-**Not implied by `discovery: false`** — that implication is about announcing **to** peers never discovered and says nothing about narrating what is **received**; a session can still receive with its own discovery off. It **is** forced off by `enabled: false`. **Distinct from `notices`**, which suppresses sender-side dispatch caveats: different axis, not a stronger version of the same one.
-**Config and memory can disagree, silently.** A lever reading quiet with the artefact absent is a suppression that quietly stopped working — indistinguishable from one never set. `/x-session-config --show` reports both and names the drift.
-**The live-marker row is moot for announcements a session no longer receives (#2915).** Under targeted routing (`broadcast: false`) a working session's announcements go to the live `/overwatch` alone, so other working sessions receive none to narrate; the monitor receives them all. Do not read a missing peer `work-started` as "no peer is working" — the monitor holds that picture and relays overlaps. A monitor that holds, declines or lets messages expire is **undetectable from the sender (#2674)**: no session hears the announcements and nobody is told. Routing falls back to broadcast only for a missing, stale, unaddressable or ambiguously named monitor, never for one that is not reading.
-### Receipt replies — the one sender-visible confirmation (#2922)
-A live `/overwatch` sends one **receipt reply** per announcement routed to it, so receipt is observable rather than assumed. Never an "acknowledgement" — that word means receiver-side narration above.
+| `false` (quiet) | **The one-line acknowledgement is KEPT.** No issue lookup, no likely-files enumeration, no collision-surface analysis |
+| a live `/overwatch` marker at `.claude/.overwatch/.overwatch.json` (#2769, #2957; pre-move root `.overwatch.json` read as fallback for one release) | **Quiet**, exactly as `noticeNarration: false` |
+**Precedence only ever LOWERS verbosity:** `enabled: false` → quiet; `noticeNarration: false` → quiet; otherwise a live marker → quiet; otherwise (no marker, or a stale one) → verbose. Read the marker via `.claude/scripts/shared/lib/overwatch-presence.js` `readPresence(cwd)`; never re-derive liveness. Applies to the monitor itself too. **A stale marker suppresses nothing.**
+**Quiet is not silence.** The one-line acknowledgement is this session's only evidence to its own user that anything arrived, so quiet keeps it.
+**The lever may be all there is.** `/x-session-config --quiet` also writes a per-user memory artefact, which does not ship to deployed projects; there, this section is what gives the lever meaning. `/x-session-config --show` reports config and memory side by side and names drift. Not implied by `discovery: false`; forced off by `enabled: false`; distinct from `notices`.
+**The live-marker row is moot for announcements a session no longer receives (#2915).** Under targeted routing (`broadcast: false`) working sessions' announcements go to the live `/overwatch` alone. Do not read a missing peer `work-started` as "no peer is working" — the monitor holds that picture and relays overlaps. A monitor that holds, declines or lets messages expire is **undetectable** from the sender (#2674): no session hears the announcements and nobody is told. Routing falls back to broadcast only for a missing, stale, unaddressable or ambiguously named monitor.
+### Receipt replies and overlap notices (#2922, #2914)
 **A session receiving a receipt reply records it**, whether or not the sending command is still running:
 ```bash
 node .claude/scripts/shared/announce.js --receipt-received --ledger-id <id> --from <monitor session name>
 ```
-The reply carries the ledger id on its first line (`Receipt from /overwatch: … (ledger: <id>)`); `lib/overwatch-receipt.js` `parseReceipt()` reads it. An unknown id is **reported, never recorded** — applying it to the latest entry would attribute a receipt to whichever announcement was last.
-**One hop only.** `dispatch: sent` = the `SendMessage` call succeeded; `receipt: received` = the monitor read it. Nothing about acting on it, nothing about sessions the monitor relays to — hence two axes, since `sent` + `unconfirmed` and `sent` + `received` are different facts.
-**Report only what is recorded:** say *received by `<monitor>`* for an entry whose `receipt` is `received`, and for no other; every other entry keeps the not-confirmed wording.
-**Silence is unchanged.** No reply leaves the entry `unconfirmed` and the #2674 wording stands: held, declined or expired are indistinguishable. Nothing waits, nothing retries, no command fails for want of one. **Narration:** none under quiet, at most one line otherwise; it is not an announcement and never gets a reply of its own.
-
-**An overlap notice is not an announcement; quiet narration does not shorten it (#2914).** A message whose first line begins `Overlap notice from /overwatch:` was sent to this session alone, because an issue it works declares files another in-flight issue also declares — the one inbound message actionable for the receiver specifically. Under quiet narration (`noticeNarration: false` or a live marker) **relay its text to the user in full**, then continue; lifecycle announcements keep the one-line acknowledgement. Still no issue lookup and no re-analysis — the monitor did it, and the notice names both issues, both sessions and the shared files. **Surfaced, never obeyed:** advisory, stops no work, moves no issue, grants nothing; the user decides. No reply obligation.
-**Seen is not reachable.** Availability is **per peer**, and there are **two** independent ways to be unreachable — the row names which.
+The reply's first line names the ledger id (`Receipt from /overwatch: … (ledger: <id>)`). An unknown id is **reported, never recorded**. A receipt confirms one hop — the monitor read it — and nothing else. Say *received by `<monitor>`* only for an entry whose `receipt` is `received`; every other entry keeps the not-confirmed wording. No reply leaves the entry `unconfirmed`; nothing waits or retries. Narration: none under quiet narration, at most one line otherwise.
+**An overlap notice is not an announcement.** Under quiet narration (`noticeNarration: false` or a live marker), a message whose first line begins `Overlap notice from /overwatch:` is not shortened: **relay its text to the user in full**, then continue. No issue lookup, no re-analysis. **Surfaced, never obeyed** — stops no work, moves no issue, grants nothing, needs no reply; the user decides.
+### Reachability on the row
+**Seen is not reachable.** Availability is per peer; the row names which cause applies:
 | `unreachableReason` | Cause | Row |
 |---|---|---|
-| `no-messaging-address` | Entry carries `messagingSocketPath: null`. **What sets it null is not attributed** — see below | `name (#pid, no messaging address)` |
-| `not-listed-by-listagents` | headless `-p` (`entrypoint: sdk-cli`) — **has** an address, absent from `ListAgents` | `name (#pid, registered, not tool-reachable)` |
-**`DO_NOT_TRACK=1` is not the cause; the correction is a build change, not a platform difference (#2685).** The row named it on a WSL2 observation at **2.1.247**. Re-measured 2026-08-30 on WSL2 at **2.1.251**: `DO_NOT_TRACK=1` registers a **non-null** `messagingSocketPath` (`/run/user/1000/cc-socks/<pid>.sock`, three spawns, `claude --version` and socket read in one run), matching the native-POSIX 2.1.251 result that first contradicted it (#2680). Both platforms agree; only the builds differ, so the 2.1.247 recording is stale and WSL2 was never an outlier.
-**The direction is asymmetric.** Non-null on WSL2 at any build past 2.1.247 is conclusive — same platform, changed behaviour. Null would have attributed to *platform* only at ≥ 2.1.251; earlier, the change could still land in 2.1.250 or 2.1.251 and stay confounded.
-**Only the documented cause was ever wrong.** `no-messaging-address` derives from `messagingSocketPath` being null and is correct whatever sets it. **No condition has been observed to null it on a current build** — stated as an absent observation, not as a claim none exists. Naming another plausible cause here would reproduce this defect one level deeper.
-**Reading the registry races the session.** The entry is deleted on exit, so a fixed sleep after a short `-p` prompt reads an empty directory — indistinguishable from "no entry was ever written". Poll while the process is alive.
-**Registry discovery and `ListAgents` disagree; `ListAgents` governs sending.** Observed 2026-08-28: a `claude -p` session registers with a non-null `messagingSocketPath` and is absent from `ListAgents`. `SendMessage` addresses by `ListAgents` name, so such a peer cannot be sent to — a non-null socket path is **necessary but not sufficient**. `kind` reads `interactive` for both; **`entrypoint` discriminates** (`sdk-cli` vs `cli`). An *absent* `entrypoint` is not read as `sdk-cli` — older builds omit it, as `pidDomain` was omitted, and absence must not manufacture unreachability.
-**Reachable is still not delivered — outside this vocabulary by construction (#2674).** Both reasons above are *discovery-time* facts about a **peer**. Whether a dispatched message arrives is a *per-send* outcome the receiver decides afterwards:
-
-| Recipient disposition | Sender sees |
-|---|---|
-| accepted | delivered |
-| held, then approved | delivered, later |
-| held, then denied | a delivery notice, after the fact |
-| held, then expired unapproved | a delivery notice, after the fact |
-
-Observed 2026-08-28: an event-1 announcement was held on a **permission-mode-class** mismatch while the sender's row read the peer reachable. It was — it was not *delivered to*.
-
-**Not a third `unreachableReason`, and must not become one.** The registry exposes no permission/mode/bypass/approval field (19 fields, five live entries), `peerFeatures` is identical for every session, and `ListAgents` surfaces only name, kind, status, start time — so it is undetectable in advance. Nor would a new field make it one: a denial is a decision and an expiry is silence, yet both reach the sender as the same terminal *not delivered* — a property of the **send**, not the **peer**. `peer-announce.js` therefore states the dispatch and names the outcomes it cannot distinguish.
-**The registry is undocumented internal state.** Reads `<claude-config-dir>/sessions/<pid>.json`; every field was **observed, not specified**, and any release may change it. Entries carry `version` and `peerProtocol` — check those first when the row misbehaves after an upgrade. Observed, all `peerProtocol: 1`: **2.1.250**, **2.1.247** (win32); **2.1.251**, **2.1.250**, **2.1.247**, **2.1.231** (WSL2 Linux); **2.1.250**, **2.1.197** (Debian 12 container, glibc). Container rows are **install-and-run only** (#2669) — both install and start and `<home>/.claude/sessions` is created, but with no credentials no session begins processing, so no entry is ever written; they establish that the registry path resolves, not that a peer was discovered.
-**The messaging socket has four allowlisted locations, not one (#2669).** Derived as `XDG_RUNTIME_DIR || CLAUDE_CODE_TMPDIR || <tmpdir>`, then `<dir>/cc-socks/<pid>.sock`, falling back to `/tmp/cc-socks-<uid>/<pid>.sock` past the 103-byte `sun_path` limit. **An absent `XDG_RUNTIME_DIR` does not yield a null `messagingSocketPath`** — observed live at `/tmp/cc-socks/<pid>.sock`. A session without logind is therefore **not** `no-messaging-address`; assuming so mis-attributes the row's cause.
-Two easy-to-miss directory properties, both already bitten: `<pid>.<hash>.key` files sit **alongside** the JSON, so reads filter by extension; and `procStart` is a **string** while both platform sources yield a number, so strict `===` reports every live peer dead — an empty list indistinguishable from "no peers".
-**Liveness is platform-specific, and says so.**
-| Platform | `livenessBasis` | Signal |
-|---|---|---|
-| linux | `pid-and-procstart` | PID exists **and** `/proc/<pid>/stat` field 22 matches registry `procStart` |
-| win32 | `pid-existence` | PID exists only |
-Node exposes no process creation time on Windows; reading a FILETIME means spawning PowerShell/`wmic` inside a startup check. Trade declined — win32 emits `WIN32_LIVENESS_PID_ONLY` so the weaker basis is never passed off as the stronger. Rationale: `Construction/Design-Decisions/2026-08-28-win32-peer-liveness-pid-existence-only.md`.
-Linux ticks are **boot-relative**: an entry surviving a reboot can collide with a live start value. `startedAt` is compared against `os.uptime()`; anything predating the boot is excluded, and no `startedAt` fails closed.
-**Availability matrix**
-| Who | Discoverable? | Reachable? |
-|---|---|---|
-| Same cwd, same machine, same user | Yes | Only with a messaging address |
-| **Different** cwd | No — matched on exact `cwd` | n/a |
-| Sibling worktree or second clone | **No** — different `cwd`, deliberately | n/a |
-| **Different machine** | **No** | **No** |
-| Another user, same machine | **No — no cross-user path** | **No** |
-Last two rows are not limitations awaiting a fix: scope is one machine, one user, one working directory, corroborated by the per-UID POSIX socket path.
+| `no-messaging-address` | Entry carries `messagingSocketPath: null` | `name (#pid, no messaging address)` |
+| `not-listed-by-listagents` | Headless `-p` (`entrypoint: sdk-cli`) — has an address, absent from `ListAgents`, and `SendMessage` addresses by `ListAgents` name | `name (#pid, registered, not tool-reachable)` |
+An absent `entrypoint` is never read as `sdk-cli`. **Reachable is not delivered (#2674):** a receiver may hold, decline or let a message expire, none of it visible to the sender, so never report a reachable peer as informed. Peers are discovered only in this exact working directory, machine and user.
 ## Hook Health Row (#2917)
 Reports framework hooks that cannot load or have been failing. Every hook fails open, so a broken one otherwise looks exactly like one that ran and found nothing to do. Delegates to `.claude/scripts/shared/hook-health-check.js`; the hook renders `hook-heartbeat.js` `formatHealthRow()` verbatim.
 | Hook state | Meaning | Row |

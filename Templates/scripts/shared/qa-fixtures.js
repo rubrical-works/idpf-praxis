@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Provision, record, inspect and tear down the board fixtures a qa-required issue declares under `### Fixtures`, for /qa outcome 3 (#2827). `--provision` creates exactly the declared issues (a root with children, or a root-less selection), assigns children through assign-branch.js, labels `reviewed` items directly, and writes `**Fixtures created:**` into the QA body; `--teardown` deletes exactly the recorded numbers, children first; `--status` reports each recorded number as exists, deleted or unknown. One injectable exec, so the whole cycle runs against a mocked board. The consent gates live in the command spec, not here.
  * @checksum sha256:placeholder
  *

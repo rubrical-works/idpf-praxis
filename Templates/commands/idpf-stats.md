@@ -1,7 +1,7 @@
 ---
-version: "v0.104.0"
+version: "v0.105.0"
 description: Generate an IDPF session statistics report with development velocity metrics.
-argument-hint: "[--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save] [--daily-log [prose]]"
+argument-hint: "[--daily-log [prose]] [--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -29,7 +29,7 @@ Session statistics from git history, GitHub issues, and test counts. Renders ASC
 | `--repos` | — | Comma-separated dirs. With no value, uses cached list. |
 | `--repos-edit` | — | Interactive add/remove on cached list |
 | `--save` | — | Save report to `Construction/Reports/Stats/YYYY-MM-DD.md` (or range filename) |
-| `--daily-log [prose]` | today | Management-facing daily work log per day instead of the stats tables (Step 5). Optional prose sets the days (`for every weekday last week`), running to the next flag-shaped token. No prose → today. Current repository only. |
+| `--daily-log [prose]` | today | Management-facing daily work log per day instead of the stats tables (Step 5). Optional prose sets the days (`for every weekday last week`), running to the next flag-shaped token. No prose → today. Current repository only. Ignores `--today`/`--date`/`--since`/`--until`/`--save`/`--repos`/`--repos-edit` — each reported in the run output, not rejected; use prose (`for 2026-09-01`) to choose days. |
 
 **Examples:** `/idpf-stats`, `/idpf-stats --today`, `/idpf-stats --date 2026-04-06`, `/idpf-stats --since 2026-03-10 --until 2026-03-14`, `/idpf-stats --repos /path/a,/path/b`, `/idpf-stats --repos-edit`, `/idpf-stats --save`, `/idpf-stats --daily-log`, `/idpf-stats --daily-log for every weekday last week`.
 
@@ -303,6 +303,7 @@ Do not render empty tables.
 **Trigger:** `--daily-log` present. One report per day for product, QA and engineering managers: what shipped, what is ready to test, what is blocked, which bugs were found or fixed. Every issue, number and claim must trace to a collected fact — derive, never compose (#2790).
 
 **Current repository only.** Ignores `--repos`, `--repos-edit` and the auto-detected `<framework_root>/idpf-stats/repos.json` list. The collector names each source set aside in `ignored`; when non-empty, say in the run output they were ignored and the log covers the current repository only.
+**Date-range and `--save` flags are ignored too, and reported the same way (#2962).** Days come only from the prose after `--daily-log` (or today), so `--today`, `--date`, `--since`, `--until`, `--save` have no effect. Name each one the user typed on the same `Ignored for --daily-log` line as the repo sources, so `/idpf-stats --daily-log --date 2026-09-01` does not silently produce today's log. Report, never reject: ignoring stays the behaviour and no invocation's output changes.
 
 #### 5a: Resolve the Days
 - **Bare `--daily-log` (no prose):** today, over the same range as `--today`. Interpret nothing; run without a confirmation prompt.

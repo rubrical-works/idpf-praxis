@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Collects the structured per-day facts behind /idpf-stats --daily-log (issues transitioned, bugs and qa-required opened/closed, review outcomes, releases, blockers, activity), plans one report file per active day, and verifies that every issue a written report cites traces to those facts.
  * @checksum sha256:placeholder
  *

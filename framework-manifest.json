@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.104.0",
+  "version": "0.105.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -553,6 +553,7 @@
           "create-epic.js",
           "daily-log-collect.js",
           "dependency-check.js",
+          "diagram-design-detect.js",
           "done-preamble.js",
           "done-verify.js",
           "epic-complexity.js",
@@ -571,6 +572,7 @@
           "mockup-token-styles.js",
           "mockups-serve.js",
           "nonstop-audit.js",
+          "overwatch-config.js",
           "paths-preamble.js",
           "peer-announce.js",
           "peers-check.js",
@@ -1193,6 +1195,11 @@
           "name": "x-session-schema",
           "source": ".claude/metadata/x-session.schema.json",
           "description": "JSON schema (Draft-07) for the cross-session messaging levers, governing .claude/x-session.json and the legacy framework-config.json crossSessionMessaging key. Carries per-lever x-installDefault annotations for Praxis Hub Manager, distinct from the resolver read default (#2774, #2783)"
+        },
+        {
+          "name": "overwatch-config-schema",
+          "source": ".claude/metadata/overwatch-config.schema.json",
+          "description": "JSON schema (Draft-07) for /overwatch's per-project config, .claude/.overwatch/config.json. Its properties are the keys /overwatch --on/--off accept; read through overwatch-config.js resolveOverwatchConfig() (#2957)"
         }
       ]
     },

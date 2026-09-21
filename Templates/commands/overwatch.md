@@ -1,20 +1,24 @@
 ---
-version: "v0.104.0"
+version: "v0.105.0"
 description: Dedicate a session to observing cross-session IDPF activity.
-argument-hint: "[--auto-create] [--force]"
+argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
 # /overwatch
 Observes cross-session activity: consumes the lifecycle announcements peers broadcast, correlates them against local commits, reports what no single working session can see.
-**MANAGED, no `USER-EXTENSION` blocks** — no per-project customization surface; every tunable value is data in `.claude/metadata/overwatch-signals.json` (#2746 reasoning).
+**MANAGED, no `USER-EXTENSION` blocks** — the command text has no per-project customization surface (#2746 reasoning). Tunables have two owners: hub-owned signal definitions in `.claude/metadata/overwatch-signals.json` (data, read-only when deployed), and per-project defaults in `.claude/.overwatch/config.json` (#2957) — written by `--on`/`--off`, read via `overwatch-config.js` `resolveOverwatchConfig()`, keys = `.claude/metadata/overwatch-config.schema.json` properties (currently `autoCreate`). `.claude/.overwatch/` is per-developer, gitignored; absent file or key = today's behaviour.
 ## Prerequisites
 `gh pmu` + `.gh-pmu.json` (only for `--auto-create`); messaging discoverable — see **Degradation**.
 ## Arguments
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--auto-create` | No | File bugs automatically for filable findings, and offer enhancements. **Opt-in; off by default.** Absent, findings are reported and nothing is filed. |
+| `--auto-create` | No | File bugs automatically for filable findings, and offer enhancements. **Opt-in; off by default.** Absent, the `autoCreate` config default applies (`false` unless set); off, findings are reported and nothing is filed. Forces it on for this run only. |
 | `--force` | No | Start even when a live marker names another monitor, displacing it. **Required on win32**, where liveness is pid-existence only so a recycled pid reads as live. No value. |
+| `--on <keys>` | No | **Config, not a run.** Set each key (comma-separated or `all`) `true`, write `.claude/.overwatch/config.json`, stop. Keys from `overwatch-config.schema.json`. |
+| `--off <keys>` | No | **Config, not a run.** As `--on`, setting `false`. `--off autoCreate` is how to run without auto-create when the file has it on — no per-run force-off flag. |
+| `--show` | No | **Config, not a run.** Print every key's resolved value and source (`file`/`default`) plus the marker state. Writes nothing. |
+**A config invocation never starts the monitor (#2957).** `--on`/`--off`/`--show` write or report, then STOP — no presence marker, no loop (else `--show` takes the monitor slot and `--on` needs `--force` on win32). Rejected by name, writing nothing: `--show` with `--on`/`--off`; any config flag with `--auto-create`/`--force`; an unknown key; a key in both lists.
 ## What This Command Can and Cannot See
 **This section is the contract: a monitor implying wider coverage than it has is worse than none, because a reader stops looking.**
 | Source | Observable? |
@@ -23,12 +27,13 @@ Observes cross-session activity: consumes the lifecycle announcements peers broa
 | Local git state (`git log`, `git status`, working tree) | **Yes** |
 | A direct `SendMessage` between two **other** sessions | **No** |
 | Another working directory, machine, or user | **No** |
-**Direct messages between other sessions are point-to-point and unobservable** — no bus, no log, no tap. Say so rather than presenting the analysis as complete coverage.
-**No new transport is required, and none should be added.** By default (`broadcast` absent or `true`) `peer-announce.js` `resolveRecipients()` dispatches to **every addressable discovered peer**, so a discoverable idle session already receives all eleven events. The gap this fills is a **consumer**, not a channel.
-**Under targeted routing the monitor is the only receiver (#2915).** With `broadcast: false` in `.claude/x-session.json`, what `announce.js` composes — `work-started`, `work-completed`, the four review events — goes to this monitor alone; every other peer is skipped as `routed-to-monitor`. The monitor then sees the complete set, and working sessions hear of each other only through overlap notices (Step 4a). `/done`'s push and CI events and `/qa`'s `fixtures-provisioned` bypass `announce.js` and still reach every peer.
+**Direct messages between other sessions are point-to-point and unobservable** — no bus, no log, no tap. Say so rather than presenting the analysis as complete coverage. Discovery scope, reachability and delivery dispositions: `{frameworkPath}/Reference/Cross-Session-Messaging.md`.
+**No new transport is required, and none should be added.** By default (`broadcast` absent or `true`) `peer-announce.js` `resolveRecipients()` dispatches to **every addressable discovered peer**, so a discoverable idle session already receives all fifteen events. The gap this fills is a **consumer**, not a channel.
+**Under targeted routing the monitor is the only receiver (#2915).** With `broadcast: false` in `.claude/x-session.json`, what `announce.js` composes — `work-started`, `work-completed`, the four review events, `/done`'s push group (`push-started`, `ci-terminal`, `ci-resolved`, `push-rejected`, #2972) — goes to this monitor alone; every other peer is skipped as `routed-to-monitor`. The monitor then sees the complete set, and working sessions hear of each other only through overlap notices (Step 4a). `/qa`'s `fixtures-provisioned` bypasses `announce.js` and still reaches every peer; branch-operation notices are forced to every peer on purpose (#2960).
 - **It falls back to broadcast, never to silence**, when this monitor is not a confirmed, uniquely addressable peer: no marker, stale marker, marker pid not an addressable recipient, or another peer sharing this session's name. The sender's notice names the reason.
 - **A monitor holding, declining or letting messages expire is undetectable from the sender (#2674)** — under targeted routing a monitor that is not reading leaves every session uninformed: no session hears the announcements and nobody is told. Use targeted routing only while this monitor is actively consuming.
-**Events consumed** — full vocabulary, no subset: `work-started`, `work-completed`, `push-started`, `ci-terminal`, `ci-resolved`, `push-rejected`, `review-started`, `review-resolved`, `review-passed`, `review-findings`, `fixtures-provisioned` — the last (#2827) names scratch board issues `/qa` provisioned for a manual check; a later `work-started` on one of those numbers is expected, not a collision.
+**Events consumed** — full vocabulary, no subset: `work-started`, `work-completed`, `push-started`, `ci-terminal`, `ci-resolved`, `push-rejected`, `review-started`, `review-resolved`, `review-passed`, `review-findings`, `fixtures-provisioned`, `branch-merge-starting`, `beta-starting`, `release-starting`, `branch-destroy-starting`. `fixtures-provisioned` (#2827) names scratch board issues `/qa` provisioned for a manual check; a later `work-started` on one of those numbers is expected, not a collision.
+**The four branch-operation notices (#2960) reach this monitor as one recipient among many.** `/merge-branch`, `/prepare-beta`, `/prepare-release`, `/destroy-branch` announce before their first irreversible step as a **forced broadcast** — every addressable peer, whatever `broadcast` says — so working sessions hear them directly, not through this monitor, which has no relay for branch operations. Record-only notices, not openers: no closer follows and none is terminal, so a monitor never expects a follow-up nor reports one missing.
 **A terminal claim is checked against what follows it (#2902).** A terminal announcement invites peers to stop waiting — `review-passed` and the CI resolution events say "No further announcement will follow" verbatim. A later announcement naming that same issue leaves every peer that honoured it holding a stale belief with nothing to correct it; the `terminal-claim-contradicted` finding reports it.
 - **Detection needs per-issue terminal history** — the monitor otherwise correlates announcements against git, and this needs it to remember that a terminal event was seen for issue N. That history is **session-scoped**: a contradiction spanning two monitor sessions is not observable anyway, so persisting it buys nothing and costs more than the finding warrants.
 - **Keys on terminality generally, never on `review-passed` alone.** `ci-resolved` carries the same claim verbatim, so a rule written against one event name misses the other. Ask whether the earlier announcement was terminal, not which event it was.
@@ -41,6 +46,18 @@ Observes cross-session activity: consumes the lifecycle announcements peers broa
 **A self-paced `/loop`, not a new scheduler.** Wake on inbound announcements; long fallback for git polling (`observation.gitPollFallbackSeconds`, bounded to the `ScheduleWakeup` clamp).
 **Never schedule short-interval polling for harness-notified work** — announcements and background tasks re-invoke the session already, so a short tick learns nothing. The fallback covers only what the harness cannot notify: commits from another session.
 ## Workflow
+### Step 0: Parse Arguments and Route (#2957)
+**Delegate the parse and routing; never re-derive either.** Pass the arguments verbatim:
+```bash
+node .claude/scripts/shared/overwatch-config.js <arguments>
+```
+One JSON object; act on it **before anything else runs**:
+| Output | Action |
+|---|---|
+| `ok: false` | Report `errors` verbatim and **STOP**. Nothing was written. |
+| `startLoop: false` (`mode: config`/`show`) | Report the output (`config`: file and values written; `show`: each key's `value`/`source` and the marker state) and **STOP**. No presence marker, no loop — this invocation configures, it is not a monitor. |
+| `startLoop: true` (`mode: loop`) | Carry `autoCreate` (+ `autoCreateSource`: `flag`/`file`/`default`) and `force` into the steps below. Non-empty `errors` = `config.json` rejected as schema-invalid: report once, run on defaults. |
+**Routing is first on purpose** — Step 1a claims the marker, so a config invocation reaching it would take the monitor slot. The no-loop guard is exercised as code in `tests/scripts/shared/overwatch-config.test.js`.
 ### Step 1: Resolve Configuration
 ```bash
 node .claude/scripts/shared/lib/cross-session-config.js
@@ -51,11 +68,11 @@ node .claude/scripts/shared/lib/cross-session-config.js
 ```bash
 node -e "console.log(JSON.stringify(require('./.claude/scripts/shared/lib/overwatch-presence.js').decideStart(process.cwd(), {force: FORCE})))"
 ```
-`FORCE` ← `true` when `--force` was passed, else `false`. Returns `{proceed, reason, message}`.
+`FORCE` ← Step 0's `force`. Returns `{proceed, reason, message}`.
 **Session identity travels in `CLAUDE_PID`, inherited — do not substitute it (#2795).** `decideStart` resolves the session pid from the environment, the same source `peers-check.js` uses to recognise itself. It must **never** be `process.pid`: inside `node -e` that is the node child's pid, fresh every invocation and never the marker's, which made the `self` row unreachable and left a re-arming monitor refusing itself. A substituted placeholder was rejected for the same reason — an unsubstituted one fails in that direction, silently.
 - `proceed: false` → **refuse to start.** Report `message` verbatim and **STOP**. Write nothing.
-- `proceed: true` → write `.overwatch.json` at the project root with `{pid, procStart, startedAt, cwd, version}`, then continue. **`pid` is the session pid (`CLAUDE_PID`)** — the identity `decideStart` compares next tick. Writing this process's pid makes the marker read `stale-pid` immediately and defeats the `self` row.
-**Write the current name only; the legacy name is read, never written (#2928).** `readPresence` falls back to `.hall-monitor.json` for one release, reporting which name answered in `markerFile`. The overwrite above writes the new name, so a legacy marker is never cleaned up — left inert, since the new name wins whenever both exist. Only a legacy-served reading means a pre-rename monitor is live here.
+- `proceed: true` → write the marker at `.claude/.overwatch/.overwatch.json` (`overwatch-presence.js` `markerPath(cwd)`), creating `.claude/.overwatch/` if absent, with `{pid, procStart, startedAt, cwd, version}`, then continue. **`pid` is the session pid (`CLAUDE_PID`)** — the identity `decideStart` compares next tick. Writing this process's pid makes the marker read `stale-pid` immediately and defeats the `self` row.
+**Write the current path only; the fallbacks are read, never written (#2928, #2957).** `readPresence` falls back to the pre-move root `.overwatch.json`, then the pre-rename `.hall-monitor.json`, one release each, reporting which path answered in `markerFile`. The write above writes the new path, so a fallback marker is never cleaned up — left inert, since the new path wins whenever several exist. Only a fallback-served reading means an older monitor is live here.
 | `reason` | `proceed` | Meaning |
 |---|---|---|
 | `no-marker` | yes | Nothing there; write |
@@ -76,7 +93,7 @@ Hold received announcements. Each tick, read commits since the last:
 git log --oneline <last-tick-sha>..HEAD
 ```
 ### Step 3a: Receipt Replies (#2922)
-**Every announcement routed here gets one receipt reply to its sender.** Under targeted routing this monitor is the only receiver, and #2674 makes a monitor that holds, declines or never processes a message undetectable from the sender. The reply closes that one gap: the monitor **received** it, and claims nothing about acting on it or about sessions it relays to.
+**Every announcement routed here gets one receipt reply to its sender.** The monitor **received** it, and claims nothing about acting on it or about sessions it relays to. Why this is the one sender-visible confirmation (#2674): `{frameworkPath}/Reference/Cross-Session-Messaging.md` § Receipt Replies.
 **Delegate the decision; never judge an inbound message in prose:**
 ```javascript
 const { decideReceipt } = require('.claude/scripts/shared/lib/overwatch-receipt.js');
@@ -85,7 +102,7 @@ const d = decideReceipt({ text: inbound.text, from: inbound.fromName, event: cla
 `d.reply` true → `SendMessage` to `d.to` with `d.text` **verbatim**, exactly one receipt reply per accepted announcement. **Never compose or edit the text** (#2790: a composed payload is how an announcement once named a commit that never existed). False → send nothing; `d.reason`:
 | `reason` | Meaning |
 |---|---|
-| `no-ledger-id` | Sender predates the suffix, or not a recorded announcement (push, CI, `fixtures-provisioned` carry no ledger entry) |
+| `no-ledger-id` | Sender predates the suffix, or not a recorded announcement (`fixtures-provisioned` carries no ledger entry; push/CI events do since #2972) |
 | `overlap-notice` | This monitor's own notice (Step 4a) |
 | `receipt-reply` | A receipt reply — never replied to |
 | `no-sender` | No address to reply to |
@@ -117,8 +134,8 @@ const r = evaluateOverlapNotices({ inFlight, sent, now: Date.now(), signals, con
 
 **Dedupe and rate limit are data** in `overwatch-signals.json` `overlapNotices` — a standing overlap is re-derived every tick and would otherwise be one message per tick. A widened overlap (new shared path) is a new notice.
 **Advisory, and dispatch is not delivery (#2674).** The text says both; a failed `SendMessage` is reported and the tick continues. Nothing is blocked — enforcement is Station's (#2640).
-### Step 5: Auto-Create (`--auto-create` only)
-**Opt-in; absent the flag this step does not run.** Only `filable` **and** `autoCreatable` findings qualify.
+### Step 5: Auto-Create (resolved `autoCreate` only)
+**Opt-in; runs only when Step 0 resolved `autoCreate` `true`** — from `--auto-create` (source `flag`) or the config default (source `file`). Name the source when it runs, so a project default is not mistaken for a flag nobody typed. Only `filable` **and** `autoCreatable` findings qualify.
 **Two guards bound this step, both metadata-driven — thresholds in `overwatch-signals.json`, tunable without a spec edit:**
 | Guard | What it stops |
 |---|---|
@@ -136,16 +153,17 @@ const verdict = evaluateAutoCreate({ finding, filings, now: Date.now(), signals 
 **Enhancement path — stays in this session; it cannot be delegated.** Same tool boundary: `framework-dev` has **no `AskUserQuestion`**, so a subagent cannot make an offer at all. Bug filing is non-interactive and delegable; an offer is not. **Never file an enhancement unattended.**
 ### Step 6: Continue or Stop
 Schedule the next tick, or stop when the user says so. One line per tick; quiet ticks collapse.
-**Release the marker on stop.** Remove `.overwatch.json` **only when its `pid` matches this process**; leave a foreign marker untouched. This closes the interleave `--force` allows: without the ownership test, monitor A exiting would delete a marker monitor B had overwritten, leaving B live and unmarked.
+**Release the marker on stop.** Remove `.claude/.overwatch/.overwatch.json` **only when its `pid` matches this process**; leave a foreign marker untouched. Leave the `.claude/.overwatch/` directory — `config.json` lives there too. This closes the interleave `--force` allows: without the ownership test, monitor A exiting would delete a marker monitor B had overwritten, leaving B live and unmarked.
 **Abnormal termination leaves a stale marker by design.** No crash hook, and none proposed: the next monitor's start-time overwrite is the recovery, and the startup `Peers:` row names the stale marker meanwhile.
 ## Degradation
 | Condition | Behaviour |
 |---|---|
 | `crossSessionMessaging.discovery` false | Not discovered, **receives no announcements**. Degrade to **git-only observation** and report that plainly — a quiet channel and an unwatched one are otherwise indistinguishable, and only one is fine. |
-| `enabled` false | Same; cause reported as `crossSessionMessaging.enabled: false` — the key the user set, not the one false downstream. |
+| `enabled` false | Same; cause reported as `crossSessionMessaging.enabled: false`. |
 | No peers discovered | Normal. Report git-derived findings only. |
 | `overlapNotices` false | Report-only for overlaps: Step 4a sends nothing, every overlap reported to this session's user. No per-tick notice that the lever is off (#2914). |
 | `overwatch-signals.json` missing/unreadable | Report the gap, continue report-only. `--auto-create` **refuses** (`signals-unreadable`); failing open leaves an unbounded filer. |
+| `.claude/.overwatch/config.json` schema-invalid | Step 0 reports the rejection once; the loop runs on defaults. Never half-read, never rewritten; fix by hand or with `--on`/`--off`, which also refuse to write over an invalid file. |
 ## Error Handling
 | Situation | Response |
 |-----------|----------|

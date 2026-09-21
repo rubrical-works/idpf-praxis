@@ -26,6 +26,7 @@ Transform a proposal document into an Agile PRD with user stories, acceptance cr
 
 - Validates the proposal issue has the `proposal` label and that a `Proposal/{Name}.md` file is linked in the issue body.
 - Generates UML diagrams (Use Case and Activity by default) as `.drawio.svg` files alongside the PRD in `PRD/{Name}/Diagrams/`, or inline ASCII UML based on the style you pick at Phase 5.5a.
+- **Optional `diagram-design` style.** Before asking for a style, `/create-prd` checks whether the third-party `diagram-design` skill is installed (in the project, in your user skills, or as a Claude Code plugin). If it is, a third option appears: editorial HTML diagrams, each exported to a diffable `.svg`, with the `.html` kept beside it as the editable source. Use Case diagrams have no counterpart there and fall back to ASCII. If the skill is not installed, one line says so and points to `Docs/02-Advanced/Diagram-Design-Optional-Skill.md`. The question is not blocked.
 - Generates a TDD test plan at `PRD/{Name}/Test-Plan-{Name}.md` and creates a test plan approval issue — `/create-backlog` is blocked until this approval issue is closed.
 - In `solo` review mode, offers to consolidate all stories under a single epic for simpler solo development.
 - After PRD creation, closes and archives the source proposal issue (moves file to `Proposal/Implemented/`) and opens a new PRD tracker issue.

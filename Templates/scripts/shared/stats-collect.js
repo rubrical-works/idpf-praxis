@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Collects development statistics from git history using config-driven
  *   metric definitions. Returns structured JSON for the /idpf-stats command to render.
  * @checksum sha256:placeholder
@@ -98,22 +98,21 @@ function parseArgs(args) {
   // --today is a shortcut for the no-flag default; leaves since/until null
   // so the existing default block computes midnight..now.
 
-  const tzOffset = getTzOffset();
-
+  // Each boundary carries the offset in force on its own date (#2964), so a
+  // requested date in a different DST period from the run day is not shifted
+  // by an hour.
   if (!since) {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    since = formatLocalISO(d, tzOffset);
+    since = formatLocalISO(d);
   } else {
-    const d = new Date(since + 'T00:00:00');
-    since = formatLocalISO(d, tzOffset);
+    since = formatLocalISO(new Date(since + 'T00:00:00'));
   }
 
   if (!until) {
-    until = formatLocalISO(new Date(), tzOffset);
+    until = formatLocalISO(new Date());
   } else {
-    const d = new Date(until + 'T23:59:59');
-    until = formatLocalISO(d, tzOffset);
+    until = formatLocalISO(new Date(until + 'T23:59:59'));
   }
 
   const result = { since, until };
@@ -124,27 +123,29 @@ function parseArgs(args) {
 }
 
 /**
- * Get local timezone offset string like "+05:00" or "-04:00".
+ * Local timezone offset string like "+05:00" or "-04:00" in force at the
+ * instant `d` represents — not at the moment of the call (#2964).
+ * @param {Date} [d] - defaults to now
  * @returns {string}
  */
-function getTzOffset() {
-  const match = new Date().toString().match(/([+-]\d{4})/);
-  if (!match) return '+00:00';
-  const raw = match[1];
-  return raw.replace(/(\d{2})(\d{2})/, '$1:$2');
+function getTzOffset(d = new Date()) {
+  const mins = -d.getTimezoneOffset(); // getTimezoneOffset is UTC minus local
+  const sign = mins >= 0 ? '+' : '-';
+  const abs = Math.abs(mins);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
 
 /**
- * Format a Date as local ISO 8601 with timezone offset.
+ * Format a Date as local ISO 8601 with the offset in force on that date.
  * @param {Date} d
- * @param {string} tzOffset - e.g., "-05:00"
  * @returns {string}
  */
-function formatLocalISO(d, tzOffset) {
+function formatLocalISO(d) {
   const pad = (n) => String(n).padStart(2, '0');
   const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
     `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  return iso + tzOffset;
+  return iso + getTzOffset(d);
 }
 
 /**

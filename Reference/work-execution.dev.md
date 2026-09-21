@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.104.0
+**Version:** v0.105.0
 **Source:** Reference/work-execution.md (dev-preserve variant, #2395)
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow. This variant preserves FRAMEWORK-ONLY blocks for self-hosted dev; the stripped variant ships via `.min-mirror/Reference/work-execution.md` to user projects.
 ## Execution Instructions
@@ -173,7 +173,7 @@ Helper registration is off-band. **Run the registrar; do not edit by hand (#2620
 node .claude/scripts/framework/register-helper.js <path-to-helper> [--gated]
 ```
 `--gated` wraps the entry in an `enableGitHubWorkflow` closure in `constants.js`; omit for a plain string. **Idempotent** — safe after a partial manual edit, no-op when already registered.
-It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.104.0` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
+It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.105.0` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
 > **Why a script, not a longer checklist (#2620):** the `shared/lib` key contains a slash and **cannot** be dot-accessed; a dot form reads `undefined` silently and `|| []` turns that into a plausible `false`. That hazard was already documented here and still paid by hand every time — most recently #2600 for `lib/checkbox-scan.js`. Documentation cannot fix a transcription error it has already warned about; a tool can.
 Runs before Step 5. Applies in default and `--nonstop`.
 <!-- FRAMEWORK-ONLY-END -->

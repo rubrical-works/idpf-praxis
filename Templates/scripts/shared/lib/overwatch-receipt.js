@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Receipt replies (#2922): the ledger-id suffix an announcement carries, the /overwatch decision to reply to one sender that it received an announcement, and the sender-side parse of that reply. Pure — it composes text and decides; sending stays with the command spec.
  * @checksum sha256:placeholder
  *

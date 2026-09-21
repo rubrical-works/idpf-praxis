@@ -1,5 +1,5 @@
 # Contract-Test Classification
-**Version:** v0.104.0
+**Version:** v0.105.0
 **Source:** Reference/Contract-Test-Classification.md
 The one rule for whether a test is a **contract** test and how it declares its subject. `/work` Step 3, `/qa`, `/add-story`, `/bad-test-review` point here, never restate it (#2904).
 **Why:** `tdd-refactor-coverage-audit` classes tests as **module** (paired to a source by name), **flow** (paired to a journey by annotation) or **contract** (declares a non-code subject). An undeclared contract test counts as a module orphan — a false gap. #2899 applied this rule once to 153 tests; it holds only if every new test declares too.

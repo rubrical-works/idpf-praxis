@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  *
  * File an issue into a COMPANION repository and onto that repository's own
  * project board (#2775).

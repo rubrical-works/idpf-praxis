@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -37,7 +37,9 @@ const {
 // but Node built-ins.
 const tmpCleanup = require('../scripts/shared/lib/tmp-cleanup.js');
 
-// #2769: the .overwatch.json presence marker. Read-only and advisory — this
+// #2769: the /overwatch presence marker, at .claude/.overwatch/.overwatch.json
+// since #2957 (readPresence falls back to the pre-move root .overwatch.json for
+// one release). Read-only and advisory — this
 // module never deletes, so a stale marker survives to be reported and is
 // cleaned up by the next monitor's start-time overwrite, not by the hook.
 const overwatchPresence = require('../scripts/shared/lib/overwatch-presence.js');

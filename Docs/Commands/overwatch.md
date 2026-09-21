@@ -6,14 +6,19 @@ Dedicate a session to observing cross-session activity in the working directory:
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--auto-create` | No | File bugs automatically for filable findings, and offer enhancements. Opt-in; off by default. Absent, every finding is reported and nothing is filed. |
+| `--auto-create` | No | File bugs automatically for filable findings, and offer enhancements. Opt-in; off by default. Absent, the project default from `--on autoCreate` applies; with that off too, every finding is reported and nothing is filed. |
 | `--force` | No | Start even when another monitor is recorded as live in this directory, displacing it. Required on Windows, where a recycled process id can look like a running monitor. |
+| `--on <keys>` | No | Turn config keys on (comma-separated, or `all`) and save them. Does not start the monitor. |
+| `--off <keys>` | No | Turn config keys off and save them. Does not start the monitor. |
+| `--show` | No | Show each config key, its value and where it came from, plus whether a monitor is running. Writes nothing and does not start the monitor. |
 
 ## Usage
 
 ```
 /overwatch
 /overwatch --auto-create
+/overwatch --on autoCreate
+/overwatch --show
 ```
 
 ## What It Can and Cannot See
@@ -29,7 +34,7 @@ A monitor sees only what is addressed to it. Direct messages between two other s
 
 No new transport is involved: by default announcements already reach every reachable peer in the working directory, so a session sitting idle there receives them for free. What this command adds is a reader.
 
-**Targeted routing.** If a project turns broadcast off (`/x-session-config --off broadcast`), the announcements `/work`, `/review-issue` and `/resolve-review` make go to the running monitor only, not to every session. The monitor then receives all of them, and the working sessions stop hearing each other directly; the monitor's overlap notices are what tells them about a collision. `/done` and `/qa` still send to every session. If no monitor is running, its marker is stale, or it cannot be addressed safely, sending falls back to broadcast and the send says why. One cost cannot be detected: if the monitor session is holding or declining its messages, no sending session can tell, and then no session hears anything. Use targeted routing only while someone is watching the monitor.
+**Targeted routing.** If a project turns broadcast off (`/x-session-config --off broadcast`), the announcements `/work`, `/review-issue`, `/resolve-review` and `/done` make go to the running monitor only, not to every session. The monitor then receives all of them, and the working sessions stop hearing each other directly; the monitor's overlap notices are what tells them about a collision. `/qa`'s `fixtures-provisioned` notice still goes to every session, and so do the branch notices from `/merge-branch`, `/prepare-beta`, `/prepare-release` and `/destroy-branch`, on purpose. If no monitor is running, its marker is stale, or it cannot be addressed safely, sending falls back to broadcast and the send says why. One cost cannot be detected: if the monitor session is holding or declining its messages, no sending session can tell, and then no session hears anything. Use targeted routing only while someone is watching the monitor.
 
 ## Key Behaviors
 
@@ -57,7 +62,7 @@ Delivery is not confirmed: a receiving session can hold or decline a message, an
 
 Sending a message to another session tells you the send succeeded, not that anyone read it. The monitor closes that gap for its own inbox: for each announcement it receives, it sends a one-line receipt back to that session naming what it received. The sending session records the receipt, so its later reports can say the monitor received the message instead of saying it could not tell.
 
-- **What it covers:** the work and review announcements a session records when it sends them. Push, CI and QA fixture messages carry no record, so they get no receipt.
+- **What it covers:** every announcement a session records when it sends it: work, review, and `/done`'s push and CI messages. QA fixture messages carry no record, so they get no receipt.
 - **What it does not claim:** that the monitor acted on the message, or that any session the monitor relays to heard anything. It confirms one hop.
 - **When no receipt arrives:** nothing changes. Nothing waits for one, nothing is retried, and no command fails. The sending session keeps saying delivery was not confirmed, which remains true.
 - **Never a loop:** the monitor does not reply to receipts or to its own overlap notices.
@@ -66,7 +71,7 @@ Sending a message to another session tells you the send succeeded, not that anyo
 
 Only one `/overwatch` runs in a working directory at a time. Starting a second one is refused, and the refusal names the running monitor's pid and start time.
 
-While a monitor is live it writes `.overwatch.json` at the project root. Every session in that directory — the monitor included — reads it and narrates inbound peer announcements quietly, the one-line acknowledgement only, for as long as the monitor runs. That is the point: one session does the analysis instead of all of them. The file is gitignored and per-machine; nothing is sent to any peer, because writing a file is not an announcement.
+While a monitor is live it writes `.claude/.overwatch/.overwatch.json`. Monitors started by an older version write `.overwatch.json` at the project root instead, and for one release that location is still read. Every session in that directory — the monitor included — reads it and narrates inbound peer announcements quietly, the one-line acknowledgement only, for as long as the monitor runs. That is the point: one session does the analysis instead of all of them. The file is gitignored and per-machine; nothing is sent to any peer, because writing a file is not an announcement.
 
 **`--force` displaces a marker that reads as live.** Use it when the refusal is wrong. On Windows this is not a convenience but a necessity: liveness there can only be checked by asking whether the pid exists, and a recycled pid looks exactly like a running monitor. `--force` overwrites the marker and names the pid it displaced. It does not assume a monitor is running at that pid. On Windows, or for a marker written without a process start time, all that can be established is that *some* process holds the pid, and that process may be a recycled pid rather than a monitor, so the message says exactly that. Only where the recorded start time matched the process does it say the displaced monitor is still running. Either way, nothing is stopped by `--force`: whatever holds that pid simply no longer owns the marker.
 
@@ -77,3 +82,13 @@ On a clean stop the monitor removes the marker, but only if the marker is still 
 ## Configuration
 
 Thresholds, finding kinds and dispositions live in `.claude/metadata/overwatch-signals.json` — tunable without editing the command.
+
+Per-project defaults live in `.claude/.overwatch/config.json`. Today there is one: `autoCreate`, the default for `--auto-create`.
+
+- `/overwatch --on autoCreate` makes auto-create the default. `--auto-create` still turns it on for a single run.
+- `/overwatch --off autoCreate` turns it back off. This is also how to run without auto-create when the default is on; there is no flag that turns it off for one run.
+- `/overwatch --show` prints the current values and whether each came from the file or the default.
+
+These three flags only change or show settings. They never start the monitor, and they cannot be combined with `--auto-create` or `--force`. An unknown key is refused and nothing is written.
+
+The whole `.claude/.overwatch/` directory is per-developer and ignored by git. A fresh clone has no config file, and everything behaves as the defaults say.

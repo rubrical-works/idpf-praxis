@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Hook heartbeats (#2917): a per-hook, project-local health record of each framework hook's last success, last error and consecutive-failure count, the process-exit recorder hooks install, the load check the startup self-test runs, and the assessment the startup Hook Health row is rendered from.
  * @checksum sha256:placeholder
  *

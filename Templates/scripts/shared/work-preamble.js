@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -455,7 +455,11 @@ function buildAcSectionWarning(autoTask, issueNum) {
 /**
  * Load sub-issues for an epic
  * @param {number} issueNum
- * @returns {Promise<{ subIssues: Array<{ number: number, title: string }>, warning?: object }>}
+ * Each child carries the GitHub `state` (`OPEN`/`CLOSED`) that `sub list`
+ * already returns, so checkSubIssueStatuses can skip a closed child without a
+ * per-child call (#2970).
+ *
+ * @returns {Promise<{ subIssues: Array<{ number: number, title: string, state?: string }>, warning?: object }>}
  */
 async function loadSubIssues(issueNum) {
   const result = await execJSON(
@@ -471,7 +475,8 @@ async function loadSubIssues(issueNum) {
   }
   const children = (result.data.children || []).map(c => ({
     number: c.number,
-    title: c.title
+    title: c.title,
+    ...(c.state ? { state: c.state } : {})
   }));
   return { subIssues: children };
 }
@@ -491,13 +496,31 @@ async function loadSubIssues(issueNum) {
  * addition is `reason: 'qa-required'` on a child skipped for its label rather
  * than its status (#2824); status skips are unchanged.
  *
- * @param {Array<{ number: number, title: string }>} subIssues
- * @returns {Promise<{ skipped: Array<{ number: number, status: string, reason?: 'qa-required' }>, active: Array<{ number: number, title: string, body: string, labels: string[] }> }>}
+ * A child whose GitHub `state` is `CLOSED` is skipped as
+ * `{ number, status: 'Closed', reason: 'closed' }` with NO `gh pmu view` call
+ * (#2970). Without this the per-child cost scaled with the tracker's history
+ * rather than its remaining work: every closed child was fetched in full only
+ * to be skipped. Completed and `not_planned` children are treated alike —
+ * `sub list` carries no stateReason, and reading it would cost the call this
+ * removes. A child with no `state` is fetched as before: absence never skips.
+ *
+ * @param {Array<{ number: number, title: string, state?: string }>} subIssues
+ * @returns {Promise<{ skipped: Array<{ number: number, status: string, reason?: 'qa-required' | 'closed' }>, active: Array<{ number: number, title: string, body: string, labels: string[] }> }>}
  */
 async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
   const skipped = [];
   const active = [];
   const skipStatuses = ['in review', 'done'];
+
+  // Closed children are settled from `sub list` alone (#2970).
+  const toFetch = [];
+  for (const sub of subIssues) {
+    if (sub.state === 'CLOSED') {
+      skipped.push({ number: sub.number, status: 'Closed', reason: 'closed' });
+    } else {
+      toFetch.push(sub);
+    }
+  }
 
   // Parallelize all sub-issue status checks with timeout (#1883)
   //
@@ -518,7 +541,7 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
   try {
     statusResults = await Promise.race([
       Promise.all(
-        subIssues.map(async (sub) => {
+        toFetch.map(async (sub) => {
           try {
             const { stdout } = await execFileAsync('gh', ['pmu', 'view', String(sub.number), '--json=status,body,labels'], EXEC_OPTS);
             const data = JSON.parse(stdout.trim());
@@ -1168,7 +1191,8 @@ async function runSingleIssue(issueNum, options) {
       });
     }
 
-    roundTrips += subResult.subIssues.length; // parallelized but still counted
+    // Parallelized but still counted; CLOSED children cost no call (#2970).
+    roundTrips += subResult.subIssues.filter(s => s.state !== 'CLOSED').length;
     const statusResult = await checkSubIssueStatuses(subResult.subIssues);
     context.skipped = statusResult.skipped;
 

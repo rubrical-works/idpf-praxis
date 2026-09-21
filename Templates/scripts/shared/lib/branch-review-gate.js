@@ -2,7 +2,7 @@
 /**
  * Tree-wide review gate aggregation (#2749, shared with #2748 and #2750).
  *
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  *
  * A pure decision function answering "should `/work` stop and ask before
  * touching this set of issues, and what should it offer?" — the counterpart to

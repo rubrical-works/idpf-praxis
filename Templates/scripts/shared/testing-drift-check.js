@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
+ * @framework-script 0.105.0
  * @description Session-start check for tech-stack-dependent test configuration (#2903). Reports stack drift by delegating to charter-testing-audit.js, and reports framework-config.json testCoverageAudit overrides that no longer fit the imported tdd-refactor-coverage-audit skill. Read-only and advisory: it names /charter refresh as the remedy for drift and never prompts or writes.
  * @checksum sha256:placeholder
  *

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.104.0
- * @description Derive, compose and record a /work or review-lifecycle peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
+ * @framework-script 0.105.0
+ * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -77,11 +77,49 @@ const REVIEW_EVENTS = Object.freeze({
  * moving event selection out of prose — the `--force` suppression of
  * `review-started` and the `labelAssigned` → verdict mapping.
  *
- * The CI and push events stay out. `/done` composes them with payloads — CI
- * results, push ranges — this script has no derivation for, so for them it
- * would still be a wrapper with nothing to add.
+ * The push group joined in #2972, and the "nothing to add" argument that kept
+ * it out turned out to be wrong. This script derives none of the push-group
+ * payloads: the issue set comes from `deriveAnnouncementIssues`, and the CI
+ * result from `ci-watch.js`, both passed in unchanged. What it does add is the
+ * part that was missing. Composed by `/done` directly, the push group never
+ * received targeted routing (#2915), so every peer heard three messages per
+ * push, and it never reached the ledger, so no receipt reply could be recorded
+ * against it.
  */
-const SUPPORTED = Object.freeze({ ...WORK_EVENTS, ...REVIEW_EVENTS });
+/**
+ * `/done`'s push group (#2972). Routed like the work events. No
+ * `FORCED_REASONS` entry, unlike #2960: a push changes only the remote copy of
+ * a branch every session here already shares, so no peer's footing moves. The
+ * `groups.push` gate stays in `/done`, resolved once per invocation, because
+ * one read across the three events is what keeps them one unit. A second read
+ * here per event could disagree with it.
+ */
+const PUSH_EVENTS = Object.freeze({
+  'push-started': EVENTS.PUSH_STARTED,
+  'ci-terminal': EVENTS.CI_TERMINAL,
+  'ci-resolved': EVENTS.CI_RESOLVED,
+  'push-rejected': EVENTS.PUSH_REJECTED,
+});
+/**
+ * Branch-operation notices (#2960), composed here for the same reason the
+ * review events are: the decisions live in code, not in four command specs.
+ * Two decisions are new. The GATE is the master switch alone — no announcement
+ * group applies, so `groups` is ignored while `enabled: false`, IDPF_X_SESSION
+ * and `discovery: false` still silence it (the last by construction: no peers
+ * were discovered to broadcast to). The KEY is the branch, because a branch
+ * operation may run with no tracker issue.
+ */
+const BRANCH_EVENTS = Object.freeze({
+  'branch-merge-starting': EVENTS.BRANCH_MERGE_STARTING,
+  'beta-starting': EVENTS.BETA_STARTING,
+  'release-starting': EVENTS.RELEASE_STARTING,
+  'branch-destroy-starting': EVENTS.BRANCH_DESTROY_STARTING,
+});
+
+/** Branch events that push a tag, so they cannot be composed without one. */
+const TAGGED_BRANCH_EVENTS = Object.freeze(['beta-starting', 'release-starting']);
+
+const SUPPORTED = Object.freeze({ ...WORK_EVENTS, ...REVIEW_EVENTS, ...BRANCH_EVENTS, ...PUSH_EVENTS });
 
 const hasOwn = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -302,7 +340,7 @@ function suppressedResult({ event, issue, reason, warnings }) {
     announcement: {
       shouldSend: false,
       event,
-      issues: [issue],
+      issues: issue === null || issue === undefined ? [] : [issue],
       commitCount: 0,
       text: '',
       recipients: [],
@@ -375,9 +413,174 @@ function resolveSessionPid(env = process.env) {
   return pid > 0 ? pid : null;
 }
 
-function compose({ event, issue, peers, cwd, commits: supplied, force = false, labelAssigned, routing: suppliedRouting, env = process.env } = {}) {
+/**
+ * Whether a branch-operation notice may be emitted (#2960): the master switch
+ * alone. `groups` is deliberately not consulted — these events belong to none —
+ * but the resolver's cascade still applies, so `enabled: false`,
+ * `IDPF_X_SESSION=off` and `discovery: false` each silence them. Read through
+ * the shared resolver, never re-derived: the discovery implication is the part
+ * a local copy gets wrong. A resolver failure resolves to enabled, the same
+ * answer as an absent key.
+ */
+function branchOperationGate(cwd, env) {
+  let state;
+  try {
+    const { readCrossSessionConfig } = require('./lib/cross-session-config.js');
+    state = readCrossSessionConfig(cwd || process.cwd(), env);
+  } catch {
+    return { emit: true, reason: null };
+  }
+  if (!state.enabled) {
+    const cause = state.source === 'environment'
+      ? `IDPF_X_SESSION=${state.envOverride && state.envOverride.value} (this session only)`
+      : 'crossSessionMessaging enabled: false';
+    return { emit: false, reason: `Nothing sent: cross-session messaging is off by the master switch (${cause}); branch-operation notices honour it.` };
+  }
+  if (!state.discovery) {
+    return { emit: false, reason: 'Nothing sent: discovery is off, so no peers were discovered to broadcast a branch-operation notice to.' };
+  }
+  return { emit: true, reason: null };
+}
+
+/** Compose one branch-operation notice (#2960). */
+function composeBranchOperation({ name, resolved, issue, branch, tag, peers, cwd, routing: suppliedRouting, env, warnings }) {
+  const branchName = typeof branch === 'string' ? branch.trim() : '';
+  if (!branchName) {
+    return { ok: false, error: `${name} needs the branch it acts on — pass --branch <name>.`, warnings };
+  }
+  const tagName = typeof tag === 'string' ? tag.trim() : '';
+  if (TAGGED_BRANCH_EVENTS.includes(name) && !tagName) {
+    return { ok: false, error: `${name} names the tag it pushes — pass --tag <vX.Y.Z>.`, warnings };
+  }
+  let tracker = null;
+  if (issue !== undefined && issue !== null) {
+    tracker = Number(issue);
+    if (!Number.isInteger(tracker) || tracker <= 0) {
+      return { ok: false, error: `Invalid issue ${JSON.stringify(issue)}.`, warnings };
+    }
+  }
+
+  const gate = branchOperationGate(cwd, env);
+  if (!gate.emit) return suppressedResult({ event: name, issue: tracker, reason: gate.reason, warnings });
+
+  const routingInputs = suppliedRouting && typeof suppliedRouting === 'object' ? suppliedRouting : readRouting(cwd);
+  const announcement = buildAnnouncement({
+    event: resolved,
+    issues: tracker ? [tracker] : [],
+    peers,
+    branchOperation: { branch: branchName, tag: tagName || null, tracker },
+    broadcast: routingInputs.broadcast,
+    presence: routingInputs.presence,
+  });
+
+  const recorded = ledger.record(
+    { event: name, issues: tracker ? [tracker] : [], branch: branchName },
+    { cwd, sessionPid: resolveSessionPid(env) }
+  );
+  if (!recorded.ok) {
+    warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); its dispatch cannot be audited.`);
+  }
+  if (recorded.ok && announcement && typeof announcement.text === 'string' && announcement.text) {
+    announcement.text = appendLedgerId(announcement.text, recorded.id);
+  }
+
+  return {
+    ok: true,
+    event: name,
+    issue: tracker,
+    branch: branchName,
+    commitSource: 'not-applicable',
+    routing: announcement.routing || null,
+    announcement,
+    ledgerId: recorded.ok ? recorded.id : null,
+    dispatchReport: recorded.ok
+      ? `After sending, close the outcome out: node .claude/scripts/shared/announce.js --dispatch-result sent|failed --ledger-id ${recorded.id} [--detail "<error>"]`
+      : 'No ledger id — the dispatch outcome cannot be recorded for this event.',
+    warnings,
+  };
+}
+
+/**
+ * Compose one push-group announcement (#2972).
+ *
+ * Takes `issues` as a list, the set `deriveAnnouncementIssues` produced over
+ * the pushed range, because one push routinely carries several issues' commits
+ * (#2772). A payload `buildAnnouncement` refuses (an unknown `ci-terminal`
+ * outcome, a `ci-resolved` with no readable `ciResult`) is returned as refused
+ * and NOT recorded. Nothing was composed, so there is no send to audit, and a
+ * `pending` row would read as a dispatch that was dropped.
+ */
+function composePush({ name, resolved, issues, outcome, runUrl, ciResult, peers, cwd, routing: suppliedRouting, env, warnings }) {
+  const list = (Array.isArray(issues) ? issues : [issues]).map(Number);
+  if (list.length === 0 || !list.every((n) => Number.isInteger(n) && n > 0)) {
+    return { ok: false, error: `${name} needs at least one valid issue number — got ${JSON.stringify(issues)}.`, warnings };
+  }
+
+  const routingInputs = suppliedRouting && typeof suppliedRouting === 'object' ? suppliedRouting : readRouting(cwd);
+  const announcement = buildAnnouncement({
+    event: resolved,
+    issues: list,
+    peers,
+    outcome,
+    runUrl,
+    ciResult,
+    broadcast: routingInputs.broadcast,
+    presence: routingInputs.presence,
+  });
+
+  const composed = announcement && typeof announcement.text === 'string' && announcement.text !== '';
+  let recorded = { ok: false, error: 'nothing was composed' };
+  if (composed) {
+    recorded = ledger.record({ event: name, issues: list }, { cwd, sessionPid: resolveSessionPid(env) });
+    if (!recorded.ok) {
+      warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); its dispatch cannot be audited.`);
+    } else {
+      announcement.text = appendLedgerId(announcement.text, recorded.id);
+    }
+  }
+
+  return {
+    ok: true,
+    event: name,
+    issues: list,
+    commitSource: 'not-applicable',
+    routing: announcement.routing || null,
+    announcement,
+    ledgerId: recorded.ok ? recorded.id : null,
+    dispatchReport: recorded.ok
+      ? `After sending, close the outcome out: node .claude/scripts/shared/announce.js --dispatch-result sent|failed --ledger-id ${recorded.id} [--detail "<error>"]`
+      : composed
+        ? 'No ledger id — the dispatch outcome cannot be recorded for this event.'
+        : 'Nothing was composed, so there is no dispatch outcome to record.',
+    warnings,
+  };
+}
+
+function compose({ event, issue, issues, peers, cwd, commits: supplied, force = false, labelAssigned, routing: suppliedRouting, env = process.env, branch, tag, outcome, runUrl, ciResult } = {}) {
   const warnings = [];
   const hasLabel = labelAssigned !== undefined;
+
+  // The push group is keyed by an issue SET, not one issue (#2972).
+  if (event && hasOwn(PUSH_EVENTS, event)) {
+    if (hasLabel) {
+      return { ok: false, error: 'Pass an event or a labelAssigned, not both.', warnings };
+    }
+    return composePush({
+      name: event, resolved: PUSH_EVENTS[event], issues: issues !== undefined ? issues : issue,
+      outcome, runUrl, ciResult, peers, cwd, routing: suppliedRouting, env, warnings,
+    });
+  }
+
+  // Branch-operation notices are keyed by branch and gated differently (#2960),
+  // so they take their own path before the issue-number checks below.
+  if (event && hasOwn(BRANCH_EVENTS, event)) {
+    if (hasLabel) {
+      return { ok: false, error: 'Pass an event or a labelAssigned, not both.', warnings };
+    }
+    return composeBranchOperation({
+      name: event, resolved: BRANCH_EVENTS[event], issue, branch, tag, peers, cwd, routing: suppliedRouting, env, warnings,
+    });
+  }
 
   if (event && hasLabel) {
     return {
@@ -527,7 +730,8 @@ function recordReceipt({ ledgerId, from, cwd } = {}) {
 function parseArgs(argv) {
   const out = {
     event: null, issue: null, dispatchResult: null, ledgerId: null, receiptReceived: false, from: null,
-    detail: null, force: false, schema: false, unrecognizedFlags: [],
+    detail: null, force: false, schema: false, branch: null, tag: null, unrecognizedFlags: [],
+    issues: null, outcome: null, runUrl: null, ciResultFile: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -538,6 +742,15 @@ function parseArgs(argv) {
     else if (a === '--receipt-received') out.receiptReceived = true;
     else if (a === '--from' && argv[i + 1]) out.from = argv[++i];
     else if (a === '--detail' && argv[i + 1]) out.detail = argv[++i];
+    else if (a === '--branch' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.branch = argv[++i];
+    else if (a === '--tag' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.tag = argv[++i];
+    // The push group (#2972): the derived issue set, and each event's payload.
+    else if (a === '--issues' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) {
+      out.issues = argv[++i].split(',').map((s) => s.trim().replace(/^#/, '')).filter(Boolean).map((s) => Number(s));
+    }
+    else if (a === '--outcome' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.outcome = argv[++i];
+    else if (a === '--run-url' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.runUrl = argv[++i];
+    else if (a === '--ci-result-file' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.ciResultFile = argv[++i];
     else if (a === '--force') out.force = true;
     // finalize's labelAssigned, verbatim. The literal `null` is the #2694
     // failed-swap value, so it is read as null rather than as a label named
@@ -567,6 +780,28 @@ function parseArgs(argv) {
   if (out.event && !hasOwn(SUPPORTED, out.event)) {
     return { ...out, error: `Unsupported --event ${JSON.stringify(out.event)} — expected one of ${Object.keys(SUPPORTED).join(', ')}.` };
   }
+  // A push-group event is keyed by the derived issue set (#2972). --issue is
+  // accepted as a one-issue set.
+  if (out.event && hasOwn(PUSH_EVENTS, out.event)) {
+    if (!out.issues && out.issue && !Number.isNaN(out.issue)) out.issues = [out.issue];
+    if (!out.issues || out.issues.length === 0 || out.issues.some((n) => !Number.isInteger(n) || n <= 0)) {
+      return { ...out, error: `Missing or invalid --issues <N,N,...> for ${out.event} — pass the set deriveAnnouncementIssues returned.` };
+    }
+    if (out.event === 'ci-terminal' && !out.outcome) {
+      return { ...out, error: 'Missing --outcome <armed|armed-degraded|skipped-no-workflows|skipped-paths-ignore> for ci-terminal.' };
+    }
+    if (out.event === 'ci-resolved' && !out.ciResultFile) {
+      return { ...out, error: 'Missing --ci-result-file <path> for ci-resolved — write ci-watch.js stdout to a file, unaltered.' };
+    }
+    return out;
+  }
+  // A branch-operation notice is keyed by branch; --issue names its tracker
+  // when there is one (#2960).
+  if (out.event && hasOwn(BRANCH_EVENTS, out.event)) {
+    if (!out.branch) return { ...out, error: `Missing --branch <name> for ${out.event}.` };
+    if (out.issue !== null && Number.isNaN(out.issue)) return { ...out, error: 'Invalid --issue <number>.' };
+    return out;
+  }
   if (!out.issue || Number.isNaN(out.issue)) return { ...out, error: 'Missing or invalid --issue <number>.' };
   return out;
 }
@@ -590,6 +825,11 @@ function main() {
         'announce.js --event work-started|work-completed --issue <N>',
         'announce.js --event review-started|review-resolved --issue <N> [--force]',
         'announce.js --label-assigned reviewed|pending|null --issue <N>   (the review verdict: finalize\'s labelAssigned selects review-passed, review-findings or nothing)',
+        'announce.js --event branch-merge-starting|branch-destroy-starting --branch <name> [--issue <tracker>]   (forced broadcast, master switch only — #2960)',
+        'announce.js --event beta-starting|release-starting --branch <name> --tag <vX.Y.Z> [--issue <tracker>]',
+        'announce.js --event push-started|push-rejected --issues <N,N,...>   (/done push group, routed like the work events — #2972)',
+        'announce.js --event ci-terminal --issues <N,N,...> --outcome armed|armed-degraded|skipped-no-workflows|skipped-paths-ignore [--run-url <url>]',
+        'announce.js --event ci-resolved --issues <N,N,...> --ci-result-file <path to ci-watch.js stdout, unaltered>',
         'announce.js --dispatch-result sent|failed|skipped --ledger-id <id> [--detail "<text>"]',
         'announce.js --receipt-received --ledger-id <id> [--from <monitor session name>]   (a /overwatch receipt reply arrived for that announcement)',
       ],
@@ -630,7 +870,22 @@ function main() {
   }
 
   const { peers, warnings: peerWarnings } = readPeers();
-  const input = { event: args.event, issue: args.issue, peers, force: args.force };
+  const input = { event: args.event, issue: args.issue, peers, force: args.force, branch: args.branch, tag: args.tag };
+  if (args.event && hasOwn(PUSH_EVENTS, args.event)) {
+    input.issues = args.issues;
+    input.outcome = args.outcome || undefined;
+    input.runUrl = args.runUrl || undefined;
+    if (args.ciResultFile) {
+      // ci-watch.js stdout, unaltered (#2892). An unreadable file is passed as
+      // no result, which buildAnnouncement refuses by name rather than
+      // announcing the run as unreadable.
+      try {
+        input.ciResult = JSON.parse(require('fs').readFileSync(args.ciResultFile, 'utf8'));
+      } catch (err) {
+        peerWarnings.push(`CI result file ${args.ciResultFile} could not be read as JSON (${err.message}).`);
+      }
+    }
+  }
   if (Object.prototype.hasOwnProperty.call(args, 'labelAssigned')) input.labelAssigned = args.labelAssigned;
   const result = compose(input);
   result.warnings = [...peerWarnings, ...result.warnings];
@@ -647,6 +902,9 @@ module.exports = {
   SUPPORTED,
   readRouting,
   REVIEW_EVENTS,
+  BRANCH_EVENTS,
+  PUSH_EVENTS,
+  branchOperationGate,
   VERDICT_BY_LABEL,
   selectVerdictEvent,
   resolveSessionPid,
