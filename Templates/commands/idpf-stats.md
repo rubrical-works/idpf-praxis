@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Generate an IDPF session statistics report with development velocity metrics.
 argument-hint: "[--daily-log [prose]] [--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save]"
 copyright: "Rubrical Works (c) 2026"
@@ -236,14 +236,14 @@ Population: {population}   Source: {source}
 Ratings: 🟢 above `high`, 🟡 between `low` and `high`, 🔴 below `low`.
 
 **Assumptions disclosure is mandatory, and satisfiable since #2676.** Show each benchmark's `median`, `population` and `source` — all three ship in `stats-config.json` and return on `assessVelocity()`'s `benchmarks` key. Before #2676 the rule demanded a source that existed nowhere.
-**Where a set is `validated: false`, say so.** The three throughput bands are unvalidated internal heuristics with no published citation; presenting them as "median human benchmarks" stated as fact was the defect removed. A labelled heuristic is usable with scepticism; an uncited one is not.
+**Where a set is `validated: false`, say so.** The three throughput bands are unvalidated internal heuristics with no published citation; presenting them as "median human benchmarks" stated as fact was the defect removed. A labeled heuristic is usable with scepticism; an uncited one is not.
 **The "~Nx typical developer velocity" line is gone and must not return.** It divided this repository's rates by an uncited median and reported the quotient as a fact about developers. The replacement compares against **this repository's own** trailing history. `assessVelocity()` no longer returns `multiplier`; a test asserts its absence.
 **Insufficient history reports not-collected, never 0.** Fewer active days than `baseline.minDataPoints` → `computeTrailingBaseline()` returns `null` with a reason; render the reason. A median over two days is not a baseline.
 
 ### Step 3b-i: DORA Metrics (#2676)
 **Trigger:** always attempted; each metric renders its own not-collected reason when absent.
 Call `collectDora()` from `stats-collect.js` → `measured`, `proxies`, `tierPlacement`, `tierSource`, `unavailable`. Render deployment frequency, lead time, change failure rate ‡ and time to restore ‡ with their tier, and head the table with `tierSource.source` + `reportYear`.
-**The two proxies must be labelled wherever they appear (‡).** Change failure rate and time to restore derive from issue labels and timestamps, not deployment telemetry. They arrive under `proxies` rather than `measured` and each carries `isProxy: true` — render the marker. A proxy shown as measured invites a tier comparison the data does not support.
+**The two proxies must be labeled wherever they appear (‡).** Change failure rate and time to restore derive from issue labels and timestamps, not deployment telemetry. They arrive under `proxies` rather than `measured` and each carries `isProxy: true` — render the marker. A proxy shown as measured invites a tier comparison the data does not support.
 **Attribution rule for both proxies.** A `bug` issue attributes to the **most recent release tag preceding its `createdAt`**. Issues predating the first tag in range are **excluded**, not attributed to it — attributing them would blame the first release for every bug that already existed.
 **Never render a missing metric as 0.** Every `unavailable` entry carries a reason; show it in place of the value. "No releases in range" is not a deployment frequency of zero, and rendering it as zero places the repo in the Low tier on a measurement that never happened.
 **Cite the tier source.** DORA band boundaries move between annual reports, so a placement is only as current as `reportYear`. Refreshing it and surfacing staleness is #2677.
@@ -303,15 +303,20 @@ Do not render empty tables.
 **Trigger:** `--daily-log` present. One report per day for product, QA and engineering managers: what shipped, what is ready to test, what is blocked, which bugs were found or fixed. Every issue, number and claim must trace to a collected fact — derive, never compose (#2790).
 
 **Current repository only.** Ignores `--repos`, `--repos-edit` and the auto-detected `<framework_root>/idpf-stats/repos.json` list. The collector names each source set aside in `ignored`; when non-empty, say in the run output they were ignored and the log covers the current repository only.
-**Date-range and `--save` flags are ignored too, and reported the same way (#2962).** Days come only from the prose after `--daily-log` (or today), so `--today`, `--date`, `--since`, `--until`, `--save` have no effect. Name each one the user typed on the same `Ignored for --daily-log` line as the repo sources, so `/idpf-stats --daily-log --date 2026-09-01` does not silently produce today's log. Report, never reject: ignoring stays the behaviour and no invocation's output changes.
+**Date-range and `--save` flags are ignored too, and reported the same way (#2962).** Days come only from the prose after `--daily-log` (or today), so `--today`, `--date`, `--since`, `--until`, `--save` have no effect. Name each one the user typed on the same `Ignored for --daily-log` line as the repo sources, so `/idpf-stats --daily-log --date 2026-09-01` does not silently produce today's log. Report, never reject: ignoring stays the behavior and no invocation's output changes.
 
 #### 5a: Resolve the Days
 - **Bare `--daily-log` (no prose):** today, over the same range as `--today`. Interpret nothing; run without a confirmation prompt.
 - **Prose:** resolve the phrase into an explicit date list of `YYYY-MM-DD` local dates (`for every weekday last week` → five dates). Show it and confirm via `AskUserQuestion` before any report is generated (proceed, or correct the list). A declined list generates nothing: no collection, no files. A phrase that cannot be resolved into dates stops with a message that names the phrase — never guess a range.
 
 #### 5b: Collect
+**Generate the facts path first — once per invocation, before collection runs.** A fixed path is shared by every session running this command in this working directory, and the failure is silent: one run reads a file the other wrote, or one run's cleanup removes a file the other has not read. Nothing here is named after an issue, so shell out for the suffix — **`/bug`'s scheme (#2980)**: 
 ```bash
-node .claude/scripts/shared/daily-log-collect.js --dates 2026-09-08,2026-09-09 > .tmp-daily-log-facts.json
+FACTS_FILE=".tmp-daily-log-facts-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").json"
+```
+Use `$FACTS_FILE` at both sites — the redirect here and `--facts` at 5e. They must name the same file, or citation verification checks a draft against another run's facts. **Keep the `.tmp-` prefix**: it is what lets the startup stale-scratch sweep collect a file an interrupted run left behind.
+```bash
+node .claude/scripts/shared/daily-log-collect.js --dates 2026-09-08,2026-09-09 > $FACTS_FILE
 ```
 Omit `--dates` for today; pass `--repos`/`--repos-edit` through if typed so they are reported as ignored. `ok: false` → report `invalid` and STOP. Each day uses Step 1's `--date` semantics (local, `T00:00:00`–`T23:59:59`).
 
@@ -353,7 +358,7 @@ Commits, files changed, lines added and removed by type, tests added.
 #### 5e: Verify Citations, Then Save
 Write each draft to `.tmp-daily-log-YYYY-MM-DD.md`, then check it:
 ```bash
-node .claude/scripts/shared/daily-log-collect.js --verify-citations .tmp-daily-log-2026-09-08.md --facts .tmp-daily-log-facts.json
+node .claude/scripts/shared/daily-log-collect.js --verify-citations .tmp-daily-log-2026-09-08.md --facts $FACTS_FILE
 ```
 `unknown` non-empty (exit 1) → this blocks the save for that day, naming each unknown issue: remove or correct every citation absent from the facts and verify again. Never save a report citing an issue the collector did not return.
 

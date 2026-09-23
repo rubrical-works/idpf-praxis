@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * measure-wiring.js
  *
  * Self-wiring for `/idpf-measure` (#2794): registers the PostToolUse tap on
@@ -28,8 +28,8 @@
  *
  * ## Restore fidelity
  *
- * `unwire` prefers the raw text captured at wire time over re-serialising the
- * parsed object. Re-serialising reproduces the original only when the original
+ * `unwire` prefers the raw text captured at wire time over re-serializing the
+ * parsed object. Re-serializing reproduces the original only when the original
  * happened to use the same indentation and trailing newline; a verbatim restore
  * is byte-for-byte by construction. The surgical path is the fallback for a
  * crashed `--start` that never recorded one.

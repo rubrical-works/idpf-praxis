@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Evaluate tests for charter alignment and functional authenticity, using the IDPF framework.
 argument-hint: "[--full] [--status]"
 copyright: "Rubrical Works (c) 2026"
@@ -60,7 +60,7 @@ Steps 3-6b all key off a discovered **test** file, so a source with no test prod
 Resolve the source set exactly as `/code-review` Step 3 does, so the two commands cannot disagree about what counts as source:
 1. `detectTechStack()` from `.claude/scripts/shared/lib/detect-tech-stack.js` — detected language identifiers.
 2. `getGlobPatternsForTechs()` from the same module — include patterns.
-3. Subtract directories in `.claude/metadata/code-review-excludes.json` (honour each category's `env`).
+3. Subtract directories in `.claude/metadata/code-review-excludes.json` (honor each category's `env`).
 4. Subtract files already discovered as tests in Step 3 — here a test is not a source.
 5. Subtract `ignoredSourcePatterns` from the Step 6c conventions file.
 Report: `Source inventory: N files across M directories (T excluded).`
@@ -136,7 +136,7 @@ and every accessibility example in Domains/Accessibility/ (ARIA Authoring,
 Screen-Reader Testing, VPAT Generation) reaches it through @axe-core/playwright.
 The accessibility domain's own guidance is unreachable in this project.
 ```
-**Distinct from both** neighbours; do NOT collapse into either:
+**Distinct from both** neighbors; do NOT collapse into either:
 - **Not a clean result.** Clean means the review looked and found nothing; this means it structurally could not look. Clean here is false assurance about the one domain whose evidence lives in the rendered page.
 - **Not one of the suppressed per-file `missing-e2e-test` findings.** Those are suppressed *because* no e2e layer was declared; this says that same absence carries a second, larger consequence the suppression would otherwise hide.
 Emitted once per run; absent when no accessibility domain is active.

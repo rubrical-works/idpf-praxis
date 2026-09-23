@@ -54,7 +54,7 @@ Both `.idpf-measure.*` files are gitignored. Neither is durable — this command
 | Situation | What happens |
 |---|---|
 | `--stop` with nothing armed | Says so and carries on. Nothing to disarm is a normal state, not an error. |
-| A session died without `--stop` | The leftover marker is reported as stale and cleaned up, rather than being honoured — otherwise collection would stay armed indefinitely. |
+| A session died without `--stop` | The leftover marker is reported as stale and cleaned up, rather than being honored — otherwise collection would stay armed indefinitely. |
 | Another session is measuring here | Its marker is left alone and you are told. Your `--stop` will not interfere with someone else's run. |
 | `--start` twice | The second is a no-op. The wiring is not doubled. |
 | Nothing was recorded | You get "no events were collected" and the likely reasons — never a report full of zeros, which would suggest a run happened and took no time. |

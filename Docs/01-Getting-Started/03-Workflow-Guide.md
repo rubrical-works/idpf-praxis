@@ -518,7 +518,7 @@ Naming the same issue twice assigns it once, including when you list an issue ex
 
 Each gate suite names the files it covers (`match`) and the command that runs it (`full`). Suites marked `manual-only` — "none applicable" records and harnesses whose tooling is still pending install — are never run; they are listed in the report as declared-but-not-run so they stay visible.
 
-Projects that declared tests before harness selection existed keep working: a `verificationCommands` array (or a single `testCommand`) is still honoured when no `testing` block is present. When both `testing` and `verificationCommands` are declared, `testing` takes precedence. A project that declares nothing is told so — the sweep is skipped and the move to `in_review` proceeds unverified. Run `/charter --testing` to make this gate real.
+Projects that declared tests before harness selection existed keep working: a `verificationCommands` array (or a single `testCommand`) is still honored when no `testing` block is present. When both `testing` and `verificationCommands` are declared, `testing` takes precedence. A project that declares nothing is told so — the sweep is skipped and the move to `in_review` proceeds unverified. Run `/charter --testing` to make this gate real.
 
 **The TDD cycle (IDPF-Agile):** The assistant performs this autonomously — you don't need to understand TDD to use the framework. For reference, the cycle is:
 ```

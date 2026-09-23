@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
@@ -659,7 +659,7 @@ const GLOB_WALK_MAX_ENTRIES = 50000;
 /**
  * Vendored glob matcher (#2597).
  *
- * Modelled on `globToRegex` in `scope-drift-check.js`, the worked precedent for
+ * Modeled on `globToRegex` in `scope-drift-check.js`, the worked precedent for
  * exactly this: `minimatch` is not in `runtimeNpmDependencies`, so requiring it
  * here would crash at module load in every deployed project (the runtime
  * dependency contract in 04-deployment-awareness.md). Twenty-odd lines is well

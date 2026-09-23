@@ -38,7 +38,7 @@
           "issueHistory",
           "companionRepos"
         ],
-        "scope": "Evidence matching only (#2874). gh issue list --search matches whole bodies server-side and cannot exclude a section, so every candidate it returns is post-filtered: pass the body through the helper, and count the issue as evidence only when a term still matches its title or its stripped body. A hit that falls only inside an earlier sweep's **Prior Art:** section (any recognised form, heading at any level) or a log-changed-files.js ### Files Changed section is not prior art. This never removes a section a command reads as INPUT: /qa reads the parent's ### Files Changed section as its term source, and that is unchanged."
+        "scope": "Evidence matching only (#2874). gh issue list --search matches whole bodies server-side and cannot exclude a section, so every candidate it returns is post-filtered: pass the body through the helper, and count the issue as evidence only when a term still matches its title or its stripped body. A hit that falls only inside an earlier sweep's **Prior Art:** section (any recognized form, heading at any level) or a log-changed-files.js ### Files Changed section is not prior art. This never removes a section a command reads as INPUT: /qa reads the parent's ### Files Changed section as its term source, and that is unchanged."
       },
       "truncation": "A search that returns exactly the number of issues its command's --limit allows (gh's default is 30 when the command carries none) is reported as possibly truncated, never as complete: --limit cuts off with no signal. Applies to companionRepos searches too. Decide via isPossiblyTruncated(resultCount, command) in .claude/scripts/shared/lib/prior-art-marker.js."
     },
@@ -159,8 +159,8 @@
   },
   "bodyFormat": {
     "heading": "**Prior Art:**",
-    "_recognisedFormsNote": "RECOGNITION vs EMISSION (#2700). The formats below are what the commands EMIT. Detection accepts more: a hand-written markdown heading counts too, so an author who writes ## Prior Art is not reported as having skipped the sweep. heading above is the emitted form only — reading it as the sole accepted form is the misreading #2700 fixed.",
-    "recognisedForms": [
+    "_recognizedFormsNote": "RECOGNITION vs EMISSION (#2700). The formats below are what the commands EMIT. Detection accepts more: a hand-written markdown heading counts too, so an author who writes ## Prior Art is not reported as having skipped the sweep. heading above is the emitted form only — reading it as the sole accepted form is the misreading #2700 fixed.",
+    "recognizedForms": [
       "**Prior Art:**",
       "## Prior Art"
     ],

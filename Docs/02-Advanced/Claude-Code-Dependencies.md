@@ -65,7 +65,7 @@ If Claude Code stops recognizing `.claude/` as a special directory, or renames a
 | `01-anti-hallucination.md` | Prevents the assistant from inventing versions, counts, or file paths. **Variant pair** — deployed projects get the Software-Development text, this repo the Framework-Development one |
 | `02-github-workflow.md` | GitHub issue/project board integration (gh pmu commands) |
 | `03-startup.md` | Session initialization procedure |
-| `04-charter-enforcement.md` | Charter compliance. **Variant pair** — this is what a deployed project gets; `04-deployment-awareness.md` (dev → distribution chain) is dev-only and never materialises in a user project |
+| `04-charter-enforcement.md` | Charter compliance. **Variant pair** — this is what a deployed project gets; `04-deployment-awareness.md` (dev → distribution chain) is dev-only and never materializes in a user project |
 | `05-windows-shell.md` | Windows Git Bash safety patterns |
 | `06-runtime-triggers.md` | Runtime artifact triggers (design decisions, tech debt, runbook) |
 | `07-task-creation-timing.md` | Two-phase task creation for routed commands |
@@ -75,7 +75,7 @@ Slots `01` and `04` are variant pairs: the same filename carries different conte
 
 #### Compaction Survival — Measured 2026-09-02 (#2736)
 
-This line previously asserted the behaviour with nothing having checked it. Measured on Claude Code **2.1.258**, Windows 11, this repo, real (non-junctioned) `.claude/rules/`.
+This line previously asserted the behavior with nothing having checked it. Measured on Claude Code **2.1.258**, Windows 11, this repo, real (non-junctioned) `.claude/rules/`.
 
 **Probe design.** Three questions whose answers appear only in `06-runtime-triggers.md` — the one auto-loaded rule never read, grepped, or discussed anywhere in the session, so its content was present *solely* via auto-load injection. Any rule read from disk could have survived in the compaction summary and produced a false pass. Answers were committed to the transcript **before** the file was reopened. Result: **3/3 correct**, scored against the rule on disk (sha256 `69d8618…`, 8,163 bytes, unchanged across the probe).
 
@@ -83,7 +83,7 @@ This line previously asserted the behaviour with nothing having checked it. Meas
 
 **Consequence for the junction defect — the reason this was worth measuring.** Re-injection travels the *same* auto-discovery path a directory junction defeats. So in a project where rules never reached context at startup, there is nothing to re-inject at compaction either: the failure is total, not first-turn-only.
 
-**Reconciling `03-startup.md`.** That rule states "No re-reading required … Claude resumes from **in-memory context**." Both of its operative claims hold — no re-read is required *of Claude*, and the startup hook genuinely does not re-run (it is registered on `SessionStart` matcher `startup` only). Only the phrase "in-memory" misattributes the agent: the harness re-injects each time. The observable behaviour the rule describes is correct.
+**Reconciling `03-startup.md`.** That rule states "No re-reading required … Claude resumes from **in-memory context**." Both of its operative claims hold — no re-read is required *of Claude*, and the startup hook genuinely does not re-run (it is registered on `SessionStart` matcher `startup` only). Only the phrase "in-memory" misattributes the agent: the harness re-injects each time. The observable behavior the rule describes is correct.
 
 **What would break:** If rules stopped auto-loading, the assistant would lose its quality guardrails mid-session. Anti-hallucination rules prevent version number invention during releases. GitHub workflow rules enforce STOP boundaries. Without these, the assistant becomes unreliable for framework development.
 
@@ -93,7 +93,7 @@ This line previously asserted the behaviour with nothing having checked it. Meas
 
 **The count is of PERMANENT registrations. One hook is deliberately excluded: `/idpf-measure`'s `measure-tap.js` (#2803).** The tap exists only between `--start` and `--stop`, so counting it would make this heading correct only while nobody is measuring. Because `.claude/settings.local.json` is git-tracked in this repository, arming took the registration count from 9 to 10 and turned the guard that derives this heading red for **every** session sharing the working directory — a hard gate under `/work` Step 4f, so one developer's measurement blocked everyone else's unrelated work.
 
-The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP_COMMAND` rather than a filename match, and it is **not** a general licence to omit hooks from this section: every permanent hook is still derived from disk, and adding or removing one without updating this heading still fails.
+The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP_COMMAND` rather than a filename match, and it is **not** a general license to omit hooks from this section: every permanent hook is still derived from disk, and adding or removing one without updating this heading still fails.
 
 **Counting basis: registrations in this repository's `.claude/settings.local.json`.** Three defensible counts exist here and they disagree, so the number above says which one it is:
 

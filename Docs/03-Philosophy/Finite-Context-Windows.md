@@ -53,7 +53,7 @@ The IDPF framework doesn't refute the context limitation argument so much as it 
 The amnesiac-with-a-search-engine critique is real. IDPF addresses it with:
 
 - **`.claude/rules/`** -- Auto-loaded every session and after compaction. The assistant never loses its workflow knowledge, anti-hallucination discipline, or GitHub integration patterns.
-- **`CHARTER.md`** -- Project identity document, read and summarised at the top of every session, that survives context loss.
+- **`CHARTER.md`** -- Project identity document, read and summarized at the top of every session, that survives context loss.
 - **Issue and board state** -- The durable record of what is in flight, what was reviewed, and what remains. `Refs #N` commit attribution ties code back to the requirement that asked for it, so position in a workflow is recoverable from git and GitHub rather than from memory.
 
 This isn't "full understanding" -- it's **strategic persistence** of exactly the knowledge that matters most.

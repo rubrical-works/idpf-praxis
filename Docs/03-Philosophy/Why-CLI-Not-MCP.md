@@ -229,7 +229,7 @@ This is the part that decides it. The sanctioned flow today is:
 Write tool → .tmp-123.md  →  gh pmu edit 123 -F .tmp-123.md  →  rm
 ```
 
-The Write tool is not a shell command. Body text never passes through bash quoting at any point in that sequence. The backtick-in-heredoc and inline-`--body` failures catalogued in [Windows Shell Safety](../../Reference/Windows-Shell-Safety.md) are failures of the *forbidden* patterns — the approved path is already safe.
+The Write tool is not a shell command. Body text never passes through bash quoting at any point in that sequence. The backtick-in-heredoc and inline-`--body` failures cataloged in [Windows Shell Safety](../../Reference/Windows-Shell-Safety.md) are failures of the *forbidden* patterns — the approved path is already safe.
 
 MCP would therefore not fix a correctness defect. It would remove **ceremony**: three tool calls collapse to one, temp files stop accumulating, and the assistant stops needing to recall a convention spread across 21 files.
 
@@ -247,7 +247,7 @@ Three tools, deliberately **excluding `create_issue`** — it is the one text-be
 
 ### Why it is not planned
 
-The cost is not the server — it is the dual path. Twenty-one files (19 command specs, plus `05-windows-shell.md` and `08-work-execution.md`) hardcode the `--body-stdout` / `-F` flow. The choice is to migrate all 21 or to document two supported ways to edit a body, and an ambiguity of that kind is exactly what produces inconsistent behaviour after compaction.
+The cost is not the server — it is the dual path. Twenty-one files (19 command specs, plus `05-windows-shell.md` and `08-work-execution.md`) hardcode the `--body-stdout` / `-F` flow. The choice is to migrate all 21 or to document two supported ways to edit a body, and an ambiguity of that kind is exactly what produces inconsistent behavior after compaction.
 
 So the ledger reads: a narrow, well-shaped, policy-free server that removes ceremony but fixes no defect, paid for with a 21-file migration. Worth recording as the strongest version of the idea. Not worth doing on those terms.
 

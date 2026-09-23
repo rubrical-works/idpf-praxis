@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Shared 127.0.0.1 server infrastructure used by /mockups --serve (#2377) and
  * /design-system --showcase (#2429, Story 1.1). Provides:
@@ -238,7 +238,7 @@ function attachGracefulShutdown(server, onShutdown) {
  * trailing separator, so serving `Mockups/login` also served
  * `Mockups/login-internal/...`: the sibling's absolute path genuinely starts
  * with the root's. path.relative() is correct on both separators without the
- * caller reasoning about trailing-separator normalisation, which is the exact
+ * caller reasoning about trailing-separator normalization, which is the exact
  * class of reasoning that produced the bug.
  *
  * Malformed percent-encoding returns null rather than throwing. decodeURIComponent

@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Create GitHub epics and stories from a PRD, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151)"
 copyright: "Rubrical Works (c) 2026"
@@ -151,14 +151,20 @@ Read `PRD/{name}/PRD-{name}.md` and extract Epics, Stories, Acceptance criteria.
 
 For each epic. Use `gh pmu create` (auto-adds to project board):
 
+**Generate both body paths first — once per invocation, before any body is composed.** This command holds an epic body and a story body open in one run, so a single shared name collides with itself as well as with a concurrent session. A fixed path is shared by every session running this command in this working directory: one write landing between another's write and its `gh pmu create` files the second issue with the first one's body, and nothing reports it. The issue number cannot supply the uniqueness — it does not exist until after the body is written, which is why #1034's per-issue fix covers editing and not creation. Take the suffix from a shelled-out command, never invented — **the same scheme `/bug` uses (#2980)**:
+```bash
+EPIC_BODY_FILE=".tmp-epic-body-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").md"
+STORY_BODY_FILE=".tmp-story-body-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").md"
+```
+Use `$EPIC_BODY_FILE` at every epic site and `$STORY_BODY_FILE` at every story site below; both stay distinct for the whole invocation. **Keep the `.tmp-` prefix**: it is what lets the startup stale-scratch sweep collect a file an interrupted run left behind.
 ```bash
 gh pmu create --title "Epic: {Epic Name}" --label "epic" --status backlog \
-  --priority {highest_story_priority} -F .tmp-epic-body.md
+  --priority {highest_story_priority} -F $EPIC_BODY_FILE
 ```
 
 **Priority rule:** Epic = highest priority among child stories (P0+P2 → P0). Default to PRD-level if no per-story priorities.
 
-**Epic body** (`.tmp-epic-body.md`):
+**Epic body** (`$EPIC_BODY_FILE`):
 
 ```markdown
 ## Epic: {Epic Name}
@@ -178,15 +184,15 @@ gh pmu create --title "Epic: {Epic Name}" --label "epic" --status backlog \
 Stories will be linked as sub-issues.
 ```
 
-Cleanup: `rm .tmp-epic-body.md`
-**Success Criteria — checkbox shape, and why the heading parses (#2697).** Write each PRD-supplied criterion as its own `- [ ]` item, NEVER as prose. Two causes made epic criteria invisible and they blocked disjoint consumer sets: prose-not-checkboxes blocked the 6 heading-agnostic `scanCheckboxes` callers (`nonstop-audit`, `qa-extract`, `reset-issue-preamble`, `review-ac-checkoff`, `review-interdependence`, `lib/create-backlog-review-gate`); an unrecognised heading blocked the 3 heading-anchored `extractAcceptanceCriteria` callers (`work-preamble`, `generate-test-plan`, `mockup-ac-generator`). `scanCheckboxes` takes no heading argument, so the checkbox shape is what reaches the first group — the heading fix alone would not have.
+Cleanup: `rm $EPIC_BODY_FILE`
+**Success Criteria — checkbox shape, and why the heading parses (#2697).** Write each PRD-supplied criterion as its own `- [ ]` item, NEVER as prose. Two causes made epic criteria invisible and they blocked disjoint consumer sets: prose-not-checkboxes blocked the 6 heading-agnostic `scanCheckboxes` callers (`nonstop-audit`, `qa-extract`, `reset-issue-preamble`, `review-ac-checkoff`, `review-interdependence`, `lib/create-backlog-review-gate`); an unrecognized heading blocked the 3 heading-anchored `extractAcceptanceCriteria` callers (`work-preamble`, `generate-test-plan`, `mockup-ac-generator`). `scanCheckboxes` takes no heading argument, so the checkbox shape is what reaches the first group — the heading fix alone would not have.
 **Parser extended, heading NOT renamed.** `checkbox-scan.js` `ACCEPTANCE_CRITERIA_HEADINGS` gained `## Success Criteria` as a fourth pattern. A rename would strand every PRD and epic already authored against this heading and invalidate `deliverableSplit.appliesTo`'s `epic success criteria`.
 **Why epics especially:** an empty AC list passes every downstream gate **vacuously**, not by succeeding (`08-work-execution.md` Step 3) — no per-AC subtasks, nothing for Step 4, no unchecked boxes for Step 4b, a clean Step 6a audit. On epics that was the normal case, and an epic gates a whole sub-issue tree.
 
 **Success Criteria — never fabricate (#2508).** `{Success criteria from PRD}` is a placeholder for PRD-supplied content. When the PRD's epic section has **no** Success Criteria heading, the slot has no source. **Do NOT synthesize criteria from the epic's child stories, and do NOT invent them** — an empty template slot is a gap to surface, not a prompt to generate. Epic #2491 got "8 specialists rewritten in opinion-dense format … each user-reviewed via `/review-issue`" this way: pulled up out of the child stories, inheriting their unsatisfiable review gate.
 
 When the PRD supplies none: (1) emit `## Success Criteria` with `_Not specified in the PRD. Add before this epic is worked._`; (2) record the gap in the Phase 7 summary and report `⚠️ Epic "{Epic Name}": PRD section has no Success Criteria. Created with the slot marked unspecified.`; (3) continue — warns, does not block.
-**The marker now parses as present-and-empty (#2697):** the heading is in the scanner's set, so an epic carrying only the unspecified marker returns `sectionFound: true` with zero items — a different fact from no section at all, with a different remedy. **Nothing above changes**; this is not a licence to generate.
+**The marker now parses as present-and-empty (#2697):** the heading is in the scanner's set, so an epic carrying only the unspecified marker returns `sectionFound: true` with zero items — a different fact from no section at all, with a different remedy. **Nothing above changes**; this is not a license to generate.
 
 **Success Criteria — apply the AC gates.** When the PRD *does* supply criteria, they are ACs. Re-read `.claude/metadata/ac-feasibility-prompts.json` from disk and apply **`deliverableSplit`** (its `appliesTo` names `epic success criteria`; a criterion bundling deliverable + verification must be split, since one checkbox cannot express a satisfied deliverable alongside an unsatisfiable verification) and **`phaseFeasibility`** (condition resolving after the epic reaches `in_review` → annotate `→ GATE: review` / `→ GATE: release`; work another command's checklist owns → drop per `ownedElsewhere`).
 
@@ -209,14 +215,14 @@ For each story:
 
 ```bash
 gh pmu create --title "Story: {Story Title}" --label "story" --status backlog \
-  --priority {prd_priority} --assignee {assignee} -F .tmp-story-body.md
+  --priority {prd_priority} --assignee {assignee} -F $STORY_BODY_FILE
 ```
 
 **Assignee:** substitute `{assignee}` from `node .claude/scripts/shared/lib/gh-pmu-config.js --assignee <value>` — pass the user's `--assignee` value, omit when none given. Helper returns that login, else `@me`; reads no config file. NEVER hardcode a login or drop the flag (omitted `--assignee` silently creates an unassigned issue). Unresolvable login → `gh pmu` exits 1 and creates nothing; report the error, do NOT retry without the flag. Stories here previously passed no `--assignee` at all and arrived unassigned.
 
 **Priority rule:** Story = PRD-specified priority; PRD default if none.
 
-Link to epic: `gh pmu sub add {epic_number} {story_number} || true`. Cleanup: `rm .tmp-story-body.md`.
+Link to epic: `gh pmu sub add {epic_number} {story_number} || true`. Cleanup: `rm $STORY_BODY_FILE`.
 
 ### Story Body Template
 

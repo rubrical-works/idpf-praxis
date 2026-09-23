@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Analyze an issue to determine what /issue-reset would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
  * @checksum sha256:placeholder
  *
@@ -65,7 +65,7 @@ function analyzeBody(body) {
   // #2600: previously `/\[x\]/gi` and `/\[ \]/g` — not line-anchored at all, so
   // `[x]` or `[ ]` appearing inline in prose or inside a markdown table counted
   // as a checkbox, fenced or not. A different defect class from the other five
-  // scanners, and a deliberate behaviour change rather than a pure fix:
+  // scanners, and a deliberate behavior change rather than a pure fix:
   // totalBoxes drops on any body that mentions `[x]` inline. Accepted because
   // the numbers become the numbers the field names already claim.
   const boxes = scanCheckboxes(body);

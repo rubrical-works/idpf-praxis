@@ -3,7 +3,7 @@
 **Charter Review Questions**
 - Does the charter describe request handling, database access, or streaming work whose latency a user would notice?
 - Are throughput, latency, or capacity expectations stated anywhere in scope?
-- Do the in-scope items include caching, queueing, or batch processing whose behaviour under load is load-bearing?
+- Do the in-scope items include caching, queueing, or batch processing whose behavior under load is load-bearing?
 - Does the charter name the deployment target, so realistic resource limits can be judged?
 - Is performance explicitly out of scope, and if so is that consistent with what the project ships?
 **Proposal Review Questions**

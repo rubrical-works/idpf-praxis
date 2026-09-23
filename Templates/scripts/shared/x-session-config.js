@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -175,7 +175,7 @@ function parseArgs(argv) {
     }
   }
 
-  // `--show` and the mutation flags are opposite intents. Silently honouring
+  // `--show` and the mutation flags are opposite intents. Silently honoring
   // one would produce output that looks like a write but was not — exactly the
   // ambiguity the rest of this command's error handling exists to prevent — so
   // the combination is refused and the message names both halves.
@@ -216,7 +216,7 @@ function helpText() {
     '',
     '  noticeNarration is the one RECEIVE-side lever: it sets how verbosely',
     '  this session narrates an announcement it RECEIVES. Quiet keeps the',
-    '  one-line acknowledgement and drops the commentary around it.',
+    '  one-line acknowledgment and drops the commentary around it.',
     '',
     '  overlapNotices governs whether /overwatch messages the sessions',
     '  whose in-flight issues declare the same files. Off is report-only.',
@@ -276,14 +276,14 @@ const MEMORY_BODY = [
   '---',
   '',
   'When a peer announcement arrives, acknowledge it in **one line** and carry on.',
-  'Do not look the issue up, enumerate likely files, or analyse the collision surface —',
+  'Do not look the issue up, enumerate likely files, or analyze the collision surface —',
   'the protocol asks for none of it.',
   '',
   '**Why:** the announcement is one line, but expanding it into a paragraph scales into',
   'sustained noise under --nonstop, where work-started and work-completed fire per',
   'sub-issue on exactly the long unattended runs where a peer is most likely running.',
   '',
-  '**How to apply:** keep the acknowledgement, drop the commentary. Set by',
+  '**How to apply:** keep the acknowledgment, drop the commentary. Set by',
   '/x-session-config --quiet; --loud removes this file and restores the default.',
   '',
 ].join('\n');
@@ -293,24 +293,24 @@ function memoryPaths(cwd) {
   const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
   const slug = String(cwd).replace(/[^a-zA-Z0-9]/g, '-');
   const dir = path.join(configDir, 'projects', slug, 'memory');
-  return { dir, artefact: path.join(dir, MEMORY_ARTEFACT), index: path.join(dir, MEMORY_INDEX) };
+  return { dir, artifact: path.join(dir, MEMORY_ARTEFACT), index: path.join(dir, MEMORY_INDEX) };
 }
 
-/** Is the artefact on disk? Any error answers "no" rather than throwing. */
+/** Is the artifact on disk? Any error answers "no" rather than throwing. */
 function memoryPresent(cwd) {
   try {
-    return fs.existsSync(memoryPaths(cwd).artefact);
+    return fs.existsSync(memoryPaths(cwd).artifact);
   } catch {
     return false;
   }
 }
 
-/** Write the artefact and ensure its MEMORY.md pointer. Never throws. */
-function writeMemoryArtefact(cwd) {
+/** Write the artifact and ensure its MEMORY.md pointer. Never throws. */
+function writeMemoryArtifact(cwd) {
   const paths = memoryPaths(cwd);
   try {
     fs.mkdirSync(paths.dir, { recursive: true });
-    fs.writeFileSync(paths.artefact, MEMORY_BODY);
+    fs.writeFileSync(paths.artifact, MEMORY_BODY);
     let index = '';
     try {
       index = fs.readFileSync(paths.index, 'utf8');
@@ -326,11 +326,11 @@ function writeMemoryArtefact(cwd) {
   }
 }
 
-/** Remove the artefact and its pointer line. Never throws; absent is success. */
-function removeMemoryArtefact(cwd) {
+/** Remove the artifact and its pointer line. Never throws; absent is success. */
+function removeMemoryArtifact(cwd) {
   const paths = memoryPaths(cwd);
   try {
-    if (fs.existsSync(paths.artefact)) fs.unlinkSync(paths.artefact);
+    if (fs.existsSync(paths.artifact)) fs.unlinkSync(paths.artifact);
     if (fs.existsSync(paths.index)) {
       const kept = fs.readFileSync(paths.index, 'utf8')
         .split('\n')
@@ -347,7 +347,7 @@ function removeMemoryArtefact(cwd) {
  * Build the envelope's memory block.
  *
  * `drift` is the load-bearing field. The two stores can disagree — lever says
- * quiet, artefact absent — and that failure is SILENT: a suppression that
+ * quiet, artifact absent — and that failure is SILENT: a suppression that
  * quietly stopped working is indistinguishable from one that was never set.
  * Reporting both values and leaving the reader to compare them would preserve
  * exactly that ambiguity, so the disagreement is named.
@@ -360,7 +360,7 @@ function memoryStatus(cwd, quiet, action, result) {
     ok: result ? result.ok : true,
     error: result ? result.error : null,
     dir: paths.dir,
-    artefact: paths.artefact,
+    artifact: paths.artifact,
     index: paths.index,
     present,
     drift: quiet !== present,
@@ -398,7 +398,7 @@ function flatten(obj) {
  *
  * `--off` first, then `--on`. The order is immaterial in practice because a
  * lever named in both is rejected at parse time, but fixing it keeps the
- * behaviour defined rather than incidental.
+ * behavior defined rather than incidental.
  */
 function applyLevers(object, { on = [], off = [] } = {}) {
   const next = { ...object, groups: { ...object.groups } };
@@ -588,7 +588,7 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
 
   // `--show` returns here, BEFORE any write. It reports exactly what a bare
   // invocation would have written, which is what makes it a preview rather
-  // than a second opinion — and it must not materialise the object on an
+  // than a second opinion — and it must not materialize the object on an
   // absent key, the case a byte-comparison against an already-written file
   // would miss.
   if (parsed.mode === 'show') {
@@ -609,8 +609,8 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
       envOverride: shown.envOverride,
       errors: [],
       // --show acts on neither store. It reports the lever, whether the
-      // artefact exists, and whether the two disagree. Keyed to the PROJECT
-      // lever, not the env-suppressed state: the artefact pairs with the
+      // artifact exists, and whether the two disagree. Keyed to the PROJECT
+      // lever, not the env-suppressed state: the artifact pairs with the
       // written `noticeNarration`, so reading the override here would report a
       // drift that does not exist and send the user to fix a file that is
       // already consistent.
@@ -679,10 +679,10 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
   let result = null;
   if (parsed.off.includes('noticeNarration')) {
     action = 'write';
-    result = writeMemoryArtefact(cwd);
+    result = writeMemoryArtifact(cwd);
   } else if (parsed.on.includes('noticeNarration')) {
     action = 'remove';
-    result = removeMemoryArtefact(cwd);
+    result = removeMemoryArtifact(cwd);
   }
 
   return withRouting({
@@ -700,14 +700,14 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
     // write above already succeeded, and failing the command afterwards would
     // report a write that DID happen as a run that did not.
     // Keyed to the written project lever, not the env-suppressed state — the
-    // artefact pairs with what is on disk (#2705).
+    // artifact pairs with what is on disk (#2705).
     memory: memoryStatus(cwd, written.noticeNarration === false, action, result),
   }, effectiveRouting(state, cwd, routingProbe));
 }
 
 module.exports = {
   LEVERS, GROUP_LEVERS, parseArgs, applyLevers, toObject, helpText, run,
-  memoryPaths, memoryPresent, writeMemoryArtefact, removeMemoryArtefact,
+  memoryPaths, memoryPresent, writeMemoryArtifact, removeMemoryArtifact,
   effectiveRouting, formatRouting,
 };
 

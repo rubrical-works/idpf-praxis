@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Resolves the issue-creation assignee for `gh pmu create`
  * (#2489, rewritten in #2599). Holds the default in JS and takes a
  * per-invocation override; reads no configuration file.
@@ -11,8 +11,8 @@
  *
  * **Why nothing is read from `.gh-pmu.json` (#2599).** The default used to live
  * in that file under `defaults.assignee`. `.gh-pmu.json` is owned by the
- * `gh pmu` extension, which does not recognise that key — it was read by the
- * framework, not by `gh pmu` — so any `gh pmu` operation that re-serialises the
+ * `gh pmu` extension, which does not recognize that key — it was read by the
+ * framework, not by `gh pmu` — so any `gh pmu` operation that re-serializes the
  * config drops it. That happened once, silently, and one drop is enough: every
  * issue created afterwards resolves from a key that is no longer there, and the
  * helper cannot tell an absent key from a deliberately-unset one. Removing the
@@ -21,7 +21,7 @@
  * each invocation.
  *
  * There is deliberately **no `project.owner` fallback**. `project.owner` is the
- * *board* owner and may be an organisation login, which does not resolve as an
+ * *board* owner and may be an organization login, which does not resolve as an
  * assignee. Since gh-pmu v1.5.1 (gh-pmu#895) an unresolvable `--assignee`
  * aborts issue creation with exit 1 before the createIssue mutation, so such a
  * fallback would turn a working default into a hard failure.

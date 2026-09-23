@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, and assigns labels (reviewed/pending) to the reviewed issue only — never to its sub-issues (#2869).
  * @checksum sha256:placeholder
  *
@@ -32,7 +32,7 @@ const REVIEW_VERBS = Object.fromEntries(
 
 // Every issue-shaped type (bug/enhancement/story/epic/generic) and any
 // unrecognized or absent value resolves here — which is the header every
-// review carried before this change, so existing behaviour is preserved.
+// review carried before this change, so existing behavior is preserved.
 const DEFAULT_REVIEW_VERB = 'Issue';
 
 function reviewVerb(type) {
@@ -305,7 +305,7 @@ function formatReviewComment(findings) {
   // without trace. Rendered between Findings and Recommendation so a parser
   // reading by section header finds them outside the recommendation block.
   //
-  // Guarded on Array.isArray AND length, NOT modelled on `extensions` above:
+  // Guarded on Array.isArray AND length, NOT modeled on `extensions` above:
   // that one falls back to the literal 'None' and pushes its line
   // unconditionally, which here would emit a heading over a placeholder — the
   // empty section this must never produce. Absent, empty, and non-array all
@@ -334,7 +334,7 @@ function formatReviewComment(findings) {
  * They disagree on exactly one value: `Ready with minor revisions` earns the
  * `reviewed` label here — it HAS been reviewed — but must not earn the
  * `PRD reviewed` gate, because it is not yet decomposable. Do not unify them;
- * unifying either way trades one correct behaviour for a broken one.
+ * unifying either way trades one correct behavior for a broken one.
  * Rationale: Construction/Design-Decisions/2026-08-30-review-clean-predicates-diverge-deliberately.md
  */
 function determineLabel(recommendation) {

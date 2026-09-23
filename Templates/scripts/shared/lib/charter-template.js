@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description The one rule deciding whether CHARTER.md is an unfilled template (#2893).
  * Consulted by the startup hook, the /charter spec and Charter-Enforcement.md.
  * @checksum sha256:placeholder
@@ -36,7 +36,7 @@ const fs = require('fs');
 const PLACEHOLDER_PATTERN = /\{\{?[A-Za-z][A-Za-z0-9 _-]*\}\}?/;
 const PLACEHOLDER_PATTERN_ALL = new RegExp(PLACEHOLDER_PATTERN.source, 'g');
 
-/** Prose marker the startup hook already honoured; kept so no template regresses. */
+/** Prose marker the startup hook already honored; kept so no template regresses. */
 const TODO_MARKER = /TODO: Fill in/i;
 
 /**

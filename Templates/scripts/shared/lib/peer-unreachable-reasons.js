@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Shared vocabulary for why a discovered peer cannot be sent to. One reason-to-phrase map, consumed by both surfaces that describe unreachable peers — the startup Peers row (peers-check.js) and the announcement skip notice (peer-announce.js) — so the two cannot drift apart again. Pure data plus two formatters: no I/O, no external require.
  * @checksum sha256:placeholder
  *
@@ -31,7 +31,7 @@
  * shapes are named rather than derived.
  */
 
-/** Reason key used when a peer's reason is absent or unrecognised. */
+/** Reason key used when a peer's reason is absent or unrecognized. */
 const UNKNOWN_REASON = 'unknown';
 
 /**
@@ -52,7 +52,7 @@ const PEER_UNREACHABLE_REASONS = Object.freeze({
 /**
  * The neutral fallback.
  *
- * An absent or unrecognised reason must not be rendered as either known cause.
+ * An absent or unrecognized reason must not be rendered as either known cause.
  * Same rule `03-startup.md` applies to an absent `entrypoint`, which is never
  * read as `sdk-cli`: absence must not manufacture a specific cause. An older
  * build that omits the field, or a future reason this map has not learned yet,

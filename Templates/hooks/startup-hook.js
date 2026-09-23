@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -894,7 +894,7 @@ function buildChecks(info) {
   checks.push({ name: 'dependency', script: '.claude/scripts/shared/dependency-check.js' });
   checks.push({ name: 'task-tools', script: '.claude/scripts/shared/task-tools-check.js' });
   // #2689: registered UNCONDITIONALLY, alongside dependency and task-tools —
-  // deliberately NOT modelled on `peers` below. That one is gated because
+  // deliberately NOT modeled on `peers` below. That one is gated because
   // discovery is a project decision (#2702); token privilege is not. A project
   // cannot opt out of needing the scopes its own .gh-pmu.json declares, and the
   // check derives its requirement from that file: a project without one

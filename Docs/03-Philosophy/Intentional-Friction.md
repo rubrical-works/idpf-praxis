@@ -1,7 +1,7 @@
 # IDPF Intentional Friction
 
 **Date:** 2026-02-08
-**Behaviour verified:** 2026-09-10
+**Behavior verified:** 2026-09-10
 **Topic:** Why every gate, boundary, and checkpoint in IDPF exists — and what goes wrong without them
 
 ---
@@ -32,7 +32,7 @@ IDPF's friction exists to make the cost of starting work non-zero — specifical
 
 ### 1. Mandatory Charter
 
-**The friction:** Every session opens by reporting charter status. If `CHARTER.md` is missing or still holds template placeholders, the startup hook says so and prompts you to run `/charter`; when it is active, the assistant reads it and summarises the project's scope and current focus before doing anything else.
+**The friction:** Every session opens by reporting charter status. If `CHARTER.md` is missing or still holds template placeholders, the startup hook says so and prompts you to run `/charter`; when it is active, the assistant reads it and summarizes the project's scope and current focus before doing anything else.
 
 **This gate asks rather than blocks, deliberately.** `Reference/Charter-Enforcement.md` — the rule deployed to user projects — states it directly: validation is *"conversational, not blocking"*, and you may expand scope, proceed anyway, or revise the work. The friction is that the charter is read aloud at the top of every session and that scope questions are raised against it, not that a missing charter halts the tool. A hard block would be the wrong shape here: the most common reason a charter is absent is that the project is new, which is exactly when refusing to work is least useful.
 
@@ -100,7 +100,7 @@ STOP boundaries are the mechanism that keeps the human in the decision loop. Aft
 
 **What it prevents:** "Done" meaning "I stopped working." Without explicit AC verification, the assistant declares completion based on its own assessment of whether the code is sufficient. But the acceptance criteria are the *user's* definition of done, not the AI's. The verification step forces alignment between what was requested and what was delivered.
 
-**How unverifiable criteria are handled (#2472).** Some criteria require human judgment ("the UI feels responsive"), external action ("deploy to staging and verify"), or domain knowledge the AI lacks. Rather than stopping the whole workflow, `/work` Step 4a extracts each one into a labelled `qa-required` sub-issue and rewrites the parent line as:
+**How unverifiable criteria are handled (#2472).** Some criteria require human judgment ("the UI feels responsive"), external action ("deploy to staging and verify"), or domain knowledge the AI lacks. Rather than stopping the whole workflow, `/work` Step 4a extracts each one into a labeled `qa-required` sub-issue and rewrites the parent line as:
 
 ```
 - [ ] Works with screen readers → QA: #143
@@ -110,7 +110,7 @@ The box **stays unchecked, by design.** The parent may then move to `in_review` 
 
 Two sibling markers work the same way for criteria that are out of phase rather than unverifiable: `→ GATE: review` for something a human sign-off resolves after `in_review`, and `→ GATE: release` for work `/prepare-release` owns. Each must name the event that resolves it — a token that cannot name one is unfinished work wearing a gate's clothing, not a phase claim.
 
-**Why this replaced a STOP.** Halting on every unverifiable criterion stopped long runs on their first sub-issue over criteria that were correctly unverifiable and always would be. Converting them into tracked, labelled, closable gates preserves the guarantee — nothing is silently skipped or marked complete on your behalf — while letting the rest of the work proceed. The gate is now an issue on the board rather than a pause in a session, which also means it survives the session ending.
+**Why this replaced a STOP.** Halting on every unverifiable criterion stopped long runs on their first sub-issue over criteria that were correctly unverifiable and always would be. Converting them into tracked, labeled, closable gates preserves the guarantee — nothing is silently skipped or marked complete on your behalf — while letting the rest of the work proceed. The gate is now an issue on the board rather than a pause in a session, which also means it survives the session ending.
 
 **The expensive alternative:** The assistant marks all criteria as met, moves to done, and you discover during release that criterion 4 ("works with screen readers") was never actually tested — the assistant assumed its code would be accessible because it followed general patterns.
 

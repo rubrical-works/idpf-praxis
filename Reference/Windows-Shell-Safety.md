@@ -1,5 +1,5 @@
 # Windows Shell Safety for Claude Code
-**Version:** v0.105.0
+**Version:** v0.106.0
 **Source:** Reference/Windows-Shell-Safety.md
 **MUST READ:** Auto-loaded on Windows at session startup.
 Claude Code uses Git Bash on Windows. Most Unix commands work, but these patterns fail or behave unexpectedly.
@@ -52,9 +52,10 @@ git commit -m "$(cat <<'EOF'
 Fix bug in `calculateTotal` function
 EOF
 )"
-# GOOD - use Write tool to create temp file, then:
-git commit -F .tmp-msg.txt
-rm .tmp-msg.txt
+# GOOD - generate the name once, Write tool creates the file, then:
+MSG_FILE=".tmp-msg-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").txt"
+git commit -F $MSG_FILE
+rm $MSG_FILE
 ```
 **Command Substitution:** If output is short, single-line, free of backticks/quotes/special chars, `$(...)` is safe. Otherwise use a temp file.
 Safe patterns:
@@ -74,7 +75,7 @@ dir=$(dirname $(realpath "$file"))
 for file in $(find . -name "*.md"); do echo "$file"; done
 # GOOD
 gh pmu create --body-file README.md
-gh pr create --body-file .tmp-commits.txt
+gh pr create --body-file $PR_BODY_FILE   # generated name, Write tool creates it
 ```
 **Issue/PR Bodies:** ALWAYS use temp file approach. Bodies almost always contain backticks which fail with heredocs or `--body`.
 **Examples use `gh pmu create` — deliberately (#2724).** The bare `gh issue` creation form,
@@ -87,20 +88,32 @@ for both commands; board membership is not. QA case: `Reference/GitHub-Workflow.
 ```bash
 # BAD
 gh pmu create --body "Fix the \`calculateTotal\` function"
-# GOOD - Write tool + temp file
-gh pmu create --title "Bug: ..." -F .tmp-body.md --status backlog
-rm .tmp-body.md
-# GOOD - editing existing issues (use issue-specific name)
+# GOOD - Write tool + temp file, path generated once per invocation
+BODY_FILE=".tmp-bug-body-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").md"
+gh pmu create --title "Bug: ..." -F $BODY_FILE --status backlog
+rm $BODY_FILE
+# GOOD - editing existing issues (name it after the issue)
 gh pmu view 123 --body-stdout > .tmp-123.md
 gh pmu edit 123 -F .tmp-123.md && rm .tmp-123.md
 ```
 **Rule:** Never attempt `--body` with inline content on Windows. Always use `-F` with a temp file.
+**Naming the temp file — creation vs editing (#2983, #2985).** A fixed scratch name is a collision, not a convention: concurrent sessions in one working directory are a supported, announced setup, so two sessions running the same command share any fixed path. One session's write landing between another's write and its `gh pmu` call sends the wrong body to the wrong issue, and one session's `rm` can remove a file the other has not read. **Neither failure reports anything.** One question decides the name: does the issue number exist yet?
+| Path | Name | Why |
+|---|---|---|
+| **Editing** an existing issue | `.tmp-{issue#}.md` | The number is in scope and is the natural discriminator — two sessions editing *different* issues cannot collide, and two editing the *same* one are a conflict the name must not hide (#1034) |
+| **Creating** an issue | `.tmp-{what}-{random}.md`, suffix shelled out | No number exists until after the body is written. Generated **once per invocation**, before first use, named at every site (#2980) |
+| **Scratch** not about an issue | `.tmp-{what}-{random}.{ext}` | Same as creation — nothing to name it after |
+```bash
+BODY_FILE=".tmp-proposal-body-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").md"
+```
+**Never invent the suffix** — shell out for it; a composed value is not random, and two sessions reasoning alike reach the same "random" name. **Always keep the `.tmp-` prefix**, either form: the startup stale-scratch sweep collects `.tmp-*` and nothing else, so a name without it survives every interrupted run and is never reclaimed. **One generated name per file held open at once** — `/create-backlog`'s epic and story bodies, `/plan-workstreams`' mapping and plan each need two distinct names; one shared name collides with itself, no second session required.
 **gh pmu Body Flags:** Prefer `--body-stdout` / `--body-stdin` for cleaner workflows.
 Preferred stdout/stdin pattern:
 ```bash
 gh pmu view 123 --body-stdout > .tmp-123.md
 gh pmu edit 123 -F .tmp-123.md && rm .tmp-123.md
-gh pmu create --title "Bug: ..." -F .tmp-body.md --status backlog
+BODY_FILE=".tmp-bug-body-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").md"
+gh pmu create --title "Bug: ..." -F $BODY_FILE --status backlog
 cat issue-body.md | gh pmu edit 123 --body-stdin
 ```
 Alternative body-file pattern:
@@ -121,7 +134,7 @@ cd "$USERPROFILE/My Projects"
 1. **Use relative paths** for temp files (`.tmp-*`) -- absolute paths get backslashes stripped
 2. **Use Write tool** instead of `cat`, `echo >`, or heredocs for file creation
 3. **Clean up** immediately after use
-4. **Use unique names** per issue (`.tmp-123.md`) to prevent overwrites
+4. **Use unique names — always** (§ Naming the temp file): editing an issue → include its number (`.tmp-123.md`); creating one, or any scratch file not about an issue → a shelled-out random suffix generated once per invocation (`.tmp-body-a1b2c3d4.md`). Prevents overwrites both **within** a session working several issues and **across** concurrent sessions sharing the directory — the second is what a fixed name cannot survive
 **Quoting:** Prefer double quotes. Escape special characters.
 ```bash
 # BAD
@@ -134,18 +147,19 @@ echo "The file is \`important\`"
 ```bash
 # BAD
 gh api graphql -f query='{ "query": "..." }'
-# GOOD - Write tool creates .tmp-query.json
-gh api graphql --input .tmp-query.json
-rm .tmp-query.json
+# GOOD - Write tool creates $QUERY_FILE (generated name)
+gh api graphql --input $QUERY_FILE
+rm $QUERY_FILE
 ```
 **Multi-line Strings:** Use temp files for multi-line content.
 ```bash
 # BAD
 gh pmu create --body "Line 1
 Line 2"
-# GOOD - Write tool creates .tmp-body.md
-gh pmu create --body-file .tmp-body.md
-rm .tmp-body.md
+# GOOD - Write tool creates the file at a generated path
+BODY_FILE=".tmp-body-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").md"
+gh pmu create --body-file $BODY_FILE
+rm $BODY_FILE
 ```
 **Flag Values with Spaces:** `--flag value` can be misinterpreted on Git Bash.
 ```bash
@@ -172,9 +186,9 @@ for file in Skills/*/*.md; do echo "$file"; done
 # 2. Helper scripts
 node -e "require('fs').readdirSync('.').filter(f => f.endsWith('.md')).forEach(f => console.log(f))"
 # 3. Pre-compute to temp file
-git log --oneline > .tmp-commits.txt
-while read -r line; do echo "$line"; done < .tmp-commits.txt
-rm .tmp-commits.txt
+git log --oneline > $COMMITS_FILE   # generated name
+while read -r line; do echo "$line"; done < $COMMITS_FILE
+rm $COMMITS_FILE
 # 4. Native tools with proper flags
 find . -name "*.md" -exec wc -l {} \;
 find . -name "*.txt" -print0 | xargs -0 cat

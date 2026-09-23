@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *
@@ -850,7 +850,7 @@ function buildAnnouncement(options) {
       );
     }
 
-    // A terminal event with an outcome nobody recognises must not emit: a
+    // A terminal event with an outcome nobody recognizes must not emit: a
     // wrong terminal is worse than a missing one, because it tells a peer to
     // stop waiting for something that may still be coming.
     let degraded = false;
@@ -913,7 +913,7 @@ function buildAnnouncement(options) {
     // about which identifiers were asserted (#2790).
     const commitPartition = partitionCommits(commits, options.verifyCommit);
     // Routing runs AFTER availability (#2915): it narrows the addressable set,
-    // never widens it. Absent `broadcast` is today's behaviour, unchanged.
+    // never widens it. Absent `broadcast` is today's behavior, unchanged.
     const routed = routeRecipients({
       ...resolveRecipients(peers),
       broadcast: options.broadcast,
@@ -954,7 +954,7 @@ function buildAnnouncement(options) {
       routing,
     };
 
-    // Routed-away peers are REACHABLE; only the rest are summarised as
+    // Routed-away peers are REACHABLE; only the rest are summarized as
     // unreachable. Mixing them would describe a routed peer as "not reachable
     // for an unrecorded reason", which is false.
     const unreachableSkipped = skipped.filter((p) => !(p && p.skipReason === ROUTED_SKIP_REASON));

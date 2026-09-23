@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -229,7 +229,7 @@ function stripLegacyCrossSessionKey(cwd = process.cwd()) {
 }
 
 /**
- * Materialise an absent `reviewSweep` as the default mode (#2564).
+ * Materialize an absent `reviewSweep` as the default mode (#2564).
  *
  * One of the two writers that keep the key present: Praxis Hub Manager writes
  * it at install and upgrade, and the review commands call this on first
@@ -251,7 +251,7 @@ function stripLegacyCrossSessionKey(cwd = process.cwd()) {
  * @param {string} [cwd] - Project root
  * @returns {{written: boolean, mode: string}} `written` false when the key was
  *   already present (including as a legacy boolean); `mode` is the effective
- *   normalised mode either way.
+ *   normalized mode either way.
  */
 function ensureReviewSweep(cwd = process.cwd()) {
   const { normalizeReviewSweep, DEFAULT_REVIEW_SWEEP_MODE } = require('./prior-art-marker.js');
@@ -280,9 +280,9 @@ function _resetCache() {
  * The effective TDD verification mode for a project (#2556).
  *
  * Reader half of the `verificationMode` key. Every path that is not an
- * explicitly declared, recognised mode resolves to
+ * explicitly declared, recognized mode resolves to
  * `DEFAULT_VERIFICATION_MODE` — absent key, absent file, unreadable file,
- * and an unrecognised string alike.
+ * and an unrecognized string alike.
  *
  * **Failing into the strict gate is the point.** The carve-out relaxes what
  * satisfies RED, so resolving an unknown value into it would let a typo
@@ -291,7 +291,7 @@ function _resetCache() {
  * mistyped declaration behave as if it were absent, which is visible the
  * moment the gate is applied rather than never.
  *
- * Note the asymmetry with `write`: the schema REJECTS an unrecognised mode at
+ * Note the asymmetry with `write`: the schema REJECTS an unrecognized mode at
  * write time, so a bad value should not reach disk through the helper at all.
  * This guard covers the file being hand-edited, which is how most projects
  * will set the key.
@@ -329,7 +329,7 @@ function resolveVerificationMode(cwd = process.cwd()) {
  * `verificationCommands: []` and `verificationCommands: "npm run lint"` are
  * both declarations that declare no runnable set, so they defer to
  * `testCommand`; a project that meant to declare commands and mistyped the
- * shape gets its previous behaviour, not a silently satisfied gate.
+ * shape gets its previous behavior, not a silently satisfied gate.
  *
  * Never throws — an unreadable or absent config resolves to `none`, matching
  * `resolveVerificationMode`'s treatment of the same conditions.
@@ -340,7 +340,7 @@ function resolveVerificationMode(cwd = process.cwd()) {
 function resolveVerificationCommands(cwd = process.cwd()) {
   // Function-scoped require, deliberately (#2852 AC3): test-runner.js requires
   // THIS module from inside `resolveSuites`, so a top-level require in either
-  // direction would be a load-time cycle leaving one module half-initialised
+  // direction would be a load-time cycle leaving one module half-initialized
   // for the other. Scoping both to call time makes the order irrelevant.
   const { resolveSuites } = require('./test-runner.js');
 
@@ -371,7 +371,7 @@ function resolveVerificationCommands(cwd = process.cwd()) {
  *
  * **Only the literal `false` disables it**, and that asymmetry is deliberate
  * in the opposite direction from `resolveVerificationMode`. There, an
- * unrecognised value fails INTO the strict gate, because the risk is a typo
+ * unrecognized value fails INTO the strict gate, because the risk is a typo
  * silently relaxing a check. Here the risk runs the other way: a typo that
  * silently disabled the sweep would leave a user believing a cleanup is
  * running when it is not, and nothing would ever report the gap — the sweep

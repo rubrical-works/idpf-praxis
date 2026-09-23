@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Shared review format constants, emoji markers, section headers, and regex patterns for deterministic comment formatting and parsing. Exports EMOJI, SECTION_HEADERS, PATTERNS, and formatting helpers. Used by review-finalize.js and resolve-preamble.js.
  * @checksum sha256:placeholder
  *
@@ -152,7 +152,6 @@ function parseReviewComment(commentBody) {
 // Criteria IDs whose failures can be auto-fixed by the model
 const AUTO_FIXABLE_CRITERIA = [
   'title-clear',
-  'labels-correct',
   'priority-set',
   'ac-present',
   'ac-present-testable',
@@ -161,7 +160,6 @@ const AUTO_FIXABLE_CRITERIA = [
   'environment-info',
   'proposed-fix-described',
   'proposed-solution',
-  'canonical-template',
 ];
 
 module.exports = {

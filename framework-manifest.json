@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.105.0",
+  "version": "0.106.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -34,7 +34,7 @@
     {
       "name": "Accessibility-Specialist",
       "loadable": true,
-      "description": "WCAG conformance, assistive-technology behaviour, and EAA / ADA / Section 508 obligations on production web applications."
+      "description": "WCAG conformance, assistive-technology behavior, and EAA / ADA / Section 508 obligations on production web applications."
     },
     {
       "name": "Backend-Specialist",
@@ -61,7 +61,7 @@
     {
       "name": "Database-Engineer",
       "loadable": true,
-      "description": "Schema design, query optimisation, data modeling, and database operations at scale — the storage layer itself, as distinct from Data-Engineer's pipelines."
+      "description": "Schema design, query optimization, data modeling, and database operations at scale — the storage layer itself, as distinct from Data-Engineer's pipelines."
     },
     {
       "name": "Desktop-Application-Developer",
@@ -89,7 +89,7 @@
       "name": "Frontend-Specialist",
       "loadable": false,
       "announceReason": "model-builtin",
-      "description": "User interfaces, client-side logic, browser platform behaviour, and frontend architecture."
+      "description": "User interfaces, client-side logic, browser platform behavior, and frontend architecture."
     },
     {
       "name": "Full-Stack-Developer",
@@ -120,7 +120,7 @@
     {
       "name": "Performance-Engineer",
       "loadable": true,
-      "description": "Profiling and optimising frontend, backend, and database systems under real production load."
+      "description": "Profiling and optimizing frontend, backend, and database systems under real production load."
     },
     {
       "name": "Platform-Engineer",
@@ -156,7 +156,7 @@
     {
       "name": "UX-Designer",
       "loadable": true,
-      "description": "Interaction and visual design, layout, typography, colour, and responsive patterns."
+      "description": "Interaction and visual design, layout, typography, color, and responsive patterns."
     }
   ],
   "requiredDirectories": [
@@ -847,6 +847,16 @@
           "description": "JSON schema (Draft 2020-12) for ac-gate-markers.json (#2765)"
         },
         {
+          "name": "bug-priority-rubric",
+          "source": ".claude/metadata/bug-priority-rubric.json",
+          "description": "Impact-to-priority rubric read by /bug, the severity-proportionate review criterion and /resolve-review (#2992)"
+        },
+        {
+          "name": "bug-priority-rubric-schema",
+          "source": ".claude/metadata/bug-priority-rubric-schema.json",
+          "description": "JSON schema (Draft 2020-12) for bug-priority-rubric.json (#2992)"
+        },
+        {
           "name": "ci-features",
           "source": ".claude/metadata/ci-features.json",
           "description": "CI feature registry for /ci list and /ci add commands"
@@ -1105,6 +1115,16 @@
           "name": "screen-spec-schema",
           "source": ".claude/metadata/screen-spec-schema.json",
           "description": "Screen specification schema for /catalog-screens and /mockups commands"
+        },
+        {
+          "name": "spelling-policy",
+          "source": ".claude/metadata/spelling-policy.json",
+          "description": "British -> American word map, external-name allowlist and guard exclusions; read by the American-spelling guard and minimize-helper.js spell-carry (#2978)"
+        },
+        {
+          "name": "spelling-policy-schema",
+          "source": ".claude/metadata/spelling-policy-schema.json",
+          "description": "JSON schema (Draft 2020-12) for spelling-policy.json (#2978)"
         },
         {
           "name": "stats-config",

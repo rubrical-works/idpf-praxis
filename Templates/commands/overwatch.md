@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Dedicate a session to observing cross-session IDPF activity.
 argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show"
 copyright: "Rubrical Works (c) 2026"
@@ -7,7 +7,7 @@ copyright: "Rubrical Works (c) 2026"
 <!-- MANAGED -->
 # /overwatch
 Observes cross-session activity: consumes the lifecycle announcements peers broadcast, correlates them against local commits, reports what no single working session can see.
-**MANAGED, no `USER-EXTENSION` blocks** — the command text has no per-project customization surface (#2746 reasoning). Tunables have two owners: hub-owned signal definitions in `.claude/metadata/overwatch-signals.json` (data, read-only when deployed), and per-project defaults in `.claude/.overwatch/config.json` (#2957) — written by `--on`/`--off`, read via `overwatch-config.js` `resolveOverwatchConfig()`, keys = `.claude/metadata/overwatch-config.schema.json` properties (currently `autoCreate`). `.claude/.overwatch/` is per-developer, gitignored; absent file or key = today's behaviour.
+**MANAGED, no `USER-EXTENSION` blocks** — the command text has no per-project customization surface (#2746 reasoning). Tunables have two owners: hub-owned signal definitions in `.claude/metadata/overwatch-signals.json` (data, read-only when deployed), and per-project defaults in `.claude/.overwatch/config.json` (#2957) — written by `--on`/`--off`, read via `overwatch-config.js` `resolveOverwatchConfig()`, keys = `.claude/metadata/overwatch-config.schema.json` properties (currently `autoCreate`). `.claude/.overwatch/` is per-developer, gitignored; absent file or key = today's behavior.
 ## Prerequisites
 `gh pmu` + `.gh-pmu.json` (only for `--auto-create`); messaging discoverable — see **Degradation**.
 ## Arguments
@@ -34,7 +34,7 @@ Observes cross-session activity: consumes the lifecycle announcements peers broa
 - **A monitor holding, declining or letting messages expire is undetectable from the sender (#2674)** — under targeted routing a monitor that is not reading leaves every session uninformed: no session hears the announcements and nobody is told. Use targeted routing only while this monitor is actively consuming.
 **Events consumed** — full vocabulary, no subset: `work-started`, `work-completed`, `push-started`, `ci-terminal`, `ci-resolved`, `push-rejected`, `review-started`, `review-resolved`, `review-passed`, `review-findings`, `fixtures-provisioned`, `branch-merge-starting`, `beta-starting`, `release-starting`, `branch-destroy-starting`. `fixtures-provisioned` (#2827) names scratch board issues `/qa` provisioned for a manual check; a later `work-started` on one of those numbers is expected, not a collision.
 **The four branch-operation notices (#2960) reach this monitor as one recipient among many.** `/merge-branch`, `/prepare-beta`, `/prepare-release`, `/destroy-branch` announce before their first irreversible step as a **forced broadcast** — every addressable peer, whatever `broadcast` says — so working sessions hear them directly, not through this monitor, which has no relay for branch operations. Record-only notices, not openers: no closer follows and none is terminal, so a monitor never expects a follow-up nor reports one missing.
-**A terminal claim is checked against what follows it (#2902).** A terminal announcement invites peers to stop waiting — `review-passed` and the CI resolution events say "No further announcement will follow" verbatim. A later announcement naming that same issue leaves every peer that honoured it holding a stale belief with nothing to correct it; the `terminal-claim-contradicted` finding reports it.
+**A terminal claim is checked against what follows it (#2902).** A terminal announcement invites peers to stop waiting — `review-passed` and the CI resolution events say "No further announcement will follow" verbatim. A later announcement naming that same issue leaves every peer that honored it holding a stale belief with nothing to correct it; the `terminal-claim-contradicted` finding reports it.
 - **Detection needs per-issue terminal history** — the monitor otherwise correlates announcements against git, and this needs it to remember that a terminal event was seen for issue N. That history is **session-scoped**: a contradiction spanning two monitor sessions is not observable anyway, so persisting it buys nothing and costs more than the finding warrants.
 - **Keys on terminality generally, never on `review-passed` alone.** `ci-resolved` carries the same claim verbatim, so a rule written against one event name misses the other. Ask whether the earlier announcement was terminal, not which event it was.
 - **Monitor-only by construction.** A working session sees the events addressed to it and has no reason to keep per-issue history across cycles — this is the "what no single working session can see" role.
@@ -69,7 +69,7 @@ node .claude/scripts/shared/lib/cross-session-config.js
 node -e "console.log(JSON.stringify(require('./.claude/scripts/shared/lib/overwatch-presence.js').decideStart(process.cwd(), {force: FORCE})))"
 ```
 `FORCE` ← Step 0's `force`. Returns `{proceed, reason, message}`.
-**Session identity travels in `CLAUDE_PID`, inherited — do not substitute it (#2795).** `decideStart` resolves the session pid from the environment, the same source `peers-check.js` uses to recognise itself. It must **never** be `process.pid`: inside `node -e` that is the node child's pid, fresh every invocation and never the marker's, which made the `self` row unreachable and left a re-arming monitor refusing itself. A substituted placeholder was rejected for the same reason — an unsubstituted one fails in that direction, silently.
+**Session identity travels in `CLAUDE_PID`, inherited — do not substitute it (#2795).** `decideStart` resolves the session pid from the environment, the same source `peers-check.js` uses to recognize itself. It must **never** be `process.pid`: inside `node -e` that is the node child's pid, fresh every invocation and never the marker's, which made the `self` row unreachable and left a re-arming monitor refusing itself. A substituted placeholder was rejected for the same reason — an unsubstituted one fails in that direction, silently.
 - `proceed: false` → **refuse to start.** Report `message` verbatim and **STOP**. Write nothing.
 - `proceed: true` → write the marker at `.claude/.overwatch/.overwatch.json` (`overwatch-presence.js` `markerPath(cwd)`), creating `.claude/.overwatch/` if absent, with `{pid, procStart, startedAt, cwd, version}`, then continue. **`pid` is the session pid (`CLAUDE_PID`)** — the identity `decideStart` compares next tick. Writing this process's pid makes the marker read `stale-pid` immediately and defeats the `self` row.
 **Write the current path only; the fallbacks are read, never written (#2928, #2957).** `readPresence` falls back to the pre-move root `.overwatch.json`, then the pre-rename `.hall-monitor.json`, one release each, reporting which path answered in `markerFile`. The write above writes the new path, so a fallback marker is never cleaned up — left inert, since the new path wins whenever several exist. Only a fallback-served reading means an older monitor is live here.
@@ -148,7 +148,7 @@ const verdict = evaluateAutoCreate({ finding, filings, now: Date.now(), signals 
 `allowed: false` → report `reason` (`duplicate`, `rate-limited`, `signals-unreadable`), file nothing. **Refusal is reported, never silent** — an unexplained non-filing is indistinguishable from a monitor that never looked.
 **Bug path — delegate to a subagent; that is what keeps the monitor responsive.** Filing is multi-step (sweep, compose, `gh pmu create`) and inline it is blocking — a monitor that stops monitoring while it files has stopped being one. Spawn a subagent to run `/bug`.
 - A **prior-art sweep is mandatory**; an `already-shipped` verdict **skips** the filing. Duplicate filing is a known failure here, and an unattended filer has no human check.
-- Auto-filed issues carry the `auto-filed` label (`autoCreate.label`) — recognisable and reversible.
+- Auto-filed issues carry the `auto-filed` label (`autoCreate.label`) — recognizable and reversible.
 - **The subagent runs degraded and must say so:** `framework-dev` has no `TaskCreate`/`TaskList`, so `/bug` falls back to rule `07-task-creation-timing.md`'s inline checklist and the `TaskList` compaction-recovery guarantee does not hold.
 **Enhancement path — stays in this session; it cannot be delegated.** Same tool boundary: `framework-dev` has **no `AskUserQuestion`**, so a subagent cannot make an offer at all. Bug filing is non-interactive and delegable; an offer is not. **Never file an enhancement unattended.**
 ### Step 6: Continue or Stop
@@ -156,7 +156,7 @@ Schedule the next tick, or stop when the user says so. One line per tick; quiet 
 **Release the marker on stop.** Remove `.claude/.overwatch/.overwatch.json` **only when its `pid` matches this process**; leave a foreign marker untouched. Leave the `.claude/.overwatch/` directory — `config.json` lives there too. This closes the interleave `--force` allows: without the ownership test, monitor A exiting would delete a marker monitor B had overwritten, leaving B live and unmarked.
 **Abnormal termination leaves a stale marker by design.** No crash hook, and none proposed: the next monitor's start-time overwrite is the recovery, and the startup `Peers:` row names the stale marker meanwhile.
 ## Degradation
-| Condition | Behaviour |
+| Condition | Behavior |
 |---|---|
 | `crossSessionMessaging.discovery` false | Not discovered, **receives no announcements**. Degrade to **git-only observation** and report that plainly — a quiet channel and an unwatched one are otherwise indistinguishable, and only one is fine. |
 | `enabled` false | Same; cause reported as `crossSessionMessaging.enabled: false`. |

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Filter review criteria based on project reviewMode configuration (solo, team, enterprise). Exports getReviewMode(), filterCriteria(), getEnabledCriteria(), and shouldEvaluate(). Used by review-preamble.js and code-review-preamble.js.
  * @checksum sha256:placeholder
  *
@@ -85,7 +85,7 @@ function getReviewMode(projectDir = process.cwd(), modeOverride = null) {
 
 /**
  * Check if a criterion should be evaluated for the current review mode
- * @param {string} criterionId - Criterion identifier (e.g., 'story-sizing')
+ * @param {string} criterionId - Criterion identifier (e.g., 'priority-set')
  * @param {string} projectDir - Project directory (defaults to cwd)
  * @param {string|null} modeOverride - Transient mode override
  * @returns {boolean} True if criterion applies to current mode

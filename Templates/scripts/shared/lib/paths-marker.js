@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * paths-marker.js
  *
  * Mechanical half of recording `/paths` application on the proposal issue

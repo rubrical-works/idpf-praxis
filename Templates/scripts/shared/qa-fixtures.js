@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Provision, record, inspect and tear down the board fixtures a qa-required issue declares under `### Fixtures`, for /qa outcome 3 (#2827). `--provision` creates exactly the declared issues (a root with children, or a root-less selection), assigns children through assign-branch.js, labels `reviewed` items directly, and writes `**Fixtures created:**` into the QA body; `--teardown` deletes exactly the recorded numbers, children first; `--status` reports each recorded number as exists, deleted or unknown. One injectable exec, so the whole cycle runs against a mocked board. The consent gates live in the command spec, not here.
  * @checksum sha256:placeholder
  *
@@ -29,7 +29,7 @@
  * WHAT THIS DELIBERATELY DOES NOT DO. It asks no question — the two consent
  * gates (provision, teardown) are CommandsSrc/qa.md's, and the spec pins say
  * so. It never runs a review: a `reviewed` fixture gets the label applied
- * directly, and the envelope names that under `labelledDirectly` so nobody
+ * directly, and the envelope names that under `labeledDirectly` so nobody
  * mistakes it for a reviewed issue. It never touches a branch tracker or a
  * `qa-required` issue other than the one whose body it records into.
  */
@@ -124,7 +124,7 @@ function parseFixturesSection(body) {
         const name = tok.slice('label:'.length);
         if (!LABEL_PATTERN.test(name)) return invalid(lineNo, `label \`${name}\` is not a valid label name`);
         labels.push(name);
-      } else return invalid(lineNo, `unrecognised token \`${tok}\``);
+      } else return invalid(lineNo, `unrecognized token \`${tok}\``);
     }
 
     const item = { type, title, labels, reviewed, children: [] };
@@ -295,7 +295,7 @@ function provision(args, execFn, options) {
   const tmp = `.tmp-qa-fixture-${issue}.md`;
   const created = [];
   const numbers = [];
-  const labelledDirectly = [];
+  const labeledDirectly = [];
   let root = null;
   let provisionError = null;
 
@@ -319,7 +319,7 @@ function provision(args, execFn, options) {
   };
   const markReviewed = (number) => {
     execFn(`gh issue edit ${number} --add-label reviewed`, { encoding: 'utf8' });
-    labelledDirectly.push(number);
+    labeledDirectly.push(number);
   };
 
   try {
@@ -349,7 +349,7 @@ function provision(args, execFn, options) {
     try { io.unlinkSync(tmp); } catch (_e) { /* best effort */ }
   }
 
-  const data = { issue, mode: 'provision', shape, root, numbers, created, labelledDirectly, branch, line: null, written: false };
+  const data = { issue, mode: 'provision', shape, root, numbers, created, labeledDirectly, branch, line: null, written: false };
 
   // Record whatever exists — on failure too, so teardown can find it.
   if (numbers.length) {

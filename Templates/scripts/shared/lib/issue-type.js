@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Centralize label-based issue type detection and review command routing. Exports getIssueType(). Used by review-preamble.js and work-preamble.js for type dispatch.
  * @checksum sha256:placeholder
  *
@@ -79,7 +79,7 @@ function getIssueType(issueData) {
  * `/review-issue` does (#2784).
  *
  * `work-preamble.js` reads the COMMAND from here while deciding for itself
- * WHICH labels it honours — currently `test-plan` only, because `prd` and
+ * WHICH labels it honors — currently `test-plan` only, because `prd` and
  * `proposal` have no equivalent of the Step 5a gate rollup for a redirected
  * user to land in. Sharing the map and not the label set is the split that
  * keeps the two commands from drifting to different targets for one label

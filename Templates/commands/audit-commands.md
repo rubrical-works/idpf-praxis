@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Audit this project's command specs for LLM processing reliability, using the IDPF framework.
 argument-hint: "[all|<command-name>|<group description>]"
 copyright: "Rubrical Works (c) 2026"
@@ -62,9 +62,14 @@ Not found → `"Command '<name>' not found."` → **STOP**.
 Zero findings → `"No issues found: <command-name>"`, skip.
 
 Findings exist → create enhancement issue:
+**Generate the body path first — once per invocation, before the body is composed.** A fixed path is shared by every session running this command in this working directory: one write landing between another's write and its `gh pmu create` files the second issue with the first one's body, and nothing reports it. The issue number cannot supply the uniqueness — it does not exist until after the body is written, which is why #1034's per-issue fix covers editing and not creation. Take the suffix from a shelled-out command, never invented — **the same scheme `/bug` uses (#2980)**:
 ```bash
-gh pmu create --title "[Audit]: <command-name> — N findings" --label enhancement --status backlog -F .tmp-body.md
-rm .tmp-body.md
+AUDIT_BODY_FILE=".tmp-audit-body-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").md"
+```
+Write the body to `$AUDIT_BODY_FILE` and use that same path at every site below — `gh pmu create -F`, the `rm` cleanup. **Keep the `.tmp-` prefix**: it is what lets the startup stale-scratch sweep collect a file an interrupted run left behind.
+```bash
+gh pmu create --title "[Audit]: <command-name> — N findings" --label enhancement --status backlog -F $AUDIT_BODY_FILE
+rm $AUDIT_BODY_FILE
 ```
 
 Issue body:

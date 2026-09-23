@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * idpf-measure.js
  *
  * CLI for `/idpf-measure` (#2794). Binds the three helpers together:
@@ -83,7 +83,7 @@ function run(argv, opts) {
   const args = Array.isArray(argv) ? argv : [];
 
   const modes = args.filter((a) => MODES.includes(a));
-  // Unrecognised flags are reported, never silently dropped — the pass-through
+  // Unrecognized flags are reported, never silently dropped — the pass-through
   // convention in 02-github-workflow.md, applied at the script layer.
   const unknown = args.filter((a) => a.startsWith('--') && !MODES.includes(a));
 
@@ -95,7 +95,7 @@ function run(argv, opts) {
   }
 
   const mode = modes[0].replace(/^--/, '');
-  const warnings = unknown.map((f) => `Unrecognised flag ignored: ${f}`);
+  const warnings = unknown.map((f) => `Unrecognized flag ignored: ${f}`);
 
   if (mode === 'schema') {
     return envelope('schema', { schema: SCHEMA, warnings });
@@ -124,7 +124,7 @@ function run(argv, opts) {
     const m = marker.writeMarker(root, { spawnMs, env });
 
     // The wiring backup rides in the marker so --stop can restore verbatim
-    // rather than re-serialising, which is byte-for-byte only by luck.
+    // rather than re-serializing, which is byte-for-byte only by luck.
     const stored = Object.assign({}, m, {
       settings: { created: w.created, previousRaw: w.previousRaw },
     });
@@ -278,7 +278,7 @@ function run(argv, opts) {
       'The tap was removed surgically, not restored from a backup: this --start found it ' +
       'already wired and held no pre-tap baseline. Entries belonging to the tap were removed ' +
       'and co-tenant hooks left in place, so the result is correct but is not a byte-for-byte ' +
-      'restore — unrelated formatting in the settings file may be normalised.'
+      'restore — unrelated formatting in the settings file may be normalized.'
     );
   }
 

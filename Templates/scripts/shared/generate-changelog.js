@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Generate a Keep a Changelog formatted entry from categorized commits. Accepts piped input from analyze-commits.js or reads commits directly. Groups changes by type (Added, Changed, Fixed, Removed) with issue references. Used by /prepare-release.
  * @checksum sha256:placeholder
  *
@@ -191,7 +191,7 @@ function generateChangelog(commits, version, date, options = {}) {
                 // No conventional prefix. Before filing under Changed, ask the
                 // authoritative classifier what this commit is (#2602): under a
                 // `Refs #N` convention EVERY commit reaches this arm, so the
-                // pre-#2602 behaviour left Added and Fixed empty on every
+                // pre-#2602 behavior left Added and Fixed empty on every
                 // release of such a project — this one included.
                 if (!commit.message) break;
                 const intent = resolveIntent(commit, lookupLabels);

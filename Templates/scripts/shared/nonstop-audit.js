@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs three audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
@@ -18,7 +18,7 @@
  *   { ok, issueNumber, audits: { commitDensity:       { status, commitCount, acCount, threshold, message },
  *                                acCheckbox:          { status, unchecked: [{ subIssue, uncheckedCount }], message },
  *                                announcementPairing: { status, missingOpener, missingCloser, unrecorded,
- *                                                       undispatched, caveats, message } },
+ *                                                       undispatched, skipped, caveats, message } },
  *     warnings: [string], blocks: [string] }
  *
  * Only (2) can populate `blocks`. (1) and (4) are advisory — (4) audits a channel that
@@ -83,7 +83,7 @@ const GATE_ANNOTATION = new RegExp(`→\\s*GATE:\\s*(?:${GATE_PHASES.join('|')})
 
 // An unchecked box that is open *by design* rather than unfinished. Two
 // annotations qualify, and the shared discipline is narrowness: each matches a
-// specific, structured marker, so no unfinished AC can be relabelled past the
+// specific, structured marker, so no unfinished AC can be relabeled past the
 // gate by rewording it.
 //
 //   → QA: #N          (#2477 / #2472) — closure deferred to a QA sub-issue
@@ -225,6 +225,9 @@ function auditAnnouncementPairing(subIssueNumbers, ledgerFn, reconcileFn) {
     missingCloser: result.missingCloser,
     unrecorded: result.unrecorded,
     undispatched: result.undispatched,
+    // #2990: shouldSend:false compositions, recorded `skipped` at composition
+    // time. Never a warning; reported so an all-skipped run reads clean.
+    skipped: result.skipped || [],
     caveats: result.caveats,
     message: result.message,
   };

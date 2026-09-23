@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Concurrent workstream planning — argument parsing, analysis, and execution. Handles deterministic operations for /plan-workstreams: argument validation, directory scanning, module boundary detection, conflict risk matrix computation, workstream grouping via union-find, and branch creation with .workstreams.json metadata.
  * @checksum sha256:placeholder
  *
@@ -466,7 +466,7 @@ function validateAdjustment(plan, adjustment, conflictMatrix) {
 }
 
 /**
- * Build the final plan output for writing to .tmp-plan.json.
+ * Build the final plan output for writing to the plan file (named per invocation by /plan-workstreams, #2985).
  *
  * @param {object} grouping - { workstreams: [{ epics, storyCount, rationale }] }
  * @param {object[]} epicData - Array of { epic, title, modules, subIssueCount }

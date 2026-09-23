@@ -17,7 +17,7 @@
         {
           "id": "ac-phase-feasible",
           "name": "Acceptance criteria can close in phase",
-          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a license to leave a box unchecked."
         },
         {
           "id": "environment-info",
@@ -27,18 +27,23 @@
         {
           "id": "severity-proportionate",
           "name": "Severity proportionate to impact",
-          "autoCheck": "Compare severity/priority label to described user impact (e.g., P0 for data loss, P2 for cosmetic)"
+          "autoCheck": "Re-read .claude/metadata/bug-priority-rubric.json from disk. Match the bug's stated impact (Description, Actual Behavior, Scope, Deployment Impact) against each class's description and signals, apply the rubric's precedence (highest matching priority wins; no match → fallback), and compare the result to the issue's board priority. Evidence names the matched class id, the rubric priority and the current priority. Mismatch → ⚠️ naming the rubric priority, which /resolve-review proposes (#2992)"
         },
         {
           "id": "test-coverage-bug",
           "name": "Test coverage proportionate (bug)",
           "overrides": "test-coverage-proportionate",
-          "autoCheck": "Single-path fix: 'existing tests pass' may suffice, but regression test AC preferred. Multi-path refactor: ACs MUST require tests for new pattern (flag if only 'existing tests pass' for changes touching multiple functions/modules). Additionally report which test files the fix implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. Advisory — blocks nothing."
+          "autoCheck": "Regression-test AC required unless the issue states why one is not warranted (e.g. the defect is in prose or data with no executable path): the AC must reproduce the reported behavior, because existing tests did not catch the defect — which is why 'existing tests pass' alone does not suffice even for a single-path fix. Flag ⚠️ when neither a regression-test AC nor a stated reason is present (#2993). Multi-path refactor: ACs MUST require tests for new pattern (flag if only 'existing tests pass' for changes touching multiple functions/modules). Additionally report which test files the fix implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. Advisory — blocks nothing."
         },
         {
           "id": "proposed-fix-described",
           "name": "Proposed fix described",
           "autoCheck": "Check for 'Proposed Fix', 'Root Cause Analysis', 'Fix Approach', or solution description section. Treat as missing if section body is under 20 characters or contains placeholder text ('To be documented', 'TBD', '...')"
+        },
+        {
+          "id": "root-cause-identified",
+          "name": "Root cause identified",
+          "autoCheck": "Does the body state WHY the defect happens — the mechanism: the specific code path, condition or data that produces the wrong behavior — anywhere in Description, Actual Behavior or Proposed Fix? Distinct from proposed-fix-described, which asks WHAT the fix does. ✅ when the mechanism is stated. ✅ also when the body explicitly says the root cause is not yet known and names the investigation that will establish it — at filing time an honest 'unknown' is correct. ⚠️ when the body only restates the symptom. Advisory, never ❌: an unknown root cause must not block the review (#2993)."
         },
         {
           "id": "deployment-impact-assessed",
@@ -52,34 +57,26 @@
       "label": "Story",
       "criteria": [
         {
-          "id": "user-story-format",
-          "name": "User story format",
-          "autoCheck": "Check for 'As a ... I want ... So that ...' pattern (or close variant)"
-        },
-        {
           "id": "ac-present",
           "name": "Acceptance criteria present",
+          "overrides": "ac-present-testable",
           "autoCheck": "Check for `- [ ]` items"
         },
         {
           "id": "ac-testable",
           "name": "AC structured as testable assertions",
+          "overrides": "ac-present-testable",
           "autoCheck": "Verify each `- [ ]` item contains a measurable/verifiable statement (TDD-compatible)"
         },
         {
           "id": "ac-phase-feasible",
           "name": "Acceptance criteria can close in phase",
-          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a license to leave a box unchecked."
         },
         {
           "id": "incremental-scope",
           "name": "Scope supports incremental implementation",
           "autoCheck": "Check if ACs are small, independent, testable units (not monolithic)"
-        },
-        {
-          "id": "canonical-template",
-          "name": "Canonical story body template",
-          "autoCheck": "Compare body structure against expected template (Description, AC, Refs sections). If NOT matching, flag for repair"
         },
         {
           "id": "test-coverage-story",
@@ -121,7 +118,7 @@
         {
           "id": "ac-phase-feasible",
           "name": "Acceptance criteria can close in phase",
-          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a license to leave a box unchecked."
         },
         {
           "id": "sub-issue-dependencies",
@@ -156,7 +153,7 @@
         {
           "id": "ac-phase-feasible",
           "name": "Acceptance criteria can close in phase",
-          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a licence to leave a box unchecked."
+          "autoCheck": "For each AC, ask which workflow phase owns its completion condition: implementation (resolves while the issue is worked), review (resolves after in_review), or release (resolves during /prepare-release). At the moment /work reaches Step 5 and gh pmu validates the checkboxes, is the condition knowably true? If not the AC is out of phase. This is NOT the same question as ac-testable / success-measurable, which ask whether a condition is well-defined — 'once released and re-imported, the config is revisited' is perfectly measurable and simply is not measurable YET. Re-read .claude/metadata/ac-feasibility-prompts.json from disk and apply phaseFeasibility.actionIfOutOfPhase: work listed in ownedElsewhere (CHANGELOG, tagging, release publication) should be DROPPED, not annotated, because another command's checklist already discharges it; a genuinely load-bearing gate should be ANNOTATED per annotationFormat with a gatePhases token. Report ❌ for an out-of-phase AC carrying no annotation, ⚠️ for one whose annotation is present but questionable. Also check each existing annotation in BOTH directions: a `→ GATE:` token whose AC text names no event that resolves it is reported (the token is being used to mean 'I cannot tick this now' rather than as a phase claim), and so is one whose named condition no gate phase describes or which is in fact satisfiable during implementation. An annotation is a claim about phase, not a license to leave a box unchecked."
         },
         {
           "id": "scope-boundaries",
@@ -185,7 +182,7 @@
         {
           "id": "prior-art-checked",
           "name": "Prior art checked",
-          "autoCheck": "Delegate to decideSweep in .claude/scripts/shared/lib/prior-art-marker.js and report the status it returns; do not re-derive the rule here. The marker itself is the literal '**Prior Art:**' heading defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading; present and complete = pass. Issues created before the cutoff in that helper are not applicable rather than failing. Behaviour past that depends on framework-config.json reviewSweep, a 4-mode setting since #2564 (absent = 'recommend'): under 'full' an absent or PARTIAL marker reports fail and runs the Step 2a-iv sweep; under 'recommend' it reports the advisory status 'recommend' and runs NO sweep — this must NOT be reported as fail, because --prior-art is opt-in and rarely passed, so most issues carry no marker and a fail would downgrade nearly every review; under 'flag-only' and 'off' report skip, not fail, which would downgrade every review in a project that opted out."
+          "autoCheck": "Delegate to decideSweep in .claude/scripts/shared/lib/prior-art-marker.js and report the status it returns; do not re-derive the rule here. The marker itself is the literal '**Prior Art:**' heading defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading; present and complete = pass. Issues created before the cutoff in that helper are not applicable rather than failing. Behavior past that depends on framework-config.json reviewSweep, a 4-mode setting since #2564 (absent = 'recommend'): under 'full' an absent or PARTIAL marker reports fail and runs the Step 2a-iv sweep; under 'recommend' it reports the advisory status 'recommend' and runs NO sweep — this must NOT be reported as fail, because --prior-art is opt-in and rarely passed, so most issues carry no marker and a fail would downgrade nearly every review; under 'flag-only' and 'off' report skip, not fail, which would downgrade every review in a project that opted out."
         }
       ]
     },

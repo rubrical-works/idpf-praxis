@@ -65,7 +65,7 @@
         "label": {
           "type": "string",
           "minLength": 1,
-          "description": "Applied to every auto-filed issue so it is recognisable and reversible."
+          "description": "Applied to every auto-filed issue so it is recognizable and reversible."
         },
         "dedupe": {
           "type": "object",

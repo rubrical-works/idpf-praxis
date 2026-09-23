@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -300,7 +300,7 @@ function hasPushWorkflows({ readDir, readFile, workflowsDir } = {}) {
  * Path filters narrow which pushes run, not which refs are eligible, so they
  * never affect this verdict. Scalar and flow-sequence forms cannot carry
  * filters, so both mean all branches. Flow-mapping `on: {push: …}` is not
- * recognised (out of scope for #2897).
+ * recognized (out of scope for #2897).
  *
  * @param {string} content - Raw YAML content
  * @returns {boolean}
@@ -435,7 +435,7 @@ function classifyConclusion(conclusion) {
  * Starts from `'unknown'` for an empty set (#2541) and never assumes success:
  * `success` is reached only when every run classifies as non-failing. Priority
  * is failure > cancelled > timeout > unknown > success — so `action_required`
- * or an unrecognised conclusion beside passing runs yields `unknown`, which
+ * or an unrecognized conclusion beside passing runs yields `unknown`, which
  * `mapExitCode` sends to 1, rather than the false green the old loop produced.
  *
  * @param {Array<Object>} results - Run result objects carrying `conclusion`

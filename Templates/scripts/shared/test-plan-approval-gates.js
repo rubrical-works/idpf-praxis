@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Roll review findings up onto the test-plan approval gates declared in
  * .claude/metadata/test-plan-approval-gates.json (#2711, epic #2693). Pure function of two
  * arguments — the gate map and a review findings JSON — returning, per gate, whether it is
@@ -100,7 +100,7 @@ function computeApprovalGates(gateMap, findings) {
       risk = {
         kind: 'blocked',
         reason: `Gate ${g.id} is blocked by ${formatBlocking(blocking)}.`,
-        // Evidence is reproduced verbatim, not summarised: #2712 renders its
+        // Evidence is reproduced verbatim, not summarized: #2712 renders its
         // risk prompt from this record and must not re-open the findings JSON.
         criteria: blocking.map((c) => ({ ...c })),
         missing: [],

@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Instrument an IDPF command run and report where its time went.
 argument-hint: "--start | --stop | --report"
 copyright: "Rubrical Works (c) 2026"
@@ -13,7 +13,7 @@ Instruments a command run and reports where its time went, separating **tool exe
 Node only — built-ins; no `gh pmu` call.
 ## Arguments
 Exactly one mode per invocation.
-| Argument | Behaviour |
+| Argument | Behavior |
 |----------|-----------|
 | `--start` | Arm: calibrate spawn cost, reset log, write marker, wire tap |
 | `--stop` | Disarm — remove marker and wiring — and print report |
@@ -53,13 +53,13 @@ The report names excluded sessions and their call counts, so a filtered report n
 **In this repo `.claude/settings.local.json` is git-tracked** — the opposite of a PHM project, where the file is absent and `--start` creates it (#2794 AC3). Arming here produces a **tracked diff every session sharing the directory can see**, and a crash between `--start` and `--stop` leaves it modified.
 `--stop` restores byte-for-byte and the redness is working-tree-local; committed state is unaffected. But while armed the tree is not private to the measuring session, which is why the `Docs/02-Advanced/Claude-Code-Dependencies.md` §3 guard excludes the tap from its derived count: without that, arming turned `npx jest` red repo-wide, and Step 4f's sweep is a hard gate — one developer measuring blocked every other session from completing an issue on a failure they did not cause.
 ## Degradation
-| Situation | Behaviour |
+| Situation | Behavior |
 |---|---|
 | `--stop`, nothing armed | Warning, not error — a normal state |
-| Marker present, session died | Reported **stale** and cleaned up. NEVER silently honoured — that leaves collection armed forever |
+| Marker present, session died | Reported **stale** and cleaned up. NEVER silently honored — that leaves collection armed forever |
 | Live marker, another session | Left in place, and said so. This `--stop` must not strand a concurrent one |
 | `--start` when already wired | Idempotent; reported, wiring unchanged. **Stores no restore baseline** — it did not add the tap and holds no pre-tap contents, so it must not offer any (#2807) |
-| `--stop` after such a `--start` | Removes the tap **surgically** and says so, never reporting a clean verbatim restore. Storing the tapped file as baseline made the wired state a **fixed point**: `--stop` wrote the tap back and reported success, so no arm/disarm cycle returned the tree to clean. Co-tenants survive; formatting may be normalised, and the warning says so |
+| `--stop` after such a `--start` | Removes the tap **surgically** and says so, never reporting a clean verbatim restore. Storing the tapped file as baseline made the wired state a **fixed point**: `--stop` wrote the tap back and reported success, so no arm/disarm cycle returned the tree to clean. Co-tenants survive; formatting may be normalized, and the warning says so |
 | Empty log | "No events were collected" plus likely causes — never zeros, which assert a run happened and took no time |
 | Call with no `duration_ms` | Counted, excluded, surfaced as making the total partial. A missing duration is the harness declining to report, NOT a 0ms call |
 | Fewer than two events | Model generation **not measurable**, not zero. With no gap it is unmeasured; 0 would assert the model spent no time thinking |

@@ -40,7 +40,7 @@ This is distinct from — and additional to — the existing-file check. That ch
 
 ### The `reviewSweep` setting can refuse the flag
 
-Your project's `reviewSweep` setting in `framework-config.json` has four values — `full`, `recommend`, `flag-only` and `off`. The first three all honour an explicit `--prior-art`. **Only `off` refuses it.**
+Your project's `reviewSweep` setting in `framework-config.json` has four values — `full`, `recommend`, `flag-only` and `off`. The first three all honor an explicit `--prior-art`. **Only `off` refuses it.**
 
 When refused, the command reports the refusal and names the setting responsible, then continues creating the proposal. No `**Prior Art:**` section is written, so the absence correctly reads as "no sweep ran" rather than "swept and found nothing".
 

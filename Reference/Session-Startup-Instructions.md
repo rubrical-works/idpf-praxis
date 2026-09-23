@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.105.0
+**Version:** v0.106.0
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 ## Startup is Hook-Driven
@@ -66,23 +66,23 @@ Levers live in `.claude/x-session.json` (#2774); the deprecated `crossSessionMes
 ```
 IDPF_X_SESSION  >  .claude/x-session.json (or legacy crossSessionMessaging)  >  enabled by default
 ```
-Absent variable changes nothing. **Only `off`, `0` and `false` suppress** (case-insensitive, trimmed; empty = absent); a recognised off-value resolves exactly as `enabled: false` — all-or-nothing. **Any other value leaves messaging enabled and is reported as unrecognised.** The resolver names the deciding layer: `environment`, `project-config` or `default`.
+Absent variable changes nothing. **Only `off`, `0` and `false` suppress** (case-insensitive, trimmed; empty = absent); a recognized off-value resolves exactly as `enabled: false` — all-or-nothing. **Any other value leaves messaging enabled and is reported as unrecognized.** The resolver names the deciding layer: `environment`, `project-config` or `default`.
 | Resolved state | Row |
 |---|---|
 | Suppressed by `IDPF_X_SESSION` | **A row naming the variable** — its value, that it was **not** written to any config file, and that unsetting it restores discovery next session |
-| Unrecognised value | **No suppression row.** Discovery runs; the value is reported through `implications` |
+| Unrecognized value | **No suppression row.** Discovery runs; the value is reported through `implications` |
 **The row must not name a config key here** — that sends the reader to a file that does not contain the setting.
 **Emission only.** `IDPF_X_SESSION` stops **this** session emitting; there is no receiving-side opt-out.
 ### Inbound announcement narration — `noticeNarration` (#2735)
 Governs how verbosely this session narrates an announcement it **receives**.
-| Resolved value | Behaviour on an inbound announcement |
+| Resolved value | Behavior on an inbound announcement |
 |---|---|
-| absent or `true` (default) | Verbose — may look the issue up, enumerate likely files, analyse the collision surface |
-| `false` (quiet) | **The one-line acknowledgement is KEPT.** No issue lookup, no likely-files enumeration, no collision-surface analysis |
+| absent or `true` (default) | Verbose — may look the issue up, enumerate likely files, analyze the collision surface |
+| `false` (quiet) | **The one-line acknowledgment is KEPT.** No issue lookup, no likely-files enumeration, no collision-surface analysis |
 | a live `/overwatch` marker at `.claude/.overwatch/.overwatch.json` (#2769, #2957; pre-move root `.overwatch.json` read as fallback for one release) | **Quiet**, exactly as `noticeNarration: false` |
 **Precedence only ever LOWERS verbosity:** `enabled: false` → quiet; `noticeNarration: false` → quiet; otherwise a live marker → quiet; otherwise (no marker, or a stale one) → verbose. Read the marker via `.claude/scripts/shared/lib/overwatch-presence.js` `readPresence(cwd)`; never re-derive liveness. Applies to the monitor itself too. **A stale marker suppresses nothing.**
-**Quiet is not silence.** The one-line acknowledgement is this session's only evidence to its own user that anything arrived, so quiet keeps it.
-**The lever may be all there is.** `/x-session-config --quiet` also writes a per-user memory artefact, which does not ship to deployed projects; there, this section is what gives the lever meaning. `/x-session-config --show` reports config and memory side by side and names drift. Not implied by `discovery: false`; forced off by `enabled: false`; distinct from `notices`.
+**Quiet is not silence.** The one-line acknowledgment is this session's only evidence to its own user that anything arrived, so quiet keeps it.
+**The lever may be all there is.** `/x-session-config --quiet` also writes a per-user memory artifact, which does not ship to deployed projects; there, this section is what gives the lever meaning. `/x-session-config --show` reports config and memory side by side and names drift. Not implied by `discovery: false`; forced off by `enabled: false`; distinct from `notices`.
 **The live-marker row is moot for announcements a session no longer receives (#2915).** Under targeted routing (`broadcast: false`) working sessions' announcements go to the live `/overwatch` alone. Do not read a missing peer `work-started` as "no peer is working" — the monitor holds that picture and relays overlaps. A monitor that holds, declines or lets messages expire is **undetectable** from the sender (#2674): no session hears the announcements and nobody is told. Routing falls back to broadcast only for a missing, stale, unaddressable or ambiguously named monitor.
 ### Receipt replies and overlap notices (#2922, #2914)
 **A session receiving a receipt reply records it**, whether or not the sending command is still running:
@@ -155,7 +155,7 @@ Reports stale `.tmp-*` scratch files removed from the project root. **The one st
 **Delete, not offer — the deliberate exception to *offer, don't force*.** `06-runtime-triggers.md` governs artifacts a user might want; this is a set nobody wants, by construction. And the hook speaks through `additionalContext`, so an "offer" is Claude asking a question *after* the block: a turn spent on every session start, for files whose only property is that they were abandoned. Prompting here adds the noise a hook should remove.
 **What makes that safe is the refusal set, not a prompt.** A candidate survives if it is a directory, not a regular file, git-tracked, younger than `minAgeMs`, or if the git query itself failed — that last one skips **every** candidate, because "git could not answer" must stay distinguishable from "git said none are tracked". Deleting is irreversible; keeping costs a file that survives to the next session, so every ambiguous case resolves toward keeping. **The age gate is the load-bearing one**: it stops the sweep touching a scratch file belonging to a command running right now in a peer session sharing the working directory.
 **Thresholds are metadata, not prose** — `.claude/metadata/tmp-cleanup-signals.json`, re-read from disk at use. Its schema is deliberately stricter than a config file usually needs: three literal characters before any wildcard, no path separator, and a one-hour floor on `minAgeMs`. Those bounds exist because this config drives deletion, so a one-character typo must not be able to widen it.
-**Opt out with `tmpCleanup: false`** in `framework-config.json` (absent means enabled, as everywhere else). Read through `framework-config.js` `resolveTmpCleanup()`, which delegates to the predicate in `tmp-cleanup.js` — one absence rule, reachable from both the hook (which cannot afford the ajv load on every session start) and ordinary consumers. **Only the literal `false` disables**, the opposite polarity from `verificationMode`'s fail-into-strict: here a silently-honoured typo would leave a user believing a cleanup runs when it does not, and nothing would report it, since a disabled sweep and a clean one both emit no row.
+**Opt out with `tmpCleanup: false`** in `framework-config.json` (absent means enabled, as everywhere else). Read through `framework-config.js` `resolveTmpCleanup()`, which delegates to the predicate in `tmp-cleanup.js` — one absence rule, reachable from both the hook (which cannot afford the ajv load on every session start) and ordinary consumers. **Only the literal `false` disables**, the opposite polarity from `verificationMode`'s fail-into-strict: here a silently-honored typo would leave a user believing a cleanup runs when it does not, and nothing would report it, since a disabled sweep and a clean one both emit no row.
 **Best-effort, never a gate.** Runs after the check ladder resolves — so it never delays a check or shares their timeout budget — and before the block renders, since its outcome is a row. A failure resolves to no row rather than an exception: the Session Initialized block renders regardless. That collapse of *failed* into *found nothing* is acceptable here and only here, because both mean no files were deleted, which is the fact the row would have reported.
 ## Post-Compact Behavior
 **No re-reading required.** `.claude/rules/` reload automatically after compaction; the hook does not re-run — Claude resumes from in-memory context.

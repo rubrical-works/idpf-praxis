@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Zero-dependency static file server for /mockups --serve (#2377).
  *
@@ -158,7 +158,7 @@ function serveDirectory(dirAbs, pathname, res) {
 }
 
 function handleRequest(root, req, res) {
-  // DNS-rebinding defence (#2468): without this, a malicious page resolving to
+  // DNS-rebinding defense (#2468): without this, a malicious page resolving to
   // 127.0.0.1 becomes same-origin and can read arbitrary files from the served
   // tree. This server is a pure file server, so rebinding here yields reads —
   // the wider consequence of the two servers.

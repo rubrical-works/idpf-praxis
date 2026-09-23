@@ -75,7 +75,7 @@
         },
         "reviewed": {
           "type": "boolean",
-          "description": "True applies the `reviewed` label directly at provisioning — a scratch issue is not put through /review-issue — and the helper reports it under labelledDirectly."
+          "description": "True applies the `reviewed` label directly at provisioning — a scratch issue is not put through /review-issue — and the helper reports it under labeledDirectly."
         },
         "children": { "type": "array", "items": { "$ref": "#/$defs/child" } }
       }

@@ -1,14 +1,14 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * `/overwatch` presence marker (#2769).
  *
  * WHY A FILE AND NOT A MESSAGE. When a monitor is live in a working directory,
  * every session there should narrate inbound announcements quietly - the
- * one-line acknowledgement only - for as long as the monitor runs. A peer
+ * one-line acknowledgment only - for as long as the monitor runs. A peer
  * `SendMessage` cannot express that: it is advisory, it cannot change another
- * session's behaviour durably, it is lost at compaction, it never reaches a
+ * session's behavior durably, it is lost at compaction, it never reaches a
  * session that starts later, and #2768's contract is that the monitor emits
  * nothing. Project-local runtime state is the only substrate that can say
  * "quiet WHILE a monitor is live", because a message cannot compel and config
@@ -311,7 +311,7 @@ function readPresence(cwd, markerFilename, options) {
  * session pid written into the marker. Comparing against it made the `self`
  * branch unreachable in production while every in-process test passed.
  *
- * `CLAUDE_PID` is the same source `peers-check.js` already uses to recognise
+ * `CLAUDE_PID` is the same source `peers-check.js` already uses to recognize
  * itself, so there is one notion of session identity rather than two, and it
  * survives into a subprocess by ordinary inheritance — no spec substitution
  * (whose unsubstituted placeholder would fail in this bug's own direction) and

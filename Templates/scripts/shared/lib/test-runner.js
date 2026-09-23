@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -36,7 +36,7 @@ const { sanitizeShellArg } = require('./shell-safe.js');
 /** Scoping modes that ship in v1. `filter` is reserved and deliberately absent. */
 const SCOPING_MODES = Object.freeze(['path', 'package', 'none', 'custom']);
 
-/** The mode an unrecognised or absent declaration falls back to. */
+/** The mode an unrecognized or absent declaration falls back to. */
 const DEFAULT_SCOPING_MODE = 'none';
 
 /**
@@ -128,7 +128,7 @@ function resolveSuites(cwd = process.cwd()) {
   // Function-scoped, deliberately: framework-config.js requires THIS module
   // from inside `resolveVerificationCommands`, so a top-level require in
   // either direction would be a load-time cycle leaving one module
-  // half-initialised for the other.
+  // half-initialized for the other.
   const { read, normalizeSuite } = require('./framework-config.js');
 
   const NONE = { suites: [], source: 'none', sweepScope: 'all' };
@@ -202,10 +202,10 @@ function scopedInvocations({ suites = [], changedFiles = [] } = {}) {
     const scoped = suite.scoped || {};
     let mode = scoped.mode === undefined ? DEFAULT_SCOPING_MODE : scoped.mode;
     if (!SCOPING_MODES.includes(mode)) {
-      // Named, never silently skipped: an unrecognised mode is a declaration
+      // Named, never silently skipped: an unrecognized mode is a declaration
       // the project believes is in force.
       warnings.push(
-        `Suite "${suite.id}" declares unrecognised scoping mode "${mode}" — `
+        `Suite "${suite.id}" declares unrecognized scoping mode "${mode}" — `
         + `falling back to "${DEFAULT_SCOPING_MODE}".`
       );
       mode = DEFAULT_SCOPING_MODE;

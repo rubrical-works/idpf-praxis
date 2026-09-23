@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * harness-registry.js — merge the shipped harness registry with a project's
  * local one (#2848).
  *
@@ -83,7 +83,7 @@ function mergeRegistries(shipped, local) {
       && localVersion < shippedVersion) {
     report.warnings.push(
       `Local harness registry declares schemaVersion ${localVersion}, older than the shipped `
-      + `${shippedVersion}. Keys introduced since then are not recognised by that version and `
+      + `${shippedVersion}. Keys introduced since then are not recognized by that version and `
       + `were merged as written; review them against the current schema.`
     );
   }
@@ -160,7 +160,7 @@ function mergeRegistries(shipped, local) {
  * Read both registries from a project root and merge them.
  *
  * An ABSENT local file is not a warning — it is the normal state of every
- * project that has not customised selection. Only an unreadable or unparseable
+ * project that has not customized selection. Only an unreadable or unparseable
  * one is.
  *
  * @returns {{merged: object, report: object}} Never throws.

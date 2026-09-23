@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, reports the issue's type so an epic can be expanded, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -99,15 +99,26 @@ function findLatestReview(comments) {
 
 // ─── Finding Parsing ───
 
+/**
+ * Map a finding emoji to its status. An unmapped emoji is `'unknown'`, never
+ * `'skip'` (#2989): skip no longer reaches the user, so a skip fallback would
+ * silently drop any line the parser cannot map, where `'unknown'` still routes
+ * to needsUserInput. Unreachable while FINDING_LINE_PATTERN matches only the
+ * four mapped emoji; this keeps it safe if the two ever drift.
+ */
+function statusForEmoji(emoji) {
+  const emojiToStatus = {
+    [EMOJI.pass]: 'pass',
+    [EMOJI.fail]: 'fail',
+    [EMOJI.warn]: 'warn',
+    [EMOJI.skip]: 'skip',
+  };
+  return emojiToStatus[emoji] || 'unknown';
+}
+
 function parseFindings(body) {
   const findings = [];
   const lines = body.split('\n');
-
-  const emojiToStatus = {};
-  emojiToStatus[EMOJI.pass] = 'pass';
-  emojiToStatus[EMOJI.fail] = 'fail';
-  emojiToStatus[EMOJI.warn] = 'warn';
-  emojiToStatus[EMOJI.skip] = 'skip';
 
   for (const line of lines) {
     const match = line.match(FINDING_LINE_PATTERN);
@@ -115,7 +126,7 @@ function parseFindings(body) {
       const emoji = match[1];
       const criterion = match[2];
       const evidence = match[3];
-      const status = emojiToStatus[emoji] || 'skip';
+      const status = statusForEmoji(emoji);
 
       findings.push({ status, criterion, evidence });
     }
@@ -201,7 +212,13 @@ function classifyFindings(findings) {
   const needsUserInput = [];
 
   for (const f of findings) {
-    if (f.status === 'pass') {
+    // skip joins pass (#2989): a ⊘ is a deliberate no-action — the prior-art
+    // `recommend` advisory, a `flag-only`/`off` opt-out, a pre-feature
+    // `not-applicable` — so asking the user to resolve it is a question that
+    // declining cannot answer. `passed` rather than a fourth bucket, following
+    // #2717's precedent: nothing downstream distinguishes skip from pass, and a
+    // new bucket would need a reader it does not have.
+    if (f.status === 'pass' || f.status === 'skip') {
       passed.push(f);
     } else if (f.status === 'fail') {
       const slug = slugify(f.criterion);
@@ -211,7 +228,7 @@ function classifyFindings(findings) {
         needsUserInput.push(f);
       }
     } else {
-      // warn, skip, or unknown → needs user input
+      // warn or unknown → needs user input
       needsUserInput.push(f);
     }
   }
@@ -331,6 +348,7 @@ module.exports = {
   parseFindings,
   parseSuggestions,
   classifyFindings,
+  statusForEmoji,
   extractRecommendation,
   buildSuccessEnvelope,
   buildErrorEnvelope,

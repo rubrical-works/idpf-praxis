@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * measure-report.js
  *
  * Report generation for `/idpf-measure` (#2794). `--stop` and `--report` both
@@ -97,7 +97,7 @@ function analyze(records, opts) {
 
   // A log written before this change has no identifiers at all. Filtering it to
   // a session would report nothing, making an old log indistinguishable from an
-  // empty run — so with nothing attributed, analyse the whole log (AC8).
+  // empty run — so with nothing attributed, analyze the whole log (AC8).
   const filtering = sessionId !== null && attributed.length > 0;
   const recs = filtering ? all.filter((r) => r.session_id === sessionId) : all;
 

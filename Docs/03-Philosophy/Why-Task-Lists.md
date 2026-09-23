@@ -207,7 +207,7 @@ IDPF applies this to AI assistants: the context window is volatile working memor
 
 The task list is not a productivity feature. It is a **reliability mechanism** — a way to make AI-assisted workflows predictable, recoverable, and transparent despite the volatility of the context window.
 
-The migration from todo lists changed the mechanics without disturbing the reasoning. What improved is the fidelity of the record: tasks carry state, ownership, dependencies, and rationale, so a list recovered after compaction reports not merely what the workflow *is* but how far through it the assistant had travelled.
+The migration from todo lists changed the mechanics without disturbing the reasoning. What improved is the fidelity of the record: tasks carry state, ownership, dependencies, and rationale, so a list recovered after compaction reports not merely what the workflow *is* but how far through it the assistant had traveled.
 
 ---
 

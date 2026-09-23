@@ -30,7 +30,7 @@
  * Host, alternatives and the AC-8 reasoning:
  * Construction/Design-Decisions/2026-08-30-upstream-push-monitor-host-and-push-window.md
  *
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * Refs #2667
  */
 
@@ -262,7 +262,7 @@ function poll(root = repoRoot(), config = loadConfig(root)) {
 function armingDecision({ root = repoRoot(), frameworkConfig } = {}) {
   // TWO PATHS, and which one runs turns on whether the caller supplied a config.
   //
-  // Supplied  -> the caller already holds it, so honour it exactly and use the
+  // Supplied  -> the caller already holds it, so honor it exactly and use the
   //              pure resolver. Reading files behind a caller that passed an
   //              explicit config would silently ignore what it passed.
   // Absent    -> resolve from disk through the full chain (#2774):

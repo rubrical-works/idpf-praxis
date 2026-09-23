@@ -31,7 +31,7 @@ That list is a message from a review command to a `/work` gate that will run lat
 
 A swarm passes that in a return value. The orchestrator merges, the run ends, and the coordination evaporates. The artifacts survive; the reasoning that produced them does not.
 
-This is not a minor implementation detail. It is the property that makes the rest of IDPF's behaviour possible — compaction recovery, cross-session handoff, and the ability for a human to reconstruct what happened weeks later.
+This is not a minor implementation detail. It is the property that makes the rest of IDPF's behavior possible — compaction recovery, cross-session handoff, and the ability for a human to reconstruct what happened weeks later.
 
 ---
 

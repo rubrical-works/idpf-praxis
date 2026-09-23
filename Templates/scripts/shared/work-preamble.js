@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -330,7 +330,7 @@ function detectIssueType(issueData) {
  * `qa-required` → `/qa` (#2824) lives HERE and not in the shared map, and
  * that is the point of this being a map rather than a filter over
  * `REDIRECT_LABELS`. `review-preamble.js` acts on every key of the shared
- * map with no honoured set of its own, so adding the label there would
+ * map with no honored set of its own, so adding the label there would
  * redirect `review #N` — and a story that also carries the label — into
  * `/qa`. The shared map exists so two commands cannot route ONE label to
  * DIFFERENT targets; here the second command must not route it at all, so

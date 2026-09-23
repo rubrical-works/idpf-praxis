@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -126,6 +126,46 @@ async function updateOrCreateRelease(version, notesFile, maxRetries = 3, retryDe
             }
         }
     }
+}
+
+/**
+ * Warn when the repository's GitHub Latest release is a prerelease-shaped tag.
+ *
+ * GitHub's Latest is "the most recent non-prerelease, non-draft release", and a
+ * prerelease can never be set as Latest. A beta published before #2584 carries
+ * `prerelease: false`, so it holds the Latest pointer indefinitely while every
+ * later beta — correctly flagged — never appears as current (#2950).
+ *
+ * Detection and a pointer only: the re-flag is each project's own call (#2584),
+ * so nothing here edits a release. Advisory — a 404 (no Latest yet), a stable
+ * tag, an unexpected shape and any lookup failure all return no warning, and
+ * this function never throws, so a lookup that cannot run cannot block a release.
+ *
+ * @returns {string[]} - Zero or one warning messages
+ */
+function checkLatestRelease() {
+    let tag;
+    try {
+        tag = String(execFileSync('gh', ['api', 'repos/{owner}/{repo}/releases/latest', '--jq', '.tag_name'], {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+        })).trim();
+    } catch {
+        return [];
+    }
+
+    if (!isPrereleaseVersion(tag)) {
+        return [];
+    }
+
+    return [
+        `GitHub's Latest release is ${tag}, a prerelease-shaped tag published as a full release — ` +
+        `it predates prerelease flagging (#2584). New prereleases cannot become Latest while it holds the pointer, ` +
+        `so the repository page keeps advertising ${tag}. Remedy (one-time, per project, not run by this script): ` +
+        `re-flag the mis-flagged prereleases with \`gh release edit <tag> --prerelease\`, taking the list from the API ` +
+        `(\`gh release list\` / \`gh api repos/{owner}/{repo}/releases\`) rather than typing it. Before re-flagging, ` +
+        `check for stable releases beneath the betas: Latest falls back to the newest of those.`
+    ];
 }
 
 /**
@@ -381,6 +421,9 @@ async function main() {
             fs.unlinkSync(notesFile);
         }
 
+        // Post-publish, advisory: never alters success or the exit code (#2950).
+        const warnings = checkLatestRelease();
+
         console.log(JSON.stringify({
             success: true,
             message: `${result.action === 'created' ? 'Created' : 'Updated'} release notes for ${version}`,
@@ -390,7 +433,8 @@ async function main() {
                 previousTag,
                 action: result.action,
                 summary: generateSummary(countCategoryItems(rawContent))
-            }
+            },
+            warnings
         }));
 
     } catch (err) {
@@ -412,6 +456,7 @@ module.exports = {
     getProjectName,
     transformToReleaseFormat,
     updateOrCreateRelease,
+    checkLatestRelease,
     getRepoUrl,
     escapeRegex,
     main

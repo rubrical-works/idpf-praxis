@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
 argument-hint: "[update [--register-proj|--deregister-proj|--list-proj]|refresh|validate|--create-domain-entities|--testing [--dry-run [--check]]]"
 copyright: "Rubrical Works (c) 2026"
@@ -78,13 +78,13 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 #### Harness Selection (replaces Q5 and Q5b — #2850)
 **Q5 and Q5b are RETIRED, and the reason is the point.** Q5 asked a framework *name*, Q5b the *command* — two answers to one question, and the name half reached no gate: nothing executes a framework name, one of which nothing executes. Selection collects command and role together, once.
 **`/charter` no longer writes `verificationCommands` in any mode** — not Inception, not the Extraction manifest read, not refresh. The per-suite `full` replaces it. An **existing** key is **left in place and read as legacy** by `test-runner.js` `resolveSuites` (#2852), which desugars it into suites; retiring the writer must not orphan a project that already declared one.
-**The loop runs once per *(key × role present)*, across BOTH registry groups — `languages` and `platforms` (#2900).** Present the option list from the **merged** registry — `harness-registry.js` `loadMergedRegistry()` (#2848), which has always returned both groups. Locally-contributed entries are **labelled `local`**; entries the local file marks `hidden` are **omitted**.
-**A platform key is labelled as a platform in the prompt** — without it a platform row and a language row are indistinguishable, and `mobile` sits beside `typescript` answering a different question about the same project.
+**The loop runs once per *(key × role present)*, across BOTH registry groups — `languages` and `platforms` (#2900).** Present the option list from the **merged** registry — `harness-registry.js` `loadMergedRegistry()` (#2848), which has always returned both groups. Locally-contributed entries are **labeled `local`**; entries the local file marks `hidden` are **omitted**.
+**A platform key is labeled as a platform in the prompt** — without it a platform row and a language row are indistinguishable, and `mobile` sits beside `typescript` answering a different question about the same project.
 **A platform is offered only for the roles it declares.** `platforms.mobile` ships `e2e` and no `unit`, so a mobile project is never asked a mobile unit question. Deliberately unlike a language, which **still prompts** at zero harnesses (below): "no harness exists for this language" is a real answer; a role the platform never declares is an inapplicable question, not a gap.
 **Mobile triggers — the platform has no detect signal, so the trigger is named, not inferred (#2900).**
 | Mode | Trigger |
 |---|---|
-| **Inception** | No code to analyse, so the **Q3 answer** is the only signal: **React Native**, **Flutter**, **Expo**, **iOS**, **Android**, or "mobile app" |
+| **Inception** | No code to analyze, so the **Q3 answer** is the only signal: **React Native**, **Flutter**, **Expo**, **iOS**, **Android**, or "mobile app" |
 | **Extraction / refresh** | A mobile manifest: **`app.json`**, **`pubspec.yaml`**, **`AndroidManifest.xml`** — `detect-tech-stack.js` reports these as the `mobile` tech and checks the Android manifest at `app/src/main/` and `android/app/src/main/` as well as the root |
 **Prompting `mobile` on every project is the failure this avoids** — three mobile harnesses in front of every backend developer — so the negative case is asserted as well as the positive.
 **Mobile options are offered with NO pre-armed default.** Pre-selection arms only on an unambiguous single claimant, and the mobile set has no `detect` signal comparable to `pytest.ini` — Detox, Appium and Maestro claim the same project equally. PRD line 662 left this open; this is the answer.
@@ -168,7 +168,7 @@ Max 1-2 to avoid overwhelm.
 | `.gh-pmu.json` lists >1 repository | `repositories[]` length > 1 |
 | Multiple git remotes | `git remote` returns >1 name |
 | Sibling project named in Q1/Q3 | Answer names another repo or product |
-**No signal → ask nothing** — not a softened or optional version. Silence is the specified behaviour.
+**No signal → ask nothing** — not a softened or optional version. Silence is the specified behavior.
 **On a signal, ask:** *"Are there companion repositories or project boards this project works alongside — worth searching for context, or filing issues against?"* Record via `registerCompanion`, never by hand-writing the table.
 `searchable` and `fileIssues` are asked separately and default **false**. Searchable-but-not-filable is the common case; nothing becomes filable by omission.
 #### Dynamic Follow-Up
@@ -192,8 +192,8 @@ Use `AskUserQuestion` with each question's `header`/`question` fields. Answers f
 ```
 What review mode should be used for this project?
 - Solo: Single developer - skip team-oriented criteria
-- Team (Recommended): 2-10 developers - include sizing, priorities, dependencies
-- Enterprise: Large teams - all criteria plus effort estimation and risk assessment
+- Team (Recommended): 2-10 developers - include priorities, dependencies
+- Enterprise: Large teams - all criteria plus risk assessment and compliance
 ```
 **Default:** "team" if not selected. Write `reviewMode` (lowercase). Show mode-specific confirmation.
 #### Domain Profiling (conditional)
@@ -253,13 +253,13 @@ What review mode should be used for this project?
 4. If Tech Stack modified: trigger skill/recipe suggestions (NEW only). Detect new default skills not in `projectSkills` (from `skill-keywords.json` `defaultSkills`) — copy from `{frameworkPath}/.claude/skills/`, add additively.
 4b. If Deployment Target changed: remove old deployment skill, copy new from `{frameworkPath}/.claude/skills/<skill-name>/`. Update `deploymentTarget` and `projectSkills`. No prior target → fresh install.
 5. **Companion management (`--register-proj`, `--deregister-proj`, `--list-proj`):** delegate to `.claude/scripts/shared/lib/companion-projects.js`. Read `CHARTER.md`, call the helper, write returned content back — the helper never writes; the caller persists.
-| Argument | Helper | Behaviour |
+| Argument | Helper | Behavior |
 |---|---|---|
 | `--register-proj` | `registerCompanion(content, entry)` | `action: "added"`/`"updated"`; duplicate `repo` **updates in place** |
 | `--deregister-proj` | `deregisterCompanion(content, repo)` | `action: "removed"`, or `ok:false` + `"not-found"` |
 | `--list-proj` | `formatCompanionList(listCompanions(content))` | Prints registry; explicit empty-registry line when none |
 **Do NOT restate the helper's validation, dedupe, or removal rules here** — spec prose is LLM-executed and untestable, and a second statement drifts from the module enforcing it. Report `errors[]` verbatim and stop; `ok:false` means nothing was written.
-**Reachability:** call `verifyReachability(repo)` before registering. `verified:false` → register anyway and report the `label` (`unverifiable — <reason>`). NEVER drop the registration because the check failed; NEVER report an unchecked repo as reachable (rule 01 claim labelling).
+**Reachability:** call `verifyReachability(repo)` before registering. `verified:false` → register anyway and report the `label` (`unverifiable — <reason>`). NEVER drop the registration because the check failed; NEVER report an unchecked repo as reachable (rule 01 claim labeling).
 **After register/deregister, regenerate `domain-entities.json`** per 3a — entities derive from this table, so skipping leaves the two views disagreeing.
 ### /charter refresh
 1. Verify `.claude/skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**

@@ -18,7 +18,7 @@
  * projects from the hub framework root, so an undeclared external `require`
  * would throw MODULE_NOT_FOUND at module load.
  *
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * Refs #2665
  */
 
@@ -293,12 +293,12 @@ function formatCompanionList(entries) {
  * Three outcomes, deliberately distinguishable:
  *   verified: true,  reachable: true   -- checked, and it is there
  *   verified: true,  reachable: false  -- checked, and it is not
- *   verified: false, reachable: null   -- could not check; claim is labelled
+ *   verified: false, reachable: null   -- could not check; claim is labeled
  *
  * The third is the one that matters. Registration proceeds regardless: dropping
  * the entry loses a legitimate registration because the network was down, and
- * recording it as reachable asserts something never checked. Labelling it says
- * exactly what is known, which is rule 01's claim-labelling contract.
+ * recording it as reachable asserts something never checked. Labeling it says
+ * exactly what is known, which is rule 01's claim-labeling contract.
  *
  * Never throws -- a registration must not fail because a verification helper
  * did.

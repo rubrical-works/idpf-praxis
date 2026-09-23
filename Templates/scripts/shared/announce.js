@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
@@ -322,6 +322,31 @@ function makeCommitVerifier(options = {}) {
 }
 
 /**
+ * What the ledger records for a composed announcement, decided at composition
+ * time (#2990). `shouldSend: false` — no peers, a disabled group, routing that
+ * reached nobody — is `skipped` from birth, with the notice as its reason. It
+ * used to be `pending`, which audit (4) could not tell from a dispatch a caller
+ * forgot to close out, and the caller had nothing honest to close it out with:
+ * `sent` and `failed` would both be false.
+ */
+function compositionDispatch(announcement) {
+  if (announcement && announcement.shouldSend === false) {
+    const notice = typeof announcement.notice === 'string' && announcement.notice ? announcement.notice : null;
+    return { dispatch: 'skipped', detail: notice };
+  }
+  return { dispatch: 'pending', detail: null };
+}
+
+/** The caller's next step for a recorded composition. */
+function dispatchReportFor(recorded, composition, noIdMessage) {
+  if (!recorded.ok) return noIdMessage;
+  if (composition.dispatch === 'skipped') {
+    return 'Nothing to send — recorded as skipped at composition time; there is no dispatch outcome to close out.';
+  }
+  return `After sending, close the outcome out: node .claude/scripts/shared/announce.js --dispatch-result sent|failed --ledger-id ${recorded.id} [--detail "<error>"]`;
+}
+
+/**
  * The envelope for a decision to send nothing.
  *
  * Same shape as a composed one, so a caller reading `announcement.shouldSend`
@@ -373,7 +398,7 @@ function suppressedResult({ event, issue, reason, warnings }) {
  * The routing inputs for this working directory (#2915): the resolved
  * `broadcast` lever and the overwatch presence reading. Read here, not in
  * peer-announce.js, which stays pure. Any failure resolves to broadcast — the
- * behaviour every session had before routing existed.
+ * behavior every session had before routing existed.
  */
 function readRouting(cwd) {
   try {
@@ -391,7 +416,7 @@ function readRouting(cwd) {
  * The owning Claude session's pid, for the ledger's `sessionPid` (#2896).
  *
  * `CLAUDE_PID`, the source `peers-check.js` and `overwatch-presence.js`
- * use to recognise their own session, so ledger pids match the startup
+ * use to recognize their own session, so ledger pids match the startup
  * `Peers:` row — and the one that fixed the identical `/idpf-measure` defect
  * (#2796). Not `process.pid`: this script is a child spawned per
  * announcement, so its pid identifies nothing past its own exit.
@@ -434,7 +459,7 @@ function branchOperationGate(cwd, env) {
     const cause = state.source === 'environment'
       ? `IDPF_X_SESSION=${state.envOverride && state.envOverride.value} (this session only)`
       : 'crossSessionMessaging enabled: false';
-    return { emit: false, reason: `Nothing sent: cross-session messaging is off by the master switch (${cause}); branch-operation notices honour it.` };
+    return { emit: false, reason: `Nothing sent: cross-session messaging is off by the master switch (${cause}); branch-operation notices honor it.` };
   }
   if (!state.discovery) {
     return { emit: false, reason: 'Nothing sent: discovery is off, so no peers were discovered to broadcast a branch-operation notice to.' };
@@ -473,8 +498,9 @@ function composeBranchOperation({ name, resolved, issue, branch, tag, peers, cwd
     presence: routingInputs.presence,
   });
 
+  const composition = compositionDispatch(announcement);
   const recorded = ledger.record(
-    { event: name, issues: tracker ? [tracker] : [], branch: branchName },
+    { event: name, issues: tracker ? [tracker] : [], branch: branchName, ...composition },
     { cwd, sessionPid: resolveSessionPid(env) }
   );
   if (!recorded.ok) {
@@ -493,9 +519,7 @@ function composeBranchOperation({ name, resolved, issue, branch, tag, peers, cwd
     routing: announcement.routing || null,
     announcement,
     ledgerId: recorded.ok ? recorded.id : null,
-    dispatchReport: recorded.ok
-      ? `After sending, close the outcome out: node .claude/scripts/shared/announce.js --dispatch-result sent|failed --ledger-id ${recorded.id} [--detail "<error>"]`
-      : 'No ledger id — the dispatch outcome cannot be recorded for this event.',
+    dispatchReport: dispatchReportFor(recorded, composition, 'No ledger id — the dispatch outcome cannot be recorded for this event.'),
     warnings,
   };
 }
@@ -530,8 +554,9 @@ function composePush({ name, resolved, issues, outcome, runUrl, ciResult, peers,
 
   const composed = announcement && typeof announcement.text === 'string' && announcement.text !== '';
   let recorded = { ok: false, error: 'nothing was composed' };
+  const composition = compositionDispatch(announcement);
   if (composed) {
-    recorded = ledger.record({ event: name, issues: list }, { cwd, sessionPid: resolveSessionPid(env) });
+    recorded = ledger.record({ event: name, issues: list, ...composition }, { cwd, sessionPid: resolveSessionPid(env) });
     if (!recorded.ok) {
       warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); its dispatch cannot be audited.`);
     } else {
@@ -547,11 +572,9 @@ function composePush({ name, resolved, issues, outcome, runUrl, ciResult, peers,
     routing: announcement.routing || null,
     announcement,
     ledgerId: recorded.ok ? recorded.id : null,
-    dispatchReport: recorded.ok
-      ? `After sending, close the outcome out: node .claude/scripts/shared/announce.js --dispatch-result sent|failed --ledger-id ${recorded.id} [--detail "<error>"]`
-      : composed
-        ? 'No ledger id — the dispatch outcome cannot be recorded for this event.'
-        : 'Nothing was composed, so there is no dispatch outcome to record.',
+    dispatchReport: dispatchReportFor(recorded, composition, composed
+      ? 'No ledger id — the dispatch outcome cannot be recorded for this event.'
+      : 'Nothing was composed, so there is no dispatch outcome to record.'),
     warnings,
   };
 }
@@ -657,7 +680,8 @@ function compose({ event, issue, issues, peers, cwd, commits: supplied, force = 
     );
   }
 
-  const recorded = ledger.record({ event: name, issues: [issueNumber] }, { cwd, sessionPid: resolveSessionPid(env) });
+  const composition = compositionDispatch(announcement);
+  const recorded = ledger.record({ event: name, issues: [issueNumber], ...composition }, { cwd, sessionPid: resolveSessionPid(env) });
   if (!recorded.ok) {
     warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); pairing cannot be audited for this event.`);
   }
@@ -683,9 +707,7 @@ function compose({ event, issue, issues, peers, cwd, commits: supplied, force = 
     // AC3. The caller has one more thing to do after SendMessage returns, and
     // an instruction it can read is worth more than an instruction in a rule
     // file it may have compacted away.
-    dispatchReport: recorded.ok
-      ? `After sending, close the outcome out: node .claude/scripts/shared/announce.js --dispatch-result sent|failed --ledger-id ${recorded.id} [--detail "<error>"]`
-      : 'No ledger id — the dispatch outcome cannot be recorded for this event.',
+    dispatchReport: dispatchReportFor(recorded, composition, 'No ledger id — the dispatch outcome cannot be recorded for this event.'),
     warnings,
   };
 }
@@ -836,7 +858,7 @@ function main() {
       envelope: {
         ok: 'boolean',
         event: 'string|null — the event composed; null when a labelAssigned selected none',
-        suppressed: 'true when the script decided to send nothing (review-started under --force, labelAssigned null or unrecognised)',
+        suppressed: 'true when the script decided to send nothing (review-started under --force, labelAssigned null or unrecognized)',
         reason: 'string — why nothing was sent, when suppressed',
         commitSource: 'derived | supplied | unavailable | not-applicable',
         routing: '{broadcast, applied: broadcast|targeted, monitorPid, monitorName, fallbackReason} — where the announcement went (#2915)',

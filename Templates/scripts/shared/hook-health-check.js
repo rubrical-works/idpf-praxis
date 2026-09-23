@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Session-start self-test for framework hooks (#2917). Load-checks each deployed Claude Code hook named in framework-manifest.json and reads its project-local heartbeat, then reports any hook that cannot load or has consecutive failures as the Hook Health row. Read-only and advisory.
  * @checksum sha256:placeholder
  *

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description CSS Gradient discovery adapter. Scans .css/.scss files for
  * linear-gradient(...) and radial-gradient(...) calls and extracts them as
  * DTCG `gradient` $type candidates (#2346).
@@ -26,7 +26,7 @@ const path = require('path');
 // `\(([^)]+)\)` stopped at the FIRST `)`, so any gradient with function-valued
 // stops — rgb(), rgba(), hsl() — was truncated mid-value (#2466).
 const GRADIENT_OPEN_RE = /(linear-gradient|radial-gradient)\(/g;
-// Colour-stop pieces, matched separately rather than as one combined pattern:
+// Color-stop pieces, matched separately rather than as one combined pattern:
 // a single alternation-plus-optional-suffix regex trips the unsafe-regex
 // detector, and splitting the concerns reads better anyway.
 const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
@@ -52,7 +52,7 @@ function parsePercent(text) {
 }
 // eslint-disable-next-line security/detect-unsafe-regex -- inputs bounded to single CSS angle token; no catastrophic backtracking reachable
 const ANGLE_RE = /^(\d+(?:\.\d+)?(deg|rad|grad|turn))$/;
-// Direction keywords ("to right", "to bottom left") are not colour stops.
+// Direction keywords ("to right", "to bottom left") are not color stops.
 const DIRECTION_RE = /^to\s+[a-z\s]+$/i;
 
 function findFiles(root) {
@@ -91,7 +91,7 @@ function findMatchingParen(text, openIndex) {
 
 /**
  * Split an argument list on top-level commas only, so commas inside rgb(...)
- * or hsl(...) do not fragment a single colour stop (#2466).
+ * or hsl(...) do not fragment a single color stop (#2466).
  * @param {string} args
  * @returns {string[]}
  */
@@ -114,11 +114,11 @@ function splitTopLevel(args) {
 }
 
 /**
- * Parse one colour stop into {color, position}.
+ * Parse one color stop into {color, position}.
  *
- * Splitting colour from position by scanning rather than by one combined
+ * Splitting color from position by scanning rather than by one combined
  * regex keeps `rgb(...)` intact: the old pattern's `[a-z]+` fallback matched
- * the bare word "rgb" (and "to") as a colour once the value had already been
+ * the bare word "rgb" (and "to") as a color once the value had already been
  * truncated (#2466).
  *
  * @param {string} part - one top-level argument, e.g. "rgb(1, 2, 3) 50%"
@@ -151,7 +151,7 @@ function parseStop(part) {
  * Fill in positions for stops that carried no explicit percentage.
  *
  * CSS distributes unpositioned stops evenly between their nearest positioned
- * neighbours. The old code assigned 0 to the first stop and 1 to every other
+ * neighbors. The old code assigned 0 to the first stop and 1 to every other
  * one, so a three-stop gradient reported [0, 1, 1] (#2466).
  *
  * @param {Array<{color: string, position: number|null}>} stops - mutated in place
@@ -185,8 +185,8 @@ function parseGradient(type, args) {
   if (parts.length > 0 && ANGLE_RE.test(parts[0])) {
     angle = parts.shift();
   } else if (parts.length > 0 && DIRECTION_RE.test(parts[0])) {
-    // "to right" etc. — a direction, not a colour stop. Dropped rather than
-    // parsed; the old `[a-z]+` fallback captured "to" as a colour (#2466).
+    // "to right" etc. — a direction, not a color stop. Dropped rather than
+    // parsed; the old `[a-z]+` fallback captured "to" as a color (#2466).
     parts.shift();
   }
 
@@ -205,7 +205,7 @@ function parseGradient(type, args) {
 }
 
 /**
- * Find every gradient call in a stylesheet, honouring nested parens.
+ * Find every gradient call in a stylesheet, honoring nested parens.
  * @param {string} text
  * @returns {Array<{type: string, args: string}>}
  */

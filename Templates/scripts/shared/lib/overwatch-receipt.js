@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Receipt replies (#2922): the ledger-id suffix an announcement carries, the /overwatch decision to reply to one sender that it received an announcement, and the sender-side parse of that reply. Pure — it composes text and decides; sending stays with the command spec.
  * @checksum sha256:placeholder
  *
@@ -16,8 +16,8 @@
  * received the message — and claims nothing about any session the monitor
  * relays to.
  *
- * NAMING. A *receipt reply*, never an "acknowledgement": rule 03 already uses
- * "one-line acknowledgement" for what a receiving session prints to its own
+ * NAMING. A *receipt reply*, never an "acknowledgment": rule 03 already uses
+ * "one-line acknowledgment" for what a receiving session prints to its own
  * user, and reusing the word would blur local narration with a message sent
  * back to the sender.
  *
@@ -26,7 +26,7 @@
 
 'use strict';
 
-/** The reply's first-line marker. A reply is recognisable, and never replied to. */
+/** The reply's first-line marker. A reply is recognizable, and never replied to. */
 const RECEIPT_PREFIX = 'Receipt from /overwatch:';
 
 /** The overlap notice's marker (overwatch-overlap.js), which is also never replied to. */

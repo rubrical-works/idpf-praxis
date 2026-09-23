@@ -1,7 +1,7 @@
 {
   "$schema": "./scope-drift-protected-paths.schema.json",
   "version": 1,
-  "description": "Paths that the Step 4c state-drift gate (#2404) always protects. A sub-issue touching one of these requires the issue body to name the file explicitly under `Files to modify:` / `**Files:**`, or to carry a `Scope-Override: <reason>` line in the most recent commit message or an issue comment. A `### Files Changed` section does NOT satisfy this guard (#2788): Step 4c appends that section from the run's own commits before the gate reads the body, so counting it let a run license its own protected edits — the gate's input derived from its own subject. The union with `### Files Changed` still governs the `outside-declared-scope` violation class, where absorbing growth across passes is the intended #2520 behaviour.",
+  "description": "Paths that the Step 4c state-drift gate (#2404) always protects. A sub-issue touching one of these requires the issue body to name the file explicitly under `Files to modify:` / `**Files:**`, or to carry a `Scope-Override: <reason>` line in the most recent commit message or an issue comment. A `### Files Changed` section does NOT satisfy this guard (#2788): Step 4c appends that section from the run's own commits before the gate reads the body, so counting it let a run license its own protected edits — the gate's input derived from its own subject. The union with `### Files Changed` still governs the `outside-declared-scope` violation class, where absorbing growth across passes is the intended #2520 behavior.",
   "paths": [
     {
       "pattern": "framework-config.json",

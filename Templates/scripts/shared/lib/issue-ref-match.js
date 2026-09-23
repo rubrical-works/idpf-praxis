@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Boundary-anchored issue-reference matching and name-status parsing (#2467).
  *
@@ -9,14 +9,14 @@
  * (#24 matched #245, #2453, ...). In a repo with 2400+ issues that corrupted
  * two BLOCKING gates -- /work Step 4c scope-drift and the /done confirmation
  * gate -- plus three reports. `readLatestCommitMessage` shared the flaw, so a
- * `Scope-Override:` could be honoured from an unrelated issue's commit.
+ * `Scope-Override:` could be honored from an unrelated issue's commit.
  *
  * Separately, name-status parsing matched only `^([AMD])\t`, so rename and
  * copy lines (`R100\told\tnew`) were never recorded as touched. `git mv` of an
  * always-protected path (framework-config.json, .claude/metadata/**, ...)
  * passed the scope-drift gate entirely.
  *
- * Centralised here so the five call sites cannot drift apart -- five
+ * Centralized here so the five call sites cannot drift apart -- five
  * separately-corrected regexes would.
  *
  * Runtime dependency contract: Node built-ins only, and in fact zero requires.
@@ -43,7 +43,7 @@
  * single-`keyword` signature could not express one: the alternatives were
  * three grep calls, or an inline alternation at the call site. An inline one
  * already existed in `/done` Step 1b, built independently of this helper —
- * exactly the drift this module was centralised to prevent.
+ * exactly the drift this module was centralized to prevent.
  *
  * @param {number|string} issueNumber Issue number (digits only)
  * @param {{ keyword?: string|null, keywords?: string[] }} [options]
@@ -105,7 +105,7 @@ function bodyMentionsIssue(text, issueNumber) {
  *
  * @param {string} line
  * @returns {{ status: string, paths: string[] }|null} null for blank lines,
- *   commit headers, and unrecognised statuses
+ *   commit headers, and unrecognized statuses
  */
 function parseNameStatusLine(line) {
   if (!line || typeof line !== 'string') return null;

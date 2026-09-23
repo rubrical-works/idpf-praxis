@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "spelling-policy-schema.json",
+  "title": "Spelling Policy",
+  "description": "Schema for spelling-policy.json (#2978): the British -> American word map, the external-name spans that keep their spelling, and the paths the regression guard does not scan. Read by tests/reference/american-spelling.test.js and minimize-helper.js spell-carry through .claude/scripts/framework/spelling-policy.js.",
+  "type": "object",
+  "required": [
+    "version",
+    "language",
+    "iseStems",
+    "iseSuffixes",
+    "iseExceptions",
+    "words",
+    "allowlist",
+    "excludePaths",
+    "identifiers"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "_meta": {
+      "type": "object",
+      "description": "Provenance. Not read at runtime.",
+      "additionalProperties": true
+    },
+    "language": {
+      "const": "en-US"
+    },
+    "iseStems": {
+      "type": "array",
+      "description": "Stems expanded with every iseSuffixes pair.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z]+$"
+      }
+    },
+    "iseSuffixes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "british",
+          "american"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "british": {
+            "type": "string",
+            "pattern": "^is[a-z]*$"
+          },
+          "american": {
+            "type": "string",
+            "pattern": "^iz[a-z]*$"
+          }
+        }
+      }
+    },
+    "iseExceptions": {
+      "type": "array",
+      "description": "Expanded forms that are not words to correct.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z]+$"
+      }
+    },
+    "words": {
+      "type": "object",
+      "description": "Explicit British -> American pairs, lowercase.",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]+$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z]+$"
+      }
+    },
+    "identifiers": {
+      "type": "object",
+      "description": "Renamed contract identifiers, old -> new. Exact, case-sensitive; matched only where not adjacent to another identifier character.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+      }
+    },
+    "allowlist": {
+      "type": "array",
+      "description": "Spans that keep their spelling. A listed word inside a match of any pattern is neither reported nor replaced.",
+      "items": {
+        "type": "object",
+        "required": [
+          "pattern",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "minLength": 1,
+            "description": "JavaScript regular expression source, applied per line."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "excludePaths": {
+      "type": "array",
+      "description": "Repository paths the guard does not scan. * matches within one path segment, ** across segments.",
+      "items": {
+        "type": "object",
+        "required": [
+          "glob",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "glob": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

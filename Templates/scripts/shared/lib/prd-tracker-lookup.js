@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Resolve the PRD tracker issue for a test-plan approval issue. Exports resolvePrdTracker(). Tries the explicit PRD Tracker marker, then a tracker referencing the approval issue, then the PRD file path. Never throws; a miss is a not-found result.
  * @checksum sha256:placeholder
  *
@@ -24,9 +24,9 @@
  *               making it do so is deliberately out of scope for #2786, since
  *               every existing approval issue would still lack it. When it is
  *               there, nothing else runs.
- *   reference — a `prd`-labelled issue whose body names this approval issue.
+ *   reference — a `prd`-labeled issue whose body names this approval issue.
  *               The link the tracker template actually writes.
- *   path      — a `prd`-labelled issue whose body names the same PRD file.
+ *   path      — a `prd`-labeled issue whose body names the same PRD file.
  *               Weakest: two trackers for one PRD path would both match, so
  *               it runs last and reports the ambiguity rather than picking.
  *
@@ -47,7 +47,7 @@ const MARKER = /\*\*PRD Tracker:\*\*\s*#(\d+)/;
 const PRD_PATH = /\*\*PRD:\*\*\s*(\S+)/;
 
 /**
- * Default search: every `prd`-labelled issue, open or closed.
+ * Default search: every `prd`-labeled issue, open or closed.
  *
  * Closed included on purpose — a PRD tracker is routinely closed once its
  * backlog is created, and a closed tracker's review state is exactly as

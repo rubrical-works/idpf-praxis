@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Living Style Guide showcase server (#2430, Story 1.1).
  *
@@ -314,7 +314,7 @@ function handleDone(_req, res, ctx) {
 
 function makeRequestHandler(ctx) {
   return (req, res) => {
-    // DNS-rebinding defence (#2468) — FIRST, before any route dispatch, so it
+    // DNS-rebinding defense (#2468) — FIRST, before any route dispatch, so it
     // covers /record, /done, /nonce and static alike. Absent this, a page
     // resolving to 127.0.0.1 is same-origin: it can GET /nonce for the
     // anti-CSRF token and then POST forged /record decisions.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Targeted announcement routing (#2915). Given the recipient split from peer-announce.js resolveRecipients(), the resolved broadcast lever and an overwatch presence reading, decides whether an announcement goes to every addressable peer or to the live /overwatch alone. Every path short of a confirmed, uniquely addressable monitor falls back to broadcast and names why. Pure: no I/O, no throwing path.
  * @checksum sha256:placeholder
  *
@@ -11,7 +11,7 @@
 
 /**
  * WHY (#2915). Every announcement goes to every addressable peer, so N sessions
- * in one directory pay N-1 acknowledgements per event, and `/overwatch` is
+ * in one directory pay N-1 acknowledgments per event, and `/overwatch` is
  * the one session built to consume them. With `broadcast: false` and a live
  * monitor, a session sends to the monitor alone; the monitor relays what is
  * actionable (overlap notices, #2914).
@@ -88,7 +88,7 @@ function routeRecipients(options) {
   const recipients = Array.isArray(opts.recipients) ? opts.recipients : [];
   const skipped = Array.isArray(opts.skipped) ? opts.skipped : [];
   const broadcast = opts.broadcast !== false;
-  // An unrecognised value forces nothing: widening who hears an announcement
+  // An unrecognized value forces nothing: widening who hears an announcement
   // is a decision, so only a named reason may make it.
   const forced = FORCED_REASONS.includes(opts.force) ? opts.force : null;
 

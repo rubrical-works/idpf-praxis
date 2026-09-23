@@ -46,7 +46,7 @@
       "description": "Two in-flight issues declare the same file in their Files to modify sections.",
       "severity": "report",
       "autoCreatable": false,
-      "rationale": "Overlap is a collision risk, not a defect. Reporting it early is the whole value; filing a bug about it names no broken behaviour. It is the one finding the monitor also sends to the sessions involved, as a targeted overlap notice gated by the overlapNotices lever and bounded by overlapNotices below (#2914)."
+      "rationale": "Overlap is a collision risk, not a defect. Reporting it early is the whole value; filing a bug about it names no broken behavior. It is the one finding the monitor also sends to the sessions involved, as a targeted overlap notice gated by the overlapNotices lever and bounded by overlapNotices below (#2914)."
     },
     {
       "kind": "stale-generated-output",

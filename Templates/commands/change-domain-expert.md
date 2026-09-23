@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Change this project's IDPF domain specialist.
 argument-hint: "[specialist-name] (optional)"
 copyright: "Rubrical Works (c) 2026"
@@ -9,7 +9,7 @@ copyright: "Rubrical Works (c) 2026"
 Change the active domain specialist and load it into the session.
 **Prerequisites:** Framework v0.17.0+; `framework-config.json` in project root.
 ## Selection and Loading
-`framework-manifest.json` `domainSpecialists` is an array of objects; every entry is selectable. `name` = identifier and file basename when loadable. `loadable` = `true` when a file exists to inject; `false` means **announce-only** — selectable and recorded as the active role, but no file exists so nothing loads. `description` = one-line remit, shown in the menu; it is what separates near-neighbours like `Data-Engineer` from `Database-Engineer`. `announceReason` (only when `loadable: false`) = `model-builtin` (base model covers it unprompted, no file warranted) or `pending-evaluation` (never assessed; #2536 decides). `loadable: false` and "no file on disk" are the same set (#2533) — the flag is not a quality gate on an existing file. Derive announce-only from `loadable` alone and do NOT print `announceReason` prose in the menu.
+`framework-manifest.json` `domainSpecialists` is an array of objects; every entry is selectable. `name` = identifier and file basename when loadable. `loadable` = `true` when a file exists to inject; `false` means **announce-only** — selectable and recorded as the active role, but no file exists so nothing loads. `description` = one-line remit, shown in the menu; it is what separates near-neighbors like `Data-Engineer` from `Database-Engineer`. `announceReason` (only when `loadable: false`) = `model-builtin` (base model covers it unprompted, no file warranted) or `pending-evaluation` (never assessed; #2536 decides). `loadable: false` and "no file on disk" are the same set (#2533) — the flag is not a quality gate on an existing file. Derive announce-only from `loadable` alone and do NOT print `announceReason` prose in the menu.
 Resolution and validation are **not** reimplemented here — this command and the startup hook both call `.claude/scripts/shared/lib/specialist-resolver.js`, so a mid-session selection gets the same allowlist and input validation as one read at startup.
 **No documentation artifact to update.** The active role is *rendered* from config by `startup-hook.js`, not stored. Earlier versions rewrote a `**Domain Specialist:**` line in `CLAUDE.md` and `.claude/rules/03-startup.md`; neither line exists, so both steps were no-ops. Step 4 is the whole persistence mechanism — do NOT add steps editing prose files to match.
 ## Workflow

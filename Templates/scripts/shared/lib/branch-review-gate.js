@@ -2,7 +2,7 @@
 /**
  * Tree-wide review gate aggregation (#2749, shared with #2748 and #2750).
  *
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * A pure decision function answering "should `/work` stop and ask before
  * touching this set of issues, and what should it offer?" — the counterpart to
@@ -67,8 +67,8 @@
 
 /**
  * The four states `review-state.js` emits. Frozen and asserted against that
- * classifier's own vocabulary: an unrecognised value must stay representable
- * as unknown rather than be coerced into a neighbour, because coercing toward
+ * classifier's own vocabulary: an unrecognized value must stay representable
+ * as unknown rather than be coerced into a neighbor, because coercing toward
  * `reviewed-clean` would let a classifier change silently disable this gate.
  */
 const REVIEW_STATES = Object.freeze([
@@ -98,7 +98,7 @@ const NOT_PROCESSABLE = Object.freeze(['in review', 'in_review', 'done']);
 const SET_SHAPES = Object.freeze(['selection', 'tree']);
 
 /**
- * Absent or unrecognised resolves to `tree`, the shape that withholds the drop.
+ * Absent or unrecognized resolves to `tree`, the shape that withholds the drop.
  *
  * The direction is the whole point. A tree caller that omits the field would,
  * under a `selection` default, get the drop back with nothing reporting it —
@@ -109,7 +109,7 @@ function resolveSetShape(raw, warnings) {
   if (raw === undefined || raw === null) return 'tree';
   const shape = String(raw).trim().toLowerCase();
   if (SET_SHAPES.includes(shape)) return shape;
-  warnings.push('unrecognised-set-shape');
+  warnings.push('unrecognized-set-shape');
   return 'tree';
 }
 
@@ -144,8 +144,8 @@ function isProcessable(m, skipSet) {
  *   `members` — the tracker's children as `{number, state, boardStatus, isTracker?}`.
  *   `skipped` — the preamble's `skipped[]`, in either shape.
  *   `setShape` — `'selection'` or `'tree'` (#2780). Decides whether
- *   `proceed-with-clean` is offered. Absent or unrecognised resolves to
- *   `'tree'`, which withholds it; an unrecognised value also warns.
+ *   `proceed-with-clean` is offered. Absent or unrecognized resolves to
+ *   `'tree'`, which withholds it; an unrecognized value also warns.
  * @returns {{
  *   gate: boolean, processable: number[], neverReviewed: number[],
  *   findingsPending: number[], indeterminate: number[], unknown: number[],
@@ -194,7 +194,7 @@ function evaluateBranchReviewGate(input = {}) {
     else if (state === 'indeterminate') indeterminate.push(m.number);
   }
 
-  if (unknown.length) warnings.push('unrecognised-state');
+  if (unknown.length) warnings.push('unrecognized-state');
 
   // Members the gate has no objection to. `indeterminate` counts as clean:
   // it does not gate, so excluding it would drop issues nothing objected to.

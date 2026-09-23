@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * Domain specialist resolution — shared by the startup hook and
  * /change-domain-expert.
  *
@@ -82,7 +82,7 @@ function resolveSpecialist({ cwd, frameworkPath = '.', domainSpecialist }) {
   // resolve returns an absolute frameworkPath unchanged and still resolves "."
   // against cwd, so one form covers hub-managed and self-hosted alike.
   //
-  // Centralised because the defect was duplicated: both call sites carried the
+  // Centralized because the defect was duplicated: both call sites carried the
   // same wrong arithmetic, and repairing the manifest read alone would only have
   // moved the failure to "Specialist file was not found on disk".
   const frameworkFile = (...segments) => path.resolve(cwd, frameworkPath, ...segments);

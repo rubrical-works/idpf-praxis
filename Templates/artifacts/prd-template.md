@@ -47,7 +47,7 @@ Stories: 1.1, 1.2, 1.3
 | Performance | <latency, throughput, or resource budget — or Not applicable — reason> | <epic/story/gate> |
 | Scalability | <load, data volume, or concurrency the design must absorb — or Not applicable — reason> | <epic/story/gate> |
 | Security | <authn/authz, data handling, threat model — or Not applicable — reason> | <epic/story/gate> |
-| Availability | <uptime target, degradation behaviour, recovery — or Not applicable — reason> | <epic/story/gate> |
+| Availability | <uptime target, degradation behavior, recovery — or Not applicable — reason> | <epic/story/gate> |
 | Vulnerability remediation | <SLA for patching a known advisory, by severity — or Not applicable — reason> | <epic/story/gate> |
 
 ## Out of Scope

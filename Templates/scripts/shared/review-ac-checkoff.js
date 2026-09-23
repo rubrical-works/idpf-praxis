@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Check off acceptance criteria on review issues based on findings status, skipping tracker-shaped review types whose checklists are lifecycle gates. Exports checkOffACs(). Used by /review-prd and /review-test-plan for post-review AC updates with optional status transition.
  * @checksum sha256:placeholder
  *
@@ -11,7 +11,7 @@
  * review-ac-checkoff.js
  *
  * Usage:
- *   node review-ac-checkoff.js --issue N --findings .tmp-N-findings.json [--move-status in_review] [--type prd]
+ *   node review-ac-checkoff.js --issue $ISSUE --findings .tmp-$ISSUE-findings.json [--move-status in_review] [--type prd]
  *
  * --type defaults to the findings JSON's own `type` field; pass it only to
  * override. prd/proposal/test-plan suppress positional check-off (#2594).
@@ -158,7 +158,7 @@ function applyMoveStatus(issue, moveStatus) {
  * @param {Array} findings - Array of { status: 'pass'|'warn'|'fail'|'skip' } objects
  * @param {string|null} moveStatus - Optional status to move issue to after check-off
  * @param {string|null} [type] - Review type from the findings JSON. Omitted or
- *   unrecognized values fall open to check-off, preserving pre-#2594 behaviour.
+ *   unrecognized values fall open to check-off, preserving pre-#2594 behavior.
  * @param {string|null} [recommendation] - Review recommendation from the findings
  *   JSON. Omitted means no lifecycle-gate write, so callers predating #2694 do
  *   not begin writing gates by omission.
@@ -236,7 +236,7 @@ function checkOffACs(issue, findings, moveStatus, type, recommendation) {
 // ADDITIVE to the #2594 suppression above, which is unchanged: checkOffACs()
 // still returns skipped:true for test-plan and still checks off nothing
 // positionally. This path resolves the SIX declared gates from #2710 by their
-// text, generalising the by-label discipline findLifecycleGateLine() uses for
+// text, generalizing the by-label discipline findLifecycleGateLine() uses for
 // the single prd gate.
 //
 // By text, never by index. A template's fixed checklist and a review's findings

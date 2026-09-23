@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Configure this project's IDPF cross-session peer messaging.
 argument-hint: "[--on <levers>] [--off <levers>] [--quiet] [--loud] [--show] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -20,7 +20,7 @@ Edit the cross-session peer messaging levers (#2702). They live in `.claude/x-se
 | *(none)* | — | Changes nothing, but still writes the resolved object and displays it. |
 **Levers:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `noticeNarration`, `overlapNotices`, `broadcast`, `work`, `push`, `review` — the last three addressing `groups.*` without the prefix. **Non-interactive:** asks nothing, blocks on nothing.
 **`--show` is the read-only mode.** A bare invocation writes by design, so without it there is no way to look without changing the file. It reports exactly what a bare run would have written — a preview, not a second opinion.
-**`--show` with `--on`/`--off` is rejected** — opposite intents, and silently honouring one produces output that looks like a write but was not. "Did it write?" stays answerable from the flags alone.
+**`--show` with `--on`/`--off` is rejected** — opposite intents, and silently honoring one produces output that looks like a write but was not. "Did it write?" stays answerable from the flags alone.
 **`--help` takes precedence over every other flag**, `--show` and an invalid lever included — the likeliest reason to type it is not knowing the lever names, so `--help --off nonsense` prints help rather than complaining.
 ## Workflow
 **One step.** Pass the arguments through verbatim:
@@ -43,9 +43,9 @@ An **absent** object still resolves to fully enabled at every level — the reso
 | `discovery` | `peers-check.js` and the startup `Peers:` row. False **implies all three groups off** — announcing to peers never discovered is not meaningful. |
 | `notices` | Dispatch-caveat and skip-reason lines printed once per announcement. False leaves dispatch unchanged. |
 | `upstreamMonitor` | Whether the background upstream-push poller arms. Intervals and backoff stay in `.claude/metadata/upstream-monitor.json`. |
-| `noticeNarration` | **The one receive-side lever (#2735).** How verbosely *this* session narrates an announcement it **receives**. Absent/`true` = today's verbose behaviour; `false` keeps the one-line acknowledgement, drops the commentary. Not implied by `discovery: false`; forced off by `enabled: false`. |
+| `noticeNarration` | **The one receive-side lever (#2735).** How verbosely *this* session narrates an announcement it **receives**. Absent/`true` = today's verbose behavior; `false` keeps the one-line acknowledgment, drops the commentary. Not implied by `discovery: false`; forced off by `enabled: false`. |
 | `overlapNotices` | Whether `/overwatch` sends a targeted overlap notice to the sessions whose in-flight issues declare the same files (#2914). `false` is report-only: reported to the monitor's user, no session messaged. Resolved off by `enabled: false` and `discovery: false`. Dedupe and rate limit stay in `.claude/metadata/overwatch-signals.json`. |
-| `broadcast` | **Routing mode, not an off switch (#2915).** Absent or `true`: every announcement `announce.js` composes (`/work`, review events, `/done`'s push group) goes to every addressable peer — today's behaviour. `--off broadcast` selects **targeted** routing: with a live `/overwatch` whose pid is an addressable, uniquely named peer, announcements go to it alone and other peers are skipped as `routed-to-monitor`. No live monitor, stale marker, unaddressable monitor or shared monitor name → **falls back to broadcast**, never silence, and the notice names why. `/done` push/CI events route the same way (#2972); `/qa`'s `fixtures-provisioned` bypasses `announce.js` and still broadcasts. **Known cost:** a monitor holding, declining or letting messages expire is undetectable from the sender (#2674), so no session hears anything. Unchanged by `enabled: false` / `discovery: false`. |
+| `broadcast` | **Routing mode, not an off switch (#2915).** Absent or `true`: every announcement `announce.js` composes (`/work`, review events, `/done`'s push group) goes to every addressable peer — today's behavior. `--off broadcast` selects **targeted** routing: with a live `/overwatch` whose pid is an addressable, uniquely named peer, announcements go to it alone and other peers are skipped as `routed-to-monitor`. No live monitor, stale marker, unaddressable monitor or shared monitor name → **falls back to broadcast**, never silence, and the notice names why. `/done` push/CI events route the same way (#2972); `/qa`'s `fixtures-provisioned` bypasses `announce.js` and still broadcasts. **Known cost:** a monitor holding, declining or letting messages expire is undetectable from the sender (#2674), so no session hears anything. Unchanged by `enabled: false` / `discovery: false`. |
 | `groups.work` | `/work` events 1 `work-started`, 2 `work-completed` |
 | `groups.push` | `/done` events 3 `push-started`, 4 `ci-terminal`, 5 `push-rejected` |
 | `groups.review` | `/review-issue` event 6 `review-started`, `/resolve-review` event 7 `review-resolved` |
@@ -72,8 +72,8 @@ Every key above is **project** state: git-tracked, shared by every session in th
 ```
 IDPF_X_SESSION  >  framework-config.json crossSessionMessaging  >  enabled by default
 ```
-**All-or-nothing.** A recognised off-value resolves exactly as `enabled: false` — discovery, notices, upstream monitor, narration, all three groups. It accepts no lever list — per-lever tuning stays a project decision via `--off <levers>`.
-**Only `off`, `0` and `false` suppress**, case-insensitive after trimming; empty or whitespace-only counts as **absent**. **Anything else leaves messaging enabled and is reported as unrecognised.** Why an unknown value fails *open*, and why this layer is all-or-nothing: `{frameworkPath}/Reference/Cross-Session-Messaging.md` § The Session Layer.
+**All-or-nothing.** A recognized off-value resolves exactly as `enabled: false` — discovery, notices, upstream monitor, narration, all three groups. It accepts no lever list — per-lever tuning stays a project decision via `--off <levers>`.
+**Only `off`, `0` and `false` suppress**, case-insensitive after trimming; empty or whitespace-only counts as **absent**. **Anything else leaves messaging enabled and is reported as unrecognized.** Why an unknown value fails *open*, and why this layer is all-or-nothing: `{frameworkPath}/Reference/Cross-Session-Messaging.md` § The Session Layer.
 **This command never writes it — a guarantee, not an omission.** The override is session-scoped; `framework-config.json` is project-scoped and committed. So `run()` derives what it **writes** from the config resolved *without* the env layer, and what this **session** does from the config resolved *with* it. The two views are named `written` and `effective`; under an active override they always differ.
 | Envelope field | View | Answers |
 |---|---|---|
@@ -84,8 +84,8 @@ Reporting either alone is false under an override: `object` alone says messaging
 The part a script cannot carry; each exists because the alternative was tried.
 > **Groups, not per-event toggles.** Every event 3 is followed by exactly one terminal event. Per-event toggles would make "push-started on, ci-terminal off" valid config — a peer waiting forever for a message that never arrives. Grouping makes that **unrepresentable**.
 > **Governs emission, with exactly one exception (#2674, amended #2735).** Whether a dispatched message is accepted, held, declined or left to expire is the receiver's decision, undetectable from the sender. No setting here promises delivery. **The exception is `noticeNarration`, which is receive-side:** how verbosely this session narrates an announcement it receives. It lives in this object rather than a sibling key so it inherits one resolver, one absence rule and the `--on`/`--off` idiom; a parallel key re-implements all three, and a second copy of the absence rule is what this object exists to prevent. Recorded, not hidden — a reader assuming the emission-only framing still holds universally will look elsewhere for a receive-side setting and not find one.
-> **Quiet trims commentary, not the signal (#2735).** `--quiet` keeps the one-line acknowledgement and drops issue lookup, likely-files enumeration and collision-surface analysis. Why the acknowledgement stays: `{frameworkPath}/Reference/Cross-Session-Messaging.md` § Inbound Narration.
-> **Polarity, not preference (#2735).** Named so `true` is today's behaviour. A lever called `quietNotices` would invert the resolver's one rule — absence resolving to quiet, silently changing behaviour in every project that never wrote the object.
+> **Quiet trims commentary, not the signal (#2735).** `--quiet` keeps the one-line acknowledgment and drops issue lookup, likely-files enumeration and collision-surface analysis. Why the acknowledgment stays: `{frameworkPath}/Reference/Cross-Session-Messaging.md` § Inbound Narration.
+> **Polarity, not preference (#2735).** Named so `true` is today's behavior. A lever called `quietNotices` would invert the resolver's one rule — absence resolving to quiet, silently changing behavior in every project that never wrote the object.
 > **Superseded design (#2702).** An interactive walk of seven prompts was built first and **rejected in review** — flipping one lever meant answering six prompts about levers the user did not care about. Recorded so the flag form does not read as the option nobody considered.
 > **Explicit over implied (#2702).** An earlier draft recorded negatives alone, arguing that emitting `true` would freeze a project against future releases. **That does not survive checking** — `resolveCrossSessionConfig` reads each key independently, so a lever added later still resolves to enabled. Only legibility was lost: a reader had to know what absence meant.
 ## Error Handling

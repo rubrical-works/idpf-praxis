@@ -20,9 +20,9 @@
     "QA:",
     "qa-required"
   ],
-  "bodyTemplate": "## QA: {acDescription}\n\nParent: #{parentIssue} — {parentTitle}\n\n### Steps to Perform\n\n1. {steps}\n\n### Expected Result\n\n{expectedResult}",
+  "bodyTemplate": "## QA: {acDescription}\n\nParent: #{parentIssue} — {parentTitle}\n\n### Steps to Perform\n\n{steps}\n\n### Expected Result\n\n{expectedResult}",
   "fixturesTemplate": "\n\n### Fixtures\n{fixtures}",
-  "subIssueCommand": "gh pmu sub create --parent $ISSUE --title \"QA: [AC description]\" --label qa-required -F .tmp-qa-body.md; then place it (#2821): branch via assign-branch.js assignToBranch(<sub>, <parent branch>), never gh pmu move --branch here; then gh pmu move <sub> --status qa_required. The status is a separate step because gh pmu sub create accepts no --status flag.",
+  "subIssueCommand": "gh pmu sub create --parent $ISSUE --title \"QA: [AC description]\" --label qa-required -F .tmp-qa-body-$ISSUE.md; then place it (#2821): branch via assign-branch.js assignToBranch(<sub>, <parent branch>), never gh pmu move --branch here; then gh pmu move <sub> --status qa_required. The status is a separate step because gh pmu sub create accepts no --status flag.",
   "annotationFormat": "- [ ] {acText} → QA: #{subIssueNumber}",
   "closurePath": "Option A (config wins, #2472): the '- [ ]' box is an open QA gate. The parent moves to in_review via the Step 4b QA force-exception and stays there until all QA sub-issues are closed and their AC boxes are checked; only then can the parent reach done."
 }

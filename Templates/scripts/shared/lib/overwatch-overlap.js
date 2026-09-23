@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Targeted overlap notices for /overwatch (#2914). Attributes in-flight issues to sessions from received work-started announcements, intersects their authored Files to modify declarations, and decides which involved session is told what, bounded by dedupe and a per-recipient rate limit. Pure and synchronous: no file read, no send, no throwing path. The monitor relays the composed text verbatim.
  * @checksum sha256:placeholder
  *

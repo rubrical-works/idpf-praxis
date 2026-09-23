@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * `/overwatch` per-project configuration (#2957): the resolver for
  * `.claude/.overwatch/config.json`, and the mechanics of `/overwatch --on`,
@@ -10,7 +10,7 @@
  * ONE RESOLVER. The file is read through `resolveOverwatchConfig()` and nowhere
  * else, the way `resolveCrossSessionConfig()` is the only reader of
  * `.claude/x-session.json`. An absent file or key resolves to the schema
- * default, which is the behaviour before the file existed. A command-line flag
+ * default, which is the behavior before the file existed. A command-line flag
  * overrides the file. A schema-invalid file is REJECTED as a whole and reported:
  * half-reading it would apply the keys that happened to parse and silently drop
  * the rest.

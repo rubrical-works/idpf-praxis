@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Plan concurrent workstreams for parallel epic development, using the IDPF framework.
 argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--cancel]"
 copyright: "Rubrical Works (c) 2026"
@@ -75,10 +75,16 @@ gh issue view $EPIC --json number,title,labels,state
 
 ### Step 3: Gather Epic Context
 
+**Generate both scratch paths first — once per invocation, before either is written.** A mapping file and a plan file are held across separate steps of one run, so they need two distinct names. A fixed path is shared by every session running this command in this working directory, and nothing here is named after an issue, so shell out for each suffix — **`/bug`'s scheme (#2980)**: 
+```bash
+MAPPINGS_FILE=".tmp-mappings-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").json"
+PLAN_FILE=".tmp-plan-$(node -e "console.log(require('crypto').randomBytes(4).toString('hex'))").json"
+```
+Use `$MAPPINGS_FILE` at Step 3 and `$PLAN_FILE` at Step 5. **Keep the `.tmp-` prefix**: it is what lets the startup stale-scratch sweep collect a file an interrupted run left behind.
 1. Fetch sub-issues: `gh pmu sub list $EPIC --json`
 2. Read epic description for scope and affected areas
 3. Extract module hints via `extractModuleHints()`
-4. Build structured mapping via `buildEpicMapping()`, write to `.tmp-mappings.json`
+4. Build structured mapping via `buildEpicMapping()`, write to `$MAPPINGS_FILE`
 
 **Epics with no sub-issues:** Uses epic body only — mapping derived entirely from epic description.
 
@@ -114,7 +120,7 @@ Present analysis to user.
 
 3. **User confirmation:** Confirm, adjust (move epics between workstreams), or cancel
 4. **Adjustment validation:** `validateAdjustment(plan, adjustment, conflictMatrix)` — HIGH-risk pairs cannot be split across workstreams
-5. **Write plan:** Confirmed plan → `.tmp-plan.json` via `buildPlanOutput()`
+5. **Write plan:** Confirmed plan → `$PLAN_FILE` via `buildPlanOutput()`
 
 ### Step 6: Execute Plan (if not --dry-run)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -813,8 +813,8 @@ async function removeFromBranch(issueNumber, trackerNumber) {
         }
 
         // Remove assigned label
-        const unlabelled = await execAsyncSafe('gh', ['issue', 'edit', String(issueNumber), '--remove-label', 'assigned']);
-        if (unlabelled === null) {
+        const unlabeled = await execAsyncSafe('gh', ['issue', 'edit', String(issueNumber), '--remove-label', 'assigned']);
+        if (unlabeled === null) {
             failures.push(`remove assigned label from #${issueNumber}`);
         } else {
             operations.push(`remove assigned label from #${issueNumber}`);

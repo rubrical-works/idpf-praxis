@@ -49,7 +49,7 @@
         "kind": {
           "type": "string",
           "enum": ["package", "browser", "driver", "system"],
-          "description": "CLOSED, for the same reason the role enum is: an unrecognised kind would reach the guided-install flow, which branches on it to decide whether a missing item is installable here at all."
+          "description": "CLOSED, for the same reason the role enum is: an unrecognized kind would reach the guided-install flow, which branches on it to decide whether a missing item is installable here at all."
         },
         "check": {
           "type": "string",
@@ -66,7 +66,7 @@
     "roleMap": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The four shipped roles. CLOSED: an unrecognised role must fail here rather than reach selection, where it would be offered and then written into a suite no gate knows how to run.",
+      "description": "The four shipped roles. CLOSED: an unrecognized role must fail here rather than reach selection, where it would be offered and then written into a suite no gate knows how to run.",
       "properties": {
         "unit": { "$ref": "#/$defs/harnessList" },
         "e2e": { "$ref": "#/$defs/harnessList" },

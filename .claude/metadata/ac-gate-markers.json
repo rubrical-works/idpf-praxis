@@ -32,6 +32,6 @@
       "closure": "Checked when the owning release step runs; if one is still open at /done, say so rather than checking it."
     }
   ],
-  "recognisedGateTokens": ["review", "release"],
-  "rule": "A gate box is checked when its named resolving event has occurred, never because the issue is closing (#2726). A bare → GATE:, an unrecognised token, or the word gate in ordinary AC prose is unfinished work, not a marker."
+  "recognizedGateTokens": ["review", "release"],
+  "rule": "A gate box is checked when its named resolving event has occurred, never because the issue is closing (#2726). A bare → GATE:, an unrecognized token, or the word gate in ordinary AC prose is unfinished work, not a marker."
 }

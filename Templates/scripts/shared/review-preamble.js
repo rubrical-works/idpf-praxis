@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -107,7 +107,7 @@ function parseArgs(args) {
       priorArt = true;
       i += 1;
     } else if (/^--[A-Za-z]/.test(arg)) {
-      // Unrecognised but flag-shaped: collect and report, never fatal.
+      // Unrecognized but flag-shaped: collect and report, never fatal.
       //
       // Before #2752 this fell through to the positional branch and was
       // rejected as an issue number, so any documented-but-unparsed flag
@@ -117,8 +117,8 @@ function parseArgs(args) {
       // pass through and the command reports them.
       //
       // `i += 1`, not 2, is deliberate. Declaration governs value attachment:
-      // a recognised flag may claim the next token (`--with security`); an
-      // unrecognised one may not, so a following issue number is not swallowed.
+      // a recognized flag may claim the next token (`--with security`); an
+      // unrecognized one may not, so a following issue number is not swallowed.
       //
       // Shape is `--` followed by a letter, so a bare `--` or `---` is not a
       // flag and still falls through to the positional branch.

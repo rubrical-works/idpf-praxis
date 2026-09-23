@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -127,6 +127,15 @@ const RECEIPT_STATES = Object.freeze(['unconfirmed', 'received']);
 /** Dispatch states that mean "this announcement did not go out". */
 const NOT_DISPATCHED = Object.freeze(['pending', 'failed']);
 
+/**
+ * Dispatch states `record()` may write at composition time (#2990). `pending`
+ * is a composition that is dispatchable and not yet closed out; `skipped` is
+ * one that resolved `shouldSend: false` and so has nothing to close out. `sent`
+ * and `failed` describe a send that has not happened when composing, so they
+ * are refused here and reach an entry only through `updateDispatch`.
+ */
+const COMPOSITION_STATES = Object.freeze(['pending', 'skipped']);
+
 function ledgerPath(cwd = process.cwd()) {
   return path.join(cwd, LEDGER_FILENAME);
 }
@@ -184,6 +193,14 @@ function record(entry, options = {}) {
           + `and ${RECORD_ONLY_EVENTS.join(', ')} as record-only.`,
       };
     }
+    const dispatch = entry.dispatch === undefined ? 'pending' : entry.dispatch;
+    if (!COMPOSITION_STATES.includes(dispatch)) {
+      return {
+        ok: false,
+        error: `Initial dispatch ${JSON.stringify(dispatch)} cannot be recorded at composition time — `
+          + `expected one of ${COMPOSITION_STATES.join(', ')}; close a send out with updateDispatch.`,
+      };
+    }
     const issues = normalizeIssues(entry.issues);
     const branch = BRANCH_OPERATION_EVENTS.includes(event) && typeof entry.branch === 'string' && entry.branch.trim()
       ? entry.branch.trim()
@@ -203,10 +220,12 @@ function record(entry, options = {}) {
       event,
       issues,
       sessionPid: normalizeSessionPid(options.sessionPid),
-      dispatch: 'pending',
+      // `pending` unless the caller composed a shouldSend:false announcement,
+      // which is `skipped` from birth with its reason in `detail` (#2990).
+      dispatch,
       // Composed is neither dispatched nor received; both axes start pessimistic.
       receipt: 'unconfirmed',
-      detail: null,
+      detail: typeof entry.detail === 'string' && entry.detail ? entry.detail : null,
     };
     if (recordOnly) row.recordOnly = true;
     if (branch) row.branch = branch;
@@ -374,6 +393,7 @@ function reconcile({ entries, issues } = {}) {
   const missingCloser = [];
   const unrecorded = [];
   const undispatched = [];
+  const skipped = [];
 
   for (const issue of wanted) {
     const mine = list.filter((e) => Array.isArray(e.issues) && e.issues.includes(issue));
@@ -383,6 +403,11 @@ function reconcile({ entries, issues } = {}) {
     for (const e of mine) {
       if (NOT_DISPATCHED.includes(e.dispatch)) {
         undispatched.push({ issue, event: e.event, dispatch: e.dispatch, detail: e.detail || null, id: e.id });
+      } else if (e.dispatch === 'skipped') {
+        // Never a warning — nothing was meant to be sent (#2990). Counted so a
+        // run whose every composition was skipped says so rather than falling
+        // silent, which would read the same as a ledger never written.
+        skipped.push({ issue, event: e.event, detail: e.detail || null, id: e.id });
       }
     }
 
@@ -421,11 +446,12 @@ function reconcile({ entries, issues } = {}) {
     missingCloser,
     unrecorded,
     undispatched,
+    skipped,
     sessionPids,
     caveats,
     message: ok
-      ? `Announcement pairing OK (${paired.length} paired, ${unrecorded.length} unrecorded).`
-      : `Announcement pairing: ${problems.join('; ')}. Advisory only — does not block.`,
+      ? `Announcement pairing OK (${paired.length} paired, ${unrecorded.length} unrecorded, ${skipped.length} skipped — nothing to send).`
+      : `Announcement pairing: ${problems.join('; ')}. ${skipped.length} skipped — nothing to send. Advisory only — does not block.`,
   };
 }
 

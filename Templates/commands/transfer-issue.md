@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 allowed-tools: Bash
 description: Transfer an issue between branches, using the IDPF framework.
 argument-hint: "<issue-number> [--to branch]"

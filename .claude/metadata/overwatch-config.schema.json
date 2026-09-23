@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "overwatch-config.schema.json",
   "title": "/overwatch per-project configuration",
-  "description": "Governs .claude/.overwatch/config.json (#2957): per-project defaults for choices /overwatch otherwise takes as per-invocation flags. The file lives in .claude/.overwatch/, a real directory in deployed projects, not in .claude/metadata/, which is a read-only hub junction there. That is the reasoning that placed .claude/x-session.json under .claude/ (#2774). It is per-developer state, so .gitignore ignores the whole directory. ABSENCE MEANS TODAY'S BEHAVIOUR: an absent file, or an absent key, resolves to the default below, so a fresh clone needs nothing to exist. Read through .claude/scripts/shared/overwatch-config.js resolveOverwatchConfig() and never re-derived inline; a command-line flag overrides the file. The toggleable keys ARE this object's properties: /overwatch --on/--off read them from here, so adding a key needs no spec edit. A key belongs here only if a project would plausibly set it differently from the hub default. The hub-owned signal definitions stay in .claude/metadata/overwatch-signals.json.",
+  "description": "Governs .claude/.overwatch/config.json (#2957): per-project defaults for choices /overwatch otherwise takes as per-invocation flags. The file lives in .claude/.overwatch/, a real directory in deployed projects, not in .claude/metadata/, which is a read-only hub junction there. That is the reasoning that placed .claude/x-session.json under .claude/ (#2774). It is per-developer state, so .gitignore ignores the whole directory. ABSENCE MEANS TODAY'S BEHAVIOR: an absent file, or an absent key, resolves to the default below, so a fresh clone needs nothing to exist. Read through .claude/scripts/shared/overwatch-config.js resolveOverwatchConfig() and never re-derived inline; a command-line flag overrides the file. The toggleable keys ARE this object's properties: /overwatch --on/--off read them from here, so adding a key needs no spec edit. A key belongs here only if a project would plausibly set it differently from the hub default. The hub-owned signal definitions stay in .claude/metadata/overwatch-signals.json.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "autoCreate": {
       "type": "boolean",
       "default": false,
-      "description": "Default for --auto-create: file bugs automatically for filable findings, and offer enhancements. false (and absent) is today's opt-in behaviour. --auto-create still forces it on for one run. There is deliberately no per-run force-off flag: to run without it when this is true, run /overwatch --off autoCreate, then start the loop."
+      "description": "Default for --auto-create: file bugs automatically for filable findings, and offer enhancements. false (and absent) is today's opt-in behavior. --auto-create still forces it on for one run. There is deliberately no per-run force-off flag: to run without it when this is true, run /overwatch --off autoCreate, then start the loop."
     }
   }
 }

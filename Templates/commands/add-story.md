@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
 argument-hint: "[epic-number] (e.g., 42 or #42)"
 copyright: "Rubrical Works (c) 2026"
@@ -213,7 +213,7 @@ gh issue view $prd_num --json body --jq '.body' | grep -oE "PRD/[^/]+/PRD-[^.]+\
 Store as `$prd_file`. Warn and continue without document update if missing.
 **Step 3: Update PRD tracker body**
 ```bash
-gh pmu view $prd_num --body-stdout > .tmp-prd-tracker.md
+gh pmu view $prd_num --body-stdout > .tmp-$prd_num.md
 ```
 Update all 4 count locations:
 | Location | Pattern | Update |
@@ -229,8 +229,8 @@ For NEW epic:
 - Increment `✅ Epics: N`
 
 ```bash
-gh pmu edit $prd_num -F .tmp-prd-tracker.md
-rm .tmp-prd-tracker.md
+gh pmu edit $prd_num -F .tmp-$prd_num.md
+rm .tmp-$prd_num.md
 ```
 **Step 4: Update PRD document file (if found)**
 Determine next story number (highest under epic + 1, e.g., 4.2 → 4.3). Append after last story in this epic:

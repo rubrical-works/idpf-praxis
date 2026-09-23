@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Detect missing, partial, or stale node_modules at session startup. Stats node_modules/<name>/package.json for each declared package and compares package-lock.json mtime against node_modules/.package-lock.json. Read-only and advisory — performs no installation and spawns no npm subprocess.
  * @checksum sha256:placeholder
  *
@@ -77,7 +77,7 @@ function resolveScope(projectDir) {
  * Sized from a PHM-deployed hub framework root (framework_root_0.97.0), where
  * npm wrote package-lock.json 3279 ms after the installed copy while all four
  * declared runtime deps resolved (#2638). The earlier 17 ms figure came from
- * this repo's own install and did not generalise — a framework root installs a
+ * this repo's own install and did not generalize — a framework root installs a
  * different dependency set on a different machine profile, and the window sized
  * from the dev measurement produced exactly the every-session warning the
  * paragraph above names as the cost of getting it wrong.

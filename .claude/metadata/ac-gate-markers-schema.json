@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ac-gate-markers-schema.json",
   "title": "AC Gate Markers",
-  "description": "Schema for ac-gate-markers.json — the intentionally-open gate markers consumed by /work Steps 4b and 5 (#2765). Exactly three markers, and the recognised GATE tokens must be exactly the set nonstop-audit.js pins as GATE_PHASES.",
+  "description": "Schema for ac-gate-markers.json — the intentionally-open gate markers consumed by /work Steps 4b and 5 (#2765). Exactly three markers, and the recognized GATE tokens must be exactly the set nonstop-audit.js pins as GATE_PHASES.",
   "type": "object",
-  "required": ["version", "markers", "recognisedGateTokens", "rule"],
+  "required": ["version", "markers", "recognizedGateTokens", "rule"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
@@ -28,7 +28,7 @@
         }
       }
     },
-    "recognisedGateTokens": {
+    "recognizedGateTokens": {
       "type": "array",
       "minItems": 2,
       "maxItems": 2,

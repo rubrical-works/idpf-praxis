@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 description: Split a story into smaller stories, using the IDPF framework.
 argument-hint: "<story-number> (e.g., 123)"
 copyright: "Rubrical Works (c) 2026"
@@ -36,7 +36,7 @@ This command requires a story issue to split.
 ```
 **Step 3: Extract details**
 ```bash
-gh pmu view $story_num --body-stdout > .tmp-story.md
+gh pmu view $story_num --body-stdout > .tmp-$story_num-story.md
 ```
 Parse: title, description (As/I want/So that), AC (checkboxes), priority, parent epic.
 **Step 4: Parent epic**
@@ -154,7 +154,7 @@ gh pmu sub add {epic_num} {new_story_num} || true
 ## Phase 5: Update Original
 **Step 1: Update body**
 ```bash
-gh pmu view $story_num --body-stdout > .tmp-original.md
+gh pmu view $story_num --body-stdout > .tmp-$story_num.md
 ```
 Append split notice:
 ```markdown
@@ -173,8 +173,8 @@ This issue is now closed. Work the split stories instead.
 ```
 **Step 2: Save**
 ```bash
-gh pmu edit $story_num -F .tmp-original.md
-rm .tmp-original.md
+gh pmu edit $story_num -F .tmp-$story_num.md
+rm .tmp-$story_num.md
 ```
 **Step 3: Close**
 ```bash

@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.105.0
+**Version:** v0.106.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions.
 ## Project Configuration
@@ -35,7 +35,7 @@ GitHub automatically closes issues when `Fixes/Closes/Resolves #XXX` commits mer
 ## Workflow Routing
 **Slash Command Preference:** Prefer slash commands over raw `gh pmu` for board operations. Fall back to raw for debugging, unsupported operations, user request, or bulk operations with complex flags.
 **Issue-creating commands are not substitutable.** `/bug`, `/enhancement` and `/proposal` are the mechanism for filing their issue types — not the preferred one of two options — and a raw `gh pmu create` does not satisfy them. The preference above governs board operations; this governs filing.
-**What a bypass loses:** the issue template; the AC feasibility gates `verificationGate` and `phaseFeasibility` (`.claude/metadata/ac-feasibility-prompts.json`); prior-art handling; the priority default; the reports-number-and-STOPs contract. None is visible on the created issue — it lands on the board correctly labelled and nothing reports a problem. A consequence a reader can check is what makes a prohibition hold; "prefer slash commands" names none.
+**What a bypass loses:** the issue template; the AC feasibility gates `verificationGate` and `phaseFeasibility` (`.claude/metadata/ac-feasibility-prompts.json`); prior-art handling; the priority default; the reports-number-and-STOPs contract. None is visible on the created issue — it lands on the board correctly labeled and nothing reports a problem. A consequence a reader can check is what makes a prohibition hold; "prefer slash commands" names none.
 **Needing several filings is not a qualifying fallback reason.** `Skill` transfers control and does not return, so at most one issue-creating command runs per turn. More than one filing means more than one turn, never abandoning the command: file one, report its number, STOP, and name the filings still outstanding.
 **The prohibition is scoped to those three commands.** `gh pmu create` remains the prescribed form for a standalone QA issue (§ QA-Issue Creation Ownership) and for the board operations the preference covers. The same literal is correct there and wrong here because the clauses answer different questions.
 Three axes meet here and satisfying one says nothing about the others. **Which board is reached** — § QA-Issue Creation Ownership, including its `--target` companion-filing exception. **Which CLI form is used** — `gh pmu` versus the bare `gh issue` creation form. **Which command does the filing** — this clause, slash command versus raw invocation.
@@ -51,12 +51,13 @@ Flags are extracted and appended to the invocation, not left in the title, so no
 **QA-Issue Creation Ownership:** `/work` Step 4a owns the **automatic** path — files QA sub-issues from unverifiable ACs via `gh pmu sub create` with `qa-required`. This governs **every other** path: QA raised during `/done`, during review, or whenever a session decides a manual check is needed.
 | Situation | Command |
 |-----------|---------|
-| Belongs to a parent issue | `gh pmu sub create <parent> --label qa-required -F .tmp-qa.md` |
-| Stands alone | `gh pmu create --label qa-required -F .tmp-qa.md --status backlog` |
+| Belongs to a parent issue | `gh pmu sub create <parent> --label qa-required -F $QA_BODY_FILE` |
+| Stands alone | `gh pmu create --label qa-required -F $QA_BODY_FILE --status backlog` |
+`$QA_BODY_FILE` is a **creation** path (no issue number yet): generate once per invocation, `.tmp-qa-body-{random}.md`, per `05-windows-shell.md` § Naming the temp file (#2991).
 **Always `gh pmu`, never the bare `gh issue` creation form.** The bare form files an issue that never reaches the project board — invisible to `gh pmu sub list`, epic closure, `/done` sub-issue checks and the `/work` Step 4b QA force-exception. An off-board QA issue satisfies nothing and blocks nothing; it reads as done. Silent and occasional, which is why it survives — nobody notices until an epic will not close.
 **The one exception: a `--target` companion filing (#2775).** `/bug --target <owner/name>` and `/enhancement --target <owner/name>` file into a **companion** repository, and there the bare `gh issue` creation form is **correct** — the local board is precisely what must not be touched. `gh pmu create -R` takes the *repository* from `-R` but the *project* from the local `.gh-pmu.json`, with no override, so it files into the companion and adds the issue to **this** repo's board (observed 2026-09-04: px-manager#1155 landed on Project-Varia). **Membership is redirected, not abandoned** — `.claude/scripts/shared/file-companion-issue.js` adds it to the *companion's* board explicitly, resolving field and option ids from that board and reporting anything unresolvable as unset rather than guessing. Both commands delegate; neither re-derives the sequence.
 **Closure contract.** A `qa-required` issue is a **gate**, not a note. Its parent AC stays unchecked as `- [ ] … → QA: #N` until the QA issue closes; the parent reaches `done` only once it has. `--force` past such a line is permitted **only** because the line names the sub-issue that still owns the check — the gate moved, it did not disappear. Closing the parent while its QA issue is open defeats it.
-**Label mandatory.** `qa-required` is what makes the issue recognisable as a gate to every consumer looking for one; unlabelled, it is an ordinary issue nobody treats as blocking.
+**Label mandatory.** `qa-required` is what makes the issue recognizable as a gate to every consumer looking for one; unlabeled, it is an ordinary issue nobody treats as blocking.
 **Review Command Routing:** `review` with issue reference (`#N`) routes to `/review-issue`:
 | Trigger Pattern | Routes To |
 |----------------|-----------|

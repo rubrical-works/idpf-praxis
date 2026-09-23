@@ -7,7 +7,7 @@
 
 ## What It Is
 
-[`diagram-design`](https://github.com/cathrynlavery/diagram-design) is a third-party Claude Code skill by Cathryn Lavery, published under the MIT licence. It draws architecture, flowchart, sequence, state machine, UML class and many other diagram types as self-contained HTML with inline SVG, following an editorial design system.
+[`diagram-design`](https://github.com/cathrynlavery/diagram-design) is a third-party Claude Code skill by Cathryn Lavery, published under the MIT license. It draws architecture, flowchart, sequence, state machine, UML class and many other diagram types as self-contained HTML with inline SVG, following an editorial design system.
 
 **It is optional.** IDPF does not bundle, vendor or require it. Without it, `/create-prd` offers the two built-in diagram styles, drawio and ASCII, exactly as before. With it, `/create-prd` offers a third style.
 

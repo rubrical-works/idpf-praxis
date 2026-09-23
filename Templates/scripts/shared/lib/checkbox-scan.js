@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Fence-aware checkbox and section scanning for issue bodies (#2600).
  *
@@ -215,7 +215,7 @@ const CHECKBOX_RE = /^\s*-\s*\[([ xX])\]\s*(.*)$/;
  * Exported for callers that already carry their own section-anchoring loop and
  * only need the checkbox definition to be shared -- `generate-test-plan.js` and
  * `mockup-ac-generator.js` each scope to an acceptance-criteria section by
- * different rules, and replacing those rules wholesale would change behaviour
+ * different rules, and replacing those rules wholesale would change behavior
  * their consumers depend on. Pairing this with `computeFenceMask` gives them
  * fence awareness without touching their section semantics.
  *

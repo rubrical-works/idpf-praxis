@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Tailwind CSS discovery adapter. Detects tailwind.config.js
  *   and extracts theme values to DTCG tokens.
  * @checksum sha256:placeholder
@@ -29,7 +29,7 @@ function detect(projectRoot) {
  *
  * The previous `\{([^}]+)\}` stopped at the first inner `}`, so a nested
  * palette lost every group after the first and its scale keys were promoted
- * to top-level colour names (#2466). This walks braces by depth instead,
+ * to top-level color names (#2466). This walks braces by depth instead,
  * while skipping over string literals so a brace inside a value cannot
  * unbalance the scan.
  *

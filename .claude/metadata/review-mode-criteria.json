@@ -9,12 +9,12 @@
     "team": {
       "name": "Team",
       "description": "2-10 developers collaborating",
-      "focus": "Above + story sizing, priorities, dependencies"
+      "focus": "Above + priorities, dependencies"
     },
     "enterprise": {
       "name": "Enterprise",
       "description": "Large teams with formal processes",
-      "focus": "Above + effort estimation, risk assessment, compliance"
+      "focus": "Above + risk assessment, compliance"
     }
   },
   "criteria": {
@@ -65,42 +65,6 @@
       "autoCheck": "Check for `- [ ]` checkbox items in issue body; verify each contains a measurable/verifiable statement",
       "description": "Acceptance criteria exist and are testable"
     },
-    "labels-correct": {
-      "name": "Labels correct?",
-      "modes": [
-        "solo",
-        "team",
-        "enterprise"
-      ],
-      "type": "objective",
-      "autoCheck": "Verify issue has at least one type label (bug/enhancement/story/epic) matching its content",
-      "description": "Issue has appropriate labels"
-    },
-    "story-sizing": {
-      "name": "Story sized appropriately?",
-      "modes": [
-        "team",
-        "enterprise"
-      ],
-      "type": "subjective",
-      "description": "Story points or size estimate is appropriate",
-      "header": "Sizing",
-      "question": "Is this appropriately sized for a single iteration?",
-      "options": [
-        {
-          "label": "Good size",
-          "description": "Fits within a single iteration with reasonable effort"
-        },
-        {
-          "label": "Too large",
-          "description": "Should be broken down into smaller stories"
-        },
-        {
-          "label": "Too small",
-          "description": "Could be combined with related work"
-        }
-      ]
-    },
     "priority-set": {
       "name": "Priority set?",
       "modes": [
@@ -120,15 +84,6 @@
       "type": "objective",
       "autoCheck": "Check for `Refs #`, `Depends on #`, `Blocks #`, or `**Refs:**` patterns in body; verify referenced issues exist",
       "description": "Dependencies on other issues are documented"
-    },
-    "effort-estimate": {
-      "name": "Effort estimate present?",
-      "modes": [
-        "enterprise"
-      ],
-      "type": "objective",
-      "autoCheck": "Check for estimate/effort section or field in body (e.g., `**Estimate:**`, story points, time estimate)",
-      "description": "Time/effort estimation is documented"
     },
     "risk-assessment": {
       "name": "Risk assessment documented?",

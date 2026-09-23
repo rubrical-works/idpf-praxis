@@ -1,0 +1,75 @@
+{
+  "$schema": "./bug-priority-rubric-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Impact-to-priority rubric (#2992). Read by /bug to derive a filing priority, by the severity-proportionate review criterion to judge one, and by /resolve-review to propose a correction. Replaces /bug's fixed --priority p1 (#1520), whose 'bugs are more urgent than enhancements' still holds for broken behavior on a supported path — kept here as p1/p0 — but overstated urgency for the advisory and dev-only bugs that dominated the 2026-09-22 criteria audit.",
+    "issue": 2992
+  },
+  "precedence": "Evaluate every class against the bug's stated impact; the highest priority among the matching classes wins (p0 over p1 over p2). No class matches → use fallback and say so.",
+  "classes": [
+    {
+      "id": "data-loss",
+      "priority": "p0",
+      "description": "Data is lost, corrupted or silently overwritten.",
+      "signals": ["data loss", "corruption", "overwrites another issue's body", "irreversible"]
+    },
+    {
+      "id": "blocked-no-workaround",
+      "priority": "p0",
+      "description": "Work is blocked and no workaround exists.",
+      "signals": ["cannot proceed", "every run fails", "no workaround"]
+    },
+    {
+      "id": "security-exposure",
+      "priority": "p0",
+      "description": "A credential, token or private content is exposed, or a security control is bypassed.",
+      "signals": ["token leaked", "secret in output", "permission bypass", "advisory"]
+    },
+    {
+      "id": "broken-release",
+      "priority": "p0",
+      "description": "A release, deploy or install is broken for users.",
+      "signals": ["release fails", "deploy fails", "install broken", "MODULE_NOT_FOUND in a deployed script"]
+    },
+    {
+      "id": "broken-supported-path",
+      "priority": "p1",
+      "description": "Behavior on a supported path that reaches user projects is wrong, and the workaround is costly.",
+      "signals": ["Deployment Impact: deployed", "wrong result on a normal run", "gate passes when it should fail", "manual workaround every time"]
+    },
+    {
+      "id": "cheap-workaround",
+      "priority": "p2",
+      "description": "Behavior is wrong but a cheap, obvious workaround exists.",
+      "signals": ["re-run fixes it", "one manual edit", "workaround documented"]
+    },
+    {
+      "id": "advisory-channel",
+      "priority": "p2",
+      "description": "The defect is in a warning-only or advisory channel that blocks nothing.",
+      "signals": ["warning-only", "advisory", "noisy audit", "false positive in a non-blocking report"]
+    },
+    {
+      "id": "dev-only",
+      "priority": "p2",
+      "description": "Only this repository's maintainer tooling is affected; nothing reaches user projects.",
+      "signals": ["Deployment Impact: dev-only", "framework script", "maintainer command"]
+    },
+    {
+      "id": "docs-or-spec-accuracy",
+      "priority": "p2",
+      "description": "Documentation, spec prose or data is inaccurate, with no executable effect.",
+      "signals": ["stale count", "wrong wording", "spec says X, code does Y"]
+    },
+    {
+      "id": "cosmetic",
+      "priority": "p2",
+      "description": "Presentation only: formatting, naming or output layout.",
+      "signals": ["formatting", "typo", "alignment", "wording of a message"]
+    }
+  ],
+  "fallback": {
+    "priority": "p2",
+    "reason": "The described impact matched no rubric class, so P2 is used rather than guessing higher; raise it if the impact is worse than the description states."
+  }
+}

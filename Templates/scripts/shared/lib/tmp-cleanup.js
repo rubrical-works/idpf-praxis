@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Stale `.tmp-*` scratch-file sweep for the startup hook (#2771).
  *
@@ -120,7 +120,7 @@ function loadSignals(cwd = process.cwd()) {
  * every project already on disk without anyone editing a file.
  *
  * **Only the literal `false` disables it.** The polarity is deliberately the
- * opposite of `resolveVerificationMode`, which fails an unrecognised value INTO
+ * opposite of `resolveVerificationMode`, which fails an unrecognized value INTO
  * the strict gate because the risk there is a typo relaxing a check. Here the
  * risk runs the other way: the sweep emits no row when it removes nothing, so a
  * disabled sweep and a clean one look identical, and a typo that silently
@@ -297,7 +297,7 @@ function removeStale(cwd, stale) {
       failed.push({ name: String(name), error: 'invalid entry' });
       continue;
     }
-    // Defence in depth. Every name reaching here came from `readdirSync`, so it
+    // Defense in depth. Every name reaching here came from `readdirSync`, so it
     // is already a basename — but this function deletes, and it is exported,
     // so it does not rely on its only current caller staying its only caller.
     if (name !== path.basename(name) || name.includes('/') || name.includes('\\')) {

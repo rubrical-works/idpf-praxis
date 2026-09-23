@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  *
  * Resolver for the `crossSessionMessaging` project config (#2702).
  *
@@ -100,7 +100,7 @@ const ENV_VAR = 'IDPF_X_SESSION';
 /**
  * The only values that suppress, matched case-insensitively after trimming.
  *
- * ANYTHING ELSE LEAVES MESSAGING ENABLED and is reported as unrecognised. This
+ * ANYTHING ELSE LEAVES MESSAGING ENABLED and is reported as unrecognized. This
  * is the opposite polarity to `verificationMode`, which fails an unknown value
  * INTO strict, and the difference is deliberate rather than an inconsistency:
  * for a gate, failing into strictness is safe. For a messaging opt-out the
@@ -137,30 +137,30 @@ function isPlainObject(value) {
  * collapsing any two loses something a user needs:
  *
  *   absent       -> changes nothing, says nothing
- *   recognised   -> suppresses everything, and says so
- *   unrecognised -> suppresses NOTHING, and says so loudly
+ *   recognized   -> suppresses everything, and says so
+ *   unrecognized -> suppresses NOTHING, and says so loudly
  *
- * An empty or whitespace-only value counts as ABSENT, not unrecognised. An
+ * An empty or whitespace-only value counts as ABSENT, not unrecognized. An
  * exported-but-empty variable is how a shell wrapper commonly records "unset";
  * reporting it as a typo produces a warning nobody can act on, about a value
  * that expresses no intent.
  *
  * @param {object} env  An environment bag, normally `process.env`.
- * @returns {{variable: string, value: string|null, recognised: boolean, applied: boolean}}
+ * @returns {{variable: string, value: string|null, recognized: boolean, applied: boolean}}
  */
 function readEnvOverride(env) {
   const bag = isPlainObject(env) ? env : {};
   const raw = bag[ENV_VAR];
 
   if (typeof raw !== 'string' || raw.trim() === '') {
-    return { variable: ENV_VAR, value: null, recognised: false, applied: false };
+    return { variable: ENV_VAR, value: null, recognized: false, applied: false };
   }
 
-  const recognised = ENV_OFF_VALUES.includes(raw.trim().toLowerCase());
+  const recognized = ENV_OFF_VALUES.includes(raw.trim().toLowerCase());
   // `value` reports the raw string, untrimmed and uncased, so a report can
   // quote back exactly what was set. Matching is what tolerates the whitespace,
   // not the record of what the user typed.
-  return { variable: ENV_VAR, value: raw, recognised, applied: recognised };
+  return { variable: ENV_VAR, value: raw, recognized, applied: recognized };
 }
 
 /**
@@ -188,7 +188,7 @@ function readEnvOverride(env) {
  *   groups: {work: boolean, push: boolean, review: boolean},
  *   fullyEnabled: boolean, implications: string[],
  *   source: 'environment'|'project-config'|'default',
- *   envOverride: {variable: string, value: string|null, recognised: boolean, applied: boolean}
+ *   envOverride: {variable: string, value: string|null, recognized: boolean, applied: boolean}
  * }}
  *
  * Never throws. This gates an ADVISORY channel: a resolver that threw would
@@ -211,19 +211,19 @@ function resolveCrossSessionConfig(config, env) {
     notices: !isOff(xsm.notices),
     upstreamMonitor: !isOff(xsm.upstreamMonitor),
     // The one RECEIVE-side lever (#2735). Named so that `true` is today's
-    // behaviour: a lever called `quietNotices` would invert the absence rule
+    // behavior: a lever called `quietNotices` would invert the absence rule
     // above and silently make every project that never wrote this object go
     // quiet — the exact failure the header warns about, one key down.
     noticeNarration: !isOff(xsm.noticeNarration),
     // Targeted overlap notices from /overwatch to the sessions whose
     // in-flight issues declare the same files (#2914). Off restores the
-    // monitor's report-only behaviour. Named so that true is the enabled
+    // monitor's report-only behavior. Named so that true is the enabled
     // state, for the absence rule above.
     overlapNotices: !isOff(xsm.overlapNotices),
     // Announcement ROUTING, not emission (#2915). true sends to every
-    // addressable peer, today's behaviour; false selects targeted routing to a
+    // addressable peer, today's behavior; false selects targeted routing to a
     // live /overwatch, falling back to broadcast when there is none. Named
-    // so absence is today's behaviour — `targetedRouting` would resolve true
+    // so absence is today's behavior — `targetedRouting` would resolve true
     // when absent and silently make every project targeted. Deliberately NOT
     // cascaded by the master switch or discovery below: those already silence
     // every announcement, and forcing this false would report a routing mode
@@ -279,8 +279,8 @@ function resolveCrossSessionConfig(config, env) {
     // value is reported. Suppressing here would make a typo mute a session that
     // nobody -- not the user, not any peer -- could detect was muted.
     state.implications.push(
-      `${ENV_VAR} is set to "${envOverride.value}", which is unrecognised, so it was `
-      + `ignored and cross-session messaging remains enabled. Recognised off-values are `
+      `${ENV_VAR} is set to "${envOverride.value}", which is unrecognized, so it was `
+      + `ignored and cross-session messaging remains enabled. Recognized off-values are `
       + `${ENV_OFF_VALUES.map((v) => `\`${v}\``).join(', ')} (case-insensitive).`
     );
   }
@@ -368,7 +368,7 @@ function readJsonOrUndefined(filePath) {
  * `.claude/x-session.json` exists it is the whole answer, and the legacy key is
  * inert until `/x-session-config` strips it.
  *
- * WHY THE LEGACY READ IS REPORTED rather than silently honoured: the key is
+ * WHY THE LEGACY READ IS REPORTED rather than silently honored: the key is
  * deprecated and will be moved on the next `/x-session-config` write. A project
  * still reading it is in a transitional state, and the one line saying so is
  * what makes that visible before the move happens rather than after.
@@ -410,7 +410,7 @@ function readCrossSessionConfig(cwd, env) {
   const state = resolveCrossSessionConfig(forResolver, env);
 
   // `source` is already `environment`, `project-config` or `default` from the
-  // pure resolver. Only the middle value needs re-labelling, and only when the
+  // pure resolver. Only the middle value needs re-labeling, and only when the
   // decision actually came from the new file — an empty new file decides
   // nothing and keeps `default`, exactly as `crossSessionMessaging: {}` does.
   if (state.source === 'project-config' && usingNewFile) {
@@ -449,7 +449,7 @@ function readCrossSessionConfig(cwd, env) {
  * That makes it an invisible setting unless something states it where the
  * setting lives, which is what this line is for. It is the deliberate
  * exception to "a gate that quietly does nothing is indistinguishable from one
- * that passed": here the silence IS the requested behaviour.
+ * that passed": here the silence IS the requested behavior.
  *
  * @param {object} state  A state from resolveCrossSessionConfig.
  * @returns {string}

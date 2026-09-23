@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Decide whether /create-backlog Phase 1c should gate on PRD review state. Exports evaluateReviewGate(). Reads the tracker's lifecycle checkbox and the review-state verdict together, so a reviewed PRD is not re-gated.
  * @checksum sha256:placeholder
  *
@@ -21,7 +21,7 @@
  *      box. This uses the shared fence-aware scanner instead.
  *   3. Reading the wrong signal — the review subsystem writes a `reviewed`
  *      label and a `Reviews` marker that `review-state.js` classifies, and the
- *      gate ignored all of it in favour of one checkbox nothing was writing.
+ *      gate ignored all of it in favor of one checkbox nothing was writing.
  *
  * Both signals are read because they fail in different directions. The
  * checkbox is what a human sees in the tracker body; the review state is what

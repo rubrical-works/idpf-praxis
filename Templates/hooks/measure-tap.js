@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * measure-tap.js
  *
  * PostToolUse hook for `/idpf-measure` (#2794). Appends one JSONL record per
@@ -96,7 +96,7 @@ function buildRecord(payload, env) {
  *
  * The marker check is not a cost control — the process spawn happens before
  * this code runs, which is why `--start`/`--stop` wire and unwire rather than
- * leaving a permanently-registered hook to check a flag. It is the defence
+ * leaving a permanently-registered hook to check a flag. It is the defense
  * against wiring that outlived a crashed `--stop`, which would otherwise
  * accumulate a log nobody armed.
  *

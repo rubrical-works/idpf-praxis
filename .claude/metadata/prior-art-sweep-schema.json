@@ -70,7 +70,7 @@
                     "type": "string",
                     "minLength": 1
                   },
-                  "description": "Every bodyFormat.recognisedForms entry plus ### Files Changed. Pinned to recognisedForms and to the helper's EXCLUDED_SECTION_FORMS by tests/metadata/prior-art-sweep.test.js."
+                  "description": "Every bodyFormat.recognizedForms entry plus ### Files Changed. Pinned to recognizedForms and to the helper's EXCLUDED_SECTION_FORMS by tests/metadata/prior-art-sweep.test.js."
                 },
                 "helper": {
                   "type": "string",
@@ -301,7 +301,7 @@
         },
         "foundFormat": {
           "type": "string",
-          "description": "Completed sweep that found prior art, summarised on the heading line. Its entries follow as a foundEntryFormat table. Added in #2542: two swept issues already used this shape and the config did not describe it, so a consumer allowlist derived from bodyFormat classified real completed sweeps as unswept."
+          "description": "Completed sweep that found prior art, summarized on the heading line. Its entries follow as a foundEntryFormat table. Added in #2542: two swept issues already used this shape and the config did not describe it, so a consumer allowlist derived from bodyFormat classified real completed sweeps as unswept."
         },
         "noneFoundFormat": {
           "type": "string"
@@ -313,10 +313,10 @@
           "type": "string",
           "description": "Incomplete sweep. Distinguishable from noneFoundFormat without parsing prose, and treated by consumers as equivalent to an absent marker."
         },
-        "_recognisedFormsNote": {
+        "_recognizedFormsNote": {
           "type": "string"
         },
-        "recognisedForms": {
+        "recognizedForms": {
           "type": "array",
           "minItems": 1,
           "items": {

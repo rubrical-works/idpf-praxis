@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -645,7 +645,7 @@ function readConfiguredStatuses() {
  * The constraint is VALIDATION rather than anchoring on lead-in phrasing
  * (`work all`, `work the issues`). Anchoring is a smaller change and leaves
  * `work all in parallel` producing a bogus filter; validating against config
- * is self-maintaining, since a status added to `.gh-pmu.json` is honoured with
+ * is self-maintaining, since a status added to `.gh-pmu.json` is honored with
  * no code change here.
  *
  * NORMALIZATION IS WHAT MAKES VALIDATION VIABLE, not a refinement of it.
@@ -720,7 +720,7 @@ function readAllowlistEntries(command) {
  * `Array.isArray`, so it returned the OBJECTS, none of which equal a flag
  * string — silently disabling every flag for that command. No error, no
  * warning: values simply stop binding and fall back into the issue title. The
- * normalisation here is what keeps the shapes interchangeable.
+ * normalization here is what keeps the shapes interchangeable.
  *
  * @param {string|{flag: string}} entry
  * @returns {string|null}

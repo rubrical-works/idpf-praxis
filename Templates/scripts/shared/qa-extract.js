@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -11,7 +11,15 @@
  * Usage: node qa-extract.js --issue <N> [--dry-run] [--fill <path>]
  *
  * Output (JSON envelope on stdout):
- *   { ok, issueNumber, matched: [{ acText, keyword, subIssueNumber, annotation, fillPath }], skipped: [acText], errors: [] }
+ *   { ok, issueNumber, matched: [{ acText, keyword, subIssueNumber, annotation, fillPath, fillSources, placement }],
+ *     skipped: [acText], errors: [], warnings: [] }
+ *
+ * Fill field types (#2976). `steps`: a non-empty string, or a non-empty array of
+ * non-empty strings rendered as a numbered list. `expectedResult`, `fixtures`: a
+ * non-empty string. Any other supplied value is not applied — it falls back to
+ * derivation (fixtures: no section) and is named with its AC in `warnings`.
+ * `fillPath` is `caller` only when steps and expectedResult both came from the fill,
+ * `partial-caller` when one did; `fillSources` gives each field's source.
  *
  * Body population (#2549). The QA sub-issue is the closure gate for an unverifiable AC
  * (Option A, #2472), so a body with empty Steps to Perform / Expected Result gives the
@@ -232,27 +240,101 @@ function usableFillValue(v) {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+/** `steps` alone may also be a list — numbered steps are naturally an array (#2976). */
+function usableStepsValue(v) {
+  return usableFillValue(v) || (Array.isArray(v) && v.length > 0 && v.every(usableFillValue));
+}
+
+/** A leading list number the caller already wrote: "1. ", "2) ". */
+const LEADING_STEP_NUMBER = /^\d+[.)]\s+/;
+
+/**
+ * Fully numbered steps, ready to drop under `### Steps to Perform` (#2976). The
+ * template carries no number of its own, so every tier numbers here: an array
+ * becomes "1. …\n2. …" with any caller number replaced, a string gets "1. "
+ * unless it already starts with one.
+ */
+function numberSteps(steps) {
+  if (Array.isArray(steps)) {
+    return steps
+      .map((s, i) => `${i + 1}. ${s.trim().replace(LEADING_STEP_NUMBER, '')}`)
+      .join('\n');
+  }
+  const text = steps.trim();
+  return LEADING_STEP_NUMBER.test(text) ? text : `1. ${text}`;
+}
+
+/** What each fill field accepts, for the rejection warning (#2976). */
+const FILL_FIELD_TYPES = {
+  steps: 'a non-empty string or a non-empty array of non-empty strings',
+  expectedResult: 'a non-empty string',
+  fixtures: 'a non-empty string',
+};
+
+function describeValue(v) {
+  if (Array.isArray(v)) return v.length === 0 ? 'an empty array' : 'an array with a blank or non-string item';
+  if (typeof v === 'string') return 'a blank string';
+  return `a ${typeof v}`;
+}
+
 /**
  * Caller fill wins over derivation, per field. A fill naming only `steps` keeps the
  * derived `expectedResult` rather than blanking it — a half-supplied fill is a partial
  * improvement, not an instruction to discard the other half.
+ *
+ * A supplied field that fails its type check falls back like an absent one, but is
+ * reported in `warnings` naming the AC and the field (#2976): before, an array `steps`
+ * was dropped with nothing said while `path` still read `caller`. `path` is `caller`
+ * only when both `steps` and `expectedResult` came from the caller; any mix is
+ * `partial-caller`, and `fillSources` says which field came from where.
  */
 function resolveFill(acText, fill) {
-  const derived = { ...deriveFill(acText), fixtures: null };
+  const derivedRaw = deriveFill(acText);
+  const derived = {
+    ...derivedRaw,
+    steps: numberSteps(derivedRaw.steps),
+    fixtures: null,
+    fillSources: { steps: 'derived', expectedResult: 'derived' },
+    warnings: [],
+  };
   const entry = fill && typeof fill === 'object' ? fill[acText] : null;
   if (!entry || typeof entry !== 'object') return derived;
 
-  const steps = usableFillValue(entry.steps) ? entry.steps.trim() : derived.steps;
-  const expectedResult = usableFillValue(entry.expectedResult)
-    ? entry.expectedResult.trim()
-    : derived.expectedResult;
+  const warnings = [];
+  const accept = (field, usable) => {
+    const v = entry[field];
+    if (v === undefined || v === null) return false;
+    if (usable(v)) return true;
+    warnings.push(
+      `Fill for AC "${acText}": field "${field}" rejected — expected ${FILL_FIELD_TYPES[field]}, got ${describeValue(v)}; ` +
+      (field === 'fixtures' ? 'no ### Fixtures section written.' : 'fell back to derivation.')
+    );
+    return false;
+  };
+
+  const stepsFromCaller = accept('steps', usableStepsValue);
+  const expectedFromCaller = accept('expectedResult', usableFillValue);
   // The `### Fixtures` declaration qa-fixtures.js provisions (#2827). Caller-
   // only: nothing derives board state from AC text, and an absent value means
   // no section at all — a heading with no items is an invalid declaration.
-  const fixtures = usableFillValue(entry.fixtures) ? entry.fixtures.trim() : null;
+  const fixturesFromCaller = accept('fixtures', usableFillValue);
 
-  const usedCaller = steps !== derived.steps || expectedResult !== derived.expectedResult;
-  return { steps, expectedResult, fixtures, path: usedCaller ? 'caller' : derived.path };
+  const fillSources = {
+    steps: stepsFromCaller ? 'caller' : 'derived',
+    expectedResult: expectedFromCaller ? 'caller' : 'derived',
+  };
+  let path = derived.path;
+  if (stepsFromCaller && expectedFromCaller) path = 'caller';
+  else if (stepsFromCaller || expectedFromCaller) path = 'partial-caller';
+
+  return {
+    steps: stepsFromCaller ? numberSteps(entry.steps) : derived.steps,
+    expectedResult: expectedFromCaller ? entry.expectedResult.trim() : derived.expectedResult,
+    fixtures: fixturesFromCaller ? entry.fixtures.trim() : null,
+    path,
+    fillSources,
+    warnings,
+  };
 }
 
 /**
@@ -398,7 +480,9 @@ async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeT
     try {
       // Resolved content reaches gh only as temp-file body text (-F), never as an
       // argument, so caller-supplied and AC-derived strings stay inert data (#2456).
-      const { steps, expectedResult, fixtures, path: fillPath } = resolveFill(acText, fill);
+      const { steps, expectedResult, fixtures, path: fillPath, fillSources, warnings: fillWarnings } =
+        resolveFill(acText, fill);
+      for (const w of fillWarnings) warnings.push(w);
       let bodyText = renderBody(config.bodyTemplate, {
         acDescription: acText,
         parentIssue: issueNumber,
@@ -418,7 +502,7 @@ async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeT
         // failure names the issue it belongs to rather than the batch.
         const placed = await placeFn({ subIssueNumber, parentBranch });
         for (const w of placed.warnings) warnings.push(w);
-        matched.push({ acText, keyword, subIssueNumber, annotation, fillPath, placement: placed.placement });
+        matched.push({ acText, keyword, subIssueNumber, annotation, fillPath, fillSources, placement: placed.placement });
       } finally {
         unlinkTemp(tmpPath);
       }

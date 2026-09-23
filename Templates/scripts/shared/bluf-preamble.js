@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Resolve the issues `/bluf` briefs into one JSON envelope: fetch each number with `gh pmu view`, classify its type through lib/issue-type.js, expand an epic to its children behind a cap, and report every number it could not read rather than dropping it. Strictly read-only — it issues no mutating `gh` call of any kind. The brief itself is composed by the command spec from this envelope (#2932).
  * @checksum sha256:placeholder
  *
@@ -77,7 +77,7 @@ function parseArgs(argv) {
   for (const arg of argv) {
     if (/^--[A-Za-z]/.test(arg)) {
       // Flag pass-through (`02-github-workflow.md`): a flag-shaped token is
-      // never discarded, and an unrecognised one is reported rather than
+      // never discarded, and an unrecognized one is reported rather than
       // treated as fatal — silent truncation gives the user nothing to notice.
       unrecognizedFlags.push(arg);
       continue;
@@ -213,7 +213,7 @@ function main() {
 
   const out = run(args);
   if (args.unrecognizedFlags && args.unrecognizedFlags.length) {
-    out.warnings.push(`Unrecognised flag(s) ignored: ${args.unrecognizedFlags.join(', ')}`);
+    out.warnings.push(`Unrecognized flag(s) ignored: ${args.unrecognizedFlags.join(', ')}`);
   }
   process.stdout.write(JSON.stringify(out, null, 2) + '\n');
   process.exit(out.ok ? 0 : 1);

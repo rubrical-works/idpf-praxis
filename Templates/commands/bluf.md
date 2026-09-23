@@ -1,5 +1,5 @@
 ---
-version: "v0.105.0"
+version: "v0.106.0"
 allowed-tools: Bash, Read
 description: Emit a short conclusion-first brief for one or more issues, using the IDPF framework.
 argument-hint: "#issue [#issue...]"
@@ -39,7 +39,7 @@ Every brief opens `#<number> [<Type>] <title>` and closes with `State: <status> 
 #### `bug`
 ```
   Breaks: <what fails, from Steps to Reproduce / Actual>
-  Wants:  <the expected behaviour, from Expected>
+  Wants:  <the expected behavior, from Expected>
 ```
 #### `enhancement`
 ```
@@ -79,5 +79,5 @@ An epic expands to the epic plus its children, **capped at 6**, matching `/revie
 | No issue numbers given | Preamble errors (`BAD_ARGS`) → STOP. An empty argument list is never read as "every issue" |
 | A number cannot be read | Reported under `Not read:`; remaining issues still briefed |
 | Epic enumeration fails | Epic briefed alone; warning relayed |
-| Unrecognised flag | Reported as ignored; never fatal, never silently dropped |
+| Unrecognized flag | Reported as ignored; never fatal, never silently dropped |
 **End of /bluf Command**

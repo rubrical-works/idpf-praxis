@@ -30,7 +30,7 @@ Sessions working in the same directory announce what they are doing to each othe
 - The first run in a project that has never been configured will therefore show up as a change to `framework-config.json`. Runs after that write the same thing again and produce no change.
 - Not configuring this project at all is still perfectly valid: with no settings present, everything is on. The same is true of any individual setting that is missing — including one added by a future release, which will be on by default without you editing anything.
 - Settings are validated before being saved. If a value would produce an invalid file, the save is refused rather than written.
-- An unrecognised lever name is reported as an error rather than guessed at, and nothing is written.
+- An unrecognized lever name is reported as an error rather than guessed at, and nothing is written.
 
 ## What you can turn off
 

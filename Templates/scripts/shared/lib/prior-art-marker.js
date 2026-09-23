@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the
@@ -98,7 +98,7 @@ const PRIOR_ART_CUTOFF = '2026-08-01';
  * means no sweep was performed", and omitting it on a nil result "would make
  * 'nothing found' indistinguishable from 'nobody looked'."
  *
- * Recognised shapes, from prior-art-sweep.json `bodyFormat`:
+ * Recognized shapes, from prior-art-sweep.json `bodyFormat`:
  *   - bare heading, nothing after it  → the found case; payload is a
  *     `foundEntryFormat` table on the following lines
  *   - `found …`      → `foundFormat`
@@ -179,9 +179,9 @@ function classifyMarker(body) {
   if (trailing === '') return 'complete';
 
   const lower = trailing.toLowerCase();
-  const recognised = COMPLETED_SWEEP_PREFIXES.some((p) => lower.startsWith(p));
+  const recognized = COMPLETED_SWEEP_PREFIXES.some((p) => lower.startsWith(p));
 
-  return recognised ? 'complete' : 'absent';
+  return recognized ? 'complete' : 'absent';
 }
 
 /**
@@ -206,7 +206,7 @@ function isExemptFromSweep(createdAt) {
  *
  * Ordered from most to least sweeping, which is the order the Praxis Hub
  * Manager picker presents them in:
- *   full      — sweep automatically at review time (pre-#2564 behaviour)
+ *   full      — sweep automatically at review time (pre-#2564 behavior)
  *   recommend — never sweep automatically; surface an advisory instead
  *   flag-only — never sweep automatically, no advisory; `--prior-art` works
  *   off       — as flag-only, and `--prior-art` is refused with a message
@@ -223,7 +223,7 @@ const REVIEW_SWEEP_MODES = ['full', 'recommend', 'flag-only', 'off'];
  *
  * Absent used to mean `full`. It now means `recommend`: no command sweeps
  * unless `--prior-art` is passed, but the recommendation is still surfaced.
- * Both writers materialise the key rather than relying on this fallback, so it
+ * Both writers materialize the key rather than relying on this fallback, so it
  * governs only the window before the first write.
  */
 const DEFAULT_REVIEW_SWEEP_MODE = 'recommend';
@@ -241,7 +241,7 @@ const DEFAULT_REVIEW_SWEEP_MODE = 'recommend';
  * regardless". Mapping it to `off` would silently take away a capability every
  * opted-out project currently has, and would do so without an error surface.
  *
- * An unrecognised value falls back to the default rather than throwing: this is
+ * An unrecognized value falls back to the default rather than throwing: this is
  * a read path reached during review, and the fallback is the safest mode
  * (nothing sweeps, the advisory still appears). Write-time schema validation in
  * framework-config.js is where a typo is meant to be caught.
@@ -384,7 +384,7 @@ function decideFlagSweep({ reviewSweep } = {}) {
  * only situation it ever appeared in.
  *
  * It names `/review-issue` because that is the universal entry point: a
- * `proposal`-labelled issue redirects to `/review-proposal` carrying the flag
+ * `proposal`-labeled issue redirects to `/review-proposal` carrying the flag
  * (#2725 AC2), so one command covers both artifacts and the reader does not have
  * to know which they are looking at.
  *
@@ -462,7 +462,7 @@ const { computeFenceMask, isBoldMarker } = require('./checkbox-scan.js');
  *
  * Mirrors prior-art-sweep.json `searchSurfaces.issueHistory.excludedSections`
  * and is pinned to it by test; the heading form is matched at any level, as
- * classifyMarker recognises it.
+ * classifyMarker recognizes it.
  */
 const EXCLUDED_SECTION_FORMS = [MARKER_HEADING, '## Prior Art', '### Files Changed'];
 

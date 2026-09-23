@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.105.0
+ * @framework-script 0.106.0
  * @description Hook heartbeats (#2917): a per-hook, project-local health record of each framework hook's last success, last error and consecutive-failure count, the process-exit recorder hooks install, the load check the startup self-test runs, and the assessment the startup Hook Health row is rendered from.
  * @checksum sha256:placeholder
  *
@@ -157,7 +157,7 @@ function beat(hookName, outcome = {}, opts = {}) {
  *
  * Exit code 0 records success; any other exit records failure with the error
  * that caused it when one was thrown. `uncaughtExceptionMonitor` observes
- * without handling, so the hook's own failure behaviour — exit code, stderr,
+ * without handling, so the hook's own failure behavior — exit code, stderr,
  * any handler it registers — is exactly what it was. A hook whose catch
  * swallows an error to fail open calls `fail(err)`, because its exit code
  * will be 0.
