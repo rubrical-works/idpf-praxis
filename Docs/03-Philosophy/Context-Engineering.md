@@ -116,6 +116,7 @@ Beyond the three-layer separation, IDPF manages *when* context gets loaded:
 
 **Loaded at session startup:**
 - Process framework core (e.g., `Agile-Core.md` from `.min-mirror/`). Loaded once, stays in context.
+- The active domain specialist, delivered by the startup hook. Claude Code shows hook output inline only up to a size limit and saves anything larger to a file, leaving the model a preview. To stay under that limit, the hook works within a fixed budget. A specialist file that fits is injected in full. One that does not becomes a directive naming the file to Read and why it was not injected. Explanations for the startup block's rows get the budget first, because they carry this session's remedies. An explanation that does not fit is withheld whole, never truncated, and named in one line that points to where it can be read.
 
 **Loaded on demand:**
 - `Overview/Framework-Overview.md` — only when working on IDPF-Agile or the complete framework reference

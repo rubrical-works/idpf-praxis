@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.106.0",
+  "version": "0.107.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -503,6 +503,12 @@
           "env": "both"
         },
         {
+          "id": "sync-branch",
+          "file": "sync-branch.md",
+          "marker": "managed",
+          "env": "both"
+        },
+        {
           "id": "transfer-issue",
           "file": "transfer-issue.md",
           "marker": "managed",
@@ -530,6 +536,7 @@
           "analyze-commits.js",
           "announce.js",
           "assign-branch.js",
+          "audit-cooldown-check.js",
           "bluf-preamble.js",
           "branch-sync-check.js",
           "charter-testing-audit.js",
@@ -679,8 +686,10 @@
           "prior-art-surfaces.js",
           "qa-config-schema.json",
           "qa-config.json",
+          "rebase-guard.js",
           "review-format.js",
           "review-mode.js",
+          "runner-probe.js",
           "schema-driven-questions.js",
           "screen-catalog.js",
           "screenshot-input.js",
@@ -704,6 +713,7 @@
           "workflow-trigger.js",
           "pre-push",
           "block-cd.js",
+          "shell-safety-hook.js",
           "startup-hook.js",
           "clear-hook.js",
           "resume-hook.js",
@@ -720,8 +730,14 @@
       },
       {
         "event": "PreToolUse",
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "file": "block-cd.js",
+        "timeout": 5
+      },
+      {
+        "event": "PreToolUse",
+        "matcher": "Bash",
+        "file": "shell-safety-hook.js",
         "timeout": 5
       },
       {
@@ -1117,6 +1133,16 @@
           "description": "Screen specification schema for /catalog-screens and /mockups commands"
         },
         {
+          "name": "shell-pattern-corrections",
+          "source": ".claude/metadata/shell-pattern-corrections.json",
+          "description": "Git Bash command-shape corrections emitted by shell-safety-hook.js only when the command matches (#2997)"
+        },
+        {
+          "name": "shell-pattern-corrections-schema",
+          "source": ".claude/metadata/shell-pattern-corrections-schema.json",
+          "description": "JSON Schema for shell-pattern-corrections.json"
+        },
+        {
           "name": "spelling-policy",
           "source": ".claude/metadata/spelling-policy.json",
           "description": "British -> American word map, external-name allowlist and guard exclusions; read by the American-spelling guard and minimize-helper.js spell-carry (#2978)"
@@ -1125,6 +1151,16 @@
           "name": "spelling-policy-schema",
           "source": ".claude/metadata/spelling-policy-schema.json",
           "description": "JSON schema (Draft 2020-12) for spelling-policy.json (#2978)"
+        },
+        {
+          "name": "startup-row-notes",
+          "source": ".claude/metadata/startup-row-notes.json",
+          "description": "Session Initialized row explanations appended by startup-hook.js only when the row appears (#2995)"
+        },
+        {
+          "name": "startup-row-notes-schema",
+          "source": ".claude/metadata/startup-row-notes-schema.json",
+          "description": "JSON Schema for startup-row-notes.json"
         },
         {
           "name": "stats-config",

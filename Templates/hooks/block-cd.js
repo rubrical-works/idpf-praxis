@@ -1,33 +1,41 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.106.0
+ * @framework-script 0.107.0
  * block-cd.js
  *
- * PreToolUse hook that blocks `cd` commands in the Bash tool.
+ * PreToolUse hook that blocks working-directory changes in the Bash and
+ * PowerShell tools (#3017).
  *
- * Claude's Bash tool persists cwd between calls. A `cd` into a
+ * Both tools persist cwd between calls. A `cd` (or `Set-Location`) into a
  * subdirectory silently corrupts all subsequent relative paths,
  * causing scripts and commands to fail with misleading errors.
  *
- * This hook reads the Bash tool_input.command, checks if it starts
- * with `cd` as a standalone command (not substring), and returns
- * a deny decision if matched.
+ * This hook reads tool_input.command, checks if it starts with a
+ * cwd-changing command as a standalone command (not substring), and
+ * returns a deny decision if matched.
  */
 
 const DENY_REASON =
-  'The `cd` command is blocked because it silently changes the working directory for all subsequent Bash calls, breaking relative paths. ' +
+  'The `cd` command is blocked because it silently changes the working directory for all subsequent shell calls, breaking relative paths. ' +
   'Use absolute paths instead (e.g., `ls /full/path/to/dir`), or pass the directory to the command directly (e.g., `git -C /path log`).';
 
 /**
- * Check if a command string starts with `cd` as a standalone command.
- * Must match: cd, cd /, cd .., cd "path", cd 'path', cd ~
- * Must NOT match: abcd, lcd, cdir, echo cd
+ * Check if a command string starts with a working-directory change as a
+ * standalone command, in either shell the hook is registered for (#3017).
+ * Matched case-insensitively — PowerShell names are case-insensitive.
+ * Must match: cd, cd /, cd .., cd "path", cd ~, Set-Location, sl, chdir,
+ *   Push-Location, pushd, and the space-less built-ins cd.. and cd\
+ * Must NOT match: abcd, lcd, cdir, echo cd, Get-Location, slack
  */
 function isCdCommand(command) {
   const trimmed = command.trimStart();
-  // Match `cd` at start, followed by end-of-string, whitespace, or shell operators
-  return /^cd(?:\s|$|;|&|\|)/.test(trimmed);
+  // A cwd-changing name at start, followed by end-of-string, whitespace, or shell operators
+  if (/^(?:cd|chdir|sl|set-location|pushd|push-location)(?:\s|$|;|&|\|)/i.test(trimmed)) {
+    return true;
+  }
+  // PowerShell's space-less built-ins: `cd..` and `cd\`
+  return /^cd(?:\.\.|\\)/i.test(trimmed);
 }
 
 // Heartbeat (#2917): records this hook's outcome under the project root for the

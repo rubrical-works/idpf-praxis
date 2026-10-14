@@ -1,5 +1,5 @@
 ---
-version: "v0.106.0"
+version: "v0.107.0"
 description: Discover, view, and manage extension points in IDPF release commands.
 argument-hint: "list|view|edit|validate|summary|recipes [args]"
 copyright: "Rubrical Works (c) 2026"

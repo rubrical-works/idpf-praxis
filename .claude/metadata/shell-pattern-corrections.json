@@ -1,0 +1,123 @@
+{
+  "$schema": "shell-pattern-corrections-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Per-pattern Git Bash corrections moved out of the always-on 05-windows-shell rule (#2997). .claude/hooks/shell-safety-hook.js tests each detector against the Bash tool_input.command and emits only the matching corrections: `advise` as PreToolUse additionalContext (the call proceeds), `block` as exit 2 with the correction on stderr. Text is the minimized rule wording, carried verbatim; the two block entries are new short texts drawn from the Command Translations table and Process Management.",
+    "consumer": ".claude/hooks/shell-safety-hook.js",
+    "detectors": "Detectors favor recall over precision for `advise` (a spurious hint costs a paragraph) and precision for `block` (a false block stops a legitimate command). Only command shapes that are always wrong on Git Bash block."
+  },
+  "corrections": {
+    "heredocBackticks": {
+      "detector": {
+        "source": "<<[^\\n]*\\n[\\s\\S]*`",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Heredocs with Backticks:** NEVER use backticks inside heredocs.\n```bash\n# BAD\ngit commit -m \"$(cat <<'EOF'\nFix bug in `calculateTotal` function\nEOF\n)\"\n# GOOD - generate the name once, Write tool creates the file, then:\nMSG_FILE=\".tmp-msg-$(node -e \"console.log(require('crypto').randomBytes(4).toString('hex'))\").txt\"\ngit commit -F $MSG_FILE\nrm $MSG_FILE\n```"
+    },
+    "commandSubstitution": {
+      "detector": {
+        "source": "\\$\\((cat|git log|git diff|gh |type )",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Command Substitution:** If output is short, single-line, free of backticks/quotes/special chars, `$(...)` is safe. Otherwise use a temp file.\nSafe patterns:\n```bash\ntoday=$(date \"+%Y-%m-%d\")\nbranch=$(git branch --show-current)\nsha=$(git rev-parse HEAD)\ncount=$(git log --oneline | wc -l)\nver=$(node -e \"console.log(require('./package.json').version)\")\ngit commit -m \"Release $(date '+%Y-%m-%d')\"\n```\nUnsafe patterns:\n```bash\n# BAD - unpredictable content\ngh pmu create --body \"$(cat README.md)\"\ndir=$(dirname $(realpath \"$file\"))\nfor file in $(find . -name \"*.md\"); do echo \"$file\"; done\n# GOOD\ngh pmu create --body-file README.md\ngh pr create --body-file $PR_BODY_FILE   # generated name, Write tool creates it\n```"
+    },
+    "inlineBody": {
+      "detector": {
+        "source": "--body(=|\\s+)[\"']",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Issue/PR Bodies:** ALWAYS use temp file approach. Bodies almost always contain backticks which fail with heredocs or `--body`.\n```bash\n# BAD\ngh pmu create --body \"Fix the \\`calculateTotal\\` function\"\n# GOOD - Write tool + temp file, path generated once per invocation\nBODY_FILE=\".tmp-bug-body-$(node -e \"console.log(require('crypto').randomBytes(4).toString('hex'))\").md\"\ngh pmu create --title \"Bug: ...\" -F $BODY_FILE --status backlog\nrm $BODY_FILE\n# GOOD - editing existing issues (name it after the issue)\ngh pmu view 123 --body-stdout > .tmp-123.md\ngh pmu edit 123 -F .tmp-123.md && rm .tmp-123.md\n```\n**Rule:** Never attempt `--body` with inline content on Windows. Always use `-F` with a temp file.\n**gh pmu Body Flags:** Prefer `--body-stdout` / `--body-stdin` for cleaner workflows.\nPreferred stdout/stdin pattern:\n```bash\ngh pmu view 123 --body-stdout > .tmp-123.md\ngh pmu edit 123 -F .tmp-123.md && rm .tmp-123.md\nBODY_FILE=\".tmp-bug-body-$(node -e \"console.log(require('crypto').randomBytes(4).toString('hex'))\").md\"\ngh pmu create --title \"Bug: ...\" -F $BODY_FILE --status backlog\ncat issue-body.md | gh pmu edit 123 --body-stdin\n```\nAlternative body-file pattern:\n```bash\ngh pmu view 123 --body-file    # Creates tmp/issue-123.md\ngh pmu edit 123 -F tmp/issue-123.md\nrm tmp/issue-123.md\n```\n**Multi-line Strings:** Use temp files for multi-line content.\n```bash\n# BAD\ngh pmu create --body \"Line 1\nLine 2\"\n# GOOD - Write tool creates the file at a generated path\nBODY_FILE=\".tmp-body-$(node -e \"console.log(require('crypto').randomBytes(4).toString('hex'))\").md\"\ngh pmu create --body-file $BODY_FILE\nrm $BODY_FILE\n```"
+    },
+    "backslashPath": {
+      "detector": {
+        "source": "(^|[\\s\"'=])[A-Za-z]:\\\\",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Path Handling:** Use forward slashes. Quote paths with spaces.\n```bash\n# BAD\ncd C:\\Users\\Name\\My Projects\n# GOOD\ncd \"C:/Users/Name/My Projects\"\ncd \"$USERPROFILE/My Projects\"\n```"
+    },
+    "absoluteTempPath": {
+      "detector": {
+        "source": "(^|[\\s\"'=])([A-Za-z]:[\\\\/]|/[a-z]/|/tmp/)[^\\s\"']*\\.tmp-",
+        "flags": "i"
+      },
+      "disposition": "advise",
+      "text": "**Temp File Best Practices:** NEVER pass absolute paths to shell commands for temp files. Use relative paths (`.tmp-*`).\n1. **Use relative paths** for temp files (`.tmp-*`) -- absolute paths get backslashes stripped\n2. **Use Write tool** instead of `cat`, `echo >`, or heredocs for file creation\n3. **Clean up** immediately after use\n4. **Use unique names — always** (§ Naming the temp file): editing an issue → include its number (`.tmp-123.md`); creating one, or any scratch file not about an issue → a shelled-out random suffix generated once per invocation (`.tmp-body-a1b2c3d4.md`). Prevents overwrites both **within** a session working several issues and **across** concurrent sessions sharing the directory — the second is what a fixed name cannot survive"
+    },
+    "singleQuotedVariable": {
+      "detector": {
+        "source": "\\becho\\s+'[^']*\\$",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Quoting:** Prefer double quotes. Escape special characters.\n```bash\n# BAD\necho '$HOME'  # May print literal $HOME\n# GOOD\necho \"$HOME\"\necho \"The file is \\`important\\`\"\n```"
+    },
+    "inlineJson": {
+      "detector": {
+        "source": "\\s-(f|F)\\s+\\w+='?\\s*\\{|--raw-field\\s+\\w+=\\{|--data\\s+'\\{",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**JSON in Commands:** Use temp files for JSON payloads.\n```bash\n# BAD\ngh api graphql -f query='{ \"query\": \"...\" }'\n# GOOD - Write tool creates $QUERY_FILE (generated name)\ngh api graphql --input $QUERY_FILE\nrm $QUERY_FILE\n```"
+    },
+    "flagValueSpace": {
+      "detector": {
+        "source": "--(json|jq)\\s+['\"A-Za-z.]",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Flag Values with Spaces:** `--flag value` can be misinterpreted on Git Bash.\n```bash\n# BAD - value interpreted as separate argument\ngh pmu view 3 --json status --jq '.status'\n# GOOD - use = to attach value directly\ngh pmu view 3 --json=status --jq='.status'\ngh pmu view 3 --json=number,title,status\n```\nWhen to use `=`: single-value string flags, values starting with a letter. Space works for comma-separated lists and obvious values (`--status in_progress`). **Safe rule:** When in doubt, use `--flag=value`."
+    },
+    "loopSubstitution": {
+      "detector": {
+        "source": "\\bfor\\s+\\w+\\s+in\\s+\\$\\(|<\\s*<\\(|\\$\\([^()]*\\$\\(",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Loops with Command Substitution:** File globbing works, command output does not.\nFailing patterns:\n```bash\n# BAD\nfor file in $(find . -name \"*.md\"); do echo \"$file\"; done\nwhile read -r line; do echo \"$line\"; done < <(git log --oneline)\ndir=$(dirname $(realpath \"$file\"))\n```\nWorkarounds:\n```bash\n# 1. File globbing (works reliably)\nfor file in *.md; do echo \"$file\"; done\nfor file in Skills/*/*.md; do echo \"$file\"; done\n# 2. Helper scripts\nnode -e \"require('fs').readdirSync('.').filter(f => f.endsWith('.md')).forEach(f => console.log(f))\"\n# 3. Pre-compute to temp file\ngit log --oneline > $COMMITS_FILE   # generated name\nwhile read -r line; do echo \"$line\"; done < $COMMITS_FILE\nrm $COMMITS_FILE\n# 4. Native tools with proper flags\nfind . -name \"*.md\" -exec wc -l {} \\;\nfind . -name \"*.txt\" -print0 | xargs -0 cat\n```"
+    },
+    "cmdStyleEnvironment": {
+      "detector": {
+        "source": "%[A-Za-z_][A-Za-z0-9_]*%|(^|[;&|]\\s*)set\\s+[A-Za-z_][A-Za-z0-9_]*=",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Environment Variables:** Use Unix-style syntax (`$VARIABLE`, `export VAR=value`), not Windows cmd style (`%VAR%`, `set VAR=value`)."
+    },
+    "rmMultiplePaths": {
+      "detector": {
+        "source": "\\brm\\s+-[A-Za-z]*r[A-Za-z]*\\s+(\\S+\\s+\\S+|\\S*\\*\\*)",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**Dangerous rm Patterns:** NEVER use `rm -rf` with multiple paths on Windows Git Bash. Delete one path at a time.\n```bash\n# DANGEROUS\nrm -rf .vite/ out/ dist/\nrm -rf **/.vite\n# SAFER - one at a time\nrm -rf .vite\nrm -rf out\nrm -rf dist\n```"
+    },
+    "powershellDoubleQuoted": {
+      "detector": {
+        "source": "powershell(\\.exe)?\\s+-Command\\s+\"[^\"]*\\$_",
+        "flags": "i"
+      },
+      "disposition": "advise",
+      "text": "**Process Management:** Use PowerShell for killing processes. Git Bash mangles `/F` flags as paths.\n```bash\n# BAD\ntaskkill /F /IM \"electron.exe\"\n# BAD - double quotes let Git Bash expand $_ variables\npowershell -Command \"Get-Process | Where { $_.Name -eq 'electron' } | Stop-Process\"\n# GOOD - single quotes pass command verbatim to PowerShell\npowershell -Command 'Stop-Process -Name \"electron\" -Force -ErrorAction SilentlyContinue'\n```\nRecommended Electron cleanup sequence:\n```bash\npowershell -Command 'Stop-Process -Name \"YourAppName\" -Force -ErrorAction SilentlyContinue'\npowershell -Command 'Stop-Process -Name \"electron\" -Force -ErrorAction SilentlyContinue'\nsleep 2\nrm -rf .vite\nrm -rf out\n```\n**Detection:** \"Device or resource busy\" errors mean processes are still running.\n**End of Windows Shell Safety**"
+    },
+    "taskkill": {
+      "detector": {
+        "source": "(^|[;&|(]\\s*|\\n\\s*)taskkill(\\.exe)?\\s[^\\n;&|]*/[A-Za-z]",
+        "flags": "i"
+      },
+      "disposition": "block",
+      "text": "**`taskkill` is blocked on Git Bash.** Git Bash rewrites `/F` and `/IM` as paths, so the flags never reach `taskkill`. Use PowerShell, single-quoted so Git Bash does not expand `$_`:\n`powershell -Command 'Stop-Process -Name \"electron\" -Force -ErrorAction SilentlyContinue'`\nSee the Process Management correction for the Electron cleanup sequence."
+    },
+    "dateSlashT": {
+      "detector": {
+        "source": "(^|[;&|(]\\s*|\\n\\s*)date\\s+/[Tt]\\b",
+        "flags": ""
+      },
+      "disposition": "block",
+      "text": "**`date /t` is blocked on Git Bash** — it is the Windows CMD form and fails with `date: invalid date '/t'`. Use `date \"+%Y-%m-%d\"`."
+    }
+  }
+}

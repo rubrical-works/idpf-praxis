@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.106.0
+ * @framework-script 0.107.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -75,6 +75,28 @@ function globToRegex(pattern) {
 
 function globMatch(filePath, pattern) {
   return globToRegex(pattern).test(filePath);
+}
+
+/**
+ * The first token of a suite command — the runner the gate would spawn (#3012).
+ *
+ * Pure string parsing, so it lives here beside the classification it informs;
+ * `runner-probe.js` is the sibling that resolves the token on PATH. A quoted
+ * first token (a path with spaces) is returned without its quotes.
+ *
+ * @param {string} command
+ * @returns {string|null}
+ */
+function firstToken(command) {
+  if (typeof command !== 'string') return null;
+  const s = command.trim();
+  if (s === '') return null;
+  const quote = s[0] === '"' || s[0] === "'" ? s[0] : null;
+  if (quote) {
+    const end = s.indexOf(quote, 1);
+    return end > 1 ? s.slice(1, end) : s.slice(1) || null;
+  }
+  return s.split(/\s+/)[0];
 }
 
 /** Files from `changedFiles` that any of the suite's `match[]` patterns cover. */
@@ -289,9 +311,21 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [] }
  * AC2). Pure — no spawn, no filesystem — so the blocking decision is testable
  * without running anything.
  *
- * @returns {{verdict: string, phase: string, blocksReview: boolean}}
+ * A missing runner is a fourth verdict (#3012). Exit 127 is POSIX "command
+ * not found"; `spawnError: 'ENOENT'` is the same condition as reported by the
+ * probe (`runner-probe.js`) on any platform. Either names the runner — the
+ * remedy is the host toolchain, not the tests — and still blocks review. The
+ * check runs before the `prepare` branch so a `prepare` whose runner is
+ * absent is not misread as a failed build. `spawnError` and `runner` are
+ * optional: a call without them behaves exactly as before.
+ *
+ * @returns {{verdict: string, phase: string, blocksReview: boolean, runner?: string|null}}
  */
-function classifyRunResult({ phase, exitCode } = {}) {
+function classifyRunResult({ phase, exitCode, spawnError, command, runner } = {}) {
+  if (exitCode === 127 || spawnError === 'ENOENT') {
+    const name = runner || firstToken(command);
+    return { verdict: 'runner not found', phase, blocksReview: true, runner: name || null };
+  }
   if (exitCode === 0) {
     return { verdict: 'passed', phase, blocksReview: false };
   }
@@ -306,6 +340,7 @@ module.exports = {
   scopedInvocations,
   sweepInvocations,
   classifyRunResult,
+  firstToken,
   SCOPING_MODES,
   DEFAULT_SCOPING_MODE,
 };

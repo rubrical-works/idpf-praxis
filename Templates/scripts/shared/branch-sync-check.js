@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.106.0
+ * @framework-script 0.107.0
  * @description Check branch sync status with upstream. Detects behind, ahead,
  *   diverged, and no-upstream states, and reports the post-fetch upstream tip.
- *   Non-blocking; used during session startup, /work Step 1c, and /done Step 2.
+ *   On diverged, derives the analysis a person needs to pick a recovery path
+ *   (fork point, each side's commits with issue refs and board status, the
+ *   paths both sides touched, dirty paths the remote also changes, last pull)
+ *   from read-only git (#3014). Non-blocking; used during session startup,
+ *   /work Step 1c, /done Step 2 and /sync-branch.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -129,19 +133,21 @@ function parsePorcelainPaths(output) {
  * this intersection would refuse a safe update whenever any unrelated file is
  * modified, which is the common case.
  *
+ * `range` names the incoming side. For `behind` the two-dot `HEAD..@{upstream}`
+ * is exactly the incoming commits. For `diverged` (#3014) it is not: a two-tree
+ * diff from a diverged tip also contains the local side's own edits as reverse
+ * diffs, so every dirty file the local commits touched would read as
+ * conflicting. The three-dot `HEAD...@{upstream}` is the remote side alone.
+ *
+ * @param {string} [range] - The incoming diff range
  * @returns {string[]} Paths that are both locally modified and changing upstream
  */
-function detectConflictingPaths() {
+function detectConflictingPaths(range = 'HEAD..@{upstream}') {
   try {
     const dirty = parsePorcelainPaths(execSync('git status --porcelain', EXEC_OPTS));
     if (dirty.length === 0) return [];
 
-    const incoming = new Set(
-      execSync('git diff --name-only HEAD..@{upstream}', EXEC_OPTS)
-        .split('\n')
-        .map((p) => p.trim())
-        .filter(Boolean)
-    );
+    const incoming = new Set(splitLines(execSync(`git diff --name-only ${range}`, EXEC_OPTS)));
 
     return dirty.filter((p) => incoming.has(p));
   } catch {
@@ -150,6 +156,172 @@ function detectConflictingPaths() {
     // clobber something aborts on its own with git's own error.
     return [];
   }
+}
+
+/** Non-empty, trimmed lines of a command's output. */
+function splitLines(output) {
+  return String(output || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+// ======================================
+//  Divergence analysis (#3014)
+// ======================================
+//
+// Everything below is read-only git. The hook renders these fields; it never
+// re-derives them, and nothing here chooses a strategy — picking rebase over
+// merge is /done Step 2's and /sync-branch's decision, taken when the user is
+// looking at the change (#2518, #2668).
+
+/**
+ * Upper bound on board-status lookups per run (#3014).
+ *
+ * Each distinct referenced issue costs one `gh pmu view` spawn at session
+ * start. A long divergence could otherwise walk the startup block into its
+ * timeout ladder; five covers the common shape (one or two issues per side)
+ * and the envelope says when the cap was hit, so the omission is visible.
+ */
+const MAX_ISSUE_LOOKUPS = 5;
+
+/** Field separator in the `git log --format` records parsed below. */
+const US = '\x1f';
+
+/**
+ * Every distinct `#N` in a commit subject, in order of first appearance.
+ *
+ * Deliberately not restricted to `Refs #N`: `Related to`, `Part of`, `Fixes`
+ * and bare `#N` all name an issue the commit belongs to, and the consumer
+ * wants to know which issues a side is about, not which keyword was used.
+ *
+ * @param {string} subject
+ * @returns {number[]}
+ */
+function extractIssueRefs(subject) {
+  const seen = new Set();
+  for (const m of String(subject || '').matchAll(/#(\d+)\b/g)) {
+    seen.add(parseInt(m[1], 10));
+  }
+  return [...seen];
+}
+
+/**
+ * Parse `git log --format=%H%x1f%s%x1f%aI` output into commit records.
+ *
+ * @param {string} output
+ * @returns {{ sha: string, subject: string, authorDate: string, issues: number[] }[]}
+ */
+function parseCommitLog(output) {
+  return splitLines(output).map((line) => {
+    const [sha = '', subject = '', authorDate = ''] = line.split(US);
+    return { sha, subject, authorDate, issues: extractIssueRefs(subject) };
+  }).filter((c) => c.sha);
+}
+
+/**
+ * The most recent pull recorded in the reflog, or null.
+ *
+ * Input is `git reflog show HEAD --format=%gs%x1f%cI`: the reflog subject
+ * (`pull --ff-only: Fast-forward`, `commit: …`, `rebase (finish): …`) and the
+ * entry's date. A pull's subject begins with `pull`; the first such entry is
+ * the latest, since the reflog is newest-first.
+ *
+ * @param {string} output
+ * @returns {{ subject: string, date: string } | null}
+ */
+function parseLastPull(output) {
+  for (const line of splitLines(output)) {
+    const [subject = '', date = ''] = line.split(US);
+    if (/^pull\b/.test(subject)) return { subject, date };
+  }
+  return null;
+}
+
+/**
+ * Board status for each distinct issue the local commits reference, capped.
+ *
+ * `gh` may be absent, unauthenticated or offline at session start; a failed
+ * lookup yields `status: null` for that issue and the analysis continues —
+ * the number is still useful on its own. Lookups are read-only.
+ *
+ * @param {number[]} numbers - distinct issue numbers, in order
+ * @returns {{ statuses: { number: number, status: string|null }[], truncated: boolean }}
+ */
+function lookupIssueStatuses(numbers) {
+  const wanted = numbers.slice(0, MAX_ISSUE_LOOKUPS);
+  const statuses = wanted.map((number) => {
+    try {
+      const raw = execSync(`gh pmu view ${number} --json=status --jq=.status`, EXEC_OPTS).trim();
+      const status = raw.replace(/^"(.*)"$/, '$1');
+      return { number, status: status || null };
+    } catch {
+      return { number, status: null };
+    }
+  });
+  return { statuses, truncated: numbers.length > wanted.length };
+}
+
+/** Inert analysis fields, carried on every status so the envelope shape is stable. */
+function emptyAnalysis() {
+  return {
+    forkPoint: null,
+    localCommits: [],
+    remoteCommits: [],
+    overlappingPaths: [],
+    lastPull: null,
+    issueStatuses: [],
+    issueStatusesTruncated: false,
+  };
+}
+
+/**
+ * Derive the divergence analysis from read-only git (#3014).
+ *
+ * Each step degrades independently: a failing `merge-base` leaves `forkPoint`
+ * null while the commit lists still populate. The status is the load-bearing
+ * answer and is never at risk here; the analysis is evidence beside it.
+ *
+ * @returns {ReturnType<typeof emptyAnalysis>}
+ */
+function analyzeDivergence() {
+  const out = emptyAnalysis();
+
+  try {
+    const sha = execSync('git merge-base HEAD @{upstream}', EXEC_OPTS).trim();
+    if (sha) {
+      const subject = execSync(`git log -1 --format=%s ${sha}`, EXEC_OPTS).trim();
+      out.forkPoint = { sha, subject };
+    }
+  } catch { /* forkPoint stays null */ }
+
+  const FORMAT = '--format=%H%x1f%s%x1f%aI';
+  try {
+    out.localCommits = parseCommitLog(execSync(`git log @{upstream}..HEAD ${FORMAT}`, EXEC_OPTS));
+  } catch { /* stays [] */ }
+  try {
+    out.remoteCommits = parseCommitLog(execSync(`git log HEAD..@{upstream} ${FORMAT}`, EXEC_OPTS));
+  } catch { /* stays [] */ }
+
+  try {
+    const localSide = splitLines(execSync('git diff --name-only @{upstream}...HEAD', EXEC_OPTS));
+    const remoteSide = new Set(splitLines(execSync('git diff --name-only HEAD...@{upstream}', EXEC_OPTS)));
+    out.overlappingPaths = localSide.filter((p) => remoteSide.has(p));
+  } catch { /* stays [] */ }
+
+  try {
+    out.lastPull = parseLastPull(execSync('git reflog show HEAD --format=%gs%x1f%cI', EXEC_OPTS));
+  } catch { /* stays null */ }
+
+  const numbers = [];
+  for (const c of out.localCommits) {
+    for (const n of c.issues) if (!numbers.includes(n)) numbers.push(n);
+  }
+  const { statuses, truncated } = lookupIssueStatuses(numbers);
+  out.issueStatuses = statuses;
+  out.issueStatusesTruncated = truncated;
+
+  return out;
 }
 
 /**
@@ -175,7 +347,12 @@ function resolveUpstreamSha() {
 /**
  * Detect the sync status of the current branch with its upstream.
  * @returns {{ branch: string, status: string, ahead: number, behind: number,
- *   fetched: boolean, conflictingPaths: string[], upstreamSha: string|null } | null}
+ *   fetched: boolean, conflictingPaths: string[], upstreamSha: string|null,
+ *   forkPoint: {sha: string, subject: string}|null,
+ *   localCommits: object[], remoteCommits: object[], overlappingPaths: string[],
+ *   lastPull: {subject: string, date: string}|null,
+ *   issueStatuses: {number: number, status: string|null}[],
+ *   issueStatusesTruncated: boolean } | null}
  */
 function detectBranchSync() {
   let branch;
@@ -186,7 +363,7 @@ function detectBranchSync() {
   }
 
   const fetched = fetchUpstream(branch);
-  const base = { branch, fetched, conflictingPaths: [], upstreamSha: null };
+  const base = { branch, fetched, conflictingPaths: [], upstreamSha: null, ...emptyAnalysis() };
   const noUpstream = { ...base, status: 'no-upstream', ahead: 0, behind: 0 };
 
   let parsed;
@@ -199,12 +376,21 @@ function detectBranchSync() {
   }
   if (!parsed) return noUpstream;
 
-  // Only `behind` can produce an offer, and the intersection costs two more
-  // spawns — so it is computed for that state alone. Every other state keeps
-  // the empty array, so the envelope shape stays stable for consumers.
-  const conflictingPaths = parsed.status === 'behind' ? detectConflictingPaths() : [];
+  // The intersection costs two more spawns, so it is computed only where a
+  // consumer acts on it: `behind` (the ff-only offer) and, since #3014,
+  // `diverged` (the dirty-tree wrinkle a rebase trips over). The ranges differ
+  // — see detectConflictingPaths. Every other state keeps the empty array, so
+  // the envelope shape stays stable for consumers.
+  let conflictingPaths = [];
+  let analysis = {};
+  if (parsed.status === 'behind') {
+    conflictingPaths = detectConflictingPaths();
+  } else if (parsed.status === 'diverged') {
+    conflictingPaths = detectConflictingPaths('HEAD...@{upstream}');
+    analysis = analyzeDivergence();
+  }
 
-  return { ...base, ...parsed, conflictingPaths, upstreamSha: resolveUpstreamSha() };
+  return { ...base, ...parsed, conflictingPaths, upstreamSha: resolveUpstreamSha(), ...analysis };
 }
 
 // ======================================
@@ -275,5 +461,11 @@ module.exports = {
   detectConflictingPaths,
   resolveUpstreamSha,
   detectBranchSync,
-  FETCH_TIMEOUT_MS
+  analyzeDivergence,
+  parseCommitLog,
+  extractIssueRefs,
+  parseLastPull,
+  lookupIssueStatuses,
+  FETCH_TIMEOUT_MS,
+  MAX_ISSUE_LOOKUPS
 };

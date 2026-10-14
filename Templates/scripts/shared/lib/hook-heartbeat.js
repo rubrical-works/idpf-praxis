@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.106.0
+ * @framework-script 0.107.0
  * @description Hook heartbeats (#2917): a per-hook, project-local health record of each framework hook's last success, last error and consecutive-failure count, the process-exit recorder hooks install, the load check the startup self-test runs, and the assessment the startup Hook Health row is rendered from.
  * @checksum sha256:placeholder
  *
@@ -162,10 +162,16 @@ function beat(hookName, outcome = {}, opts = {}) {
  * swallows an error to fail open calls `fail(err)`, because its exit code
  * will be 0.
  *
+ * `okCodes` (#2997) lets a hook declare exit codes that mean it did its job —
+ * a PreToolUse hook that blocks by exiting 2 succeeded, and keying on 0 alone
+ * would report it failing on every block. An uncaught exception is recorded as
+ * a failure whatever the exit code.
+ *
  * @param {string} hookName
+ * @param {{okCodes?: number[]}} [opts]
  * @returns {{fail: (err: unknown) => void, setCwd: (cwd: string) => void}}
  */
-function installHeartbeat(hookName, { proc = process, env = process.env } = {}) {
+function installHeartbeat(hookName, { proc = process, env = process.env, okCodes = [0] } = {}) {
   let failed = false;
   let inputCwd = null;
   let captured = null;
@@ -175,7 +181,8 @@ function installHeartbeat(hookName, { proc = process, env = process.env } = {}) 
     proc.on('uncaughtExceptionMonitor', (err) => { captured = err; });
     proc.on('exit', (code) => {
       if (failed) return;
-      if (code === 0) beat(hookName, { ok: true }, { root: root() });
+      const ok = Array.isArray(okCodes) && okCodes.includes(code) && !captured;
+      if (ok) beat(hookName, { ok: true }, { root: root() });
       else beat(hookName, { ok: false, error: captured || `exited with code ${code}` }, { root: root() });
     });
   } catch (_) { /* a heartbeat that cannot install records nothing; the hook is unaffected */ }

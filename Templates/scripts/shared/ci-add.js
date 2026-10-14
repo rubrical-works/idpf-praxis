@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.106.0
+ * @framework-script 0.107.0
  * @description Add selected CI features to a project's GitHub Actions workflows. Applies feature templates with YAML merging, handles confirmation prompts, and provides error recovery. Part of the /ci add subcommand.
  * @checksum sha256:placeholder
  *
@@ -21,6 +21,12 @@ const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
  * 'top-level' features add a root-level YAML key (e.g., concurrency:).
  * 'step' features add a step to an existing job.
  * 'trigger' features modify the on: block.
+ * 'step-with-script' features copy `template.script` from this directory into
+ * the project, then add a step that runs the copy (#3016): the shared tree is a
+ * symlink into the hub in a user project and does not exist on a CI runner.
+ * 'config-files' features write `template.yaml` to `template.configFile` and
+ * `template.workflow` to `template.workflowFile`, touching no existing workflow
+ * (#3016). Neither file is ever overwritten.
  */
 const FEATURE_TYPE_MAP = {
   'cross-os-testing': 'strategy',
@@ -28,7 +34,8 @@ const FEATURE_TYPE_MAP = {
   'paths-ignore': 'trigger',
   'concurrency-groups': 'top-level',
   'dependency-caching': 'step',
-  'dependency-audit': 'step',
+  'dependency-audit': 'step-with-script',
+  'dependabot': 'config-files',
   'deploy-on-tag': 'trigger',
   'codeql-analysis': 'step',
   'coverage-upload': 'step',
@@ -76,6 +83,10 @@ function isFeatureAlreadyEnabled(projectDir, featureId) {
   const feature = registry[featureId];
   if (!feature) return false;
 
+  if (FEATURE_TYPE_MAP[featureId] === 'config-files') {
+    return configFilesPresent(projectDir, feature.template).every(Boolean);
+  }
+
   const workflowsDir = path.join(projectDir, '.github', 'workflows');
   if (!fs.existsSync(workflowsDir)) return false;
 
@@ -96,6 +107,93 @@ function isFeatureAlreadyEnabled(projectDir, featureId) {
   }
 
   return false;
+}
+
+/**
+ * Copy a feature's script from this directory into the project (#3016).
+ *
+ * Source is the sibling file named by `template.script`'s basename: this
+ * module and the gate both live in `.claude/scripts/shared/`, so the relative
+ * read resolves through the hub symlink wherever the project is. The copy is
+ * never overwritten — a project copy that differs from the framework's is
+ * reported and left alone, so a local edit survives a re-add.
+ *
+ * @param {string} projectDir Project root.
+ * @param {string} relTarget Project-relative path to write, e.g. `.github/scripts/x.js`.
+ * @returns {{ok: boolean, message: string}} `message` is a note for the result line.
+ */
+function copyFeatureScript(projectDir, relTarget) {
+  if (!relTarget || typeof relTarget !== 'string') {
+    return { ok: false, message: 'Feature template names no script to copy.' };
+  }
+  const source = path.join(__dirname, path.basename(relTarget));
+  if (!fs.existsSync(source)) {
+    return { ok: false, message: `Feature script not found beside ci-add.js: ${path.basename(relTarget)}` };
+  }
+  const target = path.join(projectDir, ...relTarget.split('/'));
+  const body = fs.readFileSync(source, 'utf8');
+  if (fs.existsSync(target)) {
+    if (fs.readFileSync(target, 'utf8') === body) {
+      return { ok: true, message: ` (${relTarget} already current)` };
+    }
+    return { ok: true, message: ` (${relTarget} differs from the framework copy and was left as is)` };
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, body);
+  return { ok: true, message: ` and copied ${relTarget}` };
+}
+
+/**
+ * Which of a config-files feature's two targets already exist (#3016).
+ *
+ * @param {string} projectDir Project root.
+ * @param {object} template The feature's template object.
+ * @returns {boolean[]} [configFile present, workflowFile present]
+ */
+function configFilesPresent(projectDir, template) {
+  return [template.configFile, template.workflowFile].map((rel) =>
+    Boolean(rel) && fs.existsSync(path.join(projectDir, ...rel.split('/'))));
+}
+
+/**
+ * Write a config-files feature: the config and its companion workflow (#3016).
+ *
+ * Neither is overwritten — a file that exists is reported and left as is, so
+ * a project's own Dependabot policy survives a re-add.
+ *
+ * @param {string} projectDir Project root.
+ * @param {string} featureId Feature identifier.
+ * @returns {{ success: boolean, message: string, feature: string, files: string[] }}
+ */
+function writeConfigFiles(projectDir, featureId) {
+  const feature = loadFeatureRegistry()[featureId];
+  const t = feature.template;
+  const plan = [
+    [t.configFile, t.yaml],
+    [t.workflowFile, t.workflow],
+  ];
+  const written = [];
+  const left = [];
+  for (const [rel, body] of plan) {
+    if (!rel || typeof body !== 'string') continue;
+    const target = path.join(projectDir, ...rel.split('/'));
+    if (fs.existsSync(target)) {
+      left.push(rel);
+      continue;
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, body);
+    written.push(rel);
+  }
+  const parts = [];
+  if (written.length) parts.push(`wrote ${written.join(' and ')}`);
+  if (left.length) parts.push(`${left.join(' and ')} already exists and was left as is`);
+  return {
+    success: true,
+    message: `Added "${feature.name}": ${parts.join('; ')}`,
+    feature: featureId,
+    files: written
+  };
 }
 
 /**
@@ -124,6 +222,10 @@ function addCIFeature(projectDir, featureId, _options = {}) {
     };
   }
 
+  if (FEATURE_TYPE_MAP[featureId] === 'config-files') {
+    return writeConfigFiles(projectDir, featureId);
+  }
+
   // Find target workflow file
   const target = suggestWorkflowForFeature(projectDir, featureId);
 
@@ -145,6 +247,15 @@ function addCIFeature(projectDir, featureId, _options = {}) {
 
   try {
     let operation;
+    let scriptNote = '';
+
+    if (featureType === 'step-with-script') {
+      const copied = copyFeatureScript(projectDir, feature.template.script);
+      if (!copied.ok) {
+        return { success: false, message: copied.message };
+      }
+      scriptNote = copied.message;
+    }
 
     if (featureType === 'top-level') {
       const key = TOP_LEVEL_KEY_MAP[featureId] || featureId;
@@ -185,7 +296,7 @@ function addCIFeature(projectDir, featureId, _options = {}) {
         feature: featureId
       };
     } else {
-      // Step-type features — add to first test job
+      // Step-type features (and step-with-script, once its copy landed) — add to first test job
       const firstJob = getFirstJobName(target.file);
       if (!firstJob) {
         return {
@@ -200,7 +311,7 @@ function addCIFeature(projectDir, featureId, _options = {}) {
 
     return {
       success: true,
-      message: `Added "${feature.name}" to ${path.basename(target.file)}`,
+      message: `Added "${feature.name}" to ${path.basename(target.file)}${scriptNote}`,
       file: target.file,
       feature: featureId
     };

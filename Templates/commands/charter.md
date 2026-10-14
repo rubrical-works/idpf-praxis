@@ -1,5 +1,5 @@
 ---
-version: "v0.106.0"
+version: "v0.107.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
 argument-hint: "[update [--register-proj|--deregister-proj|--list-proj]|refresh|validate|--create-domain-entities|--testing [--dry-run [--check]]]"
 copyright: "Rubrical Works (c) 2026"
@@ -31,6 +31,8 @@ config.projectSkills = [...new Set([...(config.projectSkills || []), ...newSkill
 fwconfig.write(process.cwd(), config); // throws on validation failure
 ```
 If `fwconfig.write` throws, surface error and stop — do NOT retry with raw file I/O.
+## Project `.npmrc` Offer (#3016)
+**Trigger:** stack includes JavaScript or TypeScript (a `testing.suites[]` entry for either, or `package.json` on disk) and no `.npmrc` at the project root. **Offer** to copy `{frameworkPath}/Templates/project/.npmrc` there — the `min-release-age` cooldown and `ignore-scripts` block the framework adopted for itself (#2481). Write **only on acceptance**; on decline change nothing and do not re-ask in the run. An existing `.npmrc` is **never overwritten** — report it, name the two keys for a hand merge, move on. Rule 06: offer, never force. Praxis Hub Manager's project-create path is the other writer; this offer is how a project created without or before it gets the file.
 ## Template Detection
 **One rule (#2893):** `.claude/scripts/shared/lib/charter-template.js`, shared with the startup hook and `Reference/Charter-Enforcement.md`. NEVER copy its pattern into this spec — three restated copies drifted until none matched the Praxis Hub Manager bootstrap charter, which then read as complete.
 `node .claude/scripts/shared/lib/charter-template.js CHARTER.md` → `{"exists", "template", "placeholders": [...]}`; report the `placeholders` when routing to Step 3.
@@ -47,6 +49,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 2. Analyze codebase (tech stack, architecture, tests, NFRs)
 3. Present findings, ask user to confirm/adjust
 4. Generate CHARTER.md and Inception/ artifacts
+4a. Offer the project `.npmrc` per **Project `.npmrc` Offer** (#3016) — the manifest is on disk, so the trigger is observed, not declared.
 3a. **Companion pre-fill:** propose candidates from disk, never open-ended — `git remote -v`; `.gh-pmu.json` `repositories[]`; existing `external: true` entities in `domain-entities.json` (read from the `resolveEntitiesWriteTarget()` path). Confirm with `searchable`/`fileIssues` defaulting false; register via `registerCompanion`. Asking open-ended here would assert something no file was read for — the failure the artifact-voice rule below governs.
 **Artifact voice — extraction:** artifacts here are **observations**. "detected" / "found via `<file>`" claims are permitted *because a file was read*; each must be traceable to the file supporting it.
 **Step 2a — Verification commands from the manifest script block.** Read the script declarations here, in this spec:
@@ -231,6 +234,7 @@ What review mode should be used for this project?
 3. Generate Inception/ artifacts (Charter-Details, Tech-Stack, Scope-Boundaries, Constraints, Architecture, Test-Strategy, Milestones) — **in intent voice per the Artifact voice rule at the head of Inception Mode.** `Tech-Stack.md` is sourced from the Q3 answer alone.
 4. Construction/ structure with .gitkeep and README.md
 5. Transition/ artifacts (Deployment-Guide, Runbook, User-Documentation)
+   - Offer the project `.npmrc` per **Project `.npmrc` Offer** (#3016), before the step 8 commit; at inception the trigger is the Q3 answer or a selected suite, never a filesystem read.
 6. Use "TBD" where unanswered. **Separately**, use `TBD` for detail no answer supplied that cannot be observed because nothing is installed yet (see Artifact voice). Skipped question and unobservable detail are distinct cases.
 7. Generate `domain-entities.json` beside `CHARTER.md` at project root, to the path **domain-entities.json Write Target** (below) resolves:
    ```javascript
@@ -284,6 +288,7 @@ This is the only step that clears a pending suite; selection never revisits an a
 **This is the only hook reaching an already-complete charter.** `/charter` with no arguments shows a summary and never re-runs generation, so neither Inception nor Extraction reaches a project past its first session — refresh is where an existing project acquires a declaration, and where drift between the two hand-authored surfaces is caught. Not hypothetical: this repository's `Inception/Test-Strategy.md` and its `framework-config.json` disagreed about what runs, with nothing checking them.
 5b. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
 5d. **Report directories (#2925):** when `Construction/Reports/Daily-Logs` or `Construction/Reports/Stats` is absent, offer to create the absent ones (`/idpf-stats --daily-log` and `--save` write there); create only on acceptance, change nothing on decline — `/idpf-stats` also creates its directory on demand, so declining never breaks a later report. Pre-#2925 charters reach these directories only through this step.
+5e. **Project `.npmrc` (#3016):** when the trigger in **Project `.npmrc` Offer** holds and the file is absent, make the offer; an existing file is left alone. Pre-#3016 charters reach the offer only here.
 6. Trigger skill/recipe suggestions. Detect new default skills not in `projectSkills` — copy from `{frameworkPath}/.claude/skills/`, add additively, report. Tech stack changed → keyword-based suggestions (NEW only).
 ### /charter validate
 1. Load CHARTER.md and Inception/Scope-Boundaries.md

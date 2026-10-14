@@ -83,6 +83,7 @@ The assistant will use `/bug` or `/enhancement` to create a properly formatted, 
 | Implementation went in wrong direction | "Stop. That's not what I wanted. Let me clarify what I need." |
 | Cascade failure across files | "Multiple files are wrong. Show me the git diff and let's figure out what to revert." |
 | Code done but workflow incomplete | "work #N" — the /work command picks up where it left off and completes the lifecycle. |
+| Branch has diverged from its upstream (startup, `/work` or `/done` says so) | `/sync-branch` — it shows what each side committed before asking, then rebases behind one question. It never forces, merges or pushes. |
 
 The pattern is always the same: **stop, ask for explanation, then either fix or file**.
 

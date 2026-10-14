@@ -1,0 +1,24 @@
+# /sync-branch
+
+Reconcile the current branch with its upstream after seeing what diverged.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| — | | Takes no arguments; always the current branch and its configured upstream |
+
+## Usage
+
+```
+/sync-branch
+```
+
+## Key Behaviors
+
+- Runs `branch-sync-check.js` and presents the derived analysis before asking anything: fork point, each side's commits with the issues they reference and their board status, paths both sides changed, locally modified files the remote also changes, and the last recorded pull
+- Resolves `behind` by fast-forward and `diverged` by rebase onto the upstream, each behind a single question; the operation runs through the shared `rebase-guard.js` helper, the same guard `/done` Step 2 uses
+- A rebase conflict aborts, reports the conflicting paths and stops; the tree is left as it was
+- Locally modified files that the incoming commits also change are reported and asked about before any rebase or fast-forward; the command never stashes, discards or reverts them
+- Never forces, never merges, never pushes; `ahead` reports that the push belongs to `/done`
+- Reachable with no issue in flight, which is the case the startup hook's `/done` pointer could not cover

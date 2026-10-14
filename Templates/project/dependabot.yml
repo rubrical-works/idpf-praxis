@@ -1,0 +1,54 @@
+version: 2
+updates:
+  # npm dependencies, runtime and dev.
+  # - Patch and minor updates are grouped into one PR per week (less churn).
+  # - Major updates stay ungrouped and get the `review:breaking` label so a
+  #   maintainer evaluates API compatibility before merge. The label is applied
+  #   post-open by `.github/workflows/dependabot-label-majors.yml`.
+  # - No auto-merge anywhere; every PR passes through the existing CI gates.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps"
+    # Dependency cooldown, tiered by semver risk: a major is where a compromised
+    # maintainer has the most room to hide a change behind expected breaking
+    # churn. GitHub's default for version updates is 3 days; the permitted
+    # range is 1-90.
+    #
+    # KNOWN GAP, accepted deliberately: cooldown does NOT apply to Dependabot
+    # SECURITY updates. Both this and .npmrc treat "there is a CVE" as grounds
+    # to skip the wait, which is backwards for supply-chain compromise
+    # specifically -- a fabricated or hyped advisory is a plausible way to
+    # pressure fast adoption. The .npmrc min-release-age partially backstops
+    # it by constraining resolution regardless of why an upgrade is happening.
+    cooldown:
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 14
+      semver-major-days: 30
+    groups:
+      patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+          - "minor"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "ci"

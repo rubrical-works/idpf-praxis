@@ -1,26 +1,77 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Doc Templates Config",
-  "description": "Configuration for runtime artifact triggers — design decisions and tech debt documentation",
+  "description": "Configuration for runtime artifact triggers — design decisions and tech debt documentation, and the six artifact template bodies offered by rule 06 (#3000)",
   "type": "object",
-  "required": ["categories", "commitFormat"],
+  "required": [
+    "categories",
+    "commitFormat"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
     "categories": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "warranted", "targetPath", "namingRules"],
+        "required": [
+          "name",
+          "warranted",
+          "targetPath",
+          "namingRules"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "warranted": { "type": "string" },
-          "targetPath": { "type": "string" },
-          "namingRules": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "warranted": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "namingRules": {
+            "type": "string"
+          }
         }
       }
     },
-    "commitFormat": { "type": "string" },
-    "warrantedCheckbox": { "type": "string" },
-    "notWarrantedCheckbox": { "type": "string" }
+    "commitFormat": {
+      "type": "string"
+    },
+    "warrantedCheckbox": {
+      "type": "string"
+    },
+    "notWarrantedCheckbox": {
+      "type": "string"
+    },
+    "templates": {
+      "type": "object",
+      "description": "Artifact template bodies keyed by artifact type (#3000). Moved out of the always-on 06-runtime-triggers rule; read from disk only when an artifact offer is accepted.",
+      "propertyNames": {
+        "pattern": "^(construction|transition)/[a-z]+(-[a-z]+)*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "pathPattern",
+          "body"
+        ],
+        "properties": {
+          "pathPattern": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where the artifact is written; bracketed segments are filled in."
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The markdown skeleton, verbatim."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
   }
 }

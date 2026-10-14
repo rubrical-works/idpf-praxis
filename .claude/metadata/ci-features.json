@@ -73,15 +73,33 @@
   "dependency-audit": {
     "id": "dependency-audit",
     "name": "Dependency Audit",
-    "description": "Scan for security vulnerabilities in dependencies",
+    "description": "Scan for high-severity vulnerabilities in dependencies; the npm step defers advisories whose only fixes are still inside the .npmrc min-release-age cooldown",
     "tier": "v1",
     "category": "security",
     "languages": ["javascript", "typescript", "python", "rust"],
     "detectionPatterns": {
-      "yaml": ["npm audit", "yarn audit", "pip-audit", "cargo audit"]
+      "yaml": ["npm audit", "audit-cooldown-check", "yarn audit", "pip-audit", "cargo audit"]
     },
     "template": {
-      "yaml": "- name: Audit dependencies\n  run: npm audit --audit-level=moderate"
+      "yaml": "- name: Audit dependencies (high severity, cooldown-aware)\n  run: node .github/scripts/audit-cooldown-check.js",
+      "script": ".github/scripts/audit-cooldown-check.js"
+    }
+  },
+  "dependabot": {
+    "id": "dependabot",
+    "name": "Dependabot with Cooldowns",
+    "description": "Weekly Dependabot updates with patch/minor grouping, 7/14/30-day semver cooldowns and a review:breaking label on majors",
+    "tier": "v1",
+    "category": "security",
+    "languages": ["javascript", "typescript"],
+    "detectionPatterns": {
+      "yaml": ["dependabot\\[bot\\]", "dependabot-label-majors"]
+    },
+    "template": {
+      "yaml": "version: 2\nupdates:\n  # npm dependencies, runtime and dev.\n  # - Patch and minor updates are grouped into one PR per week (less churn).\n  # - Major updates stay ungrouped and get the `review:breaking` label so a\n  #   maintainer evaluates API compatibility before merge. The label is applied\n  #   post-open by `.github/workflows/dependabot-label-majors.yml`.\n  # - No auto-merge anywhere; every PR passes through the existing CI gates.\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n      day: monday\n    open-pull-requests-limit: 10\n    labels:\n      - dependencies\n    commit-message:\n      prefix: \"deps\"\n    # Dependency cooldown, tiered by semver risk: a major is where a compromised\n    # maintainer has the most room to hide a change behind expected breaking\n    # churn. GitHub's default for version updates is 3 days; the permitted\n    # range is 1-90.\n    #\n    # KNOWN GAP, accepted deliberately: cooldown does NOT apply to Dependabot\n    # SECURITY updates. Both this and .npmrc treat \"there is a CVE\" as grounds\n    # to skip the wait, which is backwards for supply-chain compromise\n    # specifically -- a fabricated or hyped advisory is a plausible way to\n    # pressure fast adoption. The .npmrc min-release-age partially backstops\n    # it by constraining resolution regardless of why an upgrade is happening.\n    cooldown:\n      default-days: 7\n      semver-patch-days: 7\n      semver-minor-days: 14\n      semver-major-days: 30\n    groups:\n      patch-minor:\n        applies-to: version-updates\n        patterns:\n          - \"*\"\n        update-types:\n          - \"patch\"\n          - \"minor\"\n\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n      day: monday\n    open-pull-requests-limit: 5\n    labels:\n      - dependencies\n      - ci\n    commit-message:\n      prefix: \"ci\"\n",
+      "configFile": ".github/dependabot.yml",
+      "workflow": "# Adds the `review:breaking` label to any dependabot PR whose title matches a\n# major-version bump. Pairs with the grouping config in `.github/dependabot.yml`\n#: groups handle patch/minor churn in one PR; majors arrive individually\n# and this workflow flags them for conscious review.\n\nname: Label Major Dependabot PRs\n\non:\n  pull_request_target:\n    types: [opened, reopened, edited, synchronize]\n\npermissions:\n  pull-requests: write\n  issues: write\n\njobs:\n  label:\n    if: github.actor == 'dependabot[bot]'\n    runs-on: ubuntu-latest\n    steps:\n      - name: Detect major-version bump and label\n        uses: actions/github-script@v9\n        with:\n          script: |\n            const pr = context.payload.pull_request;\n            const title = pr.title || '';\n            // Dependabot major-bump titles look like:\n            //   \"deps: bump ajv from 7.x.x to 8.x.x\"\n            //   \"deps: bump @scope/pkg from 1.2.3 to 2.0.0\"\n            // Extract the two version triplets and compare majors.\n            const re = /from\\s+v?(\\d+)\\.\\d+\\.\\d+(?:\\S*)?\\s+to\\s+v?(\\d+)\\.\\d+\\.\\d+/i;\n            const match = title.match(re);\n            if (!match) {\n              core.info(`PR title \"${title}\" did not match version-bump pattern; skipping.`);\n              return;\n            }\n            const [fromMajor, toMajor] = [Number(match[1]), Number(match[2])];\n            if (toMajor <= fromMajor) {\n              core.info(`PR title \"${title}\" is not a major bump (${fromMajor} -> ${toMajor}); skipping.`);\n              return;\n            }\n            core.info(`Major bump detected: ${fromMajor} -> ${toMajor}. Applying review:breaking label.`);\n            await github.rest.issues.addLabels({\n              owner: context.repo.owner,\n              repo: context.repo.repo,\n              issue_number: pr.number,\n              labels: ['review:breaking'],\n            });\n",
+      "workflowFile": ".github/workflows/dependabot-label-majors.yml"
     }
   },
   "deploy-on-tag": {

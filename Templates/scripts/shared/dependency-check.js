@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.106.0
- * @description Detect missing, partial, or stale node_modules at session startup. Stats node_modules/<name>/package.json for each declared package and compares package-lock.json mtime against node_modules/.package-lock.json. Read-only and advisory — performs no installation and spawns no npm subprocess.
+ * @framework-script 0.107.0
+ * @description Detect missing, partial, or stale node_modules at session startup, and probe whether each runner the project's testing.suites[] names is on PATH (#3012). Stats node_modules/<name>/package.json for each declared package and compares package-lock.json mtime against node_modules/.package-lock.json; the runner probe goes through lib/runner-probe.js (where / command -v) and never spawns the runner. Read-only and advisory — performs no installation and spawns no npm subprocess.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -11,6 +11,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const { resolveSuites } = require('./lib/test-runner.js');
+const { probeSuites } = require('./lib/runner-probe.js');
 
 // ─── Helpers ───
 
@@ -106,6 +108,32 @@ function isStale(root) {
   }
 }
 
+/**
+ * Which declared runners are missing from PATH (#3012).
+ *
+ * A different question from the package check above, asked in every scope: a
+ * deployed project's own node_modules is deliberately not inspected, but the
+ * binary its `testing.suites[]` names (`npm`, `npx`, `dotnet`, …) is a host
+ * matter, and a host with Node but no npm passed this check and then failed
+ * every gate with exit 127. The probe resolves the suites through the same
+ * declaration reader the gates use, so it sees exactly what they would run.
+ *
+ * No declaration → nothing probed. A throwing probe degrades to an empty list:
+ * the package finding must still reach the block.
+ *
+ * @returns {Array<{runner: string, suites: string[], error: string|null}>}
+ */
+function missingRunners(projectDir, probe) {
+  try {
+    const { suites } = resolveSuites(projectDir);
+    if (!Array.isArray(suites) || suites.length === 0) return [];
+    const { missing } = probe(suites);
+    return Array.isArray(missing) ? missing : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
 // ─── Detection ───
 
 function checkDependencies(options = {}) {
@@ -118,7 +146,8 @@ function checkDependencies(options = {}) {
   const total = packages.length;
   const resolved = total - missing.length;
 
-  const base = { scope, root, total, resolved, missing };
+  const runnersMissing = missingRunners(projectDir, options.probe || probeSuites);
+  const base = { scope, root, total, resolved, missing, runnersMissing };
 
   if (total === 0) return { ...base, state: 'healthy' };
 
@@ -134,11 +163,22 @@ function checkDependencies(options = {}) {
 
 // ─── Main ───
 
+/** `; runner \`npm\` not on PATH (suites: unit, types)` — or nothing. */
+function runnerClause(r) {
+  const list = Array.isArray(r && r.runnersMissing) ? r.runnersMissing : [];
+  if (list.length === 0) return '';
+  return '; ' + list.map((m) => (
+    m.error
+      ? `runner \`${m.runner}\` could not be probed (${m.error}; suites: ${m.suites.join(', ')})`
+      : `runner \`${m.runner}\` not on PATH (suites: ${m.suites.join(', ')})`
+  )).join('; ');
+}
+
 const MESSAGES = {
-  healthy: () => 'Dependencies installed.',
-  missing: () => 'node_modules not installed — run npm ci',
-  partial: (r) => `${r.missing.length} of ${r.total} packages missing — run npm ci`,
-  stale: () => 'node_modules stale vs lockfile',
+  healthy: (r) => 'Dependencies installed.' + runnerClause(r),
+  missing: (r) => 'node_modules not installed — run npm ci' + runnerClause(r),
+  partial: (r) => `${r.missing.length} of ${r.total} packages missing — run npm ci` + runnerClause(r),
+  stale: (r) => 'node_modules stale vs lockfile' + runnerClause(r),
 };
 
 if (require.main === module) {

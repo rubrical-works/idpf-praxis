@@ -1,5 +1,5 @@
 ---
-version: "v0.106.0"
+version: "v0.107.0"
 description: Start working on issues with validation and automatic task extraction, using the IDPF framework.
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
 copyright: "Rubrical Works (c) 2026"
@@ -54,10 +54,10 @@ The six approval gates are evaluated by its Step 5a rollup, not worked as accept
 After the preamble and before the first commit, `/work` runs `branch-sync-check.js` once per invocation — the same check the startup hook runs, at the moment integrating another developer's push is cheapest (#2635):
 - **Behind, no conflicting paths** → offer `git pull --ff-only`; declining leaves the tree untouched.
 - **Behind, conflicting paths present** → no pull offer; report the paths, ask whether to continue or stop.
-- **Diverged** → report and STOP — the previous `/done` did not push, or another session committed here.
+- **Diverged** → report and STOP — the previous `/done` did not push, or another session committed here. Recovery: `/sync-branch`, or `/done` on the issue still in review.
 - **Ahead, up-to-date, no upstream** → no action.
 
-Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. The matching guard before push is `/done` Step 2.
+Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. Fast-forward and rebase both run through `.claude/scripts/shared/lib/rebase-guard.js`, the guard `/done` Step 2 and `/sync-branch` share (#3014).
 
 ---
 ## Review-State Gate

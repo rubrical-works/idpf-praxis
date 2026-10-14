@@ -16,5 +16,31 @@
   ],
   "commitFormat": "Refs #$ISSUE — add {design decision|tech debt} documentation",
   "warrantedCheckbox": "[x] Design decisions documented — {topic}",
-  "notWarrantedCheckbox": "[x] No design decisions warranted — implementation was straightforward"
+  "notWarrantedCheckbox": "[x] No design decisions warranted — implementation was straightforward",
+  "templates": {
+    "construction/design-decision": {
+      "pathPattern": "Construction/Design-Decisions/YYYY-MM-DD-[decision-name].md",
+      "body": "# Design Decision: [Title]\n\n**Date:** [YYYY-MM-DD]\n**Status:** Accepted\n**Context:** Issue #[N] — [Issue Title]\n\n## Decision\n\n[What was decided]\n\n## Rationale\n\n[Why this choice was made]\n\n## Alternatives Considered\n\n- [Alternative 1]: [Why rejected]\n- [Alternative 2]: [Why rejected]\n\n## Consequences\n\n- [Positive consequence]\n- [Negative consequence or trade-off]\n\n## Issues Encountered\n\n[Any blockers, surprises, or lessons learned during implementation]\n\n---\n*Documented during completion of #[N]*\n"
+    },
+    "construction/test-plan": {
+      "pathPattern": "Construction/Test-Plans/[feature-name]-test-plan.md",
+      "body": "# Test Plan: [Feature Name]\n\n**Created:** [YYYY-MM-DD]\n**Related Issue:** [#XXX]\n\n## Scope\n\n[What is being tested]\n\n## Test Strategy\n\n### Unit Tests\n- [ ] [Test case 1]\n- [ ] [Test case 2]\n\n### Integration Tests\n- [ ] [Test case 1]\n- [ ] [Test case 2]\n\n### Edge Cases\n- [ ] [Edge case 1]\n- [ ] [Edge case 2]\n\n## Test Data Requirements\n\n[Data needed for tests]\n\n## Environment Requirements\n\n[Environment/mock requirements]\n\n---\n*Captured during [issue/context]*\n"
+    },
+    "construction/tech-debt": {
+      "pathPattern": "Construction/Tech-Debt/[item-name].md",
+      "body": "# Tech Debt: [Title]\n\n**Logged:** [YYYY-MM-DD]\n**Priority:** [High/Medium/Low]\n**Related Issue:** [#XXX]\n\n## Description\n\n[What the debt is]\n\n## Current State\n\n[What exists now]\n\n## Desired State\n\n[What should exist]\n\n## Remediation Effort\n\n[Estimated effort: Small/Medium/Large]\n\n## Risks if Unaddressed\n\n- [Risk 1]\n- [Risk 2]\n\n---\n*Tracked during [issue/context]*\n"
+    },
+    "transition/deployment-guide": {
+      "pathPattern": "Transition/Deployment-Guide.md",
+      "body": "# Deployment Guide\n\n**Version:** [Release version]\n\n## Prerequisites\n\n- [ ] [Prerequisite 1]\n- [ ] [Prerequisite 2]\n\n## Environment Configuration\n\n| Variable | Description | Example |\n|----------|-------------|---------|\n| [VAR_NAME] | [Description] | [Example value] |\n\n## Deployment Steps\n\n### Pre-Deployment\n1. [Step 1]\n2. [Step 2]\n\n### Deployment\n1. [Step 1]\n2. [Step 2]\n\n### Post-Deployment\n1. [Verification step 1]\n2. [Verification step 2]\n\n## Rollback Procedure\n\n1. [Rollback step 1]\n2. [Rollback step 2]\n\n## Troubleshooting\n\n| Issue | Solution |\n|-------|----------|\n| [Common issue] | [Resolution] |\n\n---\n*Updated during [release/version]*\n"
+    },
+    "transition/runbook": {
+      "pathPattern": "Transition/Runbook.md",
+      "body": "# Operations Runbook\n\n\n## Service Overview\n\n[Brief description of service]\n\n## Health Checks\n\n| Check | Command/URL | Expected Result |\n|-------|-------------|-----------------|\n| [Check name] | [Command] | [Expected] |\n\n## Dependency Advisories\n\n**When:** a high or critical advisory is reported for a package in this project's tree (the CI audit step, `npm audit`, or a Dependabot alert).\n\n**Response:**\n1. Read the CI verdict before acting. The cooldown-aware gate (`audit-cooldown-check.js`) defers an advisory whose only fixes are still inside the `.npmrc` `min-release-age` window; a deferral is a wait, not a failure. [Project cooldown: N days]\n2. Fix aged out: `npm audit fix`, run the full test suite, commit the lockfile.\n3. Fix published but not aged out, and the advisory is reachable from this project's usage: `npm i --min-release-age 0 <pkg>@<fixed-version>` (the escape hatch), then the suite and the lockfile. Otherwise wait.\n4. No fix published: pin a safe version through `package.json` `overrides`, record why here, and revisit when upstream publishes.\n5. Cut a release once the fixed dependency reaches users: [Release policy — e.g. same business day for a critical advisory in a runtime dependency, next scheduled release otherwise].\n\n**Escalation:** [Who approves the escape hatch and an out-of-band release]\n\n---\n## Common Operations\n\n### [Operation Name]\n\n**When:** [Trigger condition]\n\n**Steps:**\n1. [Step 1]\n2. [Step 2]\n\n---\n\n## Incident Response\n\n### [Incident Type]\n\n**Symptoms:** [What you'll see]\n\n**Response:**\n1. [Step 1]\n2. [Step 2]\n\n**Escalation:** [Who to contact]\n\n---\n\n## Maintenance Tasks\n\n### [Task Name]\n\n**Frequency:** [Daily/Weekly/Monthly]\n\n**Steps:**\n1. [Step 1]\n2. [Step 2]\n\n---\n*Updated during [context]*\n"
+    },
+    "transition/user-documentation": {
+      "pathPattern": "Transition/User-Documentation.md",
+      "body": "# User Documentation\n\n**Version:** [Release version]\n\n## Overview\n\n[What this product does for users]\n\n## Getting Started\n\n### Installation/Setup\n\n[How to get started]\n\n### Quick Start\n\n1. [Step 1]\n2. [Step 2]\n\n---\n\n## Features\n\n### [Feature Name]\n\n[Description]\n\n**How to use:**\n1. [Step 1]\n2. [Step 2]\n\n---\n\n## FAQ\n\n### [Question]\n\n[Answer]\n\n---\n\n## Changelog\n\n### [Version]\n- [Change 1]\n- [Change 2]\n\n---\n*Updated during [release/version]*\n"
+    }
+  }
 }

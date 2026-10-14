@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.106.0
+ * @framework-script 0.107.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -12,6 +12,7 @@
  * 5. Auto-moves PRD tracker to in_progress for work commands (#1193)
  * 6. Detects 'done' trigger and routes to /done command (#1200)
  * 7. Detects 'review #N' and routes to /review-issue command (#1210)
+ * 8. Appends the fired route's routing notes from trigger-patterns.json (#2999)
  *
  * Trigger prefixes: bug:, enhancement:, idea:, proposal:
  * Work command: work #N (validates branch assignment, provides branch context)
@@ -104,17 +105,47 @@ const TRIGGER_PATTERNS_FILE = path.resolve(__dirname, '..', 'metadata', 'trigger
  * @returns {{analysisKeywords: string[], commandRequests: string[], patterns: object}}
  */
 function readTriggerPatterns() {
-    const inert = { analysisKeywords: [], commandRequests: [], patterns: {} };
+    const inert = { analysisKeywords: [], commandRequests: [], patterns: {}, routingNotes: null };
     try {
         const parsed = JSON.parse(fs.readFileSync(TRIGGER_PATTERNS_FILE, 'utf-8'));
         return {
             analysisKeywords: Array.isArray(parsed.analysisKeywords) ? parsed.analysisKeywords : [],
             commandRequests: Array.isArray(parsed.commandRequests) ? parsed.commandRequests : [],
-            patterns: (parsed.patterns && typeof parsed.patterns === 'object') ? parsed.patterns : {}
+            patterns: (parsed.patterns && typeof parsed.patterns === 'object') ? parsed.patterns : {},
+            routingNotes: parsed.routingNotes
         };
     } catch (_e) {
         return inert;
     }
+}
+
+/**
+ * The routing notes for one route, joined, or '' (#2999).
+ *
+ * The routing mechanics rule 02 used to state in every session now arrive here,
+ * in the turn their route fires. NOTES NEVER GATE ROUTING: any malformation —
+ * absent block, non-object, missing `routes`, a route that is not an array, a
+ * note id that resolves to nothing — contributes nothing, and the caller's
+ * [INVOKE: …] payload is then byte-identical to what it was before #2999.
+ *
+ * @param {string} route - 'workflowTrigger' | 'review' | 'work' | 'done'
+ * @returns {string}
+ */
+function routingNoteFor(route) {
+    const block = TRIGGER_DATA.routingNotes;
+    if (!block || typeof block !== 'object') return '';
+    const notes = block.notes && typeof block.notes === 'object' ? block.notes : {};
+    const ids = block.routes && Array.isArray(block.routes[route]) ? block.routes[route] : [];
+    return ids
+        .map((id) => (notes[id] && typeof notes[id].text === 'string' ? notes[id].text : ''))
+        .filter(Boolean)
+        .join('\n\n');
+}
+
+/** Append a route's notes to a hook payload; unchanged when there are none. */
+function withRoutingNote(context, route) {
+    const note = routingNoteFor(route);
+    return note ? `${context.replace(/\n+$/, '')}\n\n${note}` : context;
 }
 
 /**
@@ -369,7 +400,7 @@ process.stdin.on('end', () => {
                     systemMessage: `Success`,
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: contextMessage
+                        additionalContext: withRoutingNote(contextMessage, 'work')
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -381,7 +412,7 @@ process.stdin.on('end', () => {
                     systemMessage: `Success`,
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: `[INVOKE: /work ${issueNumber}]`
+                        additionalContext: withRoutingNote(`[INVOKE: /work ${issueNumber}]`, 'work')
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -419,7 +450,7 @@ process.stdin.on('end', () => {
                     systemMessage: `Success`,
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: contextMessage
+                        additionalContext: withRoutingNote(contextMessage, 'work')
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -443,7 +474,7 @@ process.stdin.on('end', () => {
                     systemMessage: 'Success',
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: `[INVOKE: /done ${args}]`
+                        additionalContext: withRoutingNote(`[INVOKE: /done ${args}]`, 'done')
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -465,7 +496,7 @@ process.stdin.on('end', () => {
                         systemMessage: 'Success',
                         hookSpecificOutput: {
                             hookEventName: 'UserPromptSubmit',
-                            additionalContext: '[INVOKE: /done]'
+                            additionalContext: withRoutingNote('[INVOKE: /done]', 'done')
                         }
                     };
                     console.log(JSON.stringify(output));
@@ -497,7 +528,7 @@ process.stdin.on('end', () => {
                 systemMessage: 'Success',
                 hookSpecificOutput: {
                     hookEventName: 'UserPromptSubmit',
-                    additionalContext: `[INVOKE: /review-issue ${reviewArgs}]`
+                    additionalContext: withRoutingNote(`[INVOKE: /review-issue ${reviewArgs}]`, 'review')
                 }
             };
             console.log(JSON.stringify(output));
@@ -564,7 +595,7 @@ process.stdin.on('end', () => {
                 systemMessage: `Success`,
                 hookSpecificOutput: {
                     hookEventName: "UserPromptSubmit",
-                    additionalContext: `[INVOKE: ${command} ${triggerArgs}]`
+                    additionalContext: withRoutingNote(`[INVOKE: ${command} ${triggerArgs}]`, 'workflowTrigger')
                 }
             };
             console.log(JSON.stringify(output));

@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.106.0
+ * @framework-script 0.107.0
  * @description Generate state-aware contextual hints that guide users toward logical next actions after each /ci subcommand invocation. Returns one hint per call with related feature mapping. Prevents repeated hints within a session.
  * @checksum sha256:placeholder
  *
@@ -21,6 +21,7 @@ const RELATED_FEATURES = {
   'concurrency-groups':   { feature: 'paths-ignore', reason: 'skip docs-only changes' },
   'dependency-caching':   { feature: 'dependency-audit', reason: 'scan cached deps for vulnerabilities' },
   'dependency-audit':     { feature: 'codeql-analysis', reason: 'deeper code-level scanning' },
+  'dependabot':           { feature: 'dependency-audit', reason: 'gate the tree the bumps land in' },
   'deploy-on-tag':        { feature: 'conventional-commits', reason: 'enforce commit format for releases' },
   'codeql-analysis':      { feature: 'dependency-audit', reason: 'complement with dependency scanning' },
   'coverage-upload':      { feature: 'multi-node-versions', reason: 'track coverage across versions' },

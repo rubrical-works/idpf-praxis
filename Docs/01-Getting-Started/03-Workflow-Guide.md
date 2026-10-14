@@ -567,7 +567,7 @@ All three levels of review are valid. The depth of your review is a quality mult
 1. Validates the issue is in `in_review` status
 2. Moves to `done` (auto-closes the issue)
 3. Offers to document design decisions in `Construction/Design-Decisions/`
-4. Commits and pushes changes
+4. Commits and pushes changes. If someone else pushed to the branch in the meantime, your commits are rebased onto theirs before the push. A conflict stops the push with the tree unchanged; `/sync-branch` then shows what diverged and resolves it.
 
 **Design decisions** are optional but valuable. If the work involved trade-offs, non-obvious choices, or lessons learned, documenting them helps future contributors understand why things were built a certain way.
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "trigger-patterns-schema.json",
   "title": "Trigger Patterns Schema",
-  "description": "Schema for .claude/metadata/trigger-patterns.json — the phrase patterns workflow-trigger.js recognizes on UserPromptSubmit. This file carries PATTERNS ONLY. The relationships between triggers — a co-required issue reference, and the mutual exclusions that stop `work #42` routing as an analysis request — stay in the hook, because expressing them here would need an evaluation order and a resolver for a three-entry dependency graph in a hook that must never throw. See Construction/Design-Decisions/2026-09-07-trigger-patterns-composition-stays-in-code.md.",
+  "description": "Schema for .claude/metadata/trigger-patterns.json — the phrase patterns workflow-trigger.js recognizes on UserPromptSubmit, plus the routing notes it appends when a route fires (#2999). This file carries PATTERNS and NOTES ONLY. The relationships between triggers — a co-required issue reference, and the mutual exclusions that stop `work #42` routing as an analysis request — stay in the hook, because expressing them here would need an evaluation order and a resolver for a three-entry dependency graph in a hook that must never throw. See Construction/Design-Decisions/2026-09-07-trigger-patterns-composition-stays-in-code.md.",
   "type": "object",
   "required": ["analysisKeywords", "commandRequests", "patterns"],
   "properties": {
@@ -68,6 +68,42 @@
         },
         "additionalProperties": false
       }
+    },
+    "routingNotes": {
+      "type": "object",
+      "description": "Routing conventions the hook appends to its additionalContext when a route fires (#2999) — moved out of the always-on 02-github-workflow rule so a session sees each one only in the turn it applies. OPTIONAL by design: absent, malformed or empty, the hook emits its [INVOKE: …] line exactly as before. Routing never depends on a note.",
+      "required": ["notes", "routes"],
+      "properties": {
+        "notes": {
+          "type": "object",
+          "description": "Note bodies keyed by id. A note shared by several routes (the flag pass-through convention) is written once and named by each.",
+          "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Markdown appended verbatim after the hook's own payload. Must not contain a hook marker such as [INVOKE: — consumers grep the payload for it."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "routes": {
+          "type": "object",
+          "description": "Which notes each hook route appends, in order. Keys are the hook's route names, not pattern names.",
+          "propertyNames": { "enum": ["workflowTrigger", "review", "work", "done"] },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

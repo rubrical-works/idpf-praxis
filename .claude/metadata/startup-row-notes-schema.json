@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "startup-row-notes-schema.json",
+  "title": "Startup Row Notes Schema",
+  "description": "Schema for .claude/metadata/startup-row-notes.json — explanations of Session Initialized rows that startup-hook.js appends to its additionalContext only when the row is emitted (#2995). Moved out of the always-on 03-startup rule so a session pays for an explanation only when its row appears. Optional by design: absent or malformed, the hook emits its block and instructions exactly as before.",
+  "type": "object",
+  "required": [
+    "notes"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "_meta": {
+      "type": "object",
+      "description": "Human-facing provenance. Never read by the hook.",
+      "additionalProperties": true
+    },
+    "notes": {
+      "type": "object",
+      "description": "Explanations keyed by id, appended in declaration order.",
+      "propertyNames": {
+        "pattern": "^[a-z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "when",
+          "text"
+        ],
+        "properties": {
+          "when": {
+            "type": "object",
+            "description": "When the note is appended. `always: true` on every startup; `rows` when any block line `- <row>: …` is present for a listed row — and, if `contains` is also given, that line contains one of its substrings; `contains` alone when ANY row line contains one of its substrings.",
+            "properties": {
+              "always": {
+                "const": true
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "contains": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "always"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "rows"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "contains"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "rows"
+                ],
+                "not": {
+                  "required": [
+                    "always"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "contains"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "always"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "rows"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "additionalProperties": false
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Markdown appended verbatim. Begins with the heading the section carried in the rule."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

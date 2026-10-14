@@ -87,7 +87,7 @@ This line previously asserted the behavior with nothing having checked it. Measu
 
 **What would break:** If rules stopped auto-loading, the assistant would lose its quality guardrails mid-session. Anti-hallucination rules prevent version number invention during releases. GitHub workflow rules enforce STOP boundaries. Without these, the assistant becomes unreliable for framework development.
 
-### 3. Hooks (9 hook registrations, 5 event types)
+### 3. Hooks (10 hook registrations, 5 event types)
 
 **How it works:** Claude Code fires JavaScript hooks in response to events. Hooks are registered in `.claude/settings.local.json` under the `hooks` key. Each hook specifies an event type, a matcher pattern, and a command to execute.
 
@@ -99,18 +99,19 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 
 | Basis | Count | What it counts |
 |-------|-------|----------------|
-| **Registrations** (used above) | **9** | Entries in this repo's `settings.local.json`, across 5 event types |
-| Files in `.claude/hooks/` | 8 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/` |
-| Deployed to user projects | 7 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 6 `.js` plus the non-`.js` `pre-push` script |
+| **Registrations** (used above) | **10** | Entries in this repo's `settings.local.json`, across 5 event types |
+| Files in `.claude/hooks/` | 9 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/` |
+| Deployed to user projects | 8 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 7 `.js` plus the non-`.js` `pre-push` script |
 
-**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js` is deployed but registered by the hub installer, not by this file.
+**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js` and `shell-safety-hook.js` are deployed but registered by the hub installer (from `deploymentFiles.hooksConfig`), not by this file.
 
 **Event types we use:**
 
 | Event | Matcher | Hook | Purpose |
 |-------|---------|------|---------|
 | `PreToolUse` | `Edit\|Write` | `guard-commands-src.js` | Guards direct edits to generated command specs |
-| `PreToolUse` | `Bash` | `block-cd.js` | Denies `cd`, whose persisted cwd silently breaks later relative paths |
+| `PreToolUse` | `Bash\|PowerShell` | `block-cd.js` | Denies working-directory changes (`cd`, `pushd`, `chdir`, and in PowerShell `Set-Location`, `sl`, `Push-Location`), whose persisted cwd silently breaks later relative paths (#3017) |
+| `PreToolUse` | `Bash` | `shell-safety-hook.js` | Emits the Git Bash correction for a matching command shape; blocks `date /t` and `taskkill /F` (#2997) |
 | `PostToolUse` | `Edit\|Write` | `test-on-change.js` | Runs tests automatically when files are edited/written |
 | `UserPromptSubmit` | — | `workflow-trigger.js` | Detects `bug:`, `work #N`, `done`, `review #N` and routes to commands |
 | `SessionStart` | `startup` | `startup-hook.js` | Initializes session state |

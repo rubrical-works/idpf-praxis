@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shell-pattern-corrections-schema.json",
+  "title": "Shell Pattern Corrections Schema",
+  "description": "Schema for .claude/metadata/shell-pattern-corrections.json — Git Bash command-shape corrections that .claude/hooks/shell-safety-hook.js emits only when the Bash command about to run matches a detector (#2997). Moved out of the always-on 05-windows-shell rule. The hook fails open: absent or malformed data means no correction and no block.",
+  "type": "object",
+  "required": ["corrections"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": {
+      "type": "object",
+      "description": "Human-facing provenance. Never read by the hook.",
+      "additionalProperties": true
+    },
+    "corrections": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["detector", "disposition", "text"],
+        "properties": {
+          "detector": {
+            "type": "object",
+            "description": "Regular expression tested against tool_input.command. A source that does not compile disables only its own entry.",
+            "required": ["source"],
+            "properties": {
+              "source": { "type": "string", "minLength": 1 },
+              "flags": { "type": "string", "pattern": "^[imsu]*$" }
+            },
+            "additionalProperties": false
+          },
+          "disposition": {
+            "enum": ["advise", "block"],
+            "description": "`advise`: append the text to PreToolUse additionalContext; the call proceeds. `block`: exit 2 with the text on stderr. Reserved for shapes that are always wrong on Git Bash."
+          },
+          "text": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

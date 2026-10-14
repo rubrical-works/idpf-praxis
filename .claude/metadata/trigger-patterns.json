@@ -4,7 +4,8 @@
   "_meta": {
     "description": "Trigger phrase patterns for .claude/hooks/workflow-trigger.js (#2816). Adding or widening a trigger phrase is a data edit here, matching the policy 02-github-workflow.md already states for trigger-flag-allowlist.json: recognized flags are data, not a hook edit. Patterns moved; meanings did not.",
     "consumer": ".claude/hooks/workflow-trigger.js — compiled once per invocation, before the fast-path check",
-    "compositionDecision": "Patterns are data; COMPOSITION IS NOT. reviewTrigger, analysisMatch and testPlanApprovalTrigger are conjunctions of a pattern, a co-requirement and exclusions against sibling triggers, and those relationships stay in code. See Construction/Design-Decisions/2026-09-07-trigger-patterns-composition-stays-in-code.md for the rejected `requires`/`excludes` schema."
+    "compositionDecision": "Patterns are data; COMPOSITION IS NOT. reviewTrigger, analysisMatch and testPlanApprovalTrigger are conjunctions of a pattern, a co-requirement and exclusions against sibling triggers, and those relationships stay in code. See Construction/Design-Decisions/2026-09-07-trigger-patterns-composition-stays-in-code.md for the rejected `requires`/`excludes` schema.",
+    "routingNotes": "Routing notes (#2999) moved here from the always-on 02-github-workflow rule: the trigger-word table, the review routing table and the Flag Pass-Through Convention. The hook appends a route's notes to its additionalContext only when that route fires, so a session sees each convention in the turn it applies and nowhere else. Optional: absent or malformed, the hook emits its [INVOKE] line unchanged."
   },
   "analysisKeywords": [
     "evaluate",
@@ -63,6 +64,41 @@
       "source": "--refresh",
       "flags": "i",
       "description": "Cache-refresh flag on the commands help path."
+    }
+  },
+  "routingNotes": {
+    "notes": {
+      "triggerWords": {
+        "text": "**Trigger-word routing.** A message starting with a trigger prefix routes to its command:\n`bug:` → `/bug` (bug issue, standard template) · `enhancement:` → `/enhancement` (enhancement issue, standard template) · `proposal:` → `/proposal` (proposal document + tracking issue) · `idea:` → `/proposal` (alias).\nEach command creates the issue, reports the number, and STOPs. Do NOT proceed to implementation until the user explicitly says \"work\".\nFlags are extracted from the message and appended to the invocation rather than left in the title, so no `--`-prefixed token becomes part of an issue's identity: `enhancement: add dark mode --prior-art` → `/enhancement add dark mode --prior-art`."
+      },
+      "reviewRouting": {
+        "text": "**Review routing.** `review` with an issue reference (`#N`), at the start of the message (optionally after \"please\"), routes to `/review-issue` with every `#N` and the flags:\n`review #42` → `/review-issue 42` · `review #42 #43 #44` → `/review-issue 42 43 44` · `please review #42` → `/review-issue 42` · `review #42 --with security` → `/review-issue 42 --with security` · `review #42 --mode solo --force` → `/review-issue 42 --mode solo --force`.\n`review` is a **tracked action** (routes to a command), not an analysis keyword; `evaluate`, `analyze`, `assess`, `investigate`, `check` and `verify` remain passive analysis triggers that inject a STOP reminder. `review` without an issue number does not route."
+      },
+      "flagPassThrough": {
+        "text": "**Flag pass-through convention** — applies to every routing path; commands gaining flags later inherit it.\n- **Extraction is by token shape.** A token is a flag when it is `--` followed by a letter. A bare `--` separator, a `---` rule, and `--` inside prose are not flags and are preserved verbatim in title text.\n- **No flag-shaped token is ever discarded.** Unrecognized flags pass through to the command, which reports them through its own error handling. Silent truncation is never correct — a dropped flag gives a narrowed result with nothing to notice.\n- **Recognized flags are data,** per command, in `.claude/metadata/trigger-flag-allowlist.json`. Adding a flag is a data edit, not a hook edit.\n- **Declaration governs value attachment only.** A recognized flag may claim the following token as its value (`--with security`); an unrecognized one may not, so trailing prose is not swallowed into the argument list.\n- **How much a recognized flag claims is declared per flag (#2770).** An entry is a plain flag string (one token, the default) or an object adding `\"attach\": \"rest-of-line\"`, claiming every remaining token so a flag can take prose (`/proposal --update`). Per flag, not a mode switch — every other flag keeps the one-token default.\n- **A rest-of-line value stops at the next flag-shaped token.** `--update rewrite the intro --assignee octocat` binds `rewrite the intro` and leaves `--assignee` its own value; absorbing a following flag into prose would discard it silently. `--flag=value` carries its own value and never claims following tokens."
+      },
+      "workRouting": {
+        "text": "**Work routing.** A message starting with `work` that names an issue (`work #N`, `work on 123`, `work issue 45`) routes to `/work N` once the hook confirms the issue has a branch assignment — an unassigned issue is refused with the `/assign-branch` remedy. `work all in <status>` routes a batch only when `<status>` is a status configured in `.gh-pmu.json`.\nOn this path only the issue number (or status) is carried: flags typed after it are not extracted, so pass them by invoking `/work` directly."
+      },
+      "doneRouting": {
+        "text": "**Done routing.** `done` with issue numbers routes to `/done` with them; a bare `done` routes only when some issue is in review. `/done` moves `in_review` → `done` only — `/work` owns `in_progress` → `in_review`. Issues close only when the user says \"Done\"."
+      }
+    },
+    "routes": {
+      "workflowTrigger": [
+        "triggerWords",
+        "flagPassThrough"
+      ],
+      "review": [
+        "reviewRouting",
+        "flagPassThrough"
+      ],
+      "work": [
+        "workRouting"
+      ],
+      "done": [
+        "doneRouting"
+      ]
     }
   }
 }
