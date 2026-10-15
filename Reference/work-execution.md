@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.107.0
+**Version:** v0.107.1
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow.
 ## Execution Instructions
@@ -170,16 +170,19 @@ After Step 4c, run the project's declared verification set before Step 5. Every 
 | `verificationCommands` | ordered array declared | Run **every declared command**, in declaration order |
 | `testCommand` | no array; single command declared | Run it. Unchanged from before #2733 |
 | `none` | neither declared | Run nothing; report the gap, continue |
-**Run every declared command and report each result separately.** One passing must never **mask** another failing — do not stop at the first success, do not collapse the set into one verdict:
+**Run every run `sweepInvocations()` returns and report each result separately.** One passing must never **mask** another failing — do not stop at the first success, do not collapse the set into one verdict:
 ```
-Verification sweep (3 commands declared):
-  PASS  <declared command 1>
-  PASS  <declared command 2>
-  FAIL  <declared command 3>
+Verification sweep (4 suites declared, 3 commands run):
+  PASS  <command 1>   (js-unit, ts-unit)
+  PASS  <command 2>   (ts-typecheck)
+  FAIL  <command 3>   (mobile-e2e)
+  NOT SWEPT           (js-e2e)
 ```
 Any failure blocks Step 5. Run the whole set even after one fails — one re-run surfacing three failures beats three fix-and-rerun cycles.
+**One run can stand for several suites.** Suites with identical phases and `cwd` (a JavaScript and a TypeScript unit suite whose harnesses declare the same command) share one run carrying every id in `suiteIds`; `collapsed` names each merge. Running it per suite executes the same tests twice, and a load-flaky test could pass under one id and fail under the other. Name every id on the run's line and report each suite's `kind` from the run's `suites[]`. Scoped runs merge the same way. The helper decides what merges — never re-run a merged command per suite.
 **Report each phase's verdict verbatim from `classifyRunResult()`; never re-derive it.** `prepare` is ordered before `full`. Non-zero `prepare` → `prerequisite failed` naming the phase, and that suite's `full` is **not run** — tests against an unbuilt tree report a failure that is not the code's. Non-zero `full` → `tests failed`. Exit 127, or `spawnError: 'ENOENT'` from `runner-probe.js`, → `runner not found` naming the runner, either phase — remedy is the host toolchain, not the tests; say which binary. Block `in_review` whenever a verdict carries `blocksReview: true`. The helper decides the verdict; this rule reports and blocks on it — re-deriving it would give one outcome two definitions.
 **`manual-only` suites are listed as declared-but-not-run.** Excluded from both invocation sets by construction, so naming them keeps a declared-but-never-run suite visible; unnamed, it is indistinguishable from one never declared.
+**`sweep: false` suites are listed as declared-but-not-swept** — one `NOT SWEPT` line naming their ids from the helper's `skipped` list. `/charter --testing` recommends `sweep: false` for e2e suites, so a skipped suite is routine; unnamed, it reads as never declared. Unlike `manual-only`, it still runs scoped when its files change. `skipped` also carries suites `sweepScope: "touched"` filtered out; name those too.
 **`verificationCommands` takes precedence; `testCommand` is the single-command fallback.** Array absent, empty, or not an array → resolver **falls back** to `testCommand`, so a project that never adopts the array behaves exactly as before. The resolver owns precedence — do not re-derive here, do not read either key directly.
 **Nothing declared (`source: "none"`) — no `verificationCommands` array, and no `testCommand` is declared either → report the gap; do not substitute one.** Emit:
 ```

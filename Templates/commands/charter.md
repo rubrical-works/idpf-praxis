@@ -1,7 +1,7 @@
 ---
-version: "v0.107.0"
+version: "v0.107.1"
 description: View, create, or manage this project's charter, using the IDPF framework.
-argument-hint: "[update [--register-proj|--deregister-proj|--list-proj]|refresh|validate|--create-domain-entities|--testing [--dry-run [--check]]]"
+argument-hint: "[update [--register-proj|--deregister-proj|--list-proj]|refresh|validate|--create-domain-entities|--testing [--dry-run [--check]] [--sweep-e2e on|off]]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -19,6 +19,7 @@ Context-aware. Shows summary if exists, starts creation if missing.
 | `/charter update --list-proj` | List registered companions with capability flags |
 | `/charter --create-domain-entities` | Regenerate `domain-entities.json` |
 | `/charter --testing` | Harness selection per language and role → `testing.suites[]` |
+| `/charter --testing --sweep-e2e on` · `--sweep-e2e off` | Set whether every `e2e` suite joins the `/work` Step 4f sweep, without re-running selection |
 ## Execution
 **REQUIRED:** Parse workflow steps, use `TaskCreate` to create tasks. Mark `in_progress`→`completed`. After compaction, re-read spec and call `TaskList` to resume from first incomplete task.
 ## framework-config.json — Use the Helper
@@ -102,6 +103,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 **`--testing --dry-run` audits the declaration and writes nothing (#2854).** Two forms, differing in kind.
 **`--testing --dry-run --check` never prompts** — the CI form: #2850 made selection mandatory with a re-asked prompt, and CI cannot answer one. It compares the `testing` declaration against the merged registry and detected *(language × role)* pairs, reporting newly-gained pairs with no suite, orphaned suites and each entry's provenance, ending in a verdict of `clean` or `drift` with **every difference named**.
 **The `--check` audit is computed by `.claude/scripts/shared/charter-testing-audit.js`**, which prints a JSON envelope and **exits 0 on `clean`, 1 on `drift`** (2 on bad arguments). `--check` delegates to it and reports its verdict; CI may call the helper directly — the point of a verdict in an exit status rather than in prose.
+**Report the envelope's `ciGaps` warnings beside the verdict (#3026)** — a gate `e2e` suite with `sweep: false` that no `.github/workflows/` file runs runs neither in the `/work` sweep nor in CI. Advisory: never changes the verdict or exit code; only GitHub Actions is checked.
 **Interactive `--dry-run` makes no exit-code claim.** It writes nothing, and a model-executed spec has no exit status of its own, so promising one would be a promise nothing can keep. Hence the machine-checkable half lives in the helper.
 **Interactive `--testing --dry-run` runs selection to completion and emits four sections:**
 1. **The exact `testing` block as JSON** — what would be written, verbatim.
@@ -109,9 +111,25 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 3. **Every suppressed write, named individually** — the config write, the local registry write, and the `.claude/local-metadata/` directory creation. "Nothing was written" is not auditable; three named writes are.
 4. **The merged-registry provenance** — **shipped**, contributed **local**ly, **hidden**, **shadowed** by id, and any **unknown** keys or roles the permissive local schema preserved (#2848).
 **`--dry-run` is accepted only alongside `--testing`.** Other combinations are rejected with a message naming the **valid form**, `/charter --testing --dry-run [--check]` — a rejection that does not say what to type instead is a dead end.
-**Render the `## Framework` table of `Inception/Test-Strategy.md` from `testing.suites[]` (#2851).** One row per suite — `role`, harness name, `full`, `execution` — and mark the section **generated**, so a reader knows it is derived, not authored. The config is the authority; the prose artifact is a view of it. This gives the framework ONE answer to "what runs this project's tests" instead of three: `/add-story` and `/create-backlog` read the declaration, `/bad-test-review` resolves it first, and this table renders from the same place.
+**Render the `## Framework` table of `Inception/Test-Strategy.md` from `testing.suites[]` (#2851).** One row per suite — `role`, harness name, `full`, `execution` — and mark the section **generated**, so a reader knows it is derived, not authored. A `sweep: false` suite shows **not swept**; one also scoped-skip (`scoped.mode: none`, `onScoped: skip`) shows **never runs during `/work`** (#3026). The config is the authority; the prose artifact is a view of it. This gives the framework ONE answer to "what runs this project's tests" instead of three: `/add-story` and `/create-backlog` read the declaration, `/bad-test-review` resolves it first, and this table renders from the same place.
 **A hand-edit to the generated section is detected at `/charter refresh`, never silently overwritten.** Compare the rendered table against `testing.suites[]`; on a difference report it naming `framework-config.json` as the authority, and re-render **only on confirmation**. Silently re-rendering discards a deliberate edit; silently keeping it leaves two disagreeing answers — the defect this closes.
 **Record the selection in `Inception/Test-Strategy.md`** beside the declaration, so prose and config agree at creation. **Never derive a command from a framework name** — a name (`Jest`) is not an invocation (`npx jest --no-coverage`); expanding one into the other is a fabrication under the Artifact voice rule above, since nothing is installed at inception. Ask, which that rule permits.
+#### E2e Sweep Question (#3026)
+**After an `e2e` harness is selected, ASK whether its suite joins the `/work` Step 4f full sweep**, via `AskUserQuestion`, once per selected harness. Trigger: the harness's `sweep` field in the merged registry (every shipped `e2e` harness carries `sweep: false`). **A harness without a `sweep` field asks nothing**; its suite is written as before, with no `sweep` key.
+| Option | Written as | When the harness's `sweep` is |
+|---|---|---|
+| **Don't sweep (Recommended)** | `sweep: false` | `false` — the recommendation comes from the registry, never from this spec |
+| **Sweep every issue** | `sweep: true` | — |
+**The question states:** the **cost** of sweeping (the whole e2e suite at every sub-issue boundary — slowest tier, often a browser, device or emulator; a flaky failure blocks `in_review` on unrelated work); the **coverage loss** of not sweeping (a regression outside the touched files surfaces only where e2e runs elsewhere, such as CI, possibly nowhere — the suite still runs scoped when its files change); for a **scoped-skip** harness (`scoped.mode: none`, `onScoped: skip` — WebdriverIO, Detox, Appium, Maestro, Java/Kotlin/.NET e2e) that under "Don't sweep" it **never runs during `/work`**; and how to change it later, `/charter --testing --sweep-e2e on|off`.
+**Write the answer onto the suite as an explicit `sweep: true` or `sweep: false`** through `framework-config.js`. Never omit the key once asked — an absent key is what the Step 5c refresh offer looks for. **The registry value is a recommendation, never a silent write.**
+**`/charter --testing --sweep-e2e on|off` sets `sweep` on every existing `e2e` suite without re-running selection** — the supported way to opt back in or out without hand-editing `framework-config.json`.
+- **A value-setter, not a toggle.** `on` writes `sweep: true` and `off` writes `sweep: false` on every **gate** `e2e` suite. Running it twice gives the same config; mixed suites all end in the requested state.
+- **`on` writes `sweep: true` explicitly rather than deleting the key**, so the Step 5c offer never re-offers to undo the choice.
+- **Writes go through `framework-config.js`.** **Report each `e2e` suite by id** as **changed** or **unchanged**.
+- **`manual-only` e2e records are left untouched and named** as not applicable (`none-<key>-e2e`, `install pending` — no command to sweep).
+- **No `e2e` suites declared** → report that and **write nothing**.
+- **A missing or unrecognized value is rejected**, naming the valid form, `/charter --testing --sweep-e2e on|off`. **`--sweep-e2e` without `--testing` is rejected the same way**, as `--dry-run` is.
+- **With `--dry-run`**, report the suites that would change and **write nothing**.
 #### Tooling Verification and Guided Install (#2858)
 **Runs once, after selection completes, over every selected suite.** Not per answer, not mid-loop: a harness the user replaces on the next question would have had its tooling checked — and possibly installed — for nothing.
 **The requirement set comes from the registry, never from this spec.** A harness entry may carry `requires[]` — the packages, browsers, drivers and system libraries it needs (#2858) — each naming an `id`, a `kind` (`package`, `browser`, `driver`, `system`), and optionally a `check` and an `install` command. Resolve `requires[]` for every selected suite through the **merged** registry, so a local harness declares its tooling like a shipped one.
@@ -281,6 +299,7 @@ What review mode should be used for this project?
 - **Now present** → **offer** to flip `execution` back to `gate` and clear the note. Offer, never apply: restoring a suite to the gate set changes what fails `/work` Step 4f on every later sub-issue — the user's call, not a refresh's.
 - **Still failing** → the suite **remains `manual-only`**, the note is kept, and the still-missing requirement is named with its retry command. Reporting nothing makes a still-broken install indistinguishable from one never pending.
 This is the only step that clears a pending suite; selection never revisits an answered pair, so without it the suite stays out of the gate set permanently.
+**An existing `e2e` suite with no `sweep` key is OFFERED `sweep: false` (#3026)** — it predates the E2e Sweep Question and still runs at every Step 4f sweep. **Offer, never apply**, via `AskUserQuestion`, stating the same cost and coverage loss (including the never-runs-during-`/work` case for a scoped-skip harness). **Only on confirmation** write `sweep: false` through `framework-config.js`; **declining changes nothing**. A suite that already carries `sweep` (`true` or `false`) is never offered — the key records that the question was answered. Without this, existing projects keep paying: refresh never re-prompts an answered pair.
 **The diff is four-way; every difference names the source that disagrees.** Compare `testing.suites[]` against the rendered `## Framework` table of `Inception/Test-Strategy.md`, any legacy `verificationCommands`, and the manifest script block of Extraction Step 2a (`package.json` `scripts`, `Makefile`, `pyproject.toml`, CI workflow).
 - A manifest command **no suite declares** is an **undeclared candidate**, reported and **never written automatically** — a command in CI is evidence, not a decision.
 - **An alias is a difference, not a duplicate.** `npm run e2e` and `npx playwright test` may name one suite two ways; adding the second declares a suite the project does not have.

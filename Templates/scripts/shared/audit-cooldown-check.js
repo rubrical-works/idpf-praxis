@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.0
+ * @framework-script 0.107.1
  *
  * Cooldown-aware npm audit gate (#2537; deployed to user projects by #3016).
  *

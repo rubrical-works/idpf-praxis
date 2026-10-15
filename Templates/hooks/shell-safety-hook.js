@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.0
+ * @framework-script 0.107.1
  * shell-safety-hook.js
  *
  * PreToolUse hook (matcher: Bash) that emits Git Bash corrections only for the

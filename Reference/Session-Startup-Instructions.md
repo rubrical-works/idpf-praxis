@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.107.0
+**Version:** v0.107.1
 **Source:** Reference/Session-Startup-Instructions.md
 AI-facing reference for session work after startup. Not a procedural checklist — see the hook source for procedure; block format lives in its render function.
 **Row explanations arrive with the row.** Block mechanics and the GitHub Token, Hook Health, Testing Drift / Coverage Overrides, Trash and Peers-suppression (config or `IDPF_X_SESSION`) explanations live in `.claude/metadata/startup-row-notes.json`; `startup-hook.js` appends one to `additionalContext` only when its row is in the block (mechanics: when a check timed out or failed to run). Not reloaded after compaction — accepted: each row carries its own remedy.

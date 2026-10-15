@@ -1,5 +1,5 @@
 ---
-version: "v0.107.0"
+version: "v0.107.1"
 description: Configure this project's IDPF cross-session peer messaging.
 argument-hint: "[--on <levers>] [--off <levers>] [--quiet] [--loud] [--show] [--help]"
 copyright: "Rubrical Works (c) 2026"

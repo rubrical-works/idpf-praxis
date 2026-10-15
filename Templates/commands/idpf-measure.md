@@ -1,5 +1,5 @@
 ---
-version: "v0.107.0"
+version: "v0.107.1"
 description: Instrument an IDPF command run and report where its time went.
 argument-hint: "--start | --stop | --report"
 copyright: "Rubrical Works (c) 2026"

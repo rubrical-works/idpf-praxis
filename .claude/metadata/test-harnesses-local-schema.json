@@ -61,6 +61,10 @@
         "name": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "minLength": 1 },
         "full": { "type": "string", "minLength": 1 },
+        "sweep": {
+          "type": "boolean",
+          "description": "Recommended answer to the Step 4f sweep question selection asks for this harness, as in the shipped schema (#3026). Typed so a non-boolean is reported rather than treated as an answer."
+        },
         "scoped": { "type": "object", "additionalProperties": true }
       }
     }

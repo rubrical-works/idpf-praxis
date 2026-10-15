@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.0
+ * @framework-script 0.107.1
  * charter-testing-audit.js — audit a `testing` declaration without writing it (#2854).
  *
  * #2850 made harness selection MANDATORY: an empty answer is rejected and the
@@ -122,6 +122,62 @@ function walk(root, dir = root, out = [], depth = 0) {
     else out.push(path.relative(root, full).split(path.sep).join('/'));
   }
   return out;
+}
+
+/**
+ * Launchers that precede the real runner in a command (`npx playwright test`,
+ * `pnpm exec playwright test`). The runner token is the first word after them.
+ */
+const LAUNCHERS = new Set(['npx', 'pnpx', 'bunx', 'pnpm', 'yarn', 'bun', 'npm']);
+const LAUNCHER_SUBCOMMANDS = new Set(['exec', 'dlx', 'x', 'run']);
+
+/** The runner a suite command invokes, skipping launchers; null if none. */
+function runnerToken(command) {
+  const words = String(command || '').trim().split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < words.length && LAUNCHERS.has(words[i])) {
+    i++;
+    if (i < words.length && LAUNCHER_SUBCOMMANDS.has(words[i])) i++;
+  }
+  return words[i] || null;
+}
+
+/**
+ * Gate e2e suites that `sweep: false` keeps out of the /work Step 4f sweep and
+ * that no GitHub Actions workflow runs either (#3026).
+ *
+ * ADVISORY, by contract: the caller turns each gap into a warning and NEVER
+ * into a verdict change. The suite is only unswept honestly while CI still
+ * runs it — px-manager#1285 found 31 failing e2e tests that neither a gate nor
+ * CI ever ran. A workflow "runs" a suite when its text contains the suite's
+ * `full` command or the runner token as a whole word (`playwright` for
+ * `npx playwright test`). Only `.github/workflows/` is read; other CI systems
+ * are not, and the warning says so rather than implying a clean check.
+ *
+ * @returns {{id: string, reason: 'no-workflows'|'not-in-workflows', runner: string|null}[]}
+ */
+function findCiGaps(cwd, suites) {
+  const unswept = suites.filter((s) => isPlainObject(s) && s.role === 'e2e'
+    && s.sweep === false && s.execution !== 'manual-only' && typeof s.full === 'string');
+  if (unswept.length === 0) return [];
+
+  const dir = path.join(cwd, '.github', 'workflows');
+  let texts = null;
+  try {
+    texts = fs.readdirSync(dir)
+      .filter((f) => /\.ya?ml$/i.test(f))
+      .map((f) => fs.readFileSync(path.join(dir, f), 'utf8'));
+  } catch {
+    texts = null;
+  }
+
+  return unswept.flatMap((s) => {
+    const runner = runnerToken(s.full);
+    if (texts === null) return [{ id: s.id, reason: 'no-workflows', runner }];
+    const word = runner && new RegExp(`(^|[^\\w-])${runner.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\w-]|$)`, 'm');
+    const carried = texts.some((t) => t.includes(s.full) || (word && word.test(t)));
+    return carried ? [] : [{ id: s.id, reason: 'not-in-workflows', runner }];
+  });
 }
 
 function parseArgs(argv) {
@@ -338,6 +394,25 @@ function audit(cwd) {
     unknownKeys: mergeReport.unknownKeys || [],
   };
 
+  // CI gaps are warnings only — computed after, and kept out of, the verdict.
+  const ciGaps = findCiGaps(cwd, suites);
+  const noWorkflows = ciGaps.filter((g) => g.reason === 'no-workflows').map((g) => g.id);
+  const notCarried = ciGaps.filter((g) => g.reason === 'not-in-workflows');
+  if (noWorkflows.length > 0) {
+    warnings.push(
+      `No CI workflows found (.github/workflows/ is absent): e2e suite(s) ${noWorkflows.join(', ')} `
+      + `carry sweep: false, so they run neither in the /work Step 4f sweep nor in CI. `
+      + `Only GitHub Actions was checked.`
+    );
+  }
+  if (notCarried.length > 0) {
+    warnings.push(
+      `E2e suite(s) ${notCarried.map((g) => `${g.id} (runner ${g.runner || 'unknown'})`).join(', ')} `
+      + `carry sweep: false and no GitHub Actions workflow runs their command or runner, so they run `
+      + `neither in the /work Step 4f sweep nor in CI. Only GitHub Actions was checked.`
+    );
+  }
+
   const verdict = (newlyGained.length === 0 && orphaned.length === 0) ? 'clean' : 'drift';
 
   return {
@@ -353,6 +428,7 @@ function audit(cwd) {
     newlyGained,
     orphaned,
     unattributedSuites,
+    ciGaps,
     provenance,
     warnings,
   };
@@ -368,6 +444,7 @@ if (require.main === module) {
       newlyGained: "[{key, group: 'language'|'platform', role, optionsAvailable}]",
       orphaned: '[{id, role, match}]',
       unattributedSuites: '[{id, role}] — suite ids in no registry; they suppress no finding',
+      ciGaps: "[{id, reason: 'no-workflows'|'not-in-workflows', runner}] — gate e2e suites with sweep: false that no GitHub Actions workflow runs; advisory, never changes the verdict",
       provenance: '{shipped (languages + platforms), localAdded, localReplaced, hidden, unknownRoles, unknownKeys}',
       exitCodes: { 0: 'clean', 1: 'drift', 2: 'bad arguments' },
     }, null, 2));

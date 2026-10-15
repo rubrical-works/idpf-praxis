@@ -1,5 +1,5 @@
 ---
-version: "v0.107.0"
+version: "v0.107.1"
 allowed-tools: Bash, Read, AskUserQuestion, Skill, SendMessage
 description: Verify one qa-required issue through a bounded set of outcomes and offer to close it with recorded evidence, using the IDPF framework.
 argument-hint: "#issue [PASS] [--assign]"

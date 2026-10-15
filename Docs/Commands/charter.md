@@ -17,6 +17,7 @@ View, create, or manage the project charter.
 | `--testing` | No | Run harness selection per language and role, writing `testing.suites[]` |
 | `--dry-run` | No | With `--testing` only: run selection and show what would be written, writing nothing |
 | `--check` | No | With `--testing --dry-run` only: non-interactive audit for CI, ending in a `clean` or `drift` verdict |
+| `--sweep-e2e on\|off` | No | With `--testing` only: set whether every e2e suite runs in the full test sweep `/work` runs before review, without re-running selection |
 
 ## Usage
 
@@ -30,6 +31,8 @@ View, create, or manage the project charter.
 /charter --testing
 /charter --testing --dry-run
 /charter --testing --dry-run --check
+/charter --testing --sweep-e2e off
+/charter --testing --sweep-e2e on
 ```
 
 ## Key Behaviors
@@ -55,7 +58,21 @@ Harness selection replaces the old "testing framework" and "test command" questi
 - **"None of these"** asks for the assurance tier — `script`, `golden` (both run at the verification gate, with the command you supply) or `manual` (declared but not run) — and offers to save the harness to `.claude/local-metadata/test-harnesses.json` for reuse.
 - Answers are written to `framework-config.json` `testing.suites[]`. `/charter` no longer writes `verificationCommands`; an existing key is left in place and still read.
 - Skipped selection is reported with its reason: a non-code project (documentation, config, terraform, ansible), or a detected language with no harness available for a role.
-- **`Inception/Test-Strategy.md`'s Framework table is generated from `testing.suites[]`** — one row per suite with role, harness, command and execution — and marked as generated.
+- **`Inception/Test-Strategy.md`'s Framework table is generated from `testing.suites[]`** — one row per suite with role, harness, command and execution — and marked as generated. A suite left out of the full sweep is shown as *not swept*, or as *never runs during `/work`* when it is also skipped for changed files.
+
+### E2e Suites and the Full Sweep
+
+Before an issue moves to review, `/work` runs every test suite in full (the "full sweep"). End-to-end suites are usually the slowest tests and often need a browser, device or emulator, so running them for every issue is expensive.
+
+- **After you pick an e2e harness, `/charter` asks whether its suite joins the full sweep**, recommending **Don't sweep**. The question states what each answer costs, and that the suite still runs whenever its own files change.
+- **Some e2e harnesses never run for changed files** (WebdriverIO, Detox, Appium, Maestro, and the Java, Kotlin and .NET e2e harnesses). Under "Don't sweep" they would never run during `/work`, and the question says so.
+- Your answer is saved on the suite as `sweep: true` or `sweep: false`. Harnesses for other roles don't ask.
+- **`/charter --testing --sweep-e2e on` or `off`** changes the answer for every e2e suite at once, without re-running selection.
+  - Running it again changes nothing, and each suite is reported by id as changed or unchanged.
+  - Manual-only e2e records are left alone and named.
+  - With no e2e suites it writes nothing and says so.
+  - With `--dry-run` it shows what would change.
+  - A missing or unknown value, or use without `--testing`, is rejected with the valid form.
 
 ### Tooling Verification and Guided Install
 
@@ -71,6 +88,7 @@ After selection completes, the tooling each selected harness requires (packages,
 
 - `/charter --testing --dry-run` runs selection to completion and writes nothing. It shows the `testing` block that would be written, a diff against the current `framework-config.json`, each write that was suppressed, and where each registry option came from (shipped, local, hidden, shadowed, or unknown).
 - `/charter --testing --dry-run --check` never prompts. It compares the current declaration against the registry and the detected language/role pairs, reports newly gained pairs with no suite and suites that no longer match any files, and ends in a `clean` or `drift` verdict with every difference named. For CI, `.claude/scripts/shared/charter-testing-audit.js` computes the same audit and exits `0` on clean, `1` on drift.
+- The check also warns, by suite name, when an e2e suite left out of the full sweep isn't run by any GitHub Actions workflow either, or when there are no workflows at all. Such a suite runs neither during `/work` nor in CI. The warning never changes the verdict or the exit code, and other CI systems aren't checked.
 - `--dry-run` without `--testing` is rejected with a message naming the valid form.
 
 ## Refresh and Testing
@@ -80,5 +98,6 @@ After selection completes, the tooling each selected harness requires (packages,
 - Only newly gained language/role pairs are asked about; an existing suite is never re-asked or overwritten. A language whose `unit` or `e2e` role has neither a suite nor a "none applicable" record is named and selection runs for it.
 - Suites whose file patterns match nothing are reported, never removed.
 - Suites marked `install pending` are re-checked; if the tooling is now present you are offered the option to restore them to the verification gate, otherwise the missing requirement and retry command are reported.
+- An e2e suite created before the sweep question existed (it has no `sweep` setting) is offered `sweep: false`. Nothing changes unless you confirm, and a suite that already has an answer is not asked again.
 - `testing.suites[]` is compared against the Framework table, any legacy `verificationCommands`, and commands found in manifests and CI workflows. Every difference names its source. Undeclared commands and aliases are reported, and nothing is written without confirmation.
 - A hand edit to the generated Framework table is reported, naming `framework-config.json` as the authority, and the table is re-rendered only on confirmation.

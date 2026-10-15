@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.0
+ * @framework-script 0.107.1
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -110,6 +110,54 @@ function isManualOnly(suite) {
   return suite && suite.execution === 'manual-only';
 }
 
+/** A suite's working directory, with absent and the project root reading the same. */
+function suiteCwd(suite) {
+  const cwd = typeof suite.cwd === 'string' ? suite.cwd.trim() : '';
+  return cwd === '' || cwd === '.' || cwd === './' ? null : cwd;
+}
+
+/**
+ * Merge runs that would execute the same commands in the same directory
+ * (#3025).
+ *
+ * The harness registry gives `js-jest` and `ts-jest` the same `npx jest`, so a
+ * project with both languages declares two gate suites with one command, and
+ * an uncollapsed set runs it twice. The key is the exact command sequence plus
+ * `cwd` — no whitespace or argument normalization, since a near-match is a
+ * different command the project declared on purpose.
+ *
+ * A merged run keeps `suiteId` (the first contributing id) beside `suiteIds`,
+ * so readers of the single id keep working, and keeps each suite's `kind` in
+ * `suites[]` rather than taking the first one's. Every merge is named in
+ * `collapsed`, so no declared suite disappears from the report.
+ *
+ * @param {object[]} runs - Runs carrying `suiteId`, `cwd` and `kind`
+ * @param {(run: object) => string} commandKey - The run's command sequence
+ * @param {(into: object, from: object) => void} [mergeExtra] - Per-shape merge
+ * @returns {{runs: object[], collapsed: {suiteIds: string[]}[]}}
+ */
+function collapseRuns(runs, commandKey, mergeExtra = () => {}) {
+  const byKey = new Map();
+  const out = [];
+  for (const { kind, ...run } of runs) {
+    const key = JSON.stringify([commandKey(run), run.cwd]);
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.suiteIds.push(run.suiteId);
+      existing.suites.push({ id: run.suiteId, kind });
+      mergeExtra(existing, run);
+      continue;
+    }
+    const merged = { ...run, suiteIds: [run.suiteId], suites: [{ id: run.suiteId, kind }] };
+    byKey.set(key, merged);
+    out.push(merged);
+  }
+  const collapsed = out
+    .filter((run) => run.suiteIds.length > 1)
+    .map((run) => ({ suiteIds: run.suiteIds.slice() }));
+  return { runs: out, collapsed };
+}
+
 /**
  * Expand `{files}`, `{dir}`, `{stem}` and `{package}` into a command string.
  *
@@ -204,10 +252,12 @@ function resolveSuites(cwd = process.cwd()) {
 /**
  * Route a changed-file set to the suites that cover it.
  *
- * @returns {{runs: object[], unmatched: string[], reason: string|null,
- *            warnings: string[]}} `reason` is `'no-suites-matched'` when
- *   nothing ran — which must stay distinguishable from "everything passed",
- *   since both are an empty result and conflating them is a silent skip.
+ * @returns {{runs: object[], collapsed: {suiteIds: string[]}[], unmatched: string[],
+ *            reason: string|null, warnings: string[]}} `reason` is
+ *   `'no-suites-matched'` when nothing ran — which must stay distinguishable
+ *   from "everything passed", since both are an empty result and conflating
+ *   them is a silent skip. Suites whose scoped command and `cwd` match share
+ *   one run carrying every id and the union of their files (#3025).
  */
 function scopedInvocations({ suites = [], changedFiles = [] } = {}) {
   const runs = [];
@@ -248,11 +298,16 @@ function scopedInvocations({ suites = [], changedFiles = [] } = {}) {
       }
     }
 
-    runs.push({ suiteId: suite.id, mode, command, files });
+    runs.push({ suiteId: suite.id, mode, command, files, cwd: suiteCwd(suite), kind: suite.kind });
   }
 
+  const merged = collapseRuns(runs, (run) => run.command, (into, from) => {
+    for (const f of from.files) if (!into.files.includes(f)) into.files.push(f);
+  });
+
   return {
-    runs,
+    runs: merged.runs,
+    collapsed: merged.collapsed,
     unmatched: changedFiles.filter((f) => !matchedAny.has(f)),
     reason: runs.length === 0 && changedFiles.length > 0 ? 'no-suites-matched' : null,
     warnings,
@@ -262,10 +317,12 @@ function scopedInvocations({ suites = [], changedFiles = [] } = {}) {
 /**
  * The full-sweep invocation set.
  *
- * @returns {{runs: object[], manualOnly: string[], skipped: string[],
- *            warnings: string[]}} A run carries `phases`, ordered `prepare`
- *   then `full`, so a caller cannot accidentally run tests against an unbuilt
- *   tree and report a failure that is not the code's.
+ * @returns {{runs: object[], collapsed: {suiteIds: string[]}[], manualOnly: string[],
+ *            skipped: string[], warnings: string[]}} A run carries `phases`,
+ *   ordered `prepare` then `full`, so a caller cannot accidentally run tests
+ *   against an unbuilt tree and report a failure that is not the code's.
+ *   Suites whose phases and `cwd` match share one run carrying every id
+ *   (#3025); `collapsed` names each merge.
  */
 function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [] } = {}) {
   const runs = [];
@@ -294,10 +351,12 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [] }
     }
     phases.push({ phase: 'full', command: suite.full });
 
-    runs.push({ suiteId: suite.id, phases });
+    runs.push({ suiteId: suite.id, phases, cwd: suiteCwd(suite), kind: suite.kind });
   }
 
-  return { runs, manualOnly, skipped, warnings: [] };
+  const merged = collapseRuns(runs, (run) => run.phases.map((p) => [p.phase, p.command]));
+
+  return { runs: merged.runs, collapsed: merged.collapsed, manualOnly, skipped, warnings: [] };
 }
 
 /**

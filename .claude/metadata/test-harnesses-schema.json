@@ -115,6 +115,10 @@
           "minLength": 1,
           "description": "The command that runs this harness in full. A command string rather than a runner name, for the reason `testCommand` records: any enumeration would be a list of the ecosystems this framework happens to know about today."
         },
+        "sweep": {
+          "type": "boolean",
+          "description": "The RECOMMENDED answer when `/charter --testing` asks whether a suite from this harness joins the `/work` Step 4f full sweep (#3026). Never written onto a suite without asking: selection asks, offers this value as the recommendation, and writes the answer as an explicit `sweep: true|false`. Absent means selection asks nothing and the suite is written without a `sweep` key, so it is swept. Every shipped `e2e` harness carries `false`; no other role carries it."
+        },
         "scoped": {
           "type": "object",
           "additionalProperties": false,
