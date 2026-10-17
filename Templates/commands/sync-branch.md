@@ -1,5 +1,5 @@
 ---
-version: "v0.107.1"
+version: "v0.108.0"
 allowed-tools: Bash, AskUserQuestion
 description: Reconcile the current branch with its upstream after analyzing the divergence, using the IDPF framework.
 argument-hint: ""
@@ -39,6 +39,15 @@ Parse `data`: `branch`, `status`, `ahead`, `behind`, `fetched`, `upstreamSha`, `
 6. **Locally modified files the remote side also changes** — `conflictingPaths`, or `none`.
 7. **Last pull** — `lastPull`, or none recorded in the reflog.
 `success: false` → report the envelope message, **STOP**.
+### Step 1a: Upgrade gate (`behind` and `diverged` only)
+A teammate's framework upgrade, integrated, points this checkout at a version or skills not installed here (#3033). For `behind`/`diverged`, before any fast-forward or rebase and before Step 2 (no dirty-path question for a sync about to stop), run:
+```bash
+node .claude/scripts/shared/lib/upstream-upgrade-check.js
+```
+Compares upstream and local `framework-config.json`; fetches nothing. Read `data`: `required`, `exempt`, `framework` (`{from, to}` or null), `missingSkills`, `warnings`. Other statuses skip this step.
+- `required: true` → report each finding, **STOP** before any fast-forward or rebase, nothing changed: framework version `framework.from` → `framework.to` when set, and each name in `missingSkills`. Tell the user to upgrade through Praxis Hub Manager, then re-run `/sync-branch`.
+- `required: false` → continue to Step 2. Report `warnings` verbatim (an unparseable `frameworkVersion` is named there, never stops). `exempt` true → say once the check is exempt in a self-hosted repo.
+The helper decides: `frameworkPath` is never compared (machine-specific); a skill is missing when `.claude/skills/<name>/` is absent — Praxis Hub Manager's Needs Repair test.
 ### Step 2: Dirty-path gate
 **When `conflictingPaths` is non-empty, it is reported and asked about before any rebase or fast-forward runs.** Either refuses to overwrite a dirty tracked file the incoming commits also change (the motivating case: a per-machine presence marker, modified here, untracked by the remote commit). Name each path; raise **one** `AskUserQuestion`: *I have dealt with these paths — re-run the analysis* (recommended), or *STOP*. First → Step 1 again; second → **STOP**, nothing changed.
 **Never stashes, discards or reverts those files for the user** — they may be the only copy; their fate is decided outside this command.
@@ -62,6 +71,7 @@ Act on `status`. Every mutating row delegates to `.claude/scripts/shared/lib/reb
 |-----------|----------|
 | `success: false` from the check | Report the message → STOP |
 | `fetched: false` | Proceed against the cached ref; say counts may be low |
+| Upstream requires a framework or skills upgrade | Step 1a: version from → to and each missing skill, point to Praxis Hub Manager → STOP, nothing changed |
 | `conflictingPaths` non-empty | Step 2 gate: report, ask, never stash or discard |
 | Fast-forward refused / rebase conflict | git's words or the captured paths verbatim; tree as found → STOP |
 | `action: abort-failed` | Report both errors and the paths; rebase still in progress, `git status` shows it → STOP |

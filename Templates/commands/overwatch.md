@@ -1,5 +1,5 @@
 ---
-version: "v0.107.1"
+version: "v0.108.0"
 description: Dedicate a session to observing cross-session IDPF activity.
 argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show"
 copyright: "Rubrical Works (c) 2026"

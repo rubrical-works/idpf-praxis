@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  *
  * Which issues a `/done` push announcement names (#2772).
  *

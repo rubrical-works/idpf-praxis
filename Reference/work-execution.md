@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.107.1
+**Version:** v0.108.0
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow.
 ## Execution Instructions
@@ -38,7 +38,7 @@ Parse JSON: `ok:false` → report `errors[]`, STOP. `ok:true` → extract `conte
 ### Step 1d: Load Conditional Sections
 Trigger: `context.type` epic/branch, or `--nonstop`, or a selection of 2+ issues. Read `{frameworkPath}/Reference/work-execution-conditional.md` (bodies of Steps 1b, 2b, 2b-ii, 2c, 6a — their headings below are stubs) and hold it for the run. Lettered 1d because 1a–1c were taken; runs first, right after the preamble, since Step 1b's body is in the file it loads. No trigger → skip with Behavior Rule 2's one-line note; N = 1 never needs it — Step 3's resident Review-State Gate is the same path. Its own task entry, so compaction recovery shows whether the read was due.
 ### Step 1a: CI Wait (--wait)
-Trigger: `context.wait==true`. `node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 300`. Exit codes per `wait-for-ci.js --schema`: 0 (pass) and 3 (no runs) continue; 1 (fail/bad args/gh unavailable after retries), 2 (timeout, no jobs) and 5 (timeout, jobs still running at the 10-min cap — re-run `--wait` or check the run) **STOP**. Gate is scoped to the passed branch/commit — a green run on an unrelated branch no longer satisfies it.
+Trigger: `context.wait==true`. `node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 300`. Exit codes per `wait-for-ci.js --schema`: 0 (pass) and 3 (no runs) continue; 1 (fail/bad args/gh unavailable after retries), 2 (timeout, no jobs) and 5 (timeout, jobs still running at the 15-min cap — re-run `--wait` or check the run) **STOP**. Gate is scoped to the passed branch/commit — a green run on an unrelated branch no longer satisfies it.
 ### Step 1b: Epic Complexity Assessment
 Body in `{frameworkPath}/Reference/work-execution-conditional.md` § Step 1b — loaded at Step 1d when `context.type == "epic"` with `--nonstop`. Signals: `.claude/metadata/epic-complexity-signals.json`.
 ### Step 1c: Branch Sync

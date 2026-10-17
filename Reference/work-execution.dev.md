@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.107.1
+**Version:** v0.108.0
 **Source:** Reference/work-execution.md (dev-preserve variant)
 Auto-loaded execution rule. Shell `.claude/commands/work.md` has args/prereqs/errors; this covers Workflow. This variant preserves FRAMEWORK-ONLY blocks for self-hosted dev; the stripped variant ships via `.min-mirror/Reference/work-execution.md` to user projects.
 ## Execution Instructions
@@ -38,7 +38,7 @@ Parse JSON: `ok:false` → report `errors[]`, STOP. `ok:true` → extract `conte
 ### Step 1d: Load Conditional Sections
 Trigger: `context.type` epic/branch, or `--nonstop`, or a selection of 2+ issues. Read `{frameworkPath}/Reference/work-execution-conditional.md` (bodies of Steps 1b, 2b, 2b-ii, 2c, 6a — their headings below are stubs) and hold it for the run. Lettered 1d because 1a–1c were taken; runs first, right after the preamble, since Step 1b's body is in the file it loads. No trigger → skip with Behavior Rule 2's one-line note; N = 1 never needs it — Step 3's resident Review-State Gate is the same path. Its own task entry, so compaction recovery shows whether the read was due.
 ### Step 1a: CI Wait (--wait)
-Trigger: `context.wait==true`. `node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 300`. Exit codes per `wait-for-ci.js --schema`: 0 (pass) and 3 (no runs) continue; 1 (fail/bad args/gh unavailable after retries), 2 (timeout, no jobs) and 5 (timeout, jobs still running at the 10-min cap — re-run `--wait` or check the run) **STOP**. Gate is scoped to the passed branch/commit — a green run on an unrelated branch no longer satisfies it.
+Trigger: `context.wait==true`. `node .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 300`. Exit codes per `wait-for-ci.js --schema`: 0 (pass) and 3 (no runs) continue; 1 (fail/bad args/gh unavailable after retries), 2 (timeout, no jobs) and 5 (timeout, jobs still running at the 15-min cap — re-run `--wait` or check the run) **STOP**. Gate is scoped to the passed branch/commit — a green run on an unrelated branch no longer satisfies it.
 ### Step 1b: Epic Complexity Assessment
 Body in `{frameworkPath}/Reference/work-execution-conditional.md` § Step 1b — loaded at Step 1d when `context.type == "epic"` with `--nonstop`. Signals: `.claude/metadata/epic-complexity-signals.json`.
 ### Step 1c: Branch Sync
@@ -174,7 +174,7 @@ Helper registration is off-band. **Run the registrar; do not edit by hand:**
 node .claude/scripts/framework/register-helper.js <path-to-helper> [--gated]
 ```
 `--gated` wraps the entry in an `enableGitHubWorkflow` closure in `constants.js`; omit for a plain string. **Idempotent** — safe after a partial manual edit, no-op when already registered.
-It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.107.1` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
+It edits `framework-manifest.json`, `constants.js` and `CHARTER.md` — each CI-enforced — and **reports** rather than writes the helper's `@framework-script v0.108.0` JSDoc line: authored content, still yours to add before committing everything with the helper (`Refs #$ISSUE`).
 > **Why a script, not a longer checklist:** the `shared/lib` key contains a slash and **cannot** be dot-accessed; a dot form reads `undefined` silently and `|| []` turns that into a plausible `false`. That hazard was already documented here and still paid by hand every time — most recently #2600 for `lib/checkbox-scan.js`. Documentation cannot fix a transcription error it has already warned about; a tool can.
 Runs before Step 5. Applies in default and `--nonstop`.
 <!-- FRAMEWORK-ONLY-END -->

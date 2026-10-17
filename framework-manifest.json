@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.107.1",
+  "version": "0.108.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -21,7 +21,7 @@
   "runtimeNpmDependencies": {
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
-    "serve": "^14.2.6",
+    "http-server": "^14.1.1",
     "yaml": "^2.8.3"
   },
   "domainSpecialists": [
@@ -566,6 +566,7 @@
           "epic-complexity.js",
           "extensions-cli.js",
           "file-companion-issue.js",
+          "file-issue.js",
           "generate-changelog.js",
           "generate-domain-entities.js",
           "generate-test-plan.js",
@@ -577,7 +578,7 @@
           "mockup-detect-framework.js",
           "mockup-element-extractor.js",
           "mockup-token-styles.js",
-          "mockups-serve.js",
+          "mockups-server.js",
           "nonstop-audit.js",
           "overwatch-config.js",
           "paths-preamble.js",
@@ -684,6 +685,7 @@
           "prd-tracker-lookup.js",
           "prior-art-marker.js",
           "prior-art-surfaces.js",
+          "project-skills-check.js",
           "qa-config-schema.json",
           "qa-config.json",
           "rebase-guard.js",
@@ -701,6 +703,7 @@
           "token-drift-report.js",
           "token-propagation.js",
           "token-update-mode.js",
+          "upstream-upgrade-check.js",
           "work-task-definitions-schema.json",
           "work-task-definitions.json",
           "workstream-utils.js"

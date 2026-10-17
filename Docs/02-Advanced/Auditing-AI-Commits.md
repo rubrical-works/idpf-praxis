@@ -181,7 +181,7 @@ These checks could be automated in a pre-merge or CI step:
 
 1. **One story per commit** for non-trivial changes. The batch commit pattern (`#1338-#1342`) made it harder to detect which stories were actually implemented.
 2. **Verify before closing.** After completing a batch of stories, review the diff for each file before checking AC.
-3. **Use Opus for batch work.** The incident occurred with Sonnet 4.5. Opus is more rigorous about distinguishing planning from execution (see `Choosing-a-Model.md`).
+3. **Use Opus for batch work.** The incident occurred with Sonnet 4.5. Opus is more rigorous about distinguishing planning from execution.
 
 ### During Review
 
@@ -214,7 +214,6 @@ The fix is not "don't use Sonnet" — it's "verify batch commits proportionately
 
 ## Related
 
-- `Choosing-a-Model.md` — General model selection guidance
 - `04-Concurrent-Sessions.md` — Session architecture and model allocation
 - Anti-Hallucination Rules (`01-anti-hallucination.md`) — Verification-first development rules
 - Issues: #1335 (epic), #1340, #1341, #1342 (reopened stories), #1353 (enhancement)

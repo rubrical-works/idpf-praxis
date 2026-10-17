@@ -32,6 +32,24 @@
         "issueRefs": { "type": "array", "description": "Issue numbers (e.g., 1234) created from this file's findings via /bug or /enhancement.", "items": { "type": "number" } },
         "domains": { "type": "array", "description": "Domain IDs (e.g., 'security', 'accessibility') applied to this file via --with. Merged across runs — not replaced.", "items": { "type": "string" } }
       }
+    },
+    "filingQueue": {
+      "type": "array",
+      "description": "Approved findings awaiting filing (#3049). Written by `file-issue.js --enqueue` before filing and rewritten by `file-issue.js --manifest` after EACH filing, so an interrupted batch resumes from exactly the unfiled entries — on 'next', a later run, or after compaction. Optional; absent means nothing queued.",
+      "items": { "$ref": "#/schema/queueItem" }
+    },
+    "queueItem": {
+      "type": "object",
+      "description": "One approved finding in the filing queue.",
+      "properties": {
+        "id": { "type": "string", "description": "`q-` plus 8 random hex characters." },
+        "status": { "type": "string", "enum": ["queued", "filed", "failed"], "description": "`queued` and `failed` are unfiled and are filed on the next `file-issue.js --manifest` run; `filed` is never filed again." },
+        "queuedAt": { "type": "string", "description": "ISO timestamp the entry was queued." },
+        "filedAt": { "type": "string", "description": "ISO timestamp the entry was filed." },
+        "issue": { "type": ["number", "null"], "description": "Issue number once filed." },
+        "error": { "type": "string", "description": "Last filing error, while `failed`." },
+        "entry": { "type": "object", "description": "The `file-issue.js` entry: type, title, priority (from finding severity), fields, labels, and `source.file` — the reviewed file whose `issueRefs` receives the number." }
+      }
     }
   },
   "statusValues": {

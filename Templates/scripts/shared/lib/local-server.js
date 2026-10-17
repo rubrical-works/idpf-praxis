@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  *
  * Shared 127.0.0.1 server infrastructure used by /mockups --serve (#2377) and
  * /design-system --showcase (#2429, Story 1.1). Provides:
@@ -57,7 +57,7 @@ function tryListen(server, port, host = DEFAULT_HOST) {
  *                                            (preferred, preferred+1, ..., preferred+range-1).
  * @param {boolean} [opts.fallbackToZero=false] If true, after the range is exhausted, attempt
  *                                              listen(0) for an OS-assigned port. Used by
- *                                              mockups-serve.js for backwards-compat with #2377.
+ *                                              mockups-server.js for backwards-compat with #2377.
  * @returns {Promise<number>} The available port.
  * @throws Error 'PORT_EXHAUSTED' (code='PORT_EXHAUSTED') with `tried` (number[]) when
  *         the entire range is occupied and fallbackToZero is false.

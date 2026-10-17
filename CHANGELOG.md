@@ -8,6 +8,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.108.0] - 2026-10-17
+
+When a teammate's pull needs a framework or skills upgrade on your machine, `/sync-branch` now stops
+before integrating it and names what to upgrade, and session startup shows a `Project Skills
+Missing:` row for any project skill whose directory is not on disk. `/code-review` files every
+approved finding in one turn through a shared filing script that `/bug` and `/enhancement` now use
+too. The epic review expansion caps are a project setting, and the `/mockups --serve` server runs on
+`http-server`.
+
+**Upgrade notes:**
+
+- **Missing skills are reported, not repaired (#3033, #3038).** A skill counts as missing when its
+  `.claude/skills/<name>/` directory is absent; the remedy named in both places is Repair in Praxis
+  Hub Manager. Self-hosted repos are exempt. No config change is needed.
+
+- **Epic expansion caps are configurable (#2963).** Add `reviewExpansion: { expansionCap, resolveCap }`
+  to `framework-config.json` (integers 1–50) to change how many children `/review-issue` and
+  `/resolve-review` process per run. Absent, both stay at 20.
+
+- **`http-server` replaces `serve` (#3023).** It is the framework's declared runtime dependency for
+  `/mockups --serve`, and the helper is renamed `mockups-server.js`. If `--serve` reports
+  `Cannot find module 'http-server'`, run `npm ci` in the framework root.
+
+### Added
+
+- `/sync-branch` Step 1a: for `behind` and `diverged`, compares the upstream `framework-config.json`
+  with the local one and stops before any fast-forward or rebase when the upstream `frameworkVersion`
+  is higher or names a skill missing here. `frameworkPath` is not compared; an unparseable version is
+  a warning (#3033)
+- `upstream-upgrade-check.js` shared helper for that comparison (#3033)
+- Startup block `Project Skills Missing:` row, shown only when a `projectSkills` entry has no
+  directory, with a row note that reaches the session context only when the row is shown (#3038)
+- `project-skills-check.js` shared helper, read-only, using the same definition of missing as
+  `/sync-branch` and Praxis Hub Manager's Needs Repair badge (#3038)
+- `file-issue.js` shared filing script: standard bug and enhancement templates, caller-supplied
+  priority, assignee resolution, batch filing and a filing queue in `.code-review-manifest.json`
+  (#3049)
+- `reviewExpansion` setting and `resolveReviewExpansion` resolver (#2963)
+
+### Changed
+
+- `/code-review` Step 8 files approved findings in one turn through `file-issue.js`, high severity
+  at P1 and medium/low at P2; failed entries stay queued and are offered on the next run (#3049)
+- `/bug` and `/enhancement` create issues through `file-issue.js` (#3049)
+- `wait-for-ci.js` allows up to 15 minutes, so `/prepare-release` Step 4.7's `--timeout 900` now
+  applies; a larger request is clamped and the clamp is reported (#3022)
+- `/mockups --serve` uses `mockups-server.js` over `http-server` (#3023)
+- `Docs/02-Advanced/Hub-and-Project-Architecture.md` describes skills as copied per project and
+  gitignored
+
+### Fixed
+
+- `wait-for-ci.js` silently capped `--timeout` at 600s (#3022)
+- Command spec Assignee paragraphs read as "drop the flag" when no login was given, which made
+  `gh-pmu-config.js` exit 1; each now names `--assignee <login>` and the bare `--assignee` (#3032)
+- `/code-review` could not file a batch of findings: a per-finding `/bug` loop stopped after the
+  first filing (#3049)
+
 ## [0.107.1] - 2026-10-14
 
 The `/work` test sweep no longer runs the same command twice when two suites declare it, such as a
@@ -2731,7 +2789,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.107.1` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.108.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -3024,7 +3082,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.107.1` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.108.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -3395,13 +3453,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.107.1` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.107.1` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.107.1` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.108.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.108.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.108.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.107.1` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.108.0` placeholder (#1479)
 
 ---
 
@@ -4099,15 +4157,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.107.1 placeholder after packaging
+- **#1059** - Skills retain v0.108.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.107.1 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.108.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.107.1"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.108.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -4267,7 +4325,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.107.1` pattern
+  - All 52 framework JS files now use `@framework-script v0.108.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -4375,7 +4433,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.107.1` placeholder
+- **#951** - Replace hardcoded versions with `v0.108.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -4406,8 +4464,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.107.1 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.107.1` placeholder
+- **#933** - v0.108.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.108.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -4548,7 +4606,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.107.1` placeholder
+  - Changed hardcoded version to `v0.108.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -4588,7 +4646,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.107.1` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.108.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -4665,10 +4723,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.107.1` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.108.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.107.1` placeholder
+- **#821** - README-DIST.md now uses `v0.108.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -4785,7 +4843,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.107.1 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.108.0 placeholder
 
 ---
 
@@ -4833,7 +4891,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.107.1 placeholders to 209 framework source files
+- Restored v0.108.0 placeholders to 209 framework source files
 
 ---
 
@@ -4901,12 +4959,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.107.1` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.108.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.107.1` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.108.0` format for consistent replacement
 
 ---
 
@@ -4975,7 +5033,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.107.1` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.108.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

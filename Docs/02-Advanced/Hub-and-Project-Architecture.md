@@ -52,7 +52,6 @@ These resources are identical across all projects. Changes to the hub propagate 
 | `.claude/hooks/` | Workflow trigger hooks | Event handling is framework-level |
 | `.claude/scripts/shared/` | Branch management, commit analysis, release tools | Scripts shouldn't diverge between projects |
 | `.claude/metadata/` | Skill registry, extension recipes, extension points | Registry data is framework-level |
-| `.claude/skills/` | Extracted skill packages (TDD, BDD, etc.) | Skills are framework-provided |
 
 **On Windows:** Symlinks are implemented as NTFS junctions, which work without administrator privileges.
 
@@ -66,6 +65,9 @@ These resources are customized per project. The hub provides the template; the p
 |-----------|---------|------------|
 | `.claude/commands/*.md` | Slash command specifications | Projects add custom extension blocks |
 | `.claude/extensions/` | Project-specific extension files | Entirely project-owned |
+| `.claude/skills/<name>/` | Skill packages selected for this project (TDD, BDD, etc.) | Each project chooses its own skills |
+
+**Skills are copied but not committed.** Each skill you add is copied into `.claude/skills/<name>/` and its name is recorded in `framework-config.json` `projectSkills`. Only `framework-config.json` is committed; `.claude/skills/` is in `.gitignore`. So when a teammate adds a skill, a pull brings you the name but not the directory. Two checks catch this: `/sync-branch` stops before integrating such commits, and the session startup block shows a `Project Skills Missing:` row naming each skill whose directory is absent. In both cases the fix is to run Repair on the project in Praxis Hub Manager.
 
 **Commands are committed to your repo.** Unlike the symlinked directories, `.claude/commands/` is tracked in git. This means your team shares the same customized commands.
 
@@ -151,7 +153,7 @@ After installation, your project root contains:
 | `.claude/hooks/` | Symlinked to hub | No (`.gitignore`) |
 | `.claude/scripts/shared/` | Symlinked to hub | No (`.gitignore`) |
 | `.claude/metadata/` | Symlinked to hub | No (`.gitignore`) |
-| `.claude/skills/` | Symlinked to hub | No (`.gitignore`) |
+| `.claude/skills/` | Copied per skill (names in `projectSkills`) | No (`.gitignore`) |
 | `run_claude.cmd` / `.sh` | Copied from hub | Optional |
 | `runp_claude.cmd` / `.sh` | Copied from hub | Optional |
 

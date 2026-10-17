@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -103,6 +103,10 @@ const { resolveSpecialist, isSafeSpecialistName } = require('../scripts/shared/l
 // writes — {Capitalized Words} placeholders — reported Active.
 const { isCharterTemplate } = require('../scripts/shared/lib/charter-template.js');
 
+// #3038: projectSkills entries with no .claude/skills/<name>/ on disk. Shares
+// /sync-branch's definition of missing (#3033), which is Praxis Hub Manager's.
+const { checkProjectSkills } = require('../scripts/shared/lib/project-skills-check.js');
+
 function gatherSessionInfo(cwd) {
   const date = new Date().toISOString().slice(0, 10);
 
@@ -143,6 +147,9 @@ function gatherSessionInfo(cwd) {
   // previous session — or a deactivation instruction that was lost to
   // compaction — cannot outlive the session that made it.
   const specialist = resolveSpecialist({ cwd, frameworkPath, domainSpecialist });
+
+  // #3038: read-only disk check behind the `Project Skills Missing:` row.
+  const skillsCheck = checkProjectSkills({ cwd, projectSkills, selfHosted });
   const specialistPath = specialist.path;
 
   return {
@@ -156,6 +163,7 @@ function gatherSessionInfo(cwd) {
     reviewMode,
     selfHosted,
     projectSkills,
+    skillsCheck,
     frameworkPath,
     charterStatus,
     ghPmuVersion,
@@ -629,6 +637,14 @@ function renderBlock(info, checkResults, opts = { color: true }) {
   // Project skills (if any)
   if (Array.isArray(info.projectSkills) && info.projectSkills.length > 0) {
     lines.push(`- Project Skills: ${info.projectSkills.join(', ')}`);
+  }
+
+  // #3038: a projectSkills name whose .claude/skills/<name>/ never arrived
+  // (the directory is gitignored) is named here. No row when nothing is
+  // missing, matching the Peers row's `none`.
+  const missingSkills = info.skillsCheck && Array.isArray(info.skillsCheck.missing) ? info.skillsCheck.missing : [];
+  if (missingSkills.length > 0) {
+    lines.push(`- Project Skills Missing: ${w(`${missingSkills.join(', ')} — run Repair on this project in Praxis Hub Manager`)}`);
   }
 
   // Check failures (other than the checks rendered inline above, which already

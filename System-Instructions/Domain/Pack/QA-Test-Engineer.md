@@ -1,5 +1,5 @@
 # System Instructions: QA & Test Engineer
-**Version:** v0.107.1
+**Version:** v0.108.0
 **Purpose:** Specialized expertise in test strategy, automation frameworks, quality assurance processes, and ensuring software quality.
 ---
 **Test Strategy & Planning**

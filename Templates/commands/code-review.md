@@ -1,5 +1,5 @@
 ---
-version: "v0.107.1"
+version: "v0.108.0"
 description: Run a comprehensive code review with manifest-driven incremental tracking, using the IDPF framework.
 argument-hint: "[--full] [--status] [--scope <globs>] [--batch <N>] [--with <domains>] [--suggest]"
 copyright: "Rubrical Works (c) 2026"
@@ -32,9 +32,10 @@ Combinable: `--scope "src/**/*.js" --batch 10 --with security`
 ### Step 1: Parse Arguments
 Accept: none, `--full`, `--status`, `--scope`, `--batch N`, `--with`, `--suggest`. `--suggest` and `--with` mutually exclusive → error+STOP. Invalid → error+STOP.
 ### Step 2: Load Manifest
-Read `.code-review-manifest.json`.
+Read `.code-review-manifest.json` from project root.
 **Read** `.claude/scripts/shared/lib/code-review-manifest-schema.json` for manifest structure, required fields, and status enum values.
-Not found → create empty. Malformed → warn, continue as `--full`.
+If manifest not found: create empty manifest (first run). If malformed: warn and continue as `--full`.
+**Unfiled queue first (#3049).** Run `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json --list`. A non-empty `unfiled` list (the manifest's `filingQueue`, `queued` or `failed`) is approved findings an earlier run — interrupted, compacted or failed — never filed: report them and offer via `AskUserQuestion` to file them now (Step 8 item 5) before reviewing. Declining leaves them queued. The same command answers "next" after an interrupted Step 8.
 ### Step 2b: Status Report (--status)
 Read manifest, discovery for counting only, report approved/flagged/pending/deferred/new counts. Directory breakdown if >20 files. **STOP**.
 ### Step 3: Discover Source Files
@@ -121,19 +122,24 @@ Read each queued file; structured analysis:
 ### Step 7: Batch Mode
 `--batch N`: limit N per invocation, save manifest, report progress.
 ### Step 8: Issue Creation
-**MANDATORY:** Use `/bug` or `/enhancement` slash commands. NEVER raw `gh issue create` — bypasses project board.
-| Finding | Command |
-|---------|---------|
-| Correctness/security defect | `/bug` |
-| Error handling, refactoring, convention | `/enhancement` |
-
+**MANDATORY:** All issue creation goes through `.claude/scripts/shared/file-issue.js` — the same creation path `/bug` and `/enhancement` use. Never raw `gh pmu create` or `gh issue create`: they skip the template and the priority handling, and the bare form files off the board.
+**One turn for the whole batch (#3049).** Do **not** invoke `/bug` or `/enhancement` per finding: `Skill` does not return and `/bug` ends in STOP, so a per-finding loop files one issue per turn (rule 02). The script files every approved finding in one call.
+| Finding Type | `type` |
+|-------------|--------|
+| Correctness/security defect | `bug` |
+| Missing error handling, refactoring, convention | `enhancement` |
+| Severity | `priority` |
+|----------|-----------|
+| high | `p1` |
+| medium, low | `p2` |
 1. Present findings summary
-2. `AskUserQuestion`: per finding, per group, or skip
-3. Invoke `Skill("bug", "<title>")` or `Skill("enhancement", "<title>")`
-4. Group findings sharing root cause
-5. Record issue refs in manifest
-
-**Info-level** reported but not offered as issues.
+2. Use `AskUserQuestion` for user choice: per finding, per group, or skip
+3. Group related findings sharing root cause into one entry
+4. Write the approved entries — `{type, title, priority, fields, labels, source: {file}}`, `fields` from the finding (description, actual behavior, proposed fix or solution, acceptance criteria) — to `.tmp-code-review-queue-{random}.json` (suffix shelled out, `05-windows-shell.md`), then **enqueue** them: `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json --enqueue <that file>`; `rm` the file
+5. **File the queue** in the same turn: `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json` — files every unfiled entry, rewrites the manifest after each, and appends each number to its `source.file`'s `issueRefs`
+6. Report each result: number and priority, or the error. Relay `gatesNotApplied` once for the batch — `verificationGate` and `phaseFeasibility` are judged by `/bug` and `/enhancement`, not here; the user can `/review-issue` a filing to apply them
+Exit 1 means at least one entry failed: it stays `failed` in the queue and the next run's Step 2 offers it again. Never re-file a `filed` entry by hand.
+**Info-level findings** reported but not offered as issues.
 ### Step 8b: Security Finding Label
 If `--with security`/`--with all` and any security finding has ⚠️/❌:
 ```bash

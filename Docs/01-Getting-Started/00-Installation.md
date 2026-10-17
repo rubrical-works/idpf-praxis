@@ -95,7 +95,7 @@ IDPF runs inside Claude Code. It is a token-rich environment (spec reads, TDD cy
    ```
 
 4. On first run, sign in with the same account as your Claude subscription.
-5. Set the default model to **Claude Opus** — IDPF's STOP boundaries, sequential processing, and anti-hallucination rules require Opus-level instruction-following. See `../02-Advanced/Choosing-a-Model.md` for the trade-offs.
+5. Set the default model to **Claude Opus** — IDPF's STOP boundaries, sequential processing, and anti-hallucination rules require Opus-level instruction-following.
 
 ### 6. GitHub Kanban Template Project
 

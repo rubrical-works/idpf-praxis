@@ -1,5 +1,5 @@
 ---
-version: "v0.107.1"
+version: "v0.108.0"
 description: Review stories for a change of direction, using the IDPF framework.
 argument-hint: "[epic-number|prd-name]"
 copyright: "Rubrical Works (c) 2026"

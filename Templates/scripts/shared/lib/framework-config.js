@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -41,6 +41,16 @@ const VERIFICATION_MODES = Object.freeze(['automated-tests', 'host-process']);
  * must be opted into, never arrived at by omission or by a typo.
  */
 const DEFAULT_VERIFICATION_MODE = 'automated-tests';
+
+/**
+ * Epic-expansion caps for the review subsystem (#2963). The schema documents
+ * the same default and bounds; `framework-config.test.js` keeps the copies in
+ * step. The upper bound is a budget fact, not a style choice: at ≈12k tokens
+ * per reviewed child and ≈8k more per resolved one, 50 resolved children plus
+ * their re-review is ≈1M — the largest window this framework is sized for.
+ */
+const DEFAULT_REVIEW_EXPANSION_CAP = 20;
+const REVIEW_EXPANSION_BOUNDS = Object.freeze({ minimum: 1, maximum: 50 });
 const SCHEMA_REL_PATH = '.claude/metadata/framework-config.schema.json';
 
 let cachedValidator = null;
@@ -406,6 +416,54 @@ function resolveTmpCleanup(cwd = process.cwd()) {
 }
 
 /**
+ * The epic-expansion caps for `/review-issue` and `/resolve-review` (#2963).
+ *
+ * Reader half of the `reviewExpansion` key. Returns
+ * `{ expansionCap, resolveCap, source: { expansionCap, resolveCap } }`, where
+ * each `source` is `project-config` or `default`, so a session can report
+ * which cap it applied and why.
+ *
+ * **No script enforces either cap.** The model applies them from rule prose,
+ * so this call is the only place a project's value can reach a run — the
+ * prose names it, never a digit, or a session reading "default 20" applies 20
+ * whatever the config says.
+ *
+ * **Every path that is not a declared in-bounds integer resolves to the
+ * default**, per cap and independently: absent key, absent or unreadable
+ * file, a non-object block, and a zero, negative, fractional, string or
+ * over-bound value alike. The strict direction here is *bounded*: a
+ * hand-edited typo must never resolve to an unbounded run, which would
+ * exhaust context mid-epic — the failure the cap exists to prevent.
+ *
+ * @param {string} [cwd] - Project root
+ * @returns {{expansionCap: number, resolveCap: number,
+ *   source: {expansionCap: 'project-config'|'default', resolveCap: 'project-config'|'default'}}}
+ */
+function resolveReviewExpansion(cwd = process.cwd()) {
+  let block;
+  try {
+    block = read(cwd).reviewExpansion;
+  } catch {
+    block = undefined;
+  }
+  const declared = (block && typeof block === 'object' && !Array.isArray(block)) ? block : {};
+  const result = { source: {} };
+  for (const key of ['expansionCap', 'resolveCap']) {
+    const v = declared[key];
+    const ok = Number.isInteger(v)
+      && v >= REVIEW_EXPANSION_BOUNDS.minimum
+      && v <= REVIEW_EXPANSION_BOUNDS.maximum;
+    result[key] = ok ? v : DEFAULT_REVIEW_EXPANSION_CAP;
+    result.source[key] = ok ? 'project-config' : 'default';
+  }
+  return {
+    expansionCap: result.expansionCap,
+    resolveCap: result.resolveCap,
+    source: result.source,
+  };
+}
+
+/**
  * The defaults a declared suite acquires when it omits them (#2849).
  *
  * Applied by `normalizeSuite`, and documented a second time in the schema's
@@ -457,6 +515,9 @@ module.exports = {
   resolveVerificationMode,
   resolveVerificationCommands,
   resolveTmpCleanup,
+  resolveReviewExpansion,
+  DEFAULT_REVIEW_EXPANSION_CAP,
+  REVIEW_EXPANSION_BOUNDS,
   VERIFICATION_MODES,
   DEFAULT_VERIFICATION_MODE,
   normalizeSuite,

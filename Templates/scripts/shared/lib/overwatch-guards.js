@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  * @description Dedupe and rate-limit guards bounding /overwatch's --auto-create (#2768). Pure and synchronous: no I/O, no spawn, no filesystem write, and no throwing path. Decides only WHETHER filing is permitted; the monitor owns the decision to act and performs the filing itself.
  * @checksum sha256:placeholder
  *

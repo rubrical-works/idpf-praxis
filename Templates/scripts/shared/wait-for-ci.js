@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
- * jobs and extends timeout by 30s increments up to a 10-minute hard cap. Returns structured JSON with
+ * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
  * run status, conclusion, and URL. Used by /prepare-release CI gate and /work --wait.
  *
  * Before declaring NO_RUNS it waits out a registration window: GitHub registers a
@@ -26,7 +26,7 @@ const EXIT_CODES = {
     FAILURE: 1,        // CI failed
     TIMEOUT: 2,        // Timeout, no jobs running
     NO_RUNS: 3,        // No CI runs found
-    TIMEOUT_RUNNING: 5 // Timeout, jobs still running (hit 10-min cap)
+    TIMEOUT_RUNNING: 5 // Timeout, jobs still running (hit 15-min cap)
 };
 
 // --- Constants ---
@@ -40,7 +40,7 @@ const POLL_INTERVAL = 15000;      // 15 seconds — a finished run is noticed wi
 const REGISTRATION_INTERVAL = 15000; // 15 seconds between empty polls
 const REGISTRATION_WINDOW = 90000;   // give up after 90 seconds with no run
 const EXTENSION_MS = 30000;       // 30 seconds per extension
-const MAX_CAP = 600000;           // 10 minutes hard cap
+const MAX_CAP = 900000;           // 15 minutes hard cap (#3022: the release waits request 900s)
 const GH_CALL_TIMEOUT = 30000;    // 30s per gh call — a hung call must not eat the budget
 const MAX_FETCH_ATTEMPTS = 3;     // consecutive gh failures before aborting
 
@@ -52,7 +52,7 @@ const MAX_FETCH_ATTEMPTS = 3;     // consecutive gh failures before aborting
  * @param {number} opts.elapsed - Elapsed time in ms
  * @param {number} opts.currentTimeout - Current timeout in ms
  * @param {boolean} opts.hasRunningJobs - Whether jobs are currently running/queued
- * @param {number} opts.maxCap - Maximum timeout cap in ms (default 600000)
+ * @param {number} opts.maxCap - Maximum timeout cap in ms (default 900000)
  * @param {number} opts.extensionMs - Extension increment in ms (default 30000)
  * @returns {{ extended: boolean, newTimeout: number, capped: boolean }}
  */
@@ -106,11 +106,17 @@ function sleep(ms) {
  * error rather than a no-op, so a future spec/script drift surfaces loudly.
  *
  * @param {string[]} argv - Arguments after the node/script pair
- * @returns {{ok: true, branch: string|null, commit: string|null, timeoutMs: number}
+ * A --timeout above MAX_CAP is clamped and the clamp is reported (#3022):
+ * `requestedTimeoutMs`, `clamped` and `clampWarning` say what was asked for,
+ * and run() writes the warning to stderr. A silent clamp let three release
+ * specs describe a 15-minute budget the script never granted.
+ *
+ * @returns {{ok: true, branch: string|null, commit: string|null, timeoutMs: number,
+ *           requestedTimeoutMs: number|null, clamped: boolean, clampWarning: string|null}
  *          |{ok: false, error: string}}
  */
 function parseArgs(argv) {
-    const result = { ok: true, branch: null, commit: null, timeoutMs: DEFAULT_TIMEOUT };
+    const result = { ok: true, branch: null, commit: null, timeoutMs: DEFAULT_TIMEOUT, requestedTimeoutMs: null, clamped: false, clampWarning: null };
     let timeoutSeen = null;
 
     for (let i = 0; i < argv.length; i++) {
@@ -152,7 +158,12 @@ function parseArgs(argv) {
         if (!Number.isFinite(seconds) || seconds <= 0) {
             return { ok: false, error: `Invalid --timeout value: ${timeoutSeen}` };
         }
-        result.timeoutMs = Math.min(seconds * 1000, MAX_CAP);
+        result.requestedTimeoutMs = seconds * 1000;
+        result.timeoutMs = Math.min(result.requestedTimeoutMs, MAX_CAP);
+        result.clamped = result.requestedTimeoutMs > MAX_CAP;
+        if (result.clamped) {
+            result.clampWarning = `--timeout ${seconds}s exceeds the ${MAX_CAP / 1000}s cap; waiting at most ${MAX_CAP / 1000}s.`;
+        }
     }
 
     return result;
@@ -298,7 +309,7 @@ function schema() {
             { code: EXIT_CODES.FAILURE,         name: 'FAILURE',         meaning: 'CI failed, bad arguments, or gh unavailable after retries.',                          ruleAction: 'STOP' },
             { code: EXIT_CODES.TIMEOUT,         name: 'TIMEOUT',         meaning: 'Timeout with no jobs running.',                                                       ruleAction: 'STOP' },
             { code: EXIT_CODES.NO_RUNS,         name: 'NO_RUNS',         meaning: `No CI runs found for this branch/commit after a ${REGISTRATION_WINDOW / 1000}s registration window (re-polled every ${REGISTRATION_INTERVAL / 1000}s), or every matching run was non-executing.`, ruleAction: 'continue' },
-            { code: EXIT_CODES.TIMEOUT_RUNNING, name: 'TIMEOUT_RUNNING', meaning: 'Timeout with jobs still running at the 10-minute cap; re-run --wait or check the run.', ruleAction: 'STOP' }
+            { code: EXIT_CODES.TIMEOUT_RUNNING, name: 'TIMEOUT_RUNNING', meaning: 'Timeout with jobs still running at the 15-minute cap; re-run --wait or check the run.', ruleAction: 'STOP' }
         ]
     };
 }
@@ -328,6 +339,10 @@ async function run(argv = [], deps = {}) {
             data: { status: 'bad_arguments' }
         }));
         return EXIT_CODES.FAILURE;
+    }
+
+    if (parsed.clamped) {
+        console.error(`Warning: ${parsed.clampWarning}`);
     }
 
     const filter = { branch: parsed.branch, commit: parsed.commit };
@@ -453,7 +468,7 @@ async function run(argv = [], deps = {}) {
                     console.error(`CI jobs still running (${jobNames}). Extending timeout to ${Math.round(timeout / 1000)}s...`);
                     // Continue polling
                 } else if (adaptive.capped && hasRunning) {
-                    // Hit 10-minute cap with jobs still running
+                    // Hit 15-minute cap with jobs still running
                     const jobDetails = runningJobs.map(j => `${j.name} (${j.status})`).join(', ');
                     const elapsedMin = Math.round(elapsed / 60000);
                     console.log(JSON.stringify({
@@ -496,7 +511,7 @@ async function run(argv = [], deps = {}) {
  *
  * The timeout is the point: without it a hung gh call blocks the event loop
  * indefinitely and the adaptive-timeout logic — which only runs *between*
- * polls — can never fire, making the 5/10-minute contract unenforceable
+ * polls — can never fire, making the 5/15-minute contract unenforceable
  * (#2464).
  *
  * @param {string} command

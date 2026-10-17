@@ -13,7 +13,7 @@ These are one-time setup requirements. You'll run these commands once during ins
 Before starting, make sure you have:
 
 1. **A Claude subscription** — Claude Max or Pro recommended. IDPF is a token-rich environment: every command reads specs, generates todo lists, calls GitHub APIs, and runs TDD cycles. API-based usage works but the costs add up quickly. A subscription with Claude Code access is the practical path.
-2. **Claude Code** installed and working (`claude --version`), using **Claude Opus** as your default model. IDPF's STOP boundaries, sequential processing, and anti-hallucination rules require strong instruction-following capability. Sonnet works for simple tasks; Opus is recommended for the full workflow. See `../02-Advanced/Choosing-a-Model.md` for details.
+2. **Claude Code** installed and working (`claude --version`), using **Claude Opus** as your default model. IDPF's STOP boundaries, sequential processing, and anti-hallucination rules require strong instruction-following capability. Sonnet works for simple tasks; Opus is recommended for the full workflow.
 3. **GitHub CLI** installed and authenticated (`gh auth status`)
 4. **gh-pmu extension** installed (`gh extension install rubrical-studios/gh-pmu`)
 5. **A GitHub repository** for your project (existing or new)

@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  *
  * Living Style Guide showcase server (#2430, Story 1.1).
  *
@@ -39,7 +39,7 @@ const { resolveSafe, isLoopbackHost } = lib;
 const DEFAULT_BUNDLE_DIR = 'Design-System/showcase';
 const DEFAULT_DECISIONS = 'Design-System/showcase/decisions.json';
 const DEFAULT_SCHEMA = '.claude/metadata/decisions.schema.json';
-const DEFAULT_PORT = 3001; // one past mockups-serve default to avoid collision
+const DEFAULT_PORT = 3001; // one past the mockups-server.js default to avoid collision
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -179,7 +179,8 @@ function contentTypeFor(filePath) {
 }
 
 // resolveSafe now comes from lib/local-server.js (#2468). The private copy
-// here was byte-identical to mockups-serve.js's, which is how one review miss
+// here was byte-identical to the mockups server's (mockups-server.js since
+// #3023, which now delegates file serving to http-server), which is how one review miss
 // produced two vulnerable call sites.
 
 function serveStatic(bundleDir, req, res) {

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  * Resume Hook — SessionStart:resume
  * Fires when resuming a previous session.
  */

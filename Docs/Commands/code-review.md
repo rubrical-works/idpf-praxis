@@ -32,7 +32,9 @@ Flags can be combined: `--scope "src/**/*.js" --batch 10 --with security`
 - Requires `CHARTER.md` to exist; stops with a prompt to run `/charter` if missing.
 - Tracks review state in `.code-review-manifest.json` — files hash-matched and skipped if approved and unchanged.
 - If `CHARTER.md` changes, all files are re-queued for review.
-- All bug and enhancement issues are created via `/bug` and `/enhancement` slash commands (never raw `gh issue create`) to ensure project board integration.
+- Approved findings are filed in one turn, as a batch, through the same filing script `/bug` and `/enhancement` use, so each issue gets the standard template, the project board and an assignee. Correctness and security defects become bugs; error handling, refactoring and convention findings become enhancements. High-severity findings are filed at P1, medium and low at P2.
+- The batch is queued in `.code-review-manifest.json` before filing. An entry that fails stays in the queue, and the next run offers it again before reviewing anything; filed entries are never filed twice.
+- Batch filing does not run the acceptance-criteria feasibility checks that `/bug` and `/enhancement` apply; the result says so once for the batch.
 - `--with` and `--suggest` are mutually exclusive; using both reports an error and stops.
 - Reports are saved to `Construction/Code-Reviews/YYYY-MM-DD-report.md` after issue creation so issue numbers are included.
 - Available domain extensions: `security`, `accessibility`, `performance`, `chaos`, `contract`, `qa`, `seo`, `privacy`, `observability`, `i18n`, `api-design`.

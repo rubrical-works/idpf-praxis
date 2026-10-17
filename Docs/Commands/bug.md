@@ -31,6 +31,6 @@ Field values are read from the companion's board. Anything that does not resolve
 
 - Auto-detects the software version from `package.json` or the latest git tag and confirms it with you before creating the issue.
 - Builds the issue body from your description, populating: Description, Version, Steps to Reproduce, Expected/Actual Behavior, Scope, Acceptance Criteria, and Proposed Fix. Sections without enough context use "To be documented" placeholders.
-- Issue is created with label `bug`, status `Backlog`, priority `P1`.
+- Issue is created with label `bug` and status `Backlog`. Priority is derived from the bug's stated impact using the project's bug-priority rubric (P0, P1 or P2; P2 when nothing matches) and confirmed with you, together with the version, before the issue is created.
 - **STOP boundary:** halts after reporting the created issue number. Does not begin implementation until you explicitly say "work", "fix that", or "implement that".
 - Supports `pre-create` and `post-create` extension points.

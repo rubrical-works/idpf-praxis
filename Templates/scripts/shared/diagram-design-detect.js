@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.107.1
+ * @framework-script 0.108.0
  * @description Detect whether the optional third-party diagram-design skill (cathrynlavery/diagram-design, MIT) is installed — as a project skill, a user skill, or a Claude Code plugin — so /create-prd Phase 5.5a can offer it as a diagram style. Read-only; never throws; every failure resolves to found:false with a stated reason.
  * @checksum sha256:placeholder
  *

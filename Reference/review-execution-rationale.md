@@ -1,5 +1,5 @@
 # Review Execution Rule — Rationale
-**Version:** v0.107.1
+**Version:** v0.108.0
 **Source:** Reference/review-execution-rationale.md
 Reasoning behind decisions rule 09 directs without re-arguing (#3009). Never auto-loaded; rule 03's On-Demand table names it. Ships as a `Reference/` document; never under `deploymentFiles.rules`.
 ## Why one rule serves both commands (#2737, #2746)
@@ -29,7 +29,7 @@ A recommendation-keyed trigger reads as equivalent and is wrong the moment it is
 ## Step 3a: the `labels` shape (#2682)
 `isEligibleForInterdependence` reads both shapes — `['story']` hand-built, or `[{name:'story'}]` as `context.issue.labels` arrives — and an input it cannot read warns rather than returning a bare `false`. Flattening is unnecessary, and a flattened array that lost a name would read as "not eligible" with no warning.
 ## Epic expansion caps: how they were sized (#2869, #2872, #2958)
-The caps and their measured basis stay in `review-execution-conditional.md` beside the bodies they bound. History: review cap six (#2869), resolve cap three (#2872), both for a 200k window (six children ≈ 75k; six pending ≈ 185k, three ≈ 160k). #2958 raised both to 20 for a 1M base from the eleven-child epic #2843 (`Construction/Design-Decisions/2026-09-10-epic-review-expansion.md`): ≈ 12k per child reviewed, ≈ 8k more resolved — 20 reviewed ≈ 240k, 20 resolved plus re-review ≈ 400k, estimated not re-measured. Safe because recoverable: per-member tasks batched after the epic's preamble.
+The caps and their measured basis stay in `review-execution-conditional.md` beside the bodies they bound. History: review cap six (#2869), resolve cap three (#2872), both for a 200k window (six children ≈ 75k; six pending ≈ 185k, three ≈ 160k). #2958 raised both to 20 for a 1M base from the eleven-child epic #2843 (`Construction/Design-Decisions/2026-09-10-epic-review-expansion.md`): ≈ 12k per child reviewed, ≈ 8k more resolved — 20 reviewed ≈ 240k, 20 resolved plus re-review ≈ 400k, estimated not re-measured. Safe because recoverable: per-member tasks batched after the epic's preamble. #2963 made both a project setting (`framework-config.json` `reviewExpansion`, via `resolveReviewExpansion`), default still 20 — a resize is a config edit, not a hand-edit of every literal.
 ## `/resolve-review` Step 3a: why suggestions are reported (#2717)
 **Why (#2717):** `review-finalize.js` accepted `suggestions` and discarded it, so a suggestion-only defect passed the whole resolve cycle untouched and emerged under a clean `Ready for work`. Rendering it fixed only the visible half; without this step the envelope carries the key and nothing reads it — the silent drop moved one layer along.
 ## `/resolve-review` Step 4: why `--prior-art` is only forwarded (#2725)

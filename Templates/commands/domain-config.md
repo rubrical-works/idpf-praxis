@@ -1,5 +1,5 @@
 ---
-version: "v0.107.1"
+version: "v0.108.0"
 description: Read or edit this project's IDPF active domains.
 argument-hint: "--add {domain} | --remove {domain} | --list"
 copyright: "Rubrical Works (c) 2026"

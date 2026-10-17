@@ -31,7 +31,7 @@ Field values are read from the companion's board. Anything that does not resolve
 ## Key Behaviors
 
 - If no title is provided, prompts for one before proceeding.
-- Creates the issue with label `enhancement`, status `Backlog`, and priority `P2` via `gh pmu create` (project board integrated).
+- Creates the issue with label `enhancement`, status `Backlog`, and priority `P2` through the shared filing script (the same path `/bug` and `/code-review` use), so it lands on the project board.
 - Populates a standard template (Description, Motivation, Proposed Solution, Scope, Acceptance Criteria) using details inferred from your input; unfilled sections use "To be documented" placeholders.
 - Acceptance criteria are checked for feasibility as they are authored: a criterion that can only be satisfied after this issue reaches review is annotated as a gate rather than left to deadlock, and work another command already owns (CHANGELOG entries, tagging, release publication) is dropped rather than duplicated.
 - **STOP after creation** — does not begin implementation until you explicitly say "work", "fix that", or "implement that".

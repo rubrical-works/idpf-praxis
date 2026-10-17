@@ -301,6 +301,27 @@
         }
       }
     },
+    "reviewExpansion": {
+      "type": "object",
+      "description": "Per-invocation caps on epic expansion in the review subsystem (#2963). `expansionCap` bounds how many children `/review-issue` reviews when it expands an epic; `resolveCap` bounds how many `findings-pending` children `/resolve-review` resolves. Both are sized against a context-window budget (≈12k tokens to review one child, ≈8k more to resolve it, measured on #2843), which is a property of the project and the model it runs, not a framework constant — so a project on a smaller window lowers them and one on a larger window can raise them without editing framework-owned rule prose. ABSENT MEANS 20 for each cap, today's behavior, and each cap resolves independently. Read through .claude/scripts/shared/lib/framework-config.js resolveReviewExpansion(), which a session runs once per invocation before the first child is expanded; no script enforces either cap, so the rule prose names that call and never a digit. An absent, unreadable or invalid value resolves to the default, never to an unbounded run. It lives here rather than in .claude/metadata/ for the reason #2702 recorded: that directory is a read-only hub junction in deployed projects.",
+      "properties": {
+        "expansionCap": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 20,
+          "description": "Maximum children `/review-issue` reviews per invocation when it expands an epic. Children beyond it are reported as not reached, in number order. Absent → 20."
+        },
+        "resolveCap": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 20,
+          "description": "Maximum `findings-pending` children `/resolve-review` resolves per invocation when it expands an epic. Absent → 20. Keeping it equal to expansionCap keeps the single re-review covering every child the resolve pass reached."
+        }
+      },
+      "additionalProperties": false
+    },
     "tmpCleanup": {
       "type": "boolean",
       "description": "Whether the startup hook sweeps stale `.tmp-*` scratch files from the project root (#2771). ABSENT MEANS ENABLED, matching crossSessionMessaging's absence rule: a config only ever records what was turned OFF, so the sweep arrives switched on in every project already on disk without a config edit. Set `false` to skip it entirely — no directory is scanned, nothing is deleted, and NO ROW is emitted, because a disabled sweep is the user's own choice and restating it every startup is the noise the setting removes. THIS IS THE ONE STARTUP STEP THAT MUTATES THE TREE. Every other check is advisory, per 06-runtime-triggers.md's `offer, don't force`; the exception is deliberate and bounded by what the helper refuses to delete rather than by a prompt — direct children of the project root only, name-matched against .claude/metadata/tmp-cleanup-signals.json patterns, never a directory, never git-tracked, never younger than the configured age, and nothing at all when git cannot confirm tracked status. An offer at every session start for files nobody wants is exactly the noise a hook should remove, not add. Read through .claude/scripts/shared/lib/framework-config.js resolveTmpCleanup(); no consumer re-derives the absence rule inline. It lives at the TOP LEVEL rather than inside crossSessionMessaging because the two govern unrelated subsystems — nesting it would make `crossSessionMessaging.enabled: false` silently stop a cleanup that has nothing to do with peer messaging. It lives here rather than in .claude/metadata/ for the reason #2702 recorded: that directory is a read-only hub junction in PHM-deployed projects, so a deployed project could not otherwise disable something running inside it.",

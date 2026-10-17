@@ -1,5 +1,5 @@
 # Review Execution Rule
-**Version:** v0.107.1
+**Version:** v0.108.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` — the hybrid shell + rule architecture from #2329/#2368 applied to the review pair. Shells carry arguments, prerequisites and error handling; this carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks.** The three retired points live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.
@@ -47,7 +47,7 @@ So: **no blank line inside the block**, and **do not follow a bullet list with a
 **Refresh, don't append.** On re-review replace the existing section in place. Reviewing an unchanged issue twice must produce no body diff.
 **Ordering is load-bearing** — same rule as 2a-iv, same reason. Write **here, before Step 3 finalize runs**. `review-finalize.js` does its own read-modify-write to increment `**Reviews:** N`; a write concurrent with or after it races that update, later write wins, loser vanishes with no error. Never write during or after Step 3, and do not "simplify" by folding this write into `review-finalize.js`.
 
-**2a-iii: Epic Expansion** — trigger: `context.type === "epic"` for a typed issue. Body in `{frameworkPath}/Reference/review-execution-conditional.md` § 2a-iii (Step 1d): children first, epic last; what each child receives; flags; the propagated-label check; no re-expansion; the 20-child cap; unreached and erroring children; the roster (Step 4). `construction-context` unchanged: scan `Construction/Design-Decisions/` and `Construction/Tech-Debt/` for files referencing the children's numbers. None found → report gracefully.
+**2a-iii: Epic Expansion** — trigger: `context.type === "epic"` for a typed issue. Body in `{frameworkPath}/Reference/review-execution-conditional.md` § 2a-iii (Step 1d): children first, epic last; what each child receives; flags; the propagated-label check; no re-expansion; the `expansionCap` from `resolveReviewExpansion` (a project setting); unreached and erroring children; the roster (Step 4). `construction-context` unchanged: scan `Construction/Design-Decisions/` and `Construction/Tech-Debt/` for files referencing the children's numbers. None found → report gracefully.
 
 **2a-iv: Prior-Art Sweep When Marker Absent**
 Trigger: `prior-art-checked` criterion evaluates ❌ (marker absent, or `PARTIAL` — an incomplete sweep, treated as absent and re-swept), **OR `--prior-art` was passed** — the automatic path below, the explicit one after it.
@@ -123,9 +123,9 @@ Config: `.claude/metadata/review-interdependence.json`. Single-issue: skipped; a
 ### Step 4: Closing Notification and Cleanup
 Two parts in order; the prune is **part of** this step, not a trailing step a reader can stop before. **(1)** Output `closingNotification` from finalize. Multi-issue: `"Reviews complete: #42, #43, #44"`. **Expanded epic: the notification is the roster** — every child reviewed with verdict, every child not reached with reason, the children-only interdependence result, and the command finishing the set:
 ```
-Reviews complete: #<epic> (epic) and 20 of 22 children
+Reviews complete: #<epic> (epic) and <reached> of <total> children
   Reviewed: #101 reviewed · #102 pending · …
-  Not reached: #121 — expansion cap (20) · #122 — expansion cap (20)
+  Not reached: #121 — expansion cap (<expansionCap>) · #122 — expansion cap (<expansionCap>)
   Interdependence (children): <findings summary, or "none detected">
 Finish the set: /review-issue #121 #122
 ```
@@ -134,7 +134,7 @@ An unreached child keeps no review label; an errored child appears under `Not re
 ---
 ## `/resolve-review` — Workflow
 **Multi-issue:** `/resolve-review 42 43` resolves each issue in turn, each through Steps 1–4; issue N's cycle ends with its Step 4 re-review verdict, and issue N+1 begins after it.
-**Expanded epic.** Trigger: Step 1's preamble returns `context.type === "epic"` for a typed issue. Body in `{frameworkPath}/Reference/review-execution-conditional.md` § `/resolve-review` — Epic Expansion (Step 1d): member set (children first, epic last), per-child classification via `review-state.js`, the whole-set "already ready" rule, the single re-review after the last member, errors kept with the child, the 20-child resolve cap, the roster. Only a typed issue expands; a member that arrived by expansion is never expanded again.
+**Expanded epic.** Trigger: Step 1's preamble returns `context.type === "epic"` for a typed issue. Body in `{frameworkPath}/Reference/review-execution-conditional.md` § `/resolve-review` — Epic Expansion (Step 1d): member set (children first, epic last), per-child classification via `review-state.js`, the whole-set "already ready" rule, the single re-review after the last member, errors kept with the child, the `resolveCap` from `resolveReviewExpansion` (a project setting), the roster. Only a typed issue expands; a member that arrived by expansion is never expanded again.
 ### Step 1: Setup (Preamble Script)
 ```bash
 node ./.claude/scripts/shared/resolve-preamble.js $ISSUE
