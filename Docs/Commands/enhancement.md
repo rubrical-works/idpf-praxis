@@ -9,6 +9,7 @@ Create a properly labeled enhancement issue with a standard template and add it 
 | `<title>` | No | Enhancement title (prompted if not provided) |
 | `--prior-art` | No | Run a prior-art sweep before composing the issue body. Absent means no sweep. |
 | `--assignee <value>` | No | GitHub login to assign the new issue to. Omitted → `@me`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

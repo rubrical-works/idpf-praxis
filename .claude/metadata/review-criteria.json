@@ -79,6 +79,11 @@
           "autoCheck": "Check if ACs are small, independent, testable units (not monolithic)"
         },
         {
+          "id": "depends-on-valid",
+          "name": "Depends on line resolves",
+          "autoCheck": "Read the `**Depends on:**` line (#3127) with `.claude/scripts/shared/lib/depends-on.js` `parseDependsOn(body, {self, members})`, where `members` is the parent epic's or branch tracker's sub-issue numbers (`gh pmu sub list <parent> --json`). Report ❌ for each entry the parser rejects: unresolvable (not a `#N` reference — `#abc`, `Story 1.1`, a bare number), non-member (a number outside the parent's sub-issue set), or self-referential (the issue's own number). A rejected entry yields no edge, and a dependency nobody can read is never treated as satisfied, so an unattended `--nonstop` or `--concurrent` run would order around it blind. A missing line is not a finding — it is every story authored before the line existed; `none` is an explicit empty list. A story with no parent cannot be checked for membership: say so rather than reporting ✅."
+        },
+        {
           "id": "test-coverage-story",
           "name": "Test coverage proportionate (story)",
           "overrides": "test-coverage-proportionate",
@@ -183,6 +188,12 @@
           "id": "prior-art-checked",
           "name": "Prior art checked",
           "autoCheck": "Delegate to decideSweep in .claude/scripts/shared/lib/prior-art-marker.js and report the status it returns; do not re-derive the rule here. The marker itself is the literal '**Prior Art:**' heading defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading; present and complete = pass. Issues created before the cutoff in that helper are not applicable rather than failing. Behavior past that depends on framework-config.json reviewSweep, a 4-mode setting since #2564 (absent = 'recommend'): under 'full' an absent or PARTIAL marker reports fail and runs the Step 2a-iv sweep; under 'recommend' it reports the advisory status 'recommend' and runs NO sweep — this must NOT be reported as fail, because --prior-art is opt-in and rarely passed, so most issues carry no marker and a fail would downgrade nearly every review; under 'flag-only' and 'off' report skip, not fail, which would downgrade every review in a project that opted out."
+        },
+        {
+          "id": "external-source-attributed",
+          "name": "External source attributed",
+          "autoCheck": "Find the body's 'External source' field (#3039). Re-read .claude/metadata/external-sources.json from disk and compare the field against every entry's id and url. A non-empty field that names no registry id or url → ❌: the issue adopts something from outside that the registry does not record, so register the source (with its license and relationship) before the issue is worked. A field naming a registry id or url → ✅, citing the matched id. An empty or absent field → ✅: nothing external is claimed, and issues authored before the field existed carry none. Do not judge the license here — tests/reference/external-sources.test.js owns the allowlist.",
+          "env": "dev"
         }
       ]
     },

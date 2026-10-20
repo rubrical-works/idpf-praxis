@@ -374,7 +374,7 @@ That is the core IDPF loop. Every bug, every small enhancement runs through thes
 | The review flagged problems on an issue | `/resolve-review #N` |
 | An issue is finished and I want to close it | `/done #N` |
 | I need a working branch for new code | `/create-branch <name>` then `/assign-branch #N` |
-| The charter no longer describes the project | *"reset the charter"* or `/charter update` |
+| The charter no longer describes the project | *"reset the charter"* or `/charter --update` |
 
 ---
 

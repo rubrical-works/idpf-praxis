@@ -16,6 +16,7 @@ Produce DTCG-compliant design tokens with pluggable adapter architecture, visual
 | `--diff` | No | Produce a 4-category drift report (additions / removals / mismatches / broken aliases) across registered discovery adapters — no writes. |
 | `--showcase` | No | Launch the Living Style Guide browser review surface on `127.0.0.1`. Renders nine canonical categories from current tokens + catalog; captures accept/reject/annotate decisions to `Design-System/showcase/decisions.json`. Mutually exclusive with `--apply-decisions`. |
 | `--apply-decisions` | No | Read pending decisions from `Design-System/showcase/decisions.json` and apply token outcomes (accept → commit, reject → remove, annotate → record metadata) without launching the server. For scripted / CI use. Mutually exclusive with `--showcase`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

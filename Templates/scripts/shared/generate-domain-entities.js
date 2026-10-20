@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Generate domain-entities.json from CHARTER.md content.
  * Parses charter markdown to extract bounded context, entities,
  * scope boundaries, and drift signals into a machine-readable format.
@@ -204,7 +204,7 @@ function extractEntities(content) {
  * and add them as external entities.
  *
  * Row parsing is delegated to companion-projects.js, which is also what
- * `/charter update --register-proj` writes through. One parser with two
+ * `/charter --update --register-proj` writes through. One parser with two
  * callers cannot drift; two parsers of the same table eventually do -- and
  * the drift would be silent, because both would still produce entities.
  *

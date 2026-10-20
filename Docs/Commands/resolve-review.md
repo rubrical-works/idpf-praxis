@@ -8,6 +8,7 @@ Parse the latest review findings on an issue and systematically resolve each one
 |----------|----------|-------------|
 | `#issue` | Yes | Issue number to resolve findings for (e.g., `#42` or `42`) |
 | `--prior-art` | No | Forwarded verbatim to the re-review, which runs the sweep. `/resolve-review` performs no sweep itself |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -856,18 +856,18 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
   // moved past). Listed first so the summary lands right after the block.
   //
   // #2637: the observation half existed; the handoff to the repair path did
-  // not. `/charter refresh` runs verifyEntityCounts() and offers consent-gated
+  // not. `/charter --refresh` runs verifyEntityCounts() and offers consent-gated
   // correction, so a reported-and-dropped mismatch — or one resolved by a hand
   // edit that bypasses that consent flow — was the only available outcome.
   //
   // Conditional on an actual observation, deliberately. An unconditional
-  // "run /charter refresh" would print on every clean startup and train the
+  // "run /charter --refresh" would print on every clean startup and train the
   // reader to ignore it, the same reason the Review-State Gate never prompts
   // on `reviewed-clean` (#2577). Recommend, never mutate: `06-runtime-triggers`
   // *offer, don't force*, and /charter's own "never auto-modify the charter
   // without user consent" contract.
   if (info.charterStatus === 'Active') {
-    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus. Note any mismatch you observe between the charter and current repository state. If you observe a mismatch, recommend that the user run `/charter refresh`, which re-verifies entity counts and offers consent-gated repair — recommend only, never make the change yourself.');
+    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus. Note any mismatch you observe between the charter and current repository state. If you observe a mismatch, recommend that the user run `/charter --refresh`, which re-verifies entity counts and offers consent-gated repair — recommend only, never make the change yourself.');
   }
 
   // #2503: the specialist is INJECTED, not pointed at. The former
@@ -1166,7 +1166,7 @@ function buildChecks(info) {
   // #2903: drift is measured against the charter's testing declaration, so a
   // project without an active charter has nothing to drift from — gated on the
   // charter rather than registered unconditionally. The check never prompts and
-  // never writes; its row names /charter refresh and nothing else.
+  // never writes; its row names /charter --refresh and nothing else.
   if (info.charterStatus === 'Active') {
     checks.push({ name: 'testing-drift', script: '.claude/scripts/shared/testing-drift-check.js' });
   }

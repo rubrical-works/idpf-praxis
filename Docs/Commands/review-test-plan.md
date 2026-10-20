@@ -9,6 +9,7 @@ Review a TDD test plan against its source PRD for coverage completeness.
 | `#issue` | Yes | Issue number linked to the test plan (e.g., `#42` or `42`) |
 | `--mode` | No | Transient review mode override: `solo`, `team`, or `enterprise` |
 | `--force` | No | Force re-review even if issue already has the `reviewed` label |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

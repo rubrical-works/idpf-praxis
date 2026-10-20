@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Generate state-aware contextual hints that guide users toward logical next actions after each /ci subcommand invocation. Returns one hint per call with related feature mapping. Prevents repeated hints within a session.
  * @checksum sha256:placeholder
  *
@@ -48,13 +48,13 @@ const RELATED_FEATURES = {
 function getHint(context) {
   switch (context.subcommand) {
     case 'status':
-      return 'Tip: Run /ci recommend to get improvement suggestions for your workflows.';
+      return 'Tip: Run /ci --recommend to get improvement suggestions for your workflows.';
 
     case 'add':
       return getAddHint(context);
 
     case 'remove':
-      return 'Run /ci validate to verify your workflows are still correct.';
+      return 'Run /ci --validate to verify your workflows are still correct.';
 
     case 'list':
       return getListHint(context);
@@ -71,60 +71,60 @@ function getHint(context) {
 }
 
 /**
- * Hint for /ci add — first feature gets extensions recipe hint,
+ * Hint for /ci --add — first feature gets extensions recipe hint,
  * otherwise suggests a related feature.
  */
 function getAddHint(context) {
   if (context.isFirstFeature) {
-    return 'Tip: Use /extensions recipes ci to add CI gates to your release workflow.';
+    return 'Tip: Use /extensions --recipes ci to add CI gates to your release workflow.';
   }
 
   const related = RELATED_FEATURES[context.feature];
   if (related) {
-    return `You added ${context.feature}. Related: /ci add ${related.feature} (${related.reason}).`;
+    return `You added ${context.feature}. Related: /ci --add ${related.feature} (${related.reason}).`;
   }
 
   // Fallback for unknown features
-  return 'Run /ci list to see all available features.';
+  return 'Run /ci --list to see all available features.';
 }
 
 /**
- * Hint for /ci list — varies based on whether all features are enabled.
+ * Hint for /ci --list — varies based on whether all features are enabled.
  */
 function getListHint(context) {
   const { enabledCount, totalCount } = context;
 
   if (enabledCount >= totalCount) {
-    return 'All available features are enabled. Run /ci validate to check for issues.';
+    return 'All available features are enabled. Run /ci --validate to check for issues.';
   }
 
   const available = totalCount - enabledCount;
-  return `${available} features available. Run /ci recommend for project-specific suggestions.`;
+  return `${available} features available. Run /ci --recommend for project-specific suggestions.`;
 }
 
 /**
- * Hint for /ci validate — varies based on whether issues were found.
+ * Hint for /ci --validate — varies based on whether issues were found.
  */
 function getValidateHint(context) {
   const { issueCount } = context;
 
   if (issueCount > 0) {
     const plural = issueCount === 1 ? 'issue' : 'issues';
-    return `Found ${issueCount} ${plural}. Run /ci recommend to see suggested fixes.`;
+    return `Found ${issueCount} ${plural}. Run /ci --recommend to see suggested fixes.`;
   }
 
   return 'No issues found. Your workflows look good.';
 }
 
 /**
- * Hint for /ci recommend — varies based on whether changes were applied.
+ * Hint for /ci --recommend — varies based on whether changes were applied.
  */
 function getRecommendHint(context) {
   if (context.applied) {
-    return 'Run /ci validate to verify the changes. Use /extensions recipes ci to add CI gates to release commands.';
+    return 'Run /ci --validate to verify the changes. Use /extensions --recipes ci to add CI gates to release commands.';
   }
 
-  return 'You can apply individual features later with /ci add <feature>.';
+  return 'You can apply individual features later with /ci --add <feature>.';
 }
 
 // CLI entry point

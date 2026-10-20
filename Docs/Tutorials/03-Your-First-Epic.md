@@ -73,7 +73,7 @@ Claude lists existing open epics (you have none yet) and offers a **Create new e
 API Versioning & Observability
 ```
 
-Claude validates the theme against `CHARTER.md` to confirm it is in scope. Your charter scopes "one HTTP endpoint that returns a JSON health response" — adding more endpoints and middleware is a natural extension, not a scope expansion. If `/add-story` flags a charter mismatch, that is the cue to update the charter (`/charter update`) before adding stories. For this tutorial the theme is in scope.
+Claude validates the theme against `CHARTER.md` to confirm it is in scope. Your charter scopes "one HTTP endpoint that returns a JSON health response" — adding more endpoints and middleware is a natural extension, not a scope expansion. If `/add-story` flags a charter mismatch, that is the cue to update the charter (`/charter --update`) before adding stories. For this tutorial the theme is in scope.
 
 Claude creates the epic with `gh pmu create --title "Epic: API Versioning & Observability" --label epic` and reports the epic number (e.g., `#3` — your number may differ). The epic body is the standard template: a Vision section, an empty Stories list (about to fill up), and Acceptance Criteria for the epic as a whole.
 

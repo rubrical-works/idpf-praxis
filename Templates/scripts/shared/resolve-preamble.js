@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, reports the issue's type so an epic can be expanded, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -20,6 +20,7 @@ const {
   AUTO_FIXABLE_CRITERIA,
 } = require('./lib/review-format');
 const { getIssueType, REDIRECT_LABELS } = require('./lib/issue-type.js');
+const { normalizeEol } = require('./lib/normalize-eol.js');
 
 // ─── Argument Parsing ───
 
@@ -118,7 +119,8 @@ function statusForEmoji(emoji) {
 
 function parseFindings(body) {
   const findings = [];
-  const lines = body.split('\n');
+  // A CRLF comment would leave `\r` before FINDING_LINE_PATTERN's `$` (#3064).
+  const lines = normalizeEol(body).split('\n');
 
   for (const line of lines) {
     const match = line.match(FINDING_LINE_PATTERN);
@@ -163,7 +165,7 @@ function parseFindings(body) {
  */
 function parseSuggestions(body) {
   if (typeof body !== 'string') return [];
-  const lines = body.split('\n');
+  const lines = normalizeEol(body).split('\n');
   const start = lines.findIndex((l) => l.trim() === SECTION_HEADERS.suggestions);
   if (start === -1) return [];
 

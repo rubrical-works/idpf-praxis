@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.108.0
+**Version:** v0.109.0
 Comprehensive reference for AI assistants (Claude/Claude Code) and framework development. Change history: git log and CHANGELOG.md.
 **Framework Purpose and Scope**
 Supports AI-assisted software development across multiple methodologies and platforms. System Instructions are **REQUIRED** for all framework operation.
@@ -12,7 +12,7 @@ Transform proposals into implementation-ready PRDs, or extract PRDs from existin
 | Mode | Command | Purpose |
 |------|---------|---------|
 | **Promote** | `/create-prd Proposal/Feature.md` | Transform proposal to PRD |
-| **Extract** | `/create-prd extract` | Extract PRD from codebase |
+| **Extract** | `/create-prd --extract` | Extract PRD from codebase |
 | **Interactive** | `/create-prd` | Prompt for mode selection |
 **Features:** Charter validation against CHARTER.md scope; context-aware dynamic questions (not static worksheets); story transformation; MoSCoW priority validation; optional `.drawio.svg` UML diagrams; single-session completion
 **Inputs:** `Proposal/*.md`, `Inception/` artifacts, `CHARTER.md`

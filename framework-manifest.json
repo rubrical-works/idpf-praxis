@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.108.0",
+  "version": "0.109.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -169,6 +169,8 @@
     "precompact-hook.js",
     "test-on-change.js",
     "imported-skills.json",
+    "external-sources.json",
+    "external-sources-schema.json",
     "GENERATED.md",
     "startup.log",
     "crash.log",
@@ -556,6 +558,8 @@
           "ci-watch.js",
           "cleanup-artifacts.js",
           "cleanup-release-assets.js",
+          "collision-profiler.js",
+          "command-help.js",
           "config-integrity-check.js",
           "create-epic.js",
           "daily-log-collect.js",
@@ -573,6 +577,7 @@
           "gh-auth-check.js",
           "hook-health-check.js",
           "idpf-measure.js",
+          "json-merge-driver.js",
           "log-changed-files.js",
           "mockup-ac-generator.js",
           "mockup-detect-framework.js",
@@ -627,17 +632,23 @@
           "announce-ledger.js",
           "announce-routing.js",
           "announcement-issues.js",
+          "branch-diff.js",
           "branch-review-gate.js",
           "bulk-discover-screens.js",
           "charter-template.js",
           "checkbox-scan.js",
           "classify-changed-files.js",
           "code-review-manifest-schema.json",
+          "command-args.js",
           "companion-projects.js",
+          "concurrency-plan.js",
+          "concurrent-orchestration.js",
           "create-backlog-review-gate.js",
           "cross-session-config.js",
           "debug.js",
+          "depends-on.js",
           "deployment-scope.js",
+          "derived-artifacts.js",
           "detect-tech-stack.js",
           "discovery-adapters/css-gradients.js",
           "discovery-adapters/css-vars.js",
@@ -673,7 +684,10 @@
           "measure-marker.js",
           "measure-report.js",
           "measure-wiring.js",
+          "merge-back-gate.js",
+          "merge-driver-config.js",
           "navigation-graph.js",
+          "normalize-eol.js",
           "output.js",
           "overwatch-guards.js",
           "overwatch-overlap.js",
@@ -689,6 +703,7 @@
           "qa-config-schema.json",
           "qa-config.json",
           "rebase-guard.js",
+          "regeneration-runner.js",
           "review-format.js",
           "review-mode.js",
           "runner-probe.js",
@@ -703,10 +718,13 @@
           "token-drift-report.js",
           "token-propagation.js",
           "token-update-mode.js",
+          "topo-order.js",
           "upstream-upgrade-check.js",
           "work-task-definitions-schema.json",
           "work-task-definitions.json",
-          "workstream-utils.js"
+          "workstream-utils.js",
+          "worktree-links.js",
+          "worktree-teardown.js"
         ]
       },
       "hooks": {
@@ -721,7 +739,8 @@
           "clear-hook.js",
           "resume-hook.js",
           "compact-hook.js",
-          "measure-tap.js"
+          "measure-tap.js",
+          "worktree-create-hook.js"
         ]
       }
     },
@@ -766,6 +785,11 @@
         "matcher": "compact",
         "file": "compact-hook.js",
         "timeout": 5
+      },
+      {
+        "event": "WorktreeCreate",
+        "file": "worktree-create-hook.js",
+        "timeout": 120
       }
     ],
     "rulesDeploymentMode": "copied",
@@ -878,7 +902,7 @@
         {
           "name": "ci-features",
           "source": ".claude/metadata/ci-features.json",
-          "description": "CI feature registry for /ci list and /ci add commands"
+          "description": "CI feature registry for /ci --list and /ci --add"
         },
         {
           "name": "ci-features-schema",
@@ -904,6 +928,11 @@
           "name": "command-boilerplate-schema",
           "source": ".claude/metadata/command-boilerplate-schema.json",
           "description": "JSON Schema for command-boilerplate.json"
+        },
+        {
+          "name": "command-docs",
+          "source": ".claude/metadata/command-docs.json",
+          "description": "Single base URL for each deployed command's docs page, read by command-help.js for --help (#3030)"
         },
         {
           "name": "commit-checkpoint-signals",
@@ -968,7 +997,7 @@
         {
           "name": "extension-recipes",
           "source": ".claude/metadata/extension-recipes.json",
-          "description": "Extension recipes for /extensions recipes command"
+          "description": "Extension recipes for /extensions --recipes"
         },
         {
           "name": "extension-recipes-schema",

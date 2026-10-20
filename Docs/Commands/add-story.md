@@ -8,6 +8,7 @@ Add a new story to an epic with charter compliance validation and automatic test
 |----------|----------|-------------|
 | `[epic-number]` | No | Parent epic issue number (e.g., `42` or `#42`). Prompts with a list of open epics if not provided. |
 | `--assignee <value>` | No | GitHub login to assign the new story to. Omitted → `@me`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 
@@ -24,6 +25,7 @@ Add a new story to an epic with charter compliance validation and automatic test
 - Creates the story issue with a full canonical template (Description, Relevant Skills, Acceptance Criteria, TDD Test Cases, Definition of Done). All sections are required; use "N/A" rather than omitting any.
 - Requires a **Files to modify** section listing only the files this story's criteria implicate. A purely behavioral story uses the section marker with `N/A` — omitting the section entirely is not equivalent.
 - The story's **E2E** line names the harness from the suite whose `role` is `e2e` in `framework-config.json` `testing.suites[]` — the declaration `/charter` harness selection writes. `Inception/Test-Strategy.md` is consulted only as corroboration when the config declares nothing; no framework name is ever invented.
+- Asks which stories in the epic must land first and writes a **Depends on:** line: `none`, or comma-separated `#N` references to sibling stories of the same epic. `/work --nonstop` and `/work --concurrent` order stories from this line, so its shape is fixed: an entry that is not a sibling `#N` is never treated as satisfied, and `/review-issue` flags it. `none` means there is no dependency, so it is written only when you say so.
 - When an acceptance criterion is verified against a non-code artifact (a command spec, registry, manifest or workflow file), the story names that artifact as the contract test's `@subject`, following `Reference/Contract-Test-Classification.md`.
 - If the epic belongs to a PRD, automatically updates the PRD tracker issue and the PRD document file with the new story.
 - Optionally suggests and installs relevant skills based on technologies mentioned in the story.

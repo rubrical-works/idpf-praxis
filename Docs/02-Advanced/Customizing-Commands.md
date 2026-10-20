@@ -64,46 +64,46 @@ The `/extensions` command is your interface to the extension system. It has seve
 
 ### Discovery
 
-**`/extensions list`** — Show all extension points across all commands.
+**`/extensions --list`** — Show all extension points across all commands.
 
 ```
-/extensions list
+/extensions --list
 ```
 
 Output shows each command, its extension points, and whether they have content.
 
-**`/extensions list --command prepare-release`** — Show extension points for a specific command.
+**`/extensions --list --command prepare-release`** — Show extension points for a specific command.
 
 ```
-/extensions list --command prepare-release
+/extensions --list --command prepare-release
 ```
 
 This is the starting point when you want to customize a command: see what hooks are available, where they fire in the workflow, and what they're for.
 
 ### Inspection
 
-**`/extensions view prepare-release:post-validation`** — Show the current content of a specific extension point.
+**`/extensions --view prepare-release:post-validation`** — Show the current content of a specific extension point.
 
 ```
-/extensions view prepare-release:post-validation
+/extensions --view prepare-release:post-validation
 ```
 
 Shows what's currently in that extension block — either empty or your custom content.
 
-**`/extensions matrix`** — Show a cross-command comparison of all extension points.
+**`/extensions --matrix`** — Show a cross-command comparison of all extension points.
 
 ```
-/extensions matrix
+/extensions --matrix
 ```
 
 This produces a grid showing which commands have which extension point types (pre-create, post-create, pre-validation, etc.), making it easy to see patterns across the system.
 
 ### Editing
 
-**`/extensions edit prepare-release:post-validation`** — Add or modify content in an extension point.
+**`/extensions --edit prepare-release:post-validation`** — Add or modify content in an extension point.
 
 ```
-/extensions edit prepare-release:post-validation
+/extensions --edit prepare-release:post-validation
 ```
 
 The assistant shows you the current content (or notes it's empty), asks what you want to add or change in natural language, then implements the edit directly. You describe your intent — "add a coverage check that fails if below 80%" — and the assistant writes the appropriate markdown into the extension block.
@@ -112,20 +112,20 @@ This is the primary way to customize commands. You don't edit the markdown file 
 
 ### Validation
 
-**`/extensions validate`** — Check that all extension blocks are properly formatted.
+**`/extensions --validate`** — Check that all extension blocks are properly formatted.
 
 ```
-/extensions validate
+/extensions --validate
 ```
 
 Scans every command file for malformed markers (missing END tag, mismatched names, broken nesting). Run this after manual edits or hub updates to catch formatting issues.
 
 ### Recipes
 
-**`/extensions recipes`** — Show pre-built patterns for common extension needs.
+**`/extensions --recipes`** — Show pre-built patterns for common extension needs.
 
 ```
-/extensions recipes
+/extensions --recipes
 ```
 
 Lists all recipe categories. Currently available:
@@ -139,10 +139,10 @@ Lists all recipe categories. Currently available:
 | **security** | Dependency audit | Check for known vulnerabilities |
 | **testing** | Node.js, Python, Go, Rust, Java, Ruby, PHP, .NET, test plan generator | Run tests for your language |
 
-**`/extensions recipes testing`** — Show recipes for a specific category.
+**`/extensions --recipes testing`** — Show recipes for a specific category.
 
 ```
-/extensions recipes testing
+/extensions --recipes testing
 ```
 
 Shows the template content, prerequisites, and which `command:point` combinations each recipe applies to.
@@ -170,7 +170,7 @@ The naming is deliberate: if you see `pre-validation` on `/prepare-release`, you
 
 ## Which Commands Are Extensible?
 
-Eighteen commands support extensions, with 77 extension points between them. The authoritative list is the registry (`/extensions list`); this map reflects it as of 0.101.0:
+Eighteen commands support extensions, with 77 extension points between them. The authoritative list is the registry (`/extensions --list`); this map reflects it as of 0.101.0:
 
 ### High-Extension Commands (8+ points)
 
@@ -220,7 +220,7 @@ These are the commands where you'll spend most of your extension effort. Release
 You want `npm test` to run before the validation phase of `/prepare-release`. If tests fail, the release should stop.
 
 ```
-/extensions edit prepare-release:pre-validation
+/extensions --edit prepare-release:pre-validation
 ```
 
 Tell the assistant: "Add a step that runs npm test and stops if tests fail."
@@ -246,7 +246,7 @@ Every future `/prepare-release` now runs your tests at the right moment.
 You want releases to fail if test coverage drops below 80%.
 
 ```
-/extensions edit prepare-release:post-validation
+/extensions --edit prepare-release:post-validation
 ```
 
 Tell the assistant: "Add a coverage gate. Run nyc to check coverage. Lines and functions must be at least 80%, branches at least 70%. If below threshold, stop the release."
@@ -254,7 +254,7 @@ Tell the assistant: "Add a coverage gate. Run nyc to check coverage. Lines and f
 Or use a recipe:
 
 ```
-/extensions recipes coverage
+/extensions --recipes coverage
 ```
 
 The `coverage-gate` recipe provides a ready-made template for this exact scenario.
@@ -264,7 +264,7 @@ The `coverage-gate` recipe provides a ready-made template for this exact scenari
 You want a Slack message when a release is tagged.
 
 ```
-/extensions edit prepare-release:post-tag
+/extensions --edit prepare-release:post-tag
 ```
 
 Tell the assistant: "Post a message to Slack with the version number. Use the SLACK_WEBHOOK_URL environment variable."
@@ -274,7 +274,7 @@ Tell the assistant: "Post a message to Slack with the version number. Use the SL
 You want `/review-proposal` to check for accessibility considerations on every proposal.
 
 ```
-/extensions edit review-proposal:criteria-customize
+/extensions --edit review-proposal:criteria-customize
 ```
 
 Tell the assistant: "Add a criterion that checks whether the proposal considers accessibility impact. Ask whether WCAG compliance was addressed."
@@ -286,7 +286,7 @@ The same point exists on `/review-prd`. It does **not** exist on `/review-issue`
 You want to run your linter before every `/work` cycle to start from a clean baseline.
 
 ```
-/extensions edit work:pre-work
+/extensions --edit work:pre-work
 ```
 
 Tell the assistant: "Run ESLint with --fix before starting work. Report any unfixable issues but don't block."
@@ -317,13 +317,13 @@ You can. The command files are markdown in `.claude/commands/`. Nothing prevents
 
 1. **Survivability.** Content inside extension blocks survives hub updates. Content you add elsewhere in the command file will be overwritten on the next update.
 
-2. **Discoverability.** `/extensions list` shows all customization points and their current state. Direct edits are invisible to the tooling.
+2. **Discoverability.** `/extensions --list` shows all customization points and their current state. Direct edits are invisible to the tooling.
 
-3. **Validation.** `/extensions validate` checks that your blocks are properly formatted. Direct edits can break the marker syntax.
+3. **Validation.** `/extensions --validate` checks that your blocks are properly formatted. Direct edits can break the marker syntax.
 
 4. **Todo integration.** Non-empty extension blocks automatically become todo items during command execution. Direct edits to the workflow don't get this treatment.
 
-5. **Intent-based editing.** `/extensions edit` lets you describe what you want in natural language. The assistant handles the markdown formatting, preserves surrounding content, and confirms the change.
+5. **Intent-based editing.** `/extensions --edit` lets you describe what you want in natural language. The assistant handles the markdown formatting, preserves surrounding content, and confirms the change.
 
 ---
 
@@ -347,14 +347,14 @@ In your project's command files, you won't see these markers — they've already
 
 | Task | Command |
 |---|---|
-| See all extension points | `/extensions list` |
-| See points for one command | `/extensions list --command work` |
-| View an extension's content | `/extensions view prepare-release:pre-tag` |
-| Add or edit an extension | `/extensions edit prepare-release:pre-tag` |
-| Check formatting | `/extensions validate` |
-| See the comparison grid | `/extensions matrix` |
-| Browse pre-built patterns | `/extensions recipes` |
-| Browse one category | `/extensions recipes testing` |
+| See all extension points | `/extensions --list` |
+| See points for one command | `/extensions --list --command work` |
+| View an extension's content | `/extensions --view prepare-release:pre-tag` |
+| Add or edit an extension | `/extensions --edit prepare-release:pre-tag` |
+| Check formatting | `/extensions --validate` |
+| See the comparison grid | `/extensions --matrix` |
+| Browse pre-built patterns | `/extensions --recipes` |
+| Browse one category | `/extensions --recipes testing` |
 
 ---
 

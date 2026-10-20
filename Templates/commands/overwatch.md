@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Dedicate a session to observing cross-session IDPF activity.
-argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show"
+argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -18,6 +18,10 @@ Observes cross-session activity: consumes the lifecycle announcements peers broa
 | `--on <keys>` | No | **Config, not a run.** Set each key (comma-separated or `all`) `true`, write `.claude/.overwatch/config.json`, stop. Keys from `overwatch-config.schema.json`. |
 | `--off <keys>` | No | **Config, not a run.** As `--on`, setting `false`. `--off autoCreate` is how to run without auto-create when the file has it on — no per-run force-off flag. |
 | `--show` | No | **Config, not a run.** Print every key's resolved value and source (`file`/`default`) plus the marker state. Writes nothing. |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js overwatch`, report its output, and STOP.
+
 **A config invocation never starts the monitor (#2957).** `--on`/`--off`/`--show` write or report, then STOP — no presence marker, no loop (else `--show` takes the monitor slot and `--on` needs `--force` on win32). Rejected by name, writing nothing: `--show` with `--on`/`--off`; any config flag with `--auto-create`/`--force`; an unknown key; a key in both lists.
 ## What This Command Can and Cannot See
 **This section is the contract: a monitor implying wider coverage than it has is worse than none, because a reader stops looking.**

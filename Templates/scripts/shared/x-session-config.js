@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -39,6 +39,7 @@ const os = require('os');
 const path = require('path');
 
 const cfgHelper = require('./lib/framework-config.js');
+const { helpEnvelope } = require('./lib/command-args.js');
 const {
   resolveCrossSessionConfig,
   readCrossSessionConfig,
@@ -188,57 +189,6 @@ function parseArgs(argv) {
   }
 
   return out;
-}
-
-/**
- * Usage text for `--help`.
- *
- * Built from LEVERS rather than hand-listed, so a lever added to the constant
- * cannot go undocumented — a help text that omits a real flag is worse than
- * none, since it reads as authoritative.
- */
-function helpText() {
-  return [
-    '/x-session-config — configure cross-session peer messaging for this project.',
-    '',
-    'Usage:',
-    '  x-session-config                    write the resolved object, then show it',
-    '  x-session-config --off <levers>     turn levers off, then write and show',
-    '  x-session-config --on  <levers>     turn levers on, then write and show',
-    '  x-session-config --quiet            alias for --off noticeNarration',
-    '  x-session-config --loud             alias for --on  noticeNarration',
-    '  x-session-config --show             show the resolved state, WRITE NOTHING',
-    '  x-session-config --help             this text, WRITE NOTHING',
-    '',
-    `Levers: ${LEVERS.join(', ')}`,
-    '  Comma-separated, or the literal `all`. The last three address',
-    '  groups.work / groups.push / groups.review.',
-    '',
-    '  noticeNarration is the one RECEIVE-side lever: it sets how verbosely',
-    '  this session narrates an announcement it RECEIVES. Quiet keeps the',
-    '  one-line acknowledgment and drops the commentary around it.',
-    '',
-    '  overlapNotices governs whether /overwatch messages the sessions',
-    '  whose in-flight issues declare the same files. Off is report-only.',
-    '',
-    '  broadcast is a routing mode, not an off switch. Off sends announcements',
-    '  to a live /overwatch only, falling back to every peer when there is',
-    '  no live, addressable monitor.',
-    '',
-    'Notes:',
-    '  Every invocation except --show and --help writes the complete',
-    '  ten-lever object, a bare invocation included, so the first run in an',
-    '  unconfigured project produces a diff and is idempotent thereafter.',
-    '  --show cannot be combined with --on or --off.',
-    '  An absent object resolves to fully enabled at every level.',
-    '',
-    'Examples:',
-    '  x-session-config --off push',
-    '  x-session-config --off work,review',
-    '  x-session-config --on all',
-    '  x-session-config --quiet',
-    '  x-session-config --off broadcast    targeted routing to a live overwatch',
-  ].join('\n');
 }
 
 /**
@@ -541,13 +491,13 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
   const parsed = parseArgs(argv);
   if (!parsed.ok) return fail(parsed.errors);
 
-  // Usage is not project state. Refusing to explain the flags because the
-  // project is unconfigured would withhold the text exactly when it is most
-  // needed, so this returns before the config is even looked for.
+  // --help is not project state. It points at the docs page (#3030) and
+  // returns before the config is even looked for, so an unconfigured project
+  // still gets the pointer and nothing is written.
   if (parsed.mode === 'help') {
     return {
       ok: true, changed: [], object: null, summary: '', implications: [],
-      errors: [], help: helpText(),
+      errors: [], ...helpEnvelope('x-session-config'),
     };
   }
 
@@ -706,16 +656,15 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
 }
 
 module.exports = {
-  LEVERS, GROUP_LEVERS, parseArgs, applyLevers, toObject, helpText, run,
+  LEVERS, GROUP_LEVERS, parseArgs, applyLevers, toObject, run,
   memoryPaths, memoryPresent, writeMemoryArtifact, removeMemoryArtifact,
   effectiveRouting, formatRouting,
 };
 
 if (require.main === module) {
   const envelope = run({ cwd: process.cwd(), argv: process.argv.slice(2) });
-  // --help prints the text itself. Wrapping usage in a JSON envelope would
-  // make the one mode written for a human to read the hardest one to read.
-  if (envelope.help) process.stdout.write(envelope.help + '\n');
-  else process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
+  // --help no longer prints usage (#3030): the setting names moved to the docs
+  // page, and the envelope names the helper that opens it.
+  process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
   process.exit(envelope.ok ? 0 : 1);
 }

@@ -84,8 +84,20 @@ The assistant will use `/bug` or `/enhancement` to create a properly formatted, 
 | Cascade failure across files | "Multiple files are wrong. Show me the git diff and let's figure out what to revert." |
 | Code done but workflow incomplete | "work #N" — the /work command picks up where it left off and completes the lifecycle. |
 | Branch has diverged from its upstream (startup, `/work` or `/done` says so) | `/sync-branch` — it shows what each side committed before asking, then rebases behind one question. It never forces, merges or pushes. |
+| A `--concurrent` run halted — a merge conflict, a failed worktree, a story that failed its review gate twice | Read the halt report; the worktrees are kept. "Show me the conflict in `.tmp-wt-<N>` and resolve it", then `/work <epic> --nonstop --concurrent` to resume. See below. |
 
 The pattern is always the same: **stop, ask for explanation, then either fix or file**.
+
+### When a Concurrent Run Halts
+
+A `/work --concurrent` run never leaves a half-merged branch. When it cannot continue — a residual conflict when a story merges back (its merge driver and regeneration have already had their say), a worktree the framework could not create, a story whose merge-back review failed twice, or a story that depends on a `qa-required` issue nobody has closed — it halts with a report that names the failed story, its kept worktree under `.tmp-wt-<N>`, the conflicting files and lines, the stories that were never merged and the ones that never started. Nothing after the halt is merged, and nothing is deleted.
+
+What to do:
+
+1. `git worktree list` shows every kept worktree; the halt report says which one failed and why.
+2. Fix it where it is: "Resolve the conflict in `.tmp-wt-<N>` and commit as `Refs #<N>`", or "Apply the reviewer's findings in `.tmp-wt-<N>`". The branch `wt/<N>` is the story's work; the worktree is just where it is checked out.
+3. Resume with `/work <epic> --nonstop --concurrent` (or without `--nonstop` to get a STOP after each group). Stories already `in_review` are skipped, a story whose fix cycle was interrupted is re-read from its worktree and re-reviewed once, and the plan is rebuilt from the same inputs.
+4. If you would rather abandon a story's branch, say so: the assistant tears the worktree down through the framework's own teardown, which unlinks before removing and refuses anything that is not a framework worktree. Never `rm -rf` a worktree — a hub link inside it would be followed.
 
 ---
 

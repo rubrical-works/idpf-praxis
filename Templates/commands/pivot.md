@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Review stories for a change of direction, using the IDPF framework.
-argument-hint: "[epic-number|prd-name]"
+argument-hint: "[epic-number|prd-name] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -16,6 +16,9 @@ Review and triage stories when project direction changes: keep, archive, or clos
 |----------|-------------|
 | `[epic-number]` | Epic issue number (e.g., `42` or `#42`) |
 | `[prd-name]` | PRD name to pivot all related stories |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js pivot`, report its output, and STOP.
 
 ## Usage
 

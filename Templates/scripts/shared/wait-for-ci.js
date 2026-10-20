@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
@@ -185,6 +185,39 @@ function assertShellSafe(value, label) {
 }
 
 /**
+ * Expand an abbreviated `--commit`/`--sha` to the full SHA (#3165).
+ *
+ * `gh run list --commit` matches only a full SHA, and matchesFilter() compares
+ * against GitHub's 40-character headSha, so a short value matched nothing and
+ * the script exited NO_RUNS — which the rule reads as "continue". A 40-hex
+ * value is returned untouched with no lookup, so a SHA absent from the local
+ * object store keeps working; a shorter hex value goes through git; anything
+ * else, or a value git cannot resolve, throws.
+ *
+ * @param {string} value
+ * @param {object} [deps] - `execSync` override for tests
+ * @returns {string} the full 40-character SHA
+ * @throws {Error} naming the value when it cannot be resolved
+ */
+function resolveCommit(value, deps = {}) {
+    if (/^[0-9a-f]{40}$/i.test(value)) return value;
+    if (!/^[0-9a-f]{4,39}$/i.test(value)) {
+        throw new Error(`--commit/--sha value "${value}" is not a commit SHA.`);
+    }
+    const exec = deps.execSync || execSync;
+    let out;
+    try {
+        out = String(exec(`git rev-parse --verify "${value}^{commit}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim();
+    } catch {
+        throw new Error(`--commit/--sha value "${value}" does not resolve to a commit in this repository.`);
+    }
+    if (!/^[0-9a-f]{40}$/i.test(out)) {
+        throw new Error(`--commit/--sha value "${value}" does not resolve to a commit in this repository.`);
+    }
+    return out;
+}
+
+/**
  * Build the `gh run list` command for the requested scope. headBranch/headSha
  * are requested so selectRun() can re-check what gh returned rather than
  * trusting the filter blindly.
@@ -339,6 +372,19 @@ async function run(argv = [], deps = {}) {
             data: { status: 'bad_arguments' }
         }));
         return EXIT_CODES.FAILURE;
+    }
+
+    if (parsed.commit) {
+        try {
+            parsed.commit = resolveCommit(parsed.commit, deps);
+        } catch (e) {
+            console.log(JSON.stringify({
+                success: false,
+                message: e.message,
+                data: { status: 'bad_arguments' }
+            }));
+            return EXIT_CODES.FAILURE;
+        }
     }
 
     if (parsed.clamped) {
@@ -536,6 +582,7 @@ module.exports = {
     run,
     schema,
     parseArgs,
+    resolveCommit,
     buildRunListCommand,
     selectRun,
     matchesFilter,

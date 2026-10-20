@@ -265,6 +265,8 @@ Expected framework utilization: ~60-70% overall, with ~85-90% within each servic
 
 **Looking ahead:** A conceptual [IDPF-Agile-MS module](Concept-IDPF-Agile-MS.md) describes how contract-first TDD, service-aware story decomposition, and per-service release tagging could raise monorepo fit to ~90-95%.
 
+**Concurrent runs (`/work --concurrent`):** benefits strongly. Stories scoped to different services declare disjoint modules by construction, so most of an epic forms concurrent groups; what stays sequential is anything touching a shared contract or a generated client, which belongs in the `concurrency` block (Phase 1) before it can be reconciled rather than serialized.
+
 ---
 
 **End of Assessment**

@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Reset a bug, enhancement, PRD, proposal, or epic issue to a clean slate, using the IDPF framework.
-argument-hint: "#issue [--dry-run]"
+argument-hint: "#issue [--dry-run] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -17,6 +17,10 @@ Reset a bug/enhancement/PRD/proposal/epic issue to clean slate. Removes reviews,
 |----------|-------------|
 | `#issue` | Issue number (e.g., `#42`) |
 | `--dry-run` | Preview without executing |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js issue-reset`, report its output, and STOP.
+
 ---
 ## Workflow
 ### Step 1: Validate Type

@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Read or edit this project's IDPF active domains.
-argument-hint: "--add {domain} | --remove {domain} | --list"
+argument-hint: "--add {domain} | --remove {domain} | --list [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -16,6 +16,10 @@ Read or change `framework-config.json` `activeDomains` — the domains a review 
 | `--add {domain}` | Add one domain id to `activeDomains` |
 | `--remove {domain}` | Remove one domain id from `activeDomains` |
 | `--list` | Report effective domain state. Alias: `--show` |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js domain-config`, report its output, and STOP.
+
 Exactly one mode per invocation. No mode, or more than one → report `Usage: /domain-config --add {domain} | --remove {domain} | --list` and STOP. Two modes is an error, not a sequence — do not guess an order.
 **REQUIRED:** `TaskCreate` one task per numbered step. No routing decision → bulk-create upfront, **in one message as parallel tool calls** (`07-task-creation-timing.md` § Emission). Post-compaction: re-read this spec, `TaskList`, resume from the first incomplete task.
 ## Workflow

@@ -1,5 +1,5 @@
 # Cross-Session Messaging
-**Version:** v0.108.0
+**Version:** v0.109.0
 **Source:** Reference/Cross-Session-Messaging.md
 **Purpose:** Forensics and provenance for cross-session messaging: peer discovery, reachability and liveness, what the session registry contains, and why each lever behaves as it does.
 ## How This Relates to Rule 03

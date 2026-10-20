@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Plan concurrent workstreams for parallel epic development, using the IDPF framework.
-argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--cancel]"
+argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--profile [--min-pairs N]] [--cancel] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -26,6 +26,11 @@ Plan concurrent workstreams for parallel development across multiple epics. Anal
 | `--prefix <prefix>` | No | Branch prefix for workstream branches (default: `workstream/`) |
 | `--cancel` | No | Cancel active workstream plan and clean up metadata |
 | `--force` | No | Force cancel even when commits exist (requires `--cancel`) |
+| `--profile` | No | Also run the collision profiler over git history (Step 4b), reported beside the conflict analysis. Advisory; writes nothing |
+| `--min-pairs N` | No | Passed through to the profiler: issue-pair count at which a file counts as an accumulator (default 2; requires `--profile`) |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js plan-workstreams`, report its output, and STOP.
 
 **Notes:**
 - `--cancel` does not require epic numbers
@@ -106,6 +111,14 @@ Use `$MAPPINGS_FILE` at Step 3 and `$PLAN_FILE` at Step 5. **Keep the `.tmp-` pr
 
 Present analysis to user.
 
+### Step 4b: Collision Profile (`--profile`)
+**Trigger:** `--profile` passed; otherwise skip with a one-line note.
+Step 4 predicts overlap from the epics' *declared* modules; the profile measures it from *history* — how often two issues already touched the same file — so a plan can be checked against what the repository has done. **Delegate entirely to the shared helper; nothing here re-implements the profiling:**
+```bash
+node .claude/scripts/shared/collision-profiler.js --json [--min-pairs N]
+```
+Report from the envelope: collision rate (`collidingPairs` of `pairs`), files ranked by pair count, accumulators at or above `--min-pairs`, residual rate without them, and the **candidate `concurrency` block** verbatim, for review. An `empty` profile is reported with its `message` (no issue references, shallow clone, single issue), never as a 0% rate.
+**This step never writes configuration.** The candidate block is reported only; copying any of it into `framework-config.json` is the user's own edit afterwards, by hand or via `/charter`. The profiler is advisory and writes nothing; this step adds no write.
 ### Step 5: Workstream Grouping
 
 1. **Greedy partitioning:** `groupWorkstreams(conflictMatrix, epicData, { streams })`

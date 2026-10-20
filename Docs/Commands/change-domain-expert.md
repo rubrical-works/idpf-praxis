@@ -7,6 +7,7 @@ Change the active domain specialist for this project and load it into the curren
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `[specialist-name]` | No | Specialist name (e.g., `Security-Engineer`) or list number. Presents a numbered menu if omitted. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

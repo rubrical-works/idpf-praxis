@@ -1,8 +1,8 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 allowed-tools: Bash, AskUserQuestion
 description: Reconcile the current branch with its upstream after analyzing the divergence, using the IDPF framework.
-argument-hint: ""
+argument-hint: "[--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -19,6 +19,10 @@ Reconcile the current branch with its upstream on demand. The startup hook repor
 | Argument | Required | Description |
 |----------|----------|-------------|
 | — | | No arguments. Always the current branch and its configured upstream; another branch is `/switch-branch` first |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js sync-branch`, report its output, and STOP.
+
 ---
 ## Execution Instructions
 **Task creation.** No routing decision: create the step tasks upfront, **in one message as parallel tool calls** (`07-task-creation-timing.md` § Emission). Track `in_progress` → `completed`; never mark complete what was not executed. Prune them at the Step 4 STOP boundary.

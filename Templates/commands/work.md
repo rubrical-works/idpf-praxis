@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Start working on issues with validation and automatic task extraction, using the IDPF framework.
-argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] | all in <status>"
+argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--concurrent [--agents N] [--no-review]] | --status <status> [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -20,10 +20,18 @@ copyright: "Rubrical Works (c) 2026"
 |----------|----------|-------------|
 | `#issue` | Yes (one of) | Single issue number (`#42` or `42`) |
 | `#issue #issue...` | | Multiple issue numbers (`#42 #43 #44`) |
-| `all in <status>` | | All issues in given status (`all in backlog`) |
+| `--status <status>` | | All issues in given status (`--status backlog`) |
 | `--assign` | No | Assign issue(s) to current branch before starting work |
 | `--nonstop` | No | Epic/branch tracker: skip per-sub-issue STOP, process all to `in_review` continuously |
 | `--wait` | No | Wait for pending CI to pass before starting work |
+| `--concurrent` | No | Epic/branch tracker: run file-disjoint sub-issues at once in framework-owned worktrees, grouped by the `**Depends on:**` graph, each merged back through the Merge-Back Review Gate (see Concurrent Mode) |
+| `--agents N` | No | Cap on agents of any kind at once — implementers, reviewers and fix cycles share it — and on unit-test concurrency (default 3; requires `--concurrent`) |
+| `--no-review` | No | Skip the gate's Tier 3 independent reviewer; Tiers 1–2 still run and the skip is reported (requires `--concurrent`) |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js work`, report its output, and STOP.
+
+**Retired forms:** `all in <status>` is no longer accepted — reject it with a message naming `--status`, and do nothing else; `work-preamble.js` refuses it the same way. The `work all in <status>` trigger phrase is unchanged and routes to `/work --status <status>`.
 
 ---
 ## Execution Logic
@@ -58,6 +66,15 @@ After the preamble and before the first commit, `/work` runs `branch-sync-check.
 - **Ahead, up-to-date, no upstream** → no action.
 
 Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. Fast-forward and rebase both run through `.claude/scripts/shared/lib/rebase-guard.js`, the guard `/done` Step 2 and `/sync-branch` share (#3014).
+
+---
+## Concurrent Mode (#3117)
+`--concurrent` on an epic/branch tracker runs file-disjoint sub-issues at once. The preamble's `concurrencyPlan` groups members with disjoint declared scope and met `**Depends on:**` edges, at most `--agents N` per group in dependency-layer order; undeclared scope, an overlap, an always-protected path or an unmet dependency falls to a **sequential tail** worked as standard `/work`. The parent owns every gate, announcement, merge-back and status move; a member agent owns only Step 3 in its worktree (`concurrent-orchestration.js`). Before merge-back the **Merge-Back Review Gate** (`merge-back-gate.js`) runs Tiers 1–3; `--no-review` skips Tier 3, reported. One fix cycle per fail; a second fail halts, worktree kept.
+| Mode | STOP cadence | Reporting |
+|---|---|---|
+| `--concurrent` | **One STOP per group** after merge-back, every member `in_review`; tail STOPs per member | Group report, then per member |
+| `--nonstop --concurrent` | **No STOP** between groups or in the tail | Per member as it reaches `in_review`; nonstop summary last, repeating any leftover-worktree report |
+**Fallback:** a plan with **zero groups** runs exactly as sequential and says why. **Default unchanged:** without `--concurrent` nothing here applies; `--agents` or `--no-review` alone is reported as ignored. Rules: `.claude/rules/08-work-execution.md` Steps 2c, 3, 6a; `Reference/work-execution-conditional.md` §§ 2c, 6a.
 
 ---
 ## Review-State Gate

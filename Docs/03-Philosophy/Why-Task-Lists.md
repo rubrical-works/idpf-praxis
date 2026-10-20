@@ -130,6 +130,8 @@ Each parent is marked `in_progress` when its turn begins and `completed` after i
 
 The subtasks are created when Step 3 begins and cleared before the next sub-issue's begin. The hierarchy is what makes compaction recovery self-describing: `TaskList` alone shows which sub-issue is active and which criteria remain, without re-querying GitHub.
 
+**Under `--concurrent` the same list lives in the parent, one entry per member with its group number** (`Sub-issue #101: … (group 1)`, `Sub-issue #104: … (tail)`). It cannot live anywhere else: subagents have no Task tools, so a member agent working in its worktree has no step machine of its own and no way to record where it is. The parent's entries are the only record that survives compaction of which members are in flight, which group they belong to and which have come back through the merge-back gate.
+
 ### 6. Integrates Extension Points
 
 Extensible IDPF commands support user-customizable extension blocks:

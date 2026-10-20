@@ -11,6 +11,7 @@ Perform turn-based collaborative scenario path discovery on a proposal or enhanc
 | `--dry-run` | No | Generate all candidates as a non-interactive summary; no file changes |
 | `--categories IDs` | No | Comma-separated category IDs for selective re-run (e.g., `nominal,edge`) |
 | `--from-code [path]` | No | Delegate to `code-path-discovery` skill for code-based discovery |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

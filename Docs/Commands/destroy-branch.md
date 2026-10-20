@@ -8,6 +8,7 @@ Safely abandon and permanently delete a branch — destructive operation requiri
 |----------|----------|-------------|
 | `[branch-name]` | No | Branch to destroy (defaults to current branch) |
 | `--force` | No | Skip confirmation prompt (use with caution) |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

@@ -90,9 +90,9 @@ Run ESLint before starting work
 Each extensible command has named extension points (like `pre-work`, `post-commit`, `pre-release-validation`). You can add custom steps at each point. The framework treats non-empty extension blocks as todo items during command execution.
 
 The `/extensions` command manages these:
-- `/extensions list` — Show all extension points across commands
-- `/extensions edit` — Modify an extension block in a command
-- `/extensions recipes` — Pre-built extension templates for common needs
+- `/extensions --list` — Show all extension points across commands
+- `/extensions --edit` — Modify an extension block in a command
+- `/extensions --recipes` — Pre-built extension templates for common needs
 
 ---
 
@@ -156,6 +156,16 @@ After installation, your project root contains:
 | `.claude/skills/` | Copied per skill (names in `projectSkills`) | No (`.gitignore`) |
 | `run_claude.cmd` / `.sh` | Copied from hub | Optional |
 | `runp_claude.cmd` / `.sh` | Copied from hub | Optional |
+
+---
+
+## Worktrees and the `WorktreeCreate` Hook
+
+A `/work --concurrent` run creates a git worktree per member under the project root (`.tmp-wt-<name>`, branch `wt/<name>`). A plain `git worktree add` would give that checkout none of the hub links above — `.claude/rules/`, `hooks/`, `scripts/shared/`, `metadata/` are gitignored links, so they do not exist in a fresh worktree and every framework script would fail to resolve.
+
+The framework replaces Claude Code's default worktree creation with its own `WorktreeCreate` hook (`.claude/hooks/worktree-create-hook.js`). On each creation it: adds the worktree; **recreates every hub link** inside it by reading the parent checkout's links and re-pointing each at the same target (junctions on Windows, symlinks elsewhere), never copying the hub; registers the `json-merge` driver in the repository's local git config so `.gitattributes` accumulator entries mean something; and hands the path back. Teardown reverses it safely — unlink every link first, verify, then `git worktree remove` without `--force` — because removing through a junction deletes the hub it points at.
+
+**Dependencies on Praxis Hub Manager.** In this repository the hook is installed by hand (`.claude/settings.json`). In a deployed project two Praxis Hub Manager items must ship before concurrent runs work: **px-manager#1414** (hook commands written in the `${CLAUDE_PROJECT_DIR}` form, so a hook invoked inside a worktree resolves against the project rather than the worktree) and **px-manager#1415** (installing the `WorktreeCreate` entry at project setup and upgrade). Until both land, worktree creation, link recreation and teardown work in the dev repository only; see [Claude Code Dependencies](Claude-Code-Dependencies.md) for the tracked status.
 
 ---
 

@@ -53,7 +53,7 @@
         },
         "canonicalSpec": {
           "type": "string",
-          "description": "Project-relative path to the screen spec JSON (e.g., 'Mockups/Home/Screen.json'). Must resolve inside project root; path-traversal inputs are rejected by the helper per NFR-3.",
+          "description": "Project-relative path to the artifact that stands as this screen's spec. The pipeline records two kinds: a spec JSON per screen-spec-schema.json (e.g., 'Mockups/Catalog/Specs/Home.json', which bulk discovery seeds as a placeholder) or the Markdown spec / HTML mockup that /catalog-screens and /mockups write (e.g., 'Mockups/Core/Specs/Home.md', 'Mockups/Core/Screens/Home-mockup.html'). validate-screen-catalog.js invariant 1 checks only that the file exists. Must resolve inside project root; path-traversal inputs are rejected by the helper per NFR-3.",
           "pattern": "^(?!.*\\.\\.)[^\\\\:*?\"<>|]+$"
         },
         "source": {

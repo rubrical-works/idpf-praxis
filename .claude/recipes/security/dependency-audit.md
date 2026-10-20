@@ -8,7 +8,7 @@ appliesTo:
   - prepare-beta:pre-validation
 prerequisites:
   - Audit tool for your language (npm audit, nancy, pip-audit, etc.)
-  - "CI integration: /ci add dependency-audit"
+  - "CI integration: /ci --add dependency-audit"
 technology:
   - node
 ---

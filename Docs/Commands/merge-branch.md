@@ -8,6 +8,7 @@ Merge the current feature branch to main with gated validation checks.
 |----------|----------|-------------|
 | `--skip-gates` | No | Emergency bypass — skip all policy gate checks. Does **not** skip the mergeability gate |
 | `--dry-run` | No | Preview actions without executing |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

@@ -131,6 +131,8 @@ For a 3-tier REST API application with a React frontend, Express backend, and Po
 
 N-tier application development is IDPF's home turf. The framework's PRD-to-story decomposition pipeline naturally maps to the tier decomposition pattern, the domain specialists cover every architectural layer, and the TDD workflow addresses the complexity that makes n-tier applications hard to build well. Expected framework utilization is ~85-90%.
 
+**Concurrent runs (`/work --concurrent`):** benefits when stories are cut per tier and per feature — a data-access story and a presentation story for different features declare disjoint modules. Stories that each add to the same service layer or the same DI registration file do not until that file is declared under `concurrency` (Phase 1); until then they run in the sequential tail, which is the default behavior and costs nothing.
+
 ---
 
 **End of Assessment**

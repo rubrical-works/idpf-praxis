@@ -9,6 +9,7 @@ Generate a session statistics report with development velocity metrics.
 | `--since YYYY-MM-DD` | No | Start date (default: today at midnight) |
 | `--until YYYY-MM-DD` | No | End date (default: now) |
 | `--daily-log [prose]` | No | Write a management-facing daily work log instead of the stats tables. Optional prose after the flag picks the days (e.g. `for every weekday last week`); none means today. Current repository only |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

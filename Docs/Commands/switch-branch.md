@@ -7,6 +7,7 @@ Switch the active branch context for the current session.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `branch-name` | No | Name of the branch to switch to; omit to list available branches |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

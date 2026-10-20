@@ -1,50 +1,58 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Discover, view, and manage extension points in IDPF release commands.
-argument-hint: "list|view|edit|validate|summary|recipes [args]"
+argument-hint: "--list|--view|--edit|--validate|--summary|--recipes [args] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
 # /extensions
 Unified management of extension points across release commands.
-## Subcommands
-| Subcommand | Description |
-|------------|-------------|
-| `list` | All extension points |
-| `list --command X` | Points for specific command |
-| `list --status` | Points with X/. filled/empty markers |
-| `list --status --command X` | One command's points with markers |
-| `view X:Y` | Show content of point Y in command X |
-| `edit X:Y` | Edit point Y in command X |
-| `validate` | Check all blocks properly formatted |
-| `summary` | Per-command filled/empty/total counts |
-| `matrix` | Alias for `summary` |
-| `recipes` | Common patterns for points |
-| `recipes <category>` | Category recipes (ci, coverage, etc.) |
-| `recipes --stack <tech>` | Filter by stack (e.g., `--stack node`). Auto-detects if omitted. |
+## Arguments
+| Argument | Description |
+|----------|-------------|
+| *(none)* | Print usage |
+| `--list` | All extension points |
+| `--list --command X` | Points for specific command |
+| `--list --status` | Points with X/. filled/empty markers |
+| `--list --status --command X` | One command's points with markers |
+| `--view X:Y` | Show content of point Y in command X |
+| `--edit X:Y` | Edit point Y in command X |
+| `--validate` | Check all blocks properly formatted |
+| `--summary` | Per-command filled/empty/total counts |
+| `--matrix` | Alias for `--summary` |
+| `--recipes` | Common patterns for points |
+| `--recipes <category>` | Category recipes (ci, coverage, etc.) |
+| `--recipes --stack <tech>` | Filter by stack (e.g., `--stack node`). Auto-detects if omitted. |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js extensions`, report its output, and STOP.
+
+Running `/extensions` with no argument still prints usage; `--help` opens the docs page instead.
+
+**Retired forms:** `list`, `view`, `edit`, `validate`, `summary`, `matrix` and `recipes` typed bare are no longer accepted — reject them with a message naming `--list`, `--view`, `--edit`, `--validate`, `--summary`, `--matrix` or `--recipes`, and do nothing else. `extensions-cli.js` refuses them the same way (exit 2).
 ---
 ## Target Commands
 Listed in `.claude/metadata/extension-points.json` (registry).
 **Registry:** `.claude/metadata/extension-points.json`
-**Command files:** `.claude/commands/*.md` (for `edit`)
+**Command files:** `.claude/commands/*.md` (for `--edit`)
 ### Fallback: Registry Missing
 If registry missing/unparseable:
 1. **Warn:** `Extension registry not found. Scanning command files directly (slower).`
 2. **Fallback:** Scan `.claude/commands/*.md` for EXTENSIBLE + USER-EXTENSION-START/END blocks
 ---
 ## Script Delegation
-Read-only subcommands (`list`, `view`, `validate`, `summary`, `matrix`, `recipes`, `help`) handled by extensions-cli.js. Run and display stdout directly.
+Read-only subcommands (`--list`, `--view`, `--validate`, `--summary`, `--matrix`, `--recipes`) and no-argument usage handled by extensions-cli.js. Run and display stdout directly.
 **Script:** `node .claude/scripts/shared/extensions-cli.js`
 ### Delegated Subcommands
 | Subcommand | Script Command |
 |------------|---------------|
-| `list [--command X] [--status]` | `node .claude/scripts/shared/extensions-cli.js list [--command X] [--status]` |
-| `view X:Y` | `node .claude/scripts/shared/extensions-cli.js view X:Y` |
-| `validate` | `node .claude/scripts/shared/extensions-cli.js validate` |
-| `summary` | `node .claude/scripts/shared/extensions-cli.js summary` |
-| `matrix` | `node .claude/scripts/shared/extensions-cli.js matrix` (alias for summary) |
-| `recipes [category] [--stack tech]` | `node .claude/scripts/shared/extensions-cli.js recipes [category] [--stack tech]` |
-| `help` | `node .claude/scripts/shared/extensions-cli.js help` |
+| `--list [--command X] [--status]` | `node .claude/scripts/shared/extensions-cli.js --list [--command X] [--status]` |
+| `--view X:Y` | `node .claude/scripts/shared/extensions-cli.js --view X:Y` |
+| `--validate` | `node .claude/scripts/shared/extensions-cli.js --validate` |
+| `--summary` | `node .claude/scripts/shared/extensions-cli.js --summary` |
+| `--matrix` | `node .claude/scripts/shared/extensions-cli.js --matrix` (alias for summary) |
+| `--recipes [category] [--stack tech]` | `node .claude/scripts/shared/extensions-cli.js --recipes [category] [--stack tech]` |
+| *(none)* | `node .claude/scripts/shared/extensions-cli.js` (usage) |
 ### Dispatch
 1. Parse subcommand/args
 2. Run script command via Bash
@@ -53,9 +61,9 @@ Read-only subcommands (`list`, `view`, `validate`, `summary`, `matrix`, `recipes
 
 **Do NOT** re-interpret or reformat output — display as-is.
 ---
-## Subcommand: edit
-**Usage:** `/extensions edit <command>:<point>`
-**Example:** `/extensions edit prepare-release:post-validation`
+## Subcommand: --edit
+**Usage:** `/extensions --edit <command>:<point>`
+**Example:** `/extensions --edit prepare-release:post-validation`
 Spec-driven (not delegated) — requires interactive input and file modification.
 ### Step 1: Locate Block
 Read `.claude/commands/{command}.md`. Find `USER-EXTENSION-START:{point}` / `END:{point}`. Not found → error, **STOP**.
@@ -102,12 +110,11 @@ Report updated block. Show before/after.
 | `checklist-before-*` | Pre-action items |
 | `checklist-after-*` | Post-action items |
 ---
-## Help
-**Usage:** `/extensions --help` or `/extensions`
-Delegate to script:
+## Usage and Help
+**No argument:** `/extensions` prints usage — delegate and display stdout directly:
 ```bash
-node .claude/scripts/shared/extensions-cli.js help
+node .claude/scripts/shared/extensions-cli.js
 ```
-Display stdout directly.
+**`--help`:** opens the docs page per Arguments; it does not print usage.
 ---
 **End of Extensions Command**

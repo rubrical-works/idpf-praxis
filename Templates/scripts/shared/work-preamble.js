@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -14,9 +14,17 @@ const path = require('path');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const { execFileTimedAsync } = require('./lib/exec.js');
 const { extractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
+const { normalizeEol } = require('./lib/normalize-eol.js');
+const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js');
 // Relative path under shared/lib, per the runtime dependency contract —
 // never an external package (#2418).
 const { REDIRECT_LABELS } = require('./lib/issue-type.js');
+// #3126: --agents validation at parse time, and the --concurrent grouping plan.
+const { parseAgentsValue, buildPlan } = require('./lib/concurrency-plan.js');
+// #3128: processing order is a topological sort of the **Depends on:** graph.
+const { topoOrder } = require('./lib/topo-order.js');
+// #3129: the parent's step sequence and member spawn requests for --concurrent.
+const { buildRun, memberTasks } = require('./lib/concurrent-orchestration.js');
 
 // Every spawn here goes through the timed wrapper (#2469). These are /work's
 // Step 1 critical path — including the `gh pmu move --status in_progress` calls —
@@ -120,6 +128,12 @@ function parseArgs(args) {
     return { error: { code: 'MISSING_ARGUMENT', message: 'No arguments provided. Use --issue N, --issues "N,N", or --status <status>.' } };
   }
 
+  // --help takes precedence over every other argument and performs no action (#3030).
+  if (wantsHelp(args)) return { mode: 'help' };
+  // `all in <status>` was replaced by `--status <status>` (#3030).
+  const retired = findRetired('work', args);
+  if (retired) return { error: { code: 'RETIRED_ARGUMENT', message: retired.message } };
+
   // Detect --schema flag (mutually exclusive with other flags)
   const hasSchema = args.includes('--schema');
   if (hasSchema) {
@@ -139,6 +153,48 @@ function parseArgs(args) {
   // envelope is already built.
   const hasNonstop = args.includes('--nonstop');
 
+  // #3126. --concurrent and --agents N are parsed HERE, before the first round
+  // trip, so an invalid cap fails with nothing moved and no worktree created.
+  // --agents without --concurrent is a warning, not an error: the value is
+  // well-formed and merely has nothing to apply to.
+  const hasConcurrent = args.includes('--concurrent');
+  const agentsFlag = findFlag(args, 'agents');
+  let maxAgents;
+  const parseWarnings = [];
+  if (agentsFlag) {
+    if (agentsFlag.value === undefined || agentsFlag.value === '' || agentsFlag.value.startsWith('--')) {
+      return { error: { code: 'MISSING_ARGUMENT', message: '--agents requires a positive integer value.' } };
+    }
+    const parsedAgents = parseAgentsValue(agentsFlag.value);
+    if (!parsedAgents.ok) {
+      return { error: { code: 'INVALID_ARGUMENT', message: parsedAgents.error } };
+    }
+    if (hasConcurrent) {
+      maxAgents = parsedAgents.value;
+    } else {
+      parseWarnings.push({
+        code: 'AGENTS_IGNORED',
+        message: `--agents ${agentsFlag.value} has no effect without --concurrent; ignored.`
+      });
+    }
+  }
+
+  // The modifier flags attach identically to every mode. One place, so a
+  // flag added later cannot be carried by two modes and dropped by the third
+  // (the #2624 wire defect, one layer up).
+  const withModifiers = (result) => {
+    if (hasAssign) result.assign = true;
+    if (hasWait) result.wait = true;
+    if (hasNonstop) result.nonstop = true;
+    if (hasConcurrent) result.concurrent = true;
+    if (maxAgents !== undefined) {
+      result.maxAgents = maxAgents;
+      result.maxAgentsSource = 'flag';
+    }
+    if (parseWarnings.length > 0) result.parseWarnings = parseWarnings;
+    return result;
+  };
+
   const issueFlag = findFlag(args, 'issue');
   if (issueFlag) {
     const raw = issueFlag.value;
@@ -152,11 +208,7 @@ function parseArgs(args) {
     } catch (_e) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: "${raw}". Must be a positive integer.` } };
     }
-    const result = { mode: 'single', issues: [num] };
-    if (hasAssign) result.assign = true;
-    if (hasWait) result.wait = true;
-    if (hasNonstop) result.nonstop = true;
-    return result;
+    return withModifiers({ mode: 'single', issues: [num] });
   }
 
   const issuesFlag = findFlag(args, 'issues');
@@ -171,11 +223,7 @@ function parseArgs(args) {
     } catch (_e) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue numbers in: "${raw}".` } };
     }
-    const result = { mode: 'batch', issues: nums };
-    if (hasAssign) result.assign = true;
-    if (hasWait) result.wait = true;
-    if (hasNonstop) result.nonstop = true;
-    return result;
+    return withModifiers({ mode: 'batch', issues: nums });
   }
 
   const statusFlag = findFlag(args, 'status');
@@ -184,11 +232,7 @@ function parseArgs(args) {
     if (!status) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--status requires a value.' } };
     }
-    const result = { mode: 'status', status };
-    if (hasAssign) result.assign = true;
-    if (hasWait) result.wait = true;
-    if (hasNonstop) result.nonstop = true;
-    return result;
+    return withModifiers({ mode: 'status', status });
   }
 
   return { error: { code: 'MISSING_ARGUMENT', message: 'No recognized arguments. Use --issue N, --issues "N,N", or --status <status>.' } };
@@ -593,7 +637,8 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
 function parseProcessingOrder(body, subIssueNums) {
   if (!body) return [...subIssueNums].sort((a, b) => a - b);
 
-  const orderMatch = body.match(/\*\*Processing Order:\*\*\s*\n([\s\S]*?)(?:\n\n|\n##|$)/);
+  // A CRLF body would let the section read on past its blank line (#3064).
+  const orderMatch = normalizeEol(body).match(/\*\*Processing Order:\*\*\s*\n([\s\S]*?)(?:\n\n|\n##|$)/);
   if (!orderMatch) return [...subIssueNums].sort((a, b) => a - b);
 
   const orderSection = orderMatch[1];
@@ -650,7 +695,8 @@ function buildProcessingOrderSection(order) {
  */
 function applyProcessingOrder(body, order) {
   const section = buildProcessingOrderSection(order);
-  const text = typeof body === 'string' ? body : '';
+  // Normalized so a CRLF body's `\r\n\r\n` reads as the blank line it is (#3064).
+  const text = typeof body === 'string' ? normalizeEol(body) : '';
   const lines = text.split('\n');
 
   const headerIdx = lines.findIndex(l => l.trim() === '**Processing Order:**');
@@ -768,6 +814,78 @@ function deriveProposedOrder(activeSubIssues, processingOrder) {
     differs: order.length !== current.length || order.some((n, i) => n !== current[i]),
     rationale
   };
+}
+
+/**
+ * Order the tree by its **Depends on:** graph (#3128).
+ *
+ * The declared order (`**Processing Order:**`, else ascending) is the
+ * tie-break; only an explicit dependency moves a member. Active members are
+ * reordered within their own slots of the declared order, so skipped members
+ * keep their positions and a tree with no dependency lines comes back exactly
+ * as declared. Skipped members count as merged (`satisfied`) — except a
+ * `qa-required` skip, which this run never works (`blocked`).
+ *
+ * @param {Array<{number: number, body?: string}>} active
+ * @param {Array<{number: number, reason?: string}>} skipped
+ * @param {number[]} declaredOrder
+ * @returns {{ok: boolean, order: number[], graph: object}}
+ *   `graph` is the topoOrder result; on a cycle `ok` is false and `order` is
+ *   the declared order, unused.
+ */
+function orderByDependencies(active, skipped, declaredOrder) {
+  const graph = topoOrder({
+    members: active,
+    tiebreak: declaredOrder,
+    satisfied: skipped.filter(s => s.reason !== 'qa-required').map(s => s.number),
+    blocked: skipped.filter(s => s.reason === 'qa-required').map(s => s.number)
+  });
+  if (!graph.ok) return { ok: false, order: declaredOrder, graph };
+
+  const activeSet = new Set(active.map(s => s.number));
+  const queue = [...graph.order];
+  const order = declaredOrder.map(n => (activeSet.has(n) ? queue.shift() : n));
+  // Active members missing from the declared order (none today — the
+  // declared order covers every sub-issue) are appended rather than lost.
+  order.push(...queue);
+  return { ok: true, order, graph };
+}
+
+/**
+ * Read the TDD checklist a member brief carries (#3129). The checklist is an
+ * imported skill file; an absent or malformed one yields null, and the brief
+ * says it fell back to the inline cycle rather than failing the preamble.
+ * @returns {object|null}
+ */
+function loadTddChecklist() {
+  try {
+    const raw = fs.readFileSync(path.join(process.cwd(), '.claude', 'skills', 'tdd-process', 'tdd-checklist.json'), 'utf8');
+    const checklist = JSON.parse(raw);
+    const valid = ['red', 'green', 'refactor'].every(p => checklist[p] && Array.isArray(checklist[p].required) && checklist[p].gate);
+    return valid ? checklist : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * The concurrent run the parent executes (#3129): its step sequence, with a
+ * worktree spawn request carrying each group member's brief, and one task per
+ * member naming its group.
+ * @param {object} plan - buildPlan result
+ * @param {Array<{number: number, title?: string, body?: string}>} active
+ * @param {boolean} nonstop
+ */
+function buildConcurrentRun(plan, active, nonstop) {
+  const members = {};
+  for (const s of active) {
+    members[s.number] = {
+      title: s.title,
+      acceptanceCriteria: extractAcceptanceCriteria(s.body || '').items.map(i => i.text)
+    };
+  }
+  const { steps, total } = buildRun({ plan, members, nonstop: !!nonstop, tddChecklist: loadTddChecklist(), root: process.cwd() });
+  return { steps, total, tasks: memberTasks({ plan, members }) };
 }
 
 /**
@@ -977,14 +1095,21 @@ async function checkAssignability(issueNum, targetBranch, workstreams) {
 }
 
 /**
- * Perform assignment of an issue to the current branch via assign-branch.js
+ * Perform assignment of an issue to the current branch via assign-branch.js.
+ * The branch checkAssignability validated is passed as --branch (#3160): left
+ * implicit, assign-branch.js resolved its own, and with 2+ trackers printed
+ * help and exited 0 — read here as success. A rejected branch now exits 1, and
+ * its stderr (naming the open branches) is the ASSIGN_FAILED message.
  * @param {number} issueNum
+ * @param {string} [branch] - The checked-out branch; omitted only by legacy callers
  * @returns {Promise<{ assigned: boolean, error?: { code: string, message: string } }>}
  */
-async function performAssignment(issueNum) {
+async function performAssignment(issueNum, branch) {
   const scriptPath = path.join(__dirname, 'assign-branch.js');
+  const args = [scriptPath, `#${issueNum}`];
+  if (branch) args.push('--branch', branch);
   try {
-    await execFileAsync('node', [scriptPath, `#${issueNum}`], EXEC_OPTS);
+    await execFileAsync('node', args, EXEC_OPTS);
     return { assigned: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
@@ -1048,6 +1173,9 @@ function buildErrorEnvelope(errors) {
  */
 async function runSingleIssue(issueNum, options) {
   const warnings = [];
+  // Parse-time warnings (#3126 AGENTS_IGNORED) travel with the envelope, so a
+  // flag that had no effect is reported where the run reads its context.
+  if (options && Array.isArray(options.parseWarnings)) warnings.push(...options.parseWarnings);
   let roundTrips = 0;
   const assignRequested = options && options.assign;
   let assignGate = false;
@@ -1093,7 +1221,7 @@ async function runSingleIssue(issueNum, options) {
 
     if (!assignCheck.alreadyAssigned) {
       roundTrips++;
-      const assignResult = await performAssignment(issueNum);
+      const assignResult = await performAssignment(issueNum, currentBranch);
       if (!assignResult.assigned) {
         return buildErrorEnvelope([assignResult.error]);
       }
@@ -1205,8 +1333,48 @@ async function runSingleIssue(issueNum, options) {
 
     // Epics and branch trackers both read **Processing Order:** from their own body,
     // falling back to ascending numeric order when the section is absent (#2544).
-    const processingOrder = parseProcessingOrder(dataResult.issue.body, subNums);
+    const declaredOrder = parseProcessingOrder(dataResult.issue.body, subNums);
+
+    // #3128: the order actually worked is a topological sort of the
+    // **Depends on:** graph, the declared order breaking ties. A cycle has no
+    // valid order, so it halts HERE — above the plan, above the status move —
+    // and nothing has been created or moved when the run stops.
+    const dependencies = orderByDependencies(statusResult.active, statusResult.skipped, declaredOrder);
+    if (!dependencies.ok) {
+      return buildErrorEnvelope([{
+        code: 'DEPENDENCY_CYCLE',
+        message: dependencies.graph.message,
+        cycle: dependencies.graph.cycle
+      }]);
+    }
+    const processingOrder = dependencies.order;
     context.processingOrder = processingOrder;
+    context.declaredOrder = declaredOrder;
+    context.dependencyGraph = {
+      edges: dependencies.graph.edges,
+      blockedBy: dependencies.graph.blockedBy,
+      invalid: dependencies.graph.invalid
+    };
+    for (const message of dependencies.graph.warnings) {
+      warnings.push({ code: 'DEPENDS_ON_INVALID', message });
+    }
+
+    // A dependency on a skipped qa-required member cannot be met by this run
+    // (#3128, Corner Case 1): the QA issue is a gate on the parent, never
+    // worked in the loop. Under --nonstop nobody is present to notice the
+    // dependent being worked anyway, so the run halts here, before any move;
+    // in default mode it is reported, and --concurrent's plan sends the
+    // dependent to the tail.
+    const blockedBy = Object.entries(dependencies.graph.blockedBy);
+    if (blockedBy.length > 0) {
+      const message = 'Depends on a skipped qa-required member this run never works: '
+        + blockedBy.map(([n, qa]) => `#${n} → ${qa.map(q => `#${q}`).join(', ')}`).join('; ')
+        + '. Close the QA issue (/qa #N) or remove the dependency.';
+      if (options && options.nonstop) {
+        return buildErrorEnvelope([{ code: 'DEPENDS_ON_QA_REQUIRED', message }]);
+      }
+      warnings.push({ code: 'DEPENDS_ON_QA_REQUIRED', message });
+    }
 
     autoTask = buildEpicAutoTask(statusResult.active, processingOrder);
 
@@ -1220,10 +1388,33 @@ async function runSingleIssue(issueNum, options) {
     // issue rules out, and the derivation's measured miss rate is why.
     if (options && options.nonstop) {
       const derived = deriveProposedOrder(statusResult.active, processingOrder);
-      context.proposedOrder = derived.order;
-      context.orderDiffers = derived.differs;
+      // #3128: the heuristic only breaks ties the graph leaves open. Re-sorting
+      // its ranking topologically means a proposal can never place a member
+      // before what it declares it depends on — the wrong order this report
+      // once offered when a scope heuristic misread "created in #N".
+      const constrained = orderByDependencies(statusResult.active, statusResult.skipped, derived.order);
+      const proposed = constrained.ok ? constrained.order : derived.order;
+      const current = processingOrder.filter(n => proposed.includes(n));
+      context.proposedOrder = proposed;
+      context.orderDiffers = proposed.length !== current.length || proposed.some((n, i) => n !== current[i]);
       context.orderRationale = derived.rationale;
       if (derived.warning) warnings.push(derived.warning);
+    }
+
+    // Concurrency plan (#3126). Gated on --concurrent, present in default and
+    // --nonstop mode alike, and — like the ordering derivation — computed
+    // BEFORE the status move below, so a plan the rule may still reject never
+    // follows a transition. Members are the ACTIVE set: skipped sub-issues
+    // are not worked, so they are not grouped.
+    if (options && options.concurrent) {
+      context.concurrencyPlan = buildPlan({
+        members: statusResult.active,
+        processingOrder,
+        maxAgents: options.maxAgents,
+        source: options.maxAgents !== undefined ? (options.maxAgentsSource || 'flag') : 'default',
+        dependencies: context.dependencyGraph
+      });
+      context.concurrentRun = buildConcurrentRun(context.concurrencyPlan, statusResult.active, options.nonstop);
     }
 
     // Branch tracker with all sub-issues complete: suggest next step
@@ -1234,6 +1425,15 @@ async function runSingleIssue(issueNum, options) {
       });
     }
   } else {
+    // --concurrent has no members to group on a standard issue (#3126):
+    // reported as ignored, never an error, so the flag cannot stop a run it
+    // does not apply to.
+    if (options && options.concurrent) {
+      warnings.push({
+        code: 'CONCURRENT_IGNORED',
+        message: '--concurrent applies to an epic or branch tracker; ignored for a standard issue.'
+      });
+    }
     // Standard flow: parse acceptance criteria
     autoTask = parseAcceptanceCriteria(dataResult.issue.body);
     // #2614: report which empty case this is, before Step 3 begins.
@@ -1340,7 +1540,7 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
 
     if (!assignCheck.alreadyAssigned) {
       roundTrips++;
-      const assignResult = await performAssignment(issueNum);
+      const assignResult = await performAssignment(issueNum, currentBranch);
       if (!assignResult.assigned) {
         return { ok: false, issueNum, errors: [assignResult.error], warnings: [], roundTrips };
       }
@@ -1434,7 +1634,7 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order.'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason }, and concurrentRun { steps, total, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request with the member brief on each group member\'s spawn step, and one task per member naming its group.'
     },
     gates: {
       name: 'gates',
@@ -1449,7 +1649,7 @@ function buildSchema() {
     warnings: {
       name: 'warnings',
       type: 'array',
-      description: 'Non-blocking warnings (e.g., NO_SUB_ISSUES, ALL_SUB_ISSUES_COMPLETE). Each has code and message.'
+      description: 'Non-blocking warnings (e.g., NO_SUB_ISSUES, ALL_SUB_ISSUES_COMPLETE, DEPENDS_ON_INVALID, DEPENDS_ON_QA_REQUIRED). Each has code and message.'
     }
   };
 }
@@ -1481,6 +1681,15 @@ function buildOptions(parsed) {
   if (parsed.assign) options.assign = true;
   if (parsed.wait) options.wait = true;
   if (parsed.nonstop) options.nonstop = true;
+  // #3126
+  if (parsed.concurrent) options.concurrent = true;
+  if (parsed.maxAgents !== undefined) {
+    options.maxAgents = parsed.maxAgents;
+    options.maxAgentsSource = parsed.maxAgentsSource || 'flag';
+  }
+  if (Array.isArray(parsed.parseWarnings) && parsed.parseWarnings.length > 0) {
+    options.parseWarnings = parsed.parseWarnings;
+  }
   return options;
 }
 
@@ -1492,6 +1701,12 @@ async function main() {
     const envelope = buildErrorEnvelope([parsed.error]);
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
     process.exit(1);
+    return;
+  }
+
+  if (parsed.mode === 'help') {
+    process.stdout.write(JSON.stringify(helpEnvelope('work'), null, 2) + '\n');
+    process.exit(0);
     return;
   }
 

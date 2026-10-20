@@ -7,15 +7,18 @@ Assign or remove issues from a branch tracker.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `[#issue...]` | No | One or more issue numbers to assign |
-| `[branch/name]` | No | Target branch name |
+| `--branch <name>` | No | Target branch. Omitted → the only open branch, or with two or more open the one whose tracker carries the `active` label |
 | `[--add-ready]` | No | Mark issues as ready for the branch |
 | `[--remove]` | No | Remove issues from the branch |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
+
+**Retired forms:** A branch typed bare (`release/v1.2.0`) is no longer accepted; use `--branch <name>`.
 
 ## Usage
 
 ```
 /assign-branch #42
-/assign-branch #42 #43 release/v1.2.0
+/assign-branch #42 #43 --branch release/v1.2.0
 /assign-branch #42 --remove
 ```
 
@@ -24,6 +27,18 @@ Assign or remove issues from a branch tracker.
 - Delegates immediately to `.claude/scripts/shared/assign-branch.js` with the provided arguments.
 - If no open branches exist, the script outputs `NO_BRANCH_FOUND` along with suggestions. The command then presents those suggestions via `AskUserQuestion`, creates the selected branch with `gh pmu branch start`, and re-runs the assignment.
 - Normal output (branches exist) is reported directly to the user without any additional interaction.
+
+## Implicit Branch (no `--branch`)
+
+When issues or `--add-ready` are given without `--branch`, the target is resolved from the open branch trackers:
+
+| Open branch trackers | Result |
+|---|---|
+| Exactly one | That branch, reported as `Using current branch: <name>` |
+| Two or more, exactly one labeled `active` | The active tracker's branch, reported as `Using active branch: <name>` |
+| Two or more, with zero or several labeled `active` | **Nothing is assigned.** `BRANCH_AMBIGUOUS` is reported with the open branches, and you are asked which one to use |
+
+An explicit `--branch` always wins over the label. Previously, with two trackers open, the command printed its usage and reported success, so a later `/work` failed with a misleading error.
 
 ## Branch Names Are Validated Before Assignment
 

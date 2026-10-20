@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Run a comprehensive code review with manifest-driven incremental tracking, using the IDPF framework.
-argument-hint: "[--full] [--status] [--scope <globs>] [--batch <N>] [--with <domains>] [--suggest]"
+argument-hint: "[--full] [--status] [--scope <globs>] [--diff [<base>]] [--batch <N>] [--with <domains>] [--suggest] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -18,11 +18,15 @@ Methodical charter-aligned code review with manifest-driven incremental tracking
 | `--full` | Bypass manifest, review all discovered |
 | `--status` | Report manifest stats only, STOP |
 | `--scope <globs>` | Comma-separated file patterns to limit scope |
+| `--diff [<base>]` | Only files changed on this branch since its merge-base with the default branch (or `<base>`), plus uncommitted changes. Combines with every flag |
 | `--batch <N>` | Review N files then stop |
 | `--with <domains>` | Comma-sep domain extensions or `all` |
 | `--suggest` | Recommend domains (mutually exclusive with `--with`) |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
 
-Combinable: `--scope "src/**/*.js" --batch 10 --with security`
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js code-review`, report its output, and STOP.
+
+Combinable: `--scope "src/**/*.js" --batch 10 --with security`, `--diff --with security`, `--diff origin/release --full`
 ## Execution
 **REQUIRED before executing:**
 1. Parse workflow steps → `TaskCreate`
@@ -30,14 +34,14 @@ Combinable: `--scope "src/**/*.js" --batch 10 --with security`
 3. **Post-Compaction:** re-read this spec, regenerate tasks
 ## Workflow
 ### Step 1: Parse Arguments
-Accept: none, `--full`, `--status`, `--scope`, `--batch N`, `--with`, `--suggest`. `--suggest` and `--with` mutually exclusive → error+STOP. Invalid → error+STOP.
+Accept: none, `--full`, `--status`, `--scope`, `--diff [<base>]` (base = next token not starting `--`), `--batch N`, `--with`, `--suggest`. `--suggest` and `--with` mutually exclusive → error+STOP. Invalid → error+STOP.
 ### Step 2: Load Manifest
 Read `.code-review-manifest.json` from project root.
 **Read** `.claude/scripts/shared/lib/code-review-manifest-schema.json` for manifest structure, required fields, and status enum values.
 If manifest not found: create empty manifest (first run). If malformed: warn and continue as `--full`.
 **Unfiled queue first (#3049).** Run `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json --list`. A non-empty `unfiled` list (the manifest's `filingQueue`, `queued` or `failed`) is approved findings an earlier run — interrupted, compacted or failed — never filed: report them and offer via `AskUserQuestion` to file them now (Step 8 item 5) before reviewing. Declining leaves them queued. The same command answers "next" after an interrupted Step 8.
 ### Step 2b: Status Report (--status)
-Read manifest, discovery for counting only, report approved/flagged/pending/deferred/new counts. Directory breakdown if >20 files. **STOP**.
+Read manifest, discovery for counting only, report approved/flagged/pending/deferred/new counts. Directory breakdown if >20 files. **`--diff --status`:** count the diff set only (Step 3), name base ref + SHA. **STOP**.
 ### Step 3: Discover Source Files
 Resolve default include patterns from charter tech stack:
 1. `detectTechStack(projectRoot)` from `.claude/scripts/shared/lib/detect-tech-stack.js`
@@ -46,6 +50,7 @@ Resolve default include patterns from charter tech stack:
 
 **Read** `.claude/metadata/code-review-excludes.json` for default exclude patterns. Flatten `categories[].directories`. `env: "dev"` applies only in `idpf-praxis-dev`; `env: "deployed"` only in user projects; omitted = both. Test files always excluded (use `/bad-test-review`).
 `--scope` → use those globs (still apply excludes).
+**`--diff [<base>]`:** `changedFilesSinceBase({ cwd, base, includeWorkingTree: true })` from `.claude/scripts/shared/lib/branch-diff.js` — never hand-compose `--scope` from `git diff`. Returns `{ ok, base: { ref, sha }, files, deleted, renamed, ranges, workingTreeIncluded }`; `ok: false` → report `error`, **STOP**. No `<base>` → nearest merge-base over `origin/HEAD`, `origin/main`, `origin/master`, `main`, `master`; `<base>` → only candidate, unresolvable STOPs (no fallback). **Intersect** discovery with `files`: patterns + excludes still apply (tests excluded), deleted dropped, renames use destination, `--scope` further intersects. Empty → **STOP** (empty-diff message). Hold `base`, `ranges`, `workingTreeIncluded` for Steps 6, 9, 10, 11.
 ### Step 4: Filter by Manifest (Incremental)
 SHA-256 each file, compare to manifest:
 | File State | Manifest | Hash | Action |
@@ -61,6 +66,7 @@ SHA-256 each file, compare to manifest:
 **Charter change:** CHARTER.md hash differs → re-review all.
 **Domain change:** `--with` queues files previously approved without requested domain.
 **`--full`:** Queue all discovered.
+**`--diff`:** table applies unchanged to the diff set (changed file `approved` with matching hash → skip). **`--diff --full`** queues the whole diff set regardless of manifest.
 ### Step 5: Load Charter-Aligned Review Criteria
 Read `CHARTER.md` for goals, conventions, quality, tech stack, security.
 | Category | Checks |
@@ -119,6 +125,7 @@ Read each queued file; structured analysis:
 
 **Severity:** High=security/correctness bug; Medium=maintainability/convention; Low=style/naming; Info=suggestion.
 `--with` active: after standard review, apply domain criteria. Tag with domain. Domain can escalate, not downgrade.
+**`--diff`:** whole file still read. `classifyFindingRange(ranges, file, startLine, endLine)` from `branch-diff.js`: range **entirely outside** the branch's changed ranges → tag `pre-existing`; inside/overlapping → `introduced`. Tag, never suppress.
 ### Step 7: Batch Mode
 `--batch N`: limit N per invocation, save manifest, report progress.
 ### Step 8: Issue Creation
@@ -149,6 +156,7 @@ All security findings ✅ → do not apply.
 ### Step 9: Structured Report
 Save to `Construction/Code-Reviews/YYYY-MM-DD-report.md` **after** issue creation. Create dir if absent. Format: summary, findings grouped by severity with issue #s, per-file status, aggregate statistics, issues-created summary.
 Each finding: `Issue: #1234` or `No issue` for info. Add **Issues Created** section.
+**`--diff`:** open with base ref, its SHA and range reviewed (`<baseSha>..HEAD`, + `working tree` when `workingTreeIncluded`); mark `pre-existing` findings.
 ### Step 10: Manifest Update
 1. Write `.code-review-manifest.json`
 2. Update `charter.contentHash`
@@ -156,6 +164,18 @@ Each finding: `Issue: #1234` or `No issue` for info. Add **Issues Created** sect
 4. Record `reviewedAt`, `findingCount`
 5. Record `domains` when `--with` active (merge, not replace)
 6. Preserve skipped; remove deleted
+7. **`--diff` only:** write `lastDiffReview`, **replacing** any previous: `baseRef`, `baseSha` (Step 3 `base`), `headSha` (`git rev-parse HEAD`), `reviewedAt` (ISO), `workingTreeIncluded`, `filesReviewed`, `findings.introduced` + `findings.preExisting` (`{high, medium, low, info}` from Step 6 tags), `issues` (Step 8 numbers, `[]` if none), `domains` when `--with`. Shape: `lastDiffReview` in the manifest schema. Consumer owns the policy.
+### Step 10a: Commit Review Output (`--diff` only, #3183)
+Commit this run's output so the review leaves a clean tree. `/prepare-release` Step 2.1 decides freshness with `reviewRecordFreshness` (`.claude/scripts/shared/lib/branch-diff.js`): a commit changing only review output (`.code-review-manifest.json`, `Construction/Code-Reviews/**`) keeps the record current, so `headSha` stays the reviewed commit.
+- **Default branch** (resolved as Step 3: `origin/HEAD`, then `main`/`master`) → do not commit; report `Review output not committed: <branch> is the default branch. Commit it from a working branch.` → Step 11. Never commit to the default branch.
+- **Pathspec only** (`<report>` = Step 9 path):
+  ```bash
+  git add -- .code-review-manifest.json <report>
+  git commit -m "chore: record <YYYY-MM-DD> code review (--diff)" -- .code-review-manifest.json <report>
+  ```
+  Other staged changes stay staged and are not committed. Never `git add -A` or a bare `git commit`.
+- Nothing changed → report `Review output already committed.`
+- A failed commit is reported verbatim and never retried; the review stays complete, record and report left in the working tree (Step 2.1 accepts them only with `workingTreeIncluded` true or an otherwise clean tree).
 ### Step 11: Final Summary
 ```
 Code Review Complete
@@ -167,6 +187,7 @@ Report: Construction/Code-Reviews/YYYY-MM-DD-report.md
 Manifest: .code-review-manifest.json updated
 Next: Run --status to see cumulative progress
 ```
+**`--diff`:** add `Base: <ref> (<sha>), range <sha>..HEAD[ + working tree]` and `Pre-existing: P` after Findings; `Committed: <sha>` or Step 10a's skip/failure reason after Manifest.
 ### Step 12: Closing Cleanup
 The prune is **part of** this step, and this step is **numbered** — what makes the claim hold. `One task per numbered step` now covers it, so an unpruned list surfaces as an unfinished task like any other step. The same claim as prose alone was overridden by the rules beside it (#2641).
 **Prune the task list** (unconditional — every path, including early-exit paths where Phase 1 created tasks and later phases never ran):
@@ -190,4 +211,8 @@ The prune is **part of** this step, and this step is **numbered** — what makes
 | `--suggest`+`--with` | "`--suggest` and `--with` are mutually exclusive." → STOP |
 | `domain-signals.json` missing | Warn, skip filtering |
 | All domains filtered | "All requested domains filtered — falling back to standard review only" |
+| `--diff <ref>` unresolvable | "Could not resolve base ref <ref> for --diff." → STOP |
+| `--diff` no default branch | "Could not resolve the default branch for --diff (tried: <candidates>)." → STOP |
+| `--diff` set empty | "No files changed on this branch relative to <ref> (<sha>)." → STOP |
+| `--diff` outside git repo | "--diff requires a git repository; this directory is not one." → STOP |
 **End of /code-review Command**

@@ -1,25 +1,40 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
-argument-hint: "[update [--register-proj|--deregister-proj|--list-proj]|refresh|validate|--create-domain-entities|--testing [--dry-run [--check]] [--sweep-e2e on|off]]"
+argument-hint: "[--update [--register-proj|--deregister-proj|--list-proj]|--refresh|--validate|--create-domain-entities|--testing [--dry-run [--check]] [--sweep-e2e on|off] [--sweep-scope all|touched]] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
 # /charter
 Context-aware. Shows summary if exists, starts creation if missing.
+## Arguments
+| Argument | Description |
+|----------|-------------|
+| *(none)* | Show summary, or start creation when there is no charter |
+| `--update` | Update specific sections; takes `--register-proj`, `--deregister-proj` or `--list-proj` |
+| `--refresh` | Re-extract from code, merge |
+| `--validate` | Check current work against scope |
+| `--create-domain-entities` | Regenerate `domain-entities.json` |
+| `--testing` | Harness selection per language and role; takes `--dry-run [--check]`, `--sweep-e2e on\|off` and `--sweep-scope all\|touched` |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js charter`, report its output, and STOP.
+
+**Retired forms:** `update`, `refresh` and `validate` typed bare are no longer accepted — reject them with a message naming `--update`, `--refresh` or `--validate`, and do nothing else. A sub-flag keeps its place: `update --register-proj` is now `--update --register-proj`.
 ## Usage
 | Command | Description |
 |---------|-------------|
 | `/charter` | Show summary or start creation |
-| `/charter update` | Update specific sections |
-| `/charter refresh` | Re-extract from code, merge |
-| `/charter validate` | Check current work against scope |
-| `/charter update --register-proj` | Register a companion repository or board |
-| `/charter update --deregister-proj` | Remove a companion registration by `owner/name` |
-| `/charter update --list-proj` | List registered companions with capability flags |
+| `/charter --update` | Update specific sections |
+| `/charter --refresh` | Re-extract from code, merge |
+| `/charter --validate` | Check current work against scope |
+| `/charter --update --register-proj` | Register a companion repository or board |
+| `/charter --update --deregister-proj` | Remove a companion registration by `owner/name` |
+| `/charter --update --list-proj` | List registered companions with capability flags |
 | `/charter --create-domain-entities` | Regenerate `domain-entities.json` |
 | `/charter --testing` | Harness selection per language and role → `testing.suites[]` |
 | `/charter --testing --sweep-e2e on` · `--sweep-e2e off` | Set whether every `e2e` suite joins the `/work` Step 4f sweep, without re-running selection |
+| `/charter --testing --sweep-scope all` · `--sweep-scope touched` | Set whether the `/work` Step 4f sweep runs every gate suite or only those whose files changed |
 ## Execution
 **REQUIRED:** Parse workflow steps, use `TaskCreate` to create tasks. Mark `in_progress`→`completed`. After compaction, re-read spec and call `TaskList` to resume from first incomplete task.
 ## framework-config.json — Use the Helper
@@ -43,7 +58,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 1. `test -f CHARTER.md`
 2. If exists, check placeholders via the shared rule: `node .claude/scripts/shared/lib/charter-template.js CHARTER.md`
    - **TEMPLATE (`template: true`):** → Step 3
-   - **COMPLETE (`template: false`):** Display summary (name, vision, focus, tech stack). Mention `/charter update` and `/charter validate`.
+   - **COMPLETE (`template: false`):** Display summary (name, vision, focus, tech stack). Mention `/charter --update` and `/charter --validate`.
 3. **No charter OR template:** Charter mandatory. Has code → extraction; empty → inception. Proceed directly (no skip).
 ### Extraction Mode
 1. Verify `.claude/skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**
@@ -64,7 +79,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 **Step 2b — Confirming a detected e2e harness routes through Tooling Verification (#2859).** When detection proposes an e2e harness — from spec files (`*.spec.ts`, `*.cy.js`, `tests/e2e/**`) or from the dependency manifest — the confirmation step is **followed by** the **Tooling Verification and Guided Install** section below, as a fresh Inception selection is. Confirming a detection selects a harness; it does not verify one.
 **Spec files are NOT evidence of installed tooling, and detection cannot tell the difference.** A repository can carry a full `tests/e2e/` tree with `@playwright/test` in `devDependencies` and no browsers at all — package and binaries install separately. A manifest entry is evidence the project *intends* that harness; neither it nor a spec file is evidence it *runs*. Treating either as proof is the defect this closes: the charter records a `gate` suite and the first `/work` Step 4f finds the driver missing.
 **Show the detection evidence beside the confirmation prompt**, per the **pre-selection evidence rule** of Harness Selection — the globs that matched and the manifest entries that named the harness, quoted as read. That rule already requires an armed default to display what armed it; this is the same requirement reached by the extraction path, not a second rule.
-**The outcome is the same disposition set**: verified tooling keeps a `gate` suite; missing tooling enters the guided install; a failed or declined install writes `manual-only` with `note: install pending`, which `/charter refresh` re-checks.
+**The outcome is the same disposition set**: verified tooling keeps a `gate` suite; missing tooling enters the guided install; a failed or declined install writes `manual-only` with `note: install pending`, which `/charter --refresh` re-checks.
 **Read the manifests here, not in `codebase-analysis`.** That skill is imported from `idpf-praxis-skills` and `/fw-import-skills` replaces imported skills wholesale, so logic added there reverts at the next import. `tech-stack-detection.md` already opens `package.json`, but only as an ecosystem marker — it never reads the `scripts` block, which is why the data was never collected. Same reasoning that placed `verificationMode` in `framework-config.json` rather than the imported `tdd-process` checklist (#2556).
 ### Inception Mode
 **Artifact voice — inception (#2591):** no code exists on this path (Process step 1 creates the tree against an empty project), so **no artifact here may assert a detection.** Every Inception/ artifact is a **declaration of intent** — what the project *will* use, sourced from answers, never from a filesystem read.
@@ -99,7 +114,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 **Skip Detection — two reasons, reported separately.** *Non-code project type* (Q3 contains documentation, docs, config, terraform, ansible) skips selection. *No possibility for this stack* is a detected code language with no harness in any registry for a role. Report **which fired**. A **code project never skips a role**.
 **Pre-selection arms a default only on an unambiguous single claimant** — **exactly one** harness matching a detect signal (`pytest.ini` present, only pytest claiming it) — and an armed default **always displays the evidence**. Ambiguous or absent evidence **arms nothing**.
 **"None of these" asks the assurance tier:** `script` and `golden` keep the `gate` default and capture a command; `manual` is written `kind: manual`, `execution: manual-only`, reported declared-but-not-run. Then **offer to persist** the harness into `.claude/local-metadata/test-harnesses.json`.
-**Writes go exclusively through `framework-config.js`**, never a raw `fs` write; `role` is **copied** from the selected harness onto the suite at write time.
+**Writes go exclusively through `framework-config.js`**, never a raw `fs` write; `role` is **copied** from the selected harness onto the suite at write time. `concurrency` is written at write time as the role default — `exclusive` for `e2e`, `parallel` for every other role (#3132) — the default `resolveConcurrency` in `test-runner.js` applies to a suite carrying none, written out so the declaration says where its suites may run. Edit an e2e suite to `parallel` afterwards if it may run inside concurrent worktrees; selection never asks, since a wrong `parallel` costs a collided run.
 **`--testing --dry-run` audits the declaration and writes nothing (#2854).** Two forms, differing in kind.
 **`--testing --dry-run --check` never prompts** — the CI form: #2850 made selection mandatory with a re-asked prompt, and CI cannot answer one. It compares the `testing` declaration against the merged registry and detected *(language × role)* pairs, reporting newly-gained pairs with no suite, orphaned suites and each entry's provenance, ending in a verdict of `clean` or `drift` with **every difference named**.
 **The `--check` audit is computed by `.claude/scripts/shared/charter-testing-audit.js`**, which prints a JSON envelope and **exits 0 on `clean`, 1 on `drift`** (2 on bad arguments). `--check` delegates to it and reports its verdict; CI may call the helper directly — the point of a verdict in an exit status rather than in prose.
@@ -112,7 +127,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 4. **The merged-registry provenance** — **shipped**, contributed **local**ly, **hidden**, **shadowed** by id, and any **unknown** keys or roles the permissive local schema preserved (#2848).
 **`--dry-run` is accepted only alongside `--testing`.** Other combinations are rejected with a message naming the **valid form**, `/charter --testing --dry-run [--check]` — a rejection that does not say what to type instead is a dead end.
 **Render the `## Framework` table of `Inception/Test-Strategy.md` from `testing.suites[]` (#2851).** One row per suite — `role`, harness name, `full`, `execution` — and mark the section **generated**, so a reader knows it is derived, not authored. A `sweep: false` suite shows **not swept**; one also scoped-skip (`scoped.mode: none`, `onScoped: skip`) shows **never runs during `/work`** (#3026). The config is the authority; the prose artifact is a view of it. This gives the framework ONE answer to "what runs this project's tests" instead of three: `/add-story` and `/create-backlog` read the declaration, `/bad-test-review` resolves it first, and this table renders from the same place.
-**A hand-edit to the generated section is detected at `/charter refresh`, never silently overwritten.** Compare the rendered table against `testing.suites[]`; on a difference report it naming `framework-config.json` as the authority, and re-render **only on confirmation**. Silently re-rendering discards a deliberate edit; silently keeping it leaves two disagreeing answers — the defect this closes.
+**A hand-edit to the generated section is detected at `/charter --refresh`, never silently overwritten.** Compare the rendered table against `testing.suites[]`; on a difference report it naming `framework-config.json` as the authority, and re-render **only on confirmation**. Silently re-rendering discards a deliberate edit; silently keeping it leaves two disagreeing answers — the defect this closes.
 **Record the selection in `Inception/Test-Strategy.md`** beside the declaration, so prose and config agree at creation. **Never derive a command from a framework name** — a name (`Jest`) is not an invocation (`npx jest --no-coverage`); expanding one into the other is a fabrication under the Artifact voice rule above, since nothing is installed at inception. Ask, which that rule permits.
 #### E2e Sweep Question (#3026)
 **After an `e2e` harness is selected, ASK whether its suite joins the `/work` Step 4f full sweep**, via `AskUserQuestion`, once per selected harness. Trigger: the harness's `sweep` field in the merged registry (every shipped `e2e` harness carries `sweep: false`). **A harness without a `sweep` field asks nothing**; its suite is written as before, with no `sweep` key.
@@ -130,6 +145,13 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 - **No `e2e` suites declared** → report that and **write nothing**.
 - **A missing or unrecognized value is rejected**, naming the valid form, `/charter --testing --sweep-e2e on|off`. **`--sweep-e2e` without `--testing` is rejected the same way**, as `--dry-run` is.
 - **With `--dry-run`**, report the suites that would change and **write nothing**.
+#### Sweep Scope (#3178)
+**`/charter --testing --sweep-scope all|touched` sets `testing.sweepScope` without re-running selection** — which suites the `/work` Step 4f sweep runs: `all` every gate suite, `touched` only those whose `match[]` covers a changed file. Absent means `all`.
+- **A value-setter, not a toggle.** Running it twice gives the same config. **`all` is written explicitly rather than by deleting the key**, as `--sweep-e2e on` writes `sweep: true`.
+- **Writes go through `framework-config.js`**, schema-validated — never a raw file write. **Report the previous and new value**, or `unchanged` when already set.
+- **Before writing `touched`, name by id every gate suite whose `match[]` patterns are all test-only**, and say a source-only change would skip it at the sweep. A suite is test-only when every `match[]` pattern is test-only: it lies under a `test/` or `tests/` directory, or matches a `*.test.*` or `*.spec.*` filename. This is a warning: it does not block the write. Such a suite still runs scoped when its own files change.
+- **A missing or unrecognized value is rejected**, naming the valid form, `/charter --testing --sweep-scope all|touched`. **`--sweep-scope` without `--testing` is rejected the same way**, as `--dry-run` is.
+- **With `--dry-run`**, report the value that would change and any test-only warning, and **write nothing**.
 #### Tooling Verification and Guided Install (#2858)
 **Runs once, after selection completes, over every selected suite.** Not per answer, not mid-loop: a harness the user replaces on the next question would have had its tooling checked — and possibly installed — for nothing.
 **The requirement set comes from the registry, never from this spec.** A harness entry may carry `requires[]` — the packages, browsers, drivers and system libraries it needs (#2858) — each naming an `id`, a `kind` (`package`, `browser`, `driver`, `system`), and optionally a `check` and an `install` command. Resolve `requires[]` for every selected suite through the **merged** registry, so a local harness declares its tooling like a shipped one.
@@ -148,7 +170,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 2. Write the suite `execution: "manual-only"` with `note: install pending` naming the requirement that failed.
 3. The rendered `## Framework` table of `Inception/Test-Strategy.md` **shows it as pending**.
 **Why `manual-only` rather than a `gate` suite:** #2852's sweep runs every `gate` suite at **Step 4f**, so a suite whose binary never installed fails **every sub-issue** of every epic until someone notices — a charter-time problem surfacing as a test failure on unrelated work. `manual-only` keeps the declaration visible (declared-but-not-run) while leaving the gate green. Declining a step reaches the same disposition: nothing was installed, so the suite cannot gate.
-**The pending state is temporary by construction** — `/charter refresh` re-checks it (Step 5c) and offers to restore `gate`.
+**The pending state is temporary by construction** — `/charter --refresh` re-checks it (Step 5c) and offers to restore `gate`.
 #### Deployment Platform (Q3a — conditional)
 **Trigger:** Deployable from Q3 — web framework, frontend build tool, Docker, or "web app"/"API"/"service"/"site".
 **Skip:** CLI, libraries, docs-only, infra repos.
@@ -207,7 +229,7 @@ const { generateQuestions } = require('.claude/scripts/shared/lib/schema-driven-
 const schemaQuestions = generateQuestions(answersCollectedSoFar);
 ```
 Use `AskUserQuestion` with each question's `header`/`question` fields. Answers feed `domain-entities.json` (Step 7). Schema not found / no questions → skip silently.
-**During `/charter update`:** Read `currentDomainEntities` from the `resolveEntitiesWriteTarget()` path — where the write lands — and use `generateUpdateQuestions(currentDomainEntities)` — only missing/empty fields; existing values preserved.
+**During `/charter --update`:** Read `currentDomainEntities` from the `resolveEntitiesWriteTarget()` path — where the write lands — and use `generateUpdateQuestions(currentDomainEntities)` — only missing/empty fields; existing values preserved.
 #### Review Mode (always)
 **ASK USER (single-select):**
 ```
@@ -231,8 +253,8 @@ What review mode should be used for this project?
 | Automated testing mentioned | QA-Automation |
 **Step 2: ASK USER (multi-select):** Present all 11 domains pre-checked per detection.
 **Step 3:** Write `activeDomains` (lowercase IDs: `"security"`, `"accessibility"`, `"seo"`, `"privacy"`, `"observability"`, `"i18n"`, `"api-design"`, `"performance"`, `"chaos"`, `"contract"`, `"qa"`). Report the active list, naming where it applies: these auto-apply to `/review-issue`; `/code-review` applies them only when `--with` is passed. **Name the commands (#2810)** — "auto-apply to review commands" was false for `/code-review`, which reads the key only inside its `--with` path, so a user believing it got no domains and no reason why.
-**Step 4 (`/charter refresh`):** Re-evaluate vs auto-detection from updated tech stack.
-**Step 5 (`/charter update`):** Allow add/remove via multi-select.
+**Step 4 (`/charter --refresh`):** Re-evaluate vs auto-detection from updated tech stack.
+**Step 5 (`/charter --update`):** Allow add/remove via multi-select.
 #### Artifact Generation
 **Answer-to-Artifact Mapping:**
 | Answer | Primary Artifact |
@@ -266,11 +288,11 @@ What review mode should be used for this project?
 8. Commit: "Initialize project charter and lifecycle structure"
 9. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
 **Note:** Dirs created after questions to avoid orphans if user abandons.
-### /charter update
+### /charter --update
 1. Read CHARTER.md and Inception/Charter-Details.md
 2. Ask what to update (Vision, Current Focus, Tech Stack, Scope, Milestones, Deployment Target)
 3. Apply, sync CHARTER.md if vision changes, update Last Updated
-3a. Regenerate `domain-entities.json` via `generateFromCharter()`. **Destination:** beside `CHARTER.md` at project root — from `resolveEntitiesWriteTarget()` per **domain-entities.json Write Target**, never a composed path. Validate before writing. If missing, generate (migration). Include `"$schema"` first property → `.claude/metadata/domain-entities-schema.json`. **#2379:** if helper returns `{error, hint}` or top-level `warning`, surface both and do not write a partial file. **This step does not verify counts against disk** — `verifyEntityCounts()` is called by `/charter refresh` 5a and `/charter --create-domain-entities` Step 2b, which own the mismatch-versus-unverifiable contract (#2597).
+3a. Regenerate `domain-entities.json` via `generateFromCharter()`. **Destination:** beside `CHARTER.md` at project root — from `resolveEntitiesWriteTarget()` per **domain-entities.json Write Target**, never a composed path. Validate before writing. If missing, generate (migration). Include `"$schema"` first property → `.claude/metadata/domain-entities-schema.json`. **#2379:** if helper returns `{error, hint}` or top-level `warning`, surface both and do not write a partial file. **This step does not verify counts against disk** — `verifyEntityCounts()` is called by `/charter --refresh` 5a and `/charter --create-domain-entities` Step 2b, which own the mismatch-versus-unverifiable contract (#2597).
 3b. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
 4. If Tech Stack modified: trigger skill/recipe suggestions (NEW only). Detect new default skills not in `projectSkills` (from `skill-keywords.json` `defaultSkills`) — copy from `{frameworkPath}/.claude/skills/`, add additively.
 4b. If Deployment Target changed: remove old deployment skill, copy new from `{frameworkPath}/.claude/skills/<skill-name>/`. Update `deploymentTarget` and `projectSkills`. No prior target → fresh install.
@@ -283,7 +305,7 @@ What review mode should be used for this project?
 **Do NOT restate the helper's validation, dedupe, or removal rules here** — spec prose is LLM-executed and untestable, and a second statement drifts from the module enforcing it. Report `errors[]` verbatim and stop; `ok:false` means nothing was written.
 **Reachability:** call `verifyReachability(repo)` before registering. `verified:false` → register anyway and report the `label` (`unverifiable — <reason>`). NEVER drop the registration because the check failed; NEVER report an unchecked repo as reachable (rule 01 claim labeling).
 **After register/deregister, regenerate `domain-entities.json`** per 3a — entities derive from this table, so skipping leaves the two views disagreeing.
-### /charter refresh
+### /charter --refresh
 1. Verify `.claude/skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**
 2. Analyze codebase
 3. Compare with Inception/ artifacts, identify differences
@@ -309,7 +331,7 @@ This is the only step that clears a pending suite; selection never revisits an a
 5d. **Report directories (#2925):** when `Construction/Reports/Daily-Logs` or `Construction/Reports/Stats` is absent, offer to create the absent ones (`/idpf-stats --daily-log` and `--save` write there); create only on acceptance, change nothing on decline — `/idpf-stats` also creates its directory on demand, so declining never breaks a later report. Pre-#2925 charters reach these directories only through this step.
 5e. **Project `.npmrc` (#3016):** when the trigger in **Project `.npmrc` Offer** holds and the file is absent, make the offer; an existing file is left alone. Pre-#3016 charters reach the offer only here.
 6. Trigger skill/recipe suggestions. Detect new default skills not in `projectSkills` — copy from `{frameworkPath}/.claude/skills/`, add additively, report. Tech stack changed → keyword-based suggestions (NEW only).
-### /charter validate
+### /charter --validate
 1. Load CHARTER.md and Inception/Scope-Boundaries.md
 2. Identify current work (issue, recent commits, staged changes)
 3. Compare against in-scope/out-of-scope
@@ -350,7 +372,7 @@ const target = resolveEntitiesWriteTarget(process.cwd());
 **On `ENTITIES_TARGET_OUTSIDE_PROJECT`: report the error verbatim and do not write.** The resolver compares real paths, so it throws when the target resolves through a link out of the project. In a deployed project `.claude/metadata/` is a junction into the shared hub: a write there succeeds silently into machine-wide state every project shares.
 **`.claude/metadata/` is a reference, never a destination.** `$schema` points at `.claude/metadata/domain-entities-schema.json` and validation reads it; neither makes that directory a place to write the generated entities.
 ### Out-of-Table Count Reconciliation (#2636)
-Shared by `/charter refresh` 5a and `/charter --create-domain-entities` 2b. Both report identically; edit here, not in either caller.
+Shared by `/charter --refresh` 5a and `/charter --create-domain-entities` 2b. Both report identically; edit here, not in either caller.
 `verifyEntityCounts()` reads only the `## Key Entities` table, so counts in charter **prose** (Vision, In Scope, Architecture) are never verified and drift silently. This covers them. Reports only; never rewrites on its own.
 **Step A — scan:**
 ```javascript
@@ -386,7 +408,7 @@ After charter creation, suggest skills via `.claude/metadata/skill-keywords.json
 5. Report installed skills.
 ## Extension Recipe Suggestions
 After skill selection, suggest relevant recipes.
-**Triggers:** `/charter` (creation), `/charter update` (Tech Stack modified), `/charter refresh`
+**Triggers:** `/charter` (creation), `/charter --update` (Tech Stack modified), `/charter --refresh`
 **Skip if:** `"extensionSuggestions": false` or no release commands
 1. Re-read `.claude/metadata/recipe-tech-mapping.json` from disk
 2. Match tech stack against indicators and groupMappings

@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Generate an IDPF session statistics report with development velocity metrics.
-argument-hint: "[--daily-log [prose]] [--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save]"
+argument-hint: "[--daily-log [prose]] [--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -30,6 +30,9 @@ Session statistics from git history, GitHub issues, and test counts. Renders ASC
 | `--repos-edit` | — | Interactive add/remove on cached list |
 | `--save` | — | Save report to `Construction/Reports/Stats/YYYY-MM-DD.md` (or range filename) |
 | `--daily-log [prose]` | today | Management-facing daily work log per day instead of the stats tables (Step 5). Optional prose sets the days (`for every weekday last week`), running to the next flag-shaped token. No prose → today. Current repository only. Ignores `--today`/`--date`/`--since`/`--until`/`--save`/`--repos`/`--repos-edit` — each reported in the run output, not rejected; use prose (`for 2026-09-01`) to choose days. |
+| `--help` | — | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js idpf-stats`, report its output, and STOP.
 
 **Examples:** `/idpf-stats`, `/idpf-stats --today`, `/idpf-stats --date 2026-04-06`, `/idpf-stats --since 2026-03-10 --until 2026-03-14`, `/idpf-stats --repos /path/a,/path/b`, `/idpf-stats --repos-edit`, `/idpf-stats --save`, `/idpf-stats --daily-log`, `/idpf-stats --daily-log for every weekday last week`.
 

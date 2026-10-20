@@ -4,7 +4,7 @@
  *
  * CHARTER.md's `Companion Repositories` table is the source of truth;
  * `domain-entities.json` is generated from it (#2209). This module owns the
- * table's parse and rewrite so that `/charter update` delegates rather than
+ * table's parse and rewrite so that `/charter --update` delegates rather than
  * restating the logic as prose, and so `generate-domain-entities.js` consumes
  * the same parser. One parser with two callers cannot drift; two parsers
  * eventually do.
@@ -18,7 +18,7 @@
  * projects from the hub framework root, so an undeclared external `require`
  * would throw MODULE_NOT_FOUND at module load.
  *
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * Refs #2665
  */
 
@@ -353,7 +353,7 @@ function resolveFilingTarget(charterContent, target) {
       ok: false,
       repo: wanted,
       entry: null,
-      reason: `"${wanted}" is not a registered companion repository. Register it with /charter update --register-proj.`
+      reason: `"${wanted}" is not a registered companion repository. Register it with /charter --update --register-proj.`
     };
   }
   if (!entry.fileIssues) {
@@ -361,7 +361,7 @@ function resolveFilingTarget(charterContent, target) {
       ok: false,
       repo: wanted,
       entry,
-      reason: `"${wanted}" is registered but not marked for issue filing (fileIssues is false). Enable it with /charter update --register-proj.`
+      reason: `"${wanted}" is registered but not marked for issue filing (fileIssues is false). Enable it with /charter --update --register-proj.`
     };
   }
   return { ok: true, repo: wanted, entry, reason: null };

@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Verify and close a PRD tracker, using the IDPF framework.
-argument-hint: "<issue-number> (e.g., 151)"
+argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -12,6 +12,10 @@ Verify all epics/stories from a PRD are complete, then close the PRD tracker.
 | Argument | Description |
 |----------|-------------|
 | `<prd-issue-number>` | PRD tracker (e.g., `151` or `#151`) |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js complete-prd`, report its output, and STOP.
+
 ---
 ## Usage
 ```bash

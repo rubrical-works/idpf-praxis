@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Resolve an issue's review findings, using the IDPF framework.
-argument-hint: "#issue [--prior-art]"
+argument-hint: "#issue [--prior-art] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -18,6 +18,10 @@ Parse the latest review findings and resolve each one. Delegates parsing/classif
 |----------|-------------|
 | `#issue` | Issue number (e.g., `#42`) |
 | `--prior-art` | Forwarded verbatim to the Step 4 re-review, which runs the sweep. No sweep is performed here (#2725) |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js resolve-review`, report its output, and STOP.
+
 ---
 ## Execution
 **REQUIRED — routed command, two-phase task creation:**

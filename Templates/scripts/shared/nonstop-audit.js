@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
- * @description Post-nonstop audit for /work epic/branch processing. Performs three audits:
+ * @framework-script 0.109.0
+ * @description Post-nonstop audit for /work epic/branch processing. Performs four audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
  *   (4) Announcement pairing — warning if a sub-issue has a work-completed with no
  *       work-started recorded, or an announcement composed but never dispatched (#2790)
+ *   (5) Doc judgment — warning if an open sub-issue's body has no `**Doc judgment:**`
+ *       line, the record /work Step 3b writes (#3176)
  * Audit (3) test coverage is intentionally NOT handled here — that remains skill-delegated
  * to tdd-refactor-coverage-audit per the spec (#2318 AC7). The gap in the numbering is
  * deliberate: (3) is an established reference in the Step 6a spec, so the new audit takes
@@ -18,10 +20,11 @@
  *   { ok, issueNumber, audits: { commitDensity:       { status, commitCount, acCount, threshold, message },
  *                                acCheckbox:          { status, unchecked: [{ subIssue, uncheckedCount }], message },
  *                                announcementPairing: { status, missingOpener, missingCloser, unrecorded,
- *                                                       undispatched, skipped, caveats, message } },
+ *                                                       undispatched, skipped, caveats, message },
+ *                                docJudgment:         { status, missing: [N], message } },
  *     warnings: [string], blocks: [string] }
  *
- * Only (2) can populate `blocks`. (1) and (4) are advisory — (4) audits a channel that
+ * Only (2) can populate `blocks`. (1), (4) and (5) are advisory — (4) audits a channel that
  * gates nothing, and an audit stricter than the thing it audits is a gate by the back door.
  *
  * Exit codes: 0 = ok or warnings only; 1 = blocking audit failed; 2 = bad args; 3 = query failed
@@ -233,6 +236,46 @@ function auditAnnouncementPairing(subIssueNumbers, ledgerFn, reconcileFn) {
   };
 }
 
+// A `**Doc judgment:**` line outside a code fence — the record /work Step 3b
+// writes, `none — <reason>` or a doc path (#3176). Fenced lines are quotation.
+const DOC_JUDGMENT_LINE = /^\s*\*\*Doc judgment:\*\*\s*\S/;
+
+function hasDocJudgment(body) {
+  let fenced = false;
+  for (const line of String(body || '').split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; continue; }
+    if (!fenced && DOC_JUDGMENT_LINE.test(line)) return true;
+  }
+  return false;
+}
+
+/**
+ * Audit (5) — doc judgment (#3176).
+ *
+ * Step 3b leaves no evidence when its answer is "no doc", so a skipped
+ * judgment read the same as a negative one. It now writes a
+ * `**Doc judgment:**` line into the sub-issue body; this names each processed
+ * sub-issue without one. WARNING only, like (1) and (4): it audits a record,
+ * and the record's absence does not make the work wrong.
+ *
+ * A CLOSED sub-issue was finished by an earlier run, before the line existed,
+ * and backfilling it is out of scope, so only open sub-issues are audited.
+ * An entry with no `state` is treated as processed.
+ */
+function auditDocJudgment(details) {
+  const missing = details
+    .filter((d) => String(d.state || '').toUpperCase() !== 'CLOSED')
+    .filter((d) => !hasDocJudgment(d.body))
+    .map((d) => d.number);
+  return {
+    status: missing.length ? 'warn' : 'pass',
+    missing,
+    message: missing.length
+      ? `No **Doc judgment:** line on ${missing.map((n) => `#${n}`).join(', ')} — Step 3b recorded no judgment. Warning only — does not block.`
+      : 'Every processed sub-issue records a Doc judgment.',
+  };
+}
+
 function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn }) {
   const subIssues = listFn(issueNumber);
   if (!subIssues.length) {
@@ -251,7 +294,7 @@ function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn })
   const details = subIssues.map(s => {
     const num = s.number || s.num;
     const full = fetchFn(num);
-    return { number: num, body: full.body || '' };
+    return { number: num, body: full.body || '', state: s.state };
   });
 
   const totalAcs = details.reduce((sum, d) => sum + countTotalAcs(d.body), 0);
@@ -272,6 +315,7 @@ function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn })
     ledgerFn,
     reconcileFn || reconcileLedger
   );
+  const docJudgment = auditDocJudgment(details);
 
   const warnings = [];
   const blocks = [];
@@ -284,12 +328,13 @@ function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn })
     warnings.push(announcementPairing.message);
     for (const c of announcementPairing.caveats || []) warnings.push(c);
   }
+  if (docJudgment.status === 'warn') warnings.push(docJudgment.message);
   if (acCheckbox.status === 'fail') blocks.push(acCheckbox.message);
 
   return {
     ok: blocks.length === 0,
     issueNumber,
-    audits: { commitDensity, acCheckbox, announcementPairing },
+    audits: { commitDensity, acCheckbox, announcementPairing, docJudgment },
     warnings,
     blocks
   };
@@ -328,6 +373,8 @@ module.exports = {
   auditCommitDensityPerSubIssue,
   auditAcCheckbox,
   auditAnnouncementPairing,
+  auditDocJudgment,
+  hasDocJudgment,
   audit,
   fetchIssue,
   listSubIssues

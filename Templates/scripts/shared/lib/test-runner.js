@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -110,6 +110,68 @@ function isManualOnly(suite) {
   return suite && suite.execution === 'manual-only';
 }
 
+/** The two concurrency values a suite may declare (#3132). */
+const CONCURRENCY_VALUES = Object.freeze(['parallel', 'exclusive']);
+
+/** Roles whose suites are exclusive unless the suite says otherwise. */
+const EXCLUSIVE_BY_ROLE = Object.freeze(['e2e']);
+
+/**
+ * Whether a suite may run inside a concurrent member's worktree (#3132).
+ *
+ * `parallel` runs per member in the worktree; `exclusive` is deferred to the
+ * tracker branch after the group's merge-back. Absent → the role default:
+ * `e2e` is exclusive (a host-bound run from two worktrees at once collides on
+ * ports, browsers and fixtures), everything else is parallel.
+ *
+ * An invalid declaration is `{value: null, source: 'invalid'}`, never
+ * `parallel`: the schema refuses the value at write time, and a config that
+ * bypassed it must not be rewarded with the permissive default (Negative
+ * Test Scenario 6).
+ *
+ * @returns {{value: 'parallel'|'exclusive'|null, source: 'declared'|'role-default'|'invalid', error?: string}}
+ */
+function resolveConcurrency(suite) {
+  const declared = suite ? suite.concurrency : undefined;
+  if (declared === undefined) {
+    const role = suite && suite.role !== undefined ? suite.role : 'unit';
+    return { value: EXCLUSIVE_BY_ROLE.includes(role) ? 'exclusive' : 'parallel', source: 'role-default' };
+  }
+  if (CONCURRENCY_VALUES.includes(declared)) {
+    return { value: declared, source: 'declared' };
+  }
+  return {
+    value: null,
+    source: 'invalid',
+    error: `Suite "${suite.id}" declares concurrency ${JSON.stringify(declared)} — expected "parallel" or "exclusive"; not run, not deferred, and never defaulted to parallel.`,
+  };
+}
+
+/**
+ * Split suites by where they may run (#3132). Manual-only and invalid suites
+ * are in neither set, and named, so nothing leaves the report silently.
+ *
+ * @returns {{parallel: object[], exclusive: object[], manualOnly: string[],
+ *   invalid: Array<{suiteId: string, declared: *, error: string}>, warnings: string[]}}
+ */
+function partitionByConcurrency(suites) {
+  const out = { parallel: [], exclusive: [], manualOnly: [], invalid: [], warnings: [] };
+  for (const suite of suites) {
+    if (isManualOnly(suite)) {
+      out.manualOnly.push(suite.id);
+      continue;
+    }
+    const concurrency = resolveConcurrency(suite);
+    if (concurrency.source === 'invalid') {
+      out.invalid.push({ suiteId: suite.id, declared: suite.concurrency, error: concurrency.error });
+      out.warnings.push(concurrency.error);
+      continue;
+    }
+    (concurrency.value === 'exclusive' ? out.exclusive : out.parallel).push(suite);
+  }
+  return out;
+}
+
 /** A suite's working directory, with absent and the project root reading the same. */
 function suiteCwd(suite) {
   const cwd = typeof suite.cwd === 'string' ? suite.cwd.trim() : '';
@@ -157,6 +219,9 @@ function collapseRuns(runs, commandKey, mergeExtra = () => {}) {
     .map((run) => ({ suiteIds: run.suiteIds.slice() }));
   return { runs: out, collapsed };
 }
+
+/** A template carrying none of these expands to itself, so it does not narrow. */
+const PLACEHOLDER_RE = /\{(?:files|dir|stem|package)\}/;
 
 /**
  * Expand `{files}`, `{dir}`, `{stem}` and `{package}` into a command string.
@@ -253,20 +318,32 @@ function resolveSuites(cwd = process.cwd()) {
  * Route a changed-file set to the suites that cover it.
  *
  * @returns {{runs: object[], collapsed: {suiteIds: string[]}[], unmatched: string[],
- *            reason: string|null, warnings: string[]}} `reason` is
+ *            reason: string|null, notRun: {suiteId: string, reason: string}[],
+ *            warnings: string[]}} `notRun` names each suite a placeholder
+ *   expansion error skipped (#3175). `reason` is
  *   `'no-suites-matched'` when nothing ran — which must stay distinguishable
  *   from "everything passed", since both are an empty result and conflating
  *   them is a silent skip. Suites whose scoped command and `cwd` match share
  *   one run carrying every id and the union of their files (#3025).
  */
-function scopedInvocations({ suites = [], changedFiles = [] } = {}) {
+function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false } = {}) {
   const runs = [];
   const warnings = [];
+  const notRun = [];
   const matchedAny = new Set();
+  // Inside a member's worktree only parallel suites run (#3132). Exclusive
+  // suites are returned as the deferred set the parent runs after merge-back
+  // — never dropped, so a role-default e2e suite is never skipped. An
+  // invalid declaration is named and is in neither set. Outside a worktree
+  // nothing is partitioned and every gate suite runs, as before.
+  const split = inWorktree
+    ? partitionByConcurrency(suites)
+    : { parallel: suites.filter((s) => !isManualOnly(s)), exclusive: [], manualOnly: suites.filter(isManualOnly).map((s) => s.id), invalid: [], warnings: [] };
+  const deferred = split.exclusive.map((s) => ({ suiteId: s.id, concurrency: 'exclusive', source: resolveConcurrency(s).source }));
+  const { invalid, manualOnly } = split;
+  warnings.push(...split.warnings);
 
-  for (const suite of suites) {
-    if (isManualOnly(suite)) continue;
-
+  for (const suite of split.parallel) {
     const files = filesForSuite(suite, changedFiles);
     if (files.length === 0) continue;
     files.forEach((f) => matchedAny.add(f));
@@ -286,23 +363,31 @@ function scopedInvocations({ suites = [], changedFiles = [] } = {}) {
     if (mode === DEFAULT_SCOPING_MODE && scoped.onScoped === 'skip') continue;
 
     let command;
+    let narrowed = false;
     if (mode === DEFAULT_SCOPING_MODE) {
       command = suite.full;
     } else {
       const template = scoped.command || suite.full;
+      // A template expanding no placeholder runs the whole suite whatever
+      // changed — the Merge-Back Review Gate defers such a run (#3159).
+      narrowed = PLACEHOLDER_RE.test(template);
       try {
         command = expandPlaceholders(template, files);
       } catch (err) {
+        // `notRun` is the structured record consumers read (#3175); the
+        // warning is for display and its wording is not a contract.
+        notRun.push({ suiteId: suite.id, reason: err.message });
         warnings.push(`Suite "${suite.id}" was not run: ${err.message}`);
         continue;
       }
     }
 
-    runs.push({ suiteId: suite.id, mode, command, files, cwd: suiteCwd(suite), kind: suite.kind });
+    runs.push({ suiteId: suite.id, mode, command, narrowed, files, cwd: suiteCwd(suite), kind: suite.kind });
   }
 
   const merged = collapseRuns(runs, (run) => run.command, (into, from) => {
     for (const f of from.files) if (!into.files.includes(f)) into.files.push(f);
+    into.narrowed = into.narrowed && from.narrowed;
   });
 
   return {
@@ -310,7 +395,90 @@ function scopedInvocations({ suites = [], changedFiles = [] } = {}) {
     collapsed: merged.collapsed,
     unmatched: changedFiles.filter((f) => !matchedAny.has(f)),
     reason: runs.length === 0 && changedFiles.length > 0 ? 'no-suites-matched' : null,
+    deferred,
+    invalid,
+    notRun,
+    manualOnly,
     warnings,
+  };
+}
+
+/**
+ * The exclusive suites a group deferred, for the parent to run once each,
+ * serially, on the tracker branch after merge-back and worktree teardown
+ * (#3132). Scoped to `changedFiles` — the union of the group's changed files,
+ * regenerated paths included — through the same scoping each suite declares.
+ *
+ * Nothing is dropped silently: `manualOnly` and `invalid` are named, and an
+ * exclusive suite matching none of the changed files is listed in
+ * `unmatchedExclusive`, so a suite that did not run is distinguishable from
+ * one that was never declared.
+ *
+ * `cannotNarrow` names the parallel suites a member's Tier 1 deferred because
+ * their scoped command expands no placeholder (#3159). They run here, after
+ * the exclusive ones, at the tracker — never in a worktree, never dropped: an
+ * unmatched one is in `unmatchedCannotNarrow`, an unknown id in `warnings`.
+ *
+ * @returns {{runs: object[], collapsed: object[], serial: true, manualOnly: string[],
+ *   invalid: object[], unmatchedExclusive: string[], unmatchedCannotNarrow: string[],
+ *   warnings: string[]}}
+ */
+function deferredInvocations({ suites = [], changedFiles = [], cannotNarrow = [] } = {}) {
+  const { exclusive, parallel, invalid, manualOnly, warnings } = partitionByConcurrency(suites);
+
+  const narrowIds = [...new Set(cannotNarrow)];
+  const unknown = narrowIds.filter((id) => !parallel.some((s) => s.id === id));
+  for (const id of unknown) {
+    warnings.push(`Deferred suite "${id}" names no declared parallel suite — not run.`);
+  }
+  const narrowSuites = parallel.filter((s) => narrowIds.includes(s.id));
+
+  const scoped = scopedInvocations({ suites: exclusive, changedFiles });
+  const late = scopedInvocations({ suites: narrowSuites, changedFiles });
+  const ran = new Set([...scoped.runs, ...late.runs].flatMap((r) => r.suiteIds));
+  return {
+    runs: [...scoped.runs, ...late.runs],
+    collapsed: [...scoped.collapsed, ...late.collapsed],
+    serial: true,
+    manualOnly,
+    invalid,
+    unmatchedExclusive: exclusive.map((s) => s.id).filter((id) => !ran.has(id)),
+    unmatchedCannotNarrow: narrowSuites.map((s) => s.id).filter((id) => !ran.has(id)),
+    warnings: [...warnings, ...scoped.warnings, ...late.warnings],
+  };
+}
+
+/** The prefix framework-owned worktrees carry under the project root. */
+const WORKTREE_PREFIX = '.tmp-wt-';
+
+/**
+ * Worktree directories still under the project root when the parent's own
+ * suites are about to run (#3132). Worktrees sit under the root (#3123), so
+ * a suite run from the root may collect their files; the gate sequences
+ * teardown before these runs rather than passing an ignore flag the
+ * framework cannot name for an unknown runner. Any directory still present —
+ * kept after a halt, or created by an unrelated caller — is reported by path
+ * and the run continues.
+ *
+ * @param {{root: string, fs?: {readdirSync: Function}}} input
+ * @returns {{paths: string[], report: string|null}}
+ */
+function leftoverWorktrees({ root, fs = require('fs') } = {}) {
+  let entries;
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return { paths: [], report: null };
+  }
+  const paths = entries
+    .filter((e) => e.isDirectory() && e.name.startsWith(WORKTREE_PREFIX))
+    .map((e) => `${root}/${e.name}`)
+    .sort();
+  if (paths.length === 0) return { paths, report: null };
+  return {
+    paths,
+    report: `Worktree director${paths.length === 1 ? 'y' : 'ies'} still present under the project root — possibly collected by the project's suites:\n`
+      + paths.map((p) => `  - ${p}`).join('\n'),
   };
 }
 
@@ -398,6 +566,12 @@ module.exports = {
   resolveSuites,
   scopedInvocations,
   sweepInvocations,
+  resolveConcurrency,
+  deferredInvocations,
+  leftoverWorktrees,
+  CONCURRENCY_VALUES,
+  EXCLUSIVE_BY_ROLE,
+  WORKTREE_PREFIX,
   classifyRunResult,
   firstToken,
   SCOPING_MODES,

@@ -7,6 +7,7 @@ Create a new git branch with an associated tracker issue on the project board.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `<branch-name>` | Yes | Any valid git branch name (e.g., `release/v0.16.0`, `feature/dark-mode`) |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

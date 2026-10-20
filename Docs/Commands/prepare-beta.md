@@ -8,7 +8,9 @@ Tag a beta release from a feature branch without merging to main.
 |----------|----------|-------------|
 | `--skip-coverage` | No | Skip the coverage gate |
 | `--dry-run` | No | Preview actions without making changes |
-| `--help` | No | Show extension points |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
+
+To see this command's extension points, run `/extensions --list --command prepare-beta`.
 
 ## Usage
 

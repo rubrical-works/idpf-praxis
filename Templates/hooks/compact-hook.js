@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * Compact Hook — SessionStart:compact
  * Fires after context compaction.
  */
@@ -8,4 +8,3 @@
 // startup Hook Health row. A helper that cannot load records nothing and changes
 // nothing here; the startup load check reports it.
 try { require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('compact-hook'); } catch (_) { /* reported by the load check */ }
-console.log("compact-hook fired");

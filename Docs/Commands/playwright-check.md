@@ -7,6 +7,7 @@ Verify Playwright is properly installed and browsers are available.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--fix` | No | Attempt to fix common issues automatically |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

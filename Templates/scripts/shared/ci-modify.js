@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Modify a workflow YAML file safely, preserving comments and structure. Supports adding top-level keys, inserting steps into jobs, and merging configuration blocks. Used by ci-add.js and ci-remove.js for non-destructive YAML edits.
  * @checksum sha256:placeholder
  *
@@ -218,7 +218,7 @@ function validateYaml(content) {
 // CLI entry point
 if (require.main === module) {
   console.log('ci-modify.js - YAML-safe workflow modification library');
-  console.log('This module is used programmatically by /ci add and /ci remove.');
+  console.log('This module is used programmatically by /ci --add and /ci remove.');
 }
 
 module.exports = { modifyWorkflow, createBackup, cleanupBackups, validateYaml, setJobProperty };

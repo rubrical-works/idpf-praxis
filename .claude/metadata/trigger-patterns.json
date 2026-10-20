@@ -64,6 +64,11 @@
       "source": "--refresh",
       "flags": "i",
       "description": "Cache-refresh flag on the commands help path."
+    },
+    "harnessFrame": {
+      "source": "^(?:\\[SYSTEM NOTIFICATION\\b|\\[Subagent hand-back\\]|<task-notification>|<agent-message\\b|<cross-session-message\\b)",
+      "flags": "i",
+      "description": "A prompt the harness generated rather than the user typed: a background-task notification, a subagent hand-back, an agent message or a cross-session message (#3163). Anchored at the start of the (trimmed) prompt, so a user who quotes a marker mid-sentence is still a user. UserPromptSubmit input carries no field naming the prompt source, so this text framing is the only signal; it is observed harness behavior, not documented. Used only to exempt such prompts from the analysis trigger. Optional: absent, nothing is exempted and the analysis trigger behaves as before."
     }
   },
   "routingNotes": {
@@ -78,7 +83,7 @@
         "text": "**Flag pass-through convention** — applies to every routing path; commands gaining flags later inherit it.\n- **Extraction is by token shape.** A token is a flag when it is `--` followed by a letter. A bare `--` separator, a `---` rule, and `--` inside prose are not flags and are preserved verbatim in title text.\n- **No flag-shaped token is ever discarded.** Unrecognized flags pass through to the command, which reports them through its own error handling. Silent truncation is never correct — a dropped flag gives a narrowed result with nothing to notice.\n- **Recognized flags are data,** per command, in `.claude/metadata/trigger-flag-allowlist.json`. Adding a flag is a data edit, not a hook edit.\n- **Declaration governs value attachment only.** A recognized flag may claim the following token as its value (`--with security`); an unrecognized one may not, so trailing prose is not swallowed into the argument list.\n- **How much a recognized flag claims is declared per flag (#2770).** An entry is a plain flag string (one token, the default) or an object adding `\"attach\": \"rest-of-line\"`, claiming every remaining token so a flag can take prose (`/proposal --update`). Per flag, not a mode switch — every other flag keeps the one-token default.\n- **A rest-of-line value stops at the next flag-shaped token.** `--update rewrite the intro --assignee octocat` binds `rewrite the intro` and leaves `--assignee` its own value; absorbing a following flag into prose would discard it silently. `--flag=value` carries its own value and never claims following tokens."
       },
       "workRouting": {
-        "text": "**Work routing.** A message starting with `work` that names an issue (`work #N`, `work on 123`, `work issue 45`) routes to `/work N` once the hook confirms the issue has a branch assignment — an unassigned issue is refused with the `/assign-branch` remedy. `work all in <status>` routes a batch only when `<status>` is a status configured in `.gh-pmu.json`.\nOn this path only the issue number (or status) is carried: flags typed after it are not extracted, so pass them by invoking `/work` directly."
+        "text": "**Work routing.** A message starting with `work` that names an issue (`work #N`, `work on 123`, `work issue 45`) routes to `/work N` once the hook confirms the issue has a branch assignment — an unassigned issue is refused with the `/assign-branch` remedy. `work all in <status>` routes a batch to `/work --status <status>` only when `<status>` is a status configured in `.gh-pmu.json`.\nOn this path only the issue number (or status) is carried: flags typed after it are not extracted, so pass them by invoking `/work` directly."
       },
       "doneRouting": {
         "text": "**Done routing.** `done` with issue numbers routes to `/done` with them; a bare `done` routes only when some issue is in review. `/done` moves `in_review` → `done` only — `/work` owns `in_progress` → `in_review`. Issues close only when the user says \"Done\"."

@@ -11,6 +11,7 @@ Review a proposal document linked from a GitHub issue, with tracked history.
 | `--mode` | No | Transient review mode override: `solo`, `team`, or `enterprise` |
 | `--force` | No | Force re-review even if issue already has the `reviewed` label |
 | `--prior-art` | No | Force the prior-art sweep whatever the project’s `reviewSweep` mode (except `off`). Boolean — takes no value. Typed directly, or passed through the `/review-issue` redirect |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

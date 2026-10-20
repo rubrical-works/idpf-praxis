@@ -216,6 +216,12 @@ If workstream branches have commits, the command warns you and requires `--force
 
 ---
 
+## Workstreams and `--concurrent`
+
+Workstreams parallelize **across epics**: each epic gets its own branch and worktree, and a session works each one. `/work <epic> --concurrent` parallelizes **within one tracker**: the sub-issues of a single epic that declare disjoint `**Files to modify:**` blocks run at once, in worktrees the framework creates and removes inside one `/work` run, each merged back through a review gate. The two compose — plan workstreams first, then run `--concurrent` inside each — and `--streams N` and `--agents N` cap different things: workstream branches, and agents of any kind at once. The full model, including the profiler that measures whether your history collides at all, is in [Concurrent Work Within One Epic](Concurrent-Work.md).
+
+---
+
 ## Integration with Other Commands
 
 The workstream lifecycle is tracked in `.workstreams.json` and updated automatically by related commands:

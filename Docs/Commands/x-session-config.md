@@ -10,8 +10,14 @@ Sessions working in the same directory announce what they are doing to each othe
 |----------|----------|-------------|
 | `--off <levers>` | No | Comma-separated lever names, or `all`. Turns each off. |
 | `--on <levers>` | No | Comma-separated lever names, or `all`. Turns each on. |
+| `--quiet` | No | Alias for `--off noticeNarration`. |
+| `--loud` | No | Alias for `--on noticeNarration`. |
+| `--show` | No | Show the resolved settings and write nothing. Cannot be combined with `--on` or `--off`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and writes nothing. |
 
-**Lever names:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `noticeNarration`, `overlapNotices`, `broadcast`, `work`, `push`, `review`.
+**Lever names:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `noticeNarration`, `overlapNotices`, `broadcast`, `work`, `push`, `review`. Pass them comma-separated, or the literal `all`. The last three address the `work`, `push` and `review` announcement groups.
+
+`noticeNarration` is the one receive-side setting: it sets how much this session says when it **receives** an announcement. Quiet keeps the one-line acknowledgment and drops the commentary around it.
 
 ## Usage
 
@@ -22,12 +28,15 @@ Sessions working in the same directory announce what they are doing to each othe
 /x-session-config --on all             # turn everything back on
 /x-session-config --off all            # turn everything off
 /x-session-config --off broadcast      # send announcements to a running /overwatch only
+/x-session-config --quiet              # acknowledge received announcements in one line
+/x-session-config --show               # show the settings, write nothing
+/x-session-config --help               # open this page, write nothing
 ```
 
 ## Key Behaviors
 
-- **Every run writes the settings to `framework-config.json`, then shows you what it wrote** — including a run with no arguments. The file always ends up stating every setting explicitly, so you can read it without knowing what a missing entry would have meant.
-- The first run in a project that has never been configured will therefore show up as a change to `framework-config.json`. Runs after that write the same thing again and produce no change.
+- **Every run except `--show` and `--help` writes the settings to `.claude/x-session.json`, then shows you what it wrote** — including a run with no arguments. The file always ends up stating every setting explicitly, so you can read it without knowing what a missing entry would have meant.
+- The first run in a project that has never been configured will therefore show up as a change to `.claude/x-session.json`. Runs after that write the same thing again and produce no change.
 - Not configuring this project at all is still perfectly valid: with no settings present, everything is on. The same is true of any individual setting that is missing — including one added by a future release, which will be on by default without you editing anything.
 - Settings are validated before being saved. If a value would produce an invalid file, the save is refused rather than written.
 - An unrecognized lever name is reported as an error rather than guessed at, and nothing is written.

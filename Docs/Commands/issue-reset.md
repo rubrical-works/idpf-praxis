@@ -8,6 +8,7 @@ Reset a bug, enhancement, PRD, proposal, or epic issue to a clean slate.
 |----------|----------|-------------|
 | `#issue` | Yes | Issue number to reset (e.g., `#42` or `42`) |
 | `--dry-run` | No | Preview actions without executing |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

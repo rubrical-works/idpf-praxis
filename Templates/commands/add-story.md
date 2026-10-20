@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
-argument-hint: "[epic-number] (e.g., 42 or #42)"
+argument-hint: "[epic-number] (e.g., 42 or #42) [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -12,6 +12,10 @@ Add a story to an epic with charter compliance and test plan updates.
 |----------|-------------|
 | `[epic-number]` | Parent epic (e.g., `42` or `#42`). Prompts if omitted. |
 | `--assignee <value>` | GitHub login for the new issue. Omitted → `@me`. |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js add-story`, report its output, and STOP.
+
 ## Execution Instructions
 **REQUIRED:**
 1. **Create Tasks:** Use `TaskCreate` to bulk-create tasks from phases below.
@@ -48,7 +52,7 @@ gh issue view $epic_num --json labels --jq '.labels[].name' | grep -q "epic"
 ```
 If not an epic: `Error: Issue #$epic_num does not have the 'epic' label.`
 **Step 4: Gather story details**
-**ASK USER:** Describe the new story — what can the user do, benefit, acceptance criteria.
+**ASK USER:** Describe the new story — what can the user do, benefit, acceptance criteria, and which stories in this epic must land first (`#N`), if any.
 **Step 4a: AC Feasibility Gate (#2424, #2508)**
 Re-read `.claude/metadata/ac-feasibility-prompts.json`. Apply `classify`, `verificationGate`, `deliverableSplit`, `phaseFeasibility` to each AC. If any verification AC matches `triggerPhrases` and no existing test uses that mechanism (verify via Grep), **ASK USER** to (a) rewrite, (b) commit to a feasibility spike + issue number, or (c) accept weaker mechanism. Do not proceed to Step 5 until each flagged AC resolved. Trigger list is heuristic; prompts are load-bearing.
 
@@ -66,6 +70,7 @@ Prefer annotation over deletion when the requirement is real — the goal is to 
 | User action description | **I want** clause |
 | Benefit/value | **So that** clause |
 | Acceptance criteria | Checkbox list |
+| Stories that must land first | **Depends on:** line — `#N, #M`, or `none` |
 Infer user type from context or ask.
 ## Phase 2: Charter Compliance Check
 **Step 1: Load charter context**
@@ -109,6 +114,7 @@ gh pmu create --repo {repository} \
 
 ```markdown
 ## Story: {Title}
+**Depends on:** {#N, #M | none}
 ### Description
 As a {user type}, I want {capability} so that {benefit}.
 ### Relevant Skills
@@ -143,6 +149,8 @@ N/A
 **Priority:** {P0|P1|P2}
 **Parent Epic:** #{epic_num}
 ```
+**Depends on — machine-read, fixed shape (#3127).** Value is `none` or comma-separated `#N` refs to **sibling sub-issues of the same epic** — never `Story 1.1`, a bare number, or the story's own number. `/work --nonstop`/`--concurrent` order members from it via `.claude/scripts/shared/lib/depends-on.js`; an unreadable entry yields no edge and is never treated as satisfied, and `/review-issue`'s `depends-on-valid` flags it. `none` asserts no dependency — write it only when the user says so, never for "unknown". A parenthetical after an entry is ignored (`#12 (shares the helpers)`).
+
 **Relevant Skills renders `N/A` when skills ARE configured (#2817).** The section used to emit the whole `projectSkills` array into every story; there is no relevance filter here or in `/create-backlog`, so all stories got the same list — ten identical copies in a ten-story epic — and the name was a misnomer, the content being project-wide. It was also a third copy: the session lists available skills, and `/work` loads TDD skills from `.claude/skills/tdd-process/tdd-checklist.json`, not the story body. The unconfigured branch stays: it is the only actionable half.
 **E2E — the source is `framework-config.json` `testing.suites[]`, the suite whose `role` is `e2e` (#2851).** **This inverts the #2817 instruction that stood here**, which named `Inception/Test-Strategy.md` as the only source and forbade a `framework-config.json` key. That was right while the prose artifact was the only declaration; since #2849 the config carries `testing.suites[]` and since #2851 the Framework table is **rendered from it**, so reading the prose means reading a view and calling it the source. The reason is recorded rather than the rule deleted, because nothing else stops it being reinstated. `Inception/Test-Strategy.md` remains **corroboration** when the config declares nothing. Three states, and the last two stay distinguishable:
 | `Inception/Test-Strategy.md` | Emit |

@@ -178,7 +178,7 @@ Claude will prompt you with something close to:
 Your charter is pending. Would you like to create one now?
 ```
 
-Say **yes**. This invokes the `/charter` command. Claude asks a short series of questions. The answers are not precious — you can revise the charter later with `/charter update`.
+Say **yes**. This invokes the `/charter` command. Claude asks a short series of questions. The answers are not precious — you can revise the charter later with `/charter --update`.
 
 Expect questions like:
 
@@ -249,7 +249,7 @@ If you would rather explore on your own first, try one of these:
 
 - Ask Claude `"what commands are available?"` — it will list your slash commands by category.
 - Open `CHARTER.md` and edit the tech-stack table. Save. Claude picks up the change on its next read.
-- Type `/extensions list` to see the customization points the framework exposes for your commands.
+- Type `/extensions --list` to see the customization points the framework exposes for your commands.
 
 ---
 

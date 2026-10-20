@@ -199,7 +199,7 @@ The API-concurrent model is simpler: one working tree, one git owner, multiple r
 
 ## Limits of This Approach
 
-This is not true parallelism for implementation work. You still have one session writing code at a time. If your bottleneck is implementation rather than review, this approach won't help — you need worktrees or separate clones.
+This is not true parallelism for implementation work. You still have one session writing code at a time. If your bottleneck is implementation rather than review, this approach won't help — you need worktrees, and the framework now provides them inside one run: `/work <epic> --concurrent` works the disjoint sub-issues of one tracker at once in framework-owned worktrees and merges each back through a review gate, while workstreams (`/plan-workstreams`) parallelize across epics on separate branches. See [Concurrent Work Within One Epic](Concurrent-Work.md).
 
 But in IDPF workflows, review is often the bottleneck. A release with twenty stories needs twenty reviews and potentially twenty resolve-review cycles. Processing those sequentially in a single session, interleaved with implementation, is slow. Offloading reviews to concurrent sessions lets the git session focus on what only it can do: write and commit code.
 
@@ -224,6 +224,7 @@ One session commits. The rest review. No worktrees required.
 ## What to Read Next
 
 - [Concurrent Workstreams](Concurrent-Workstreams.md) — The strategic counterpart to concurrent sessions. Instead of parallelizing reviews within a single branch, workstreams parallelize entire epics across separate branches with conflict-aware grouping and merge ordering.
+- [Concurrent Work Within One Epic](Concurrent-Work.md) — The third layer: `--concurrent` parallelizes implementation within one tracker, in framework-owned worktrees, with every gate kept per member. Sessions across a branch, workstreams across epics, `--concurrent` within one tracker.
 
 ---
 

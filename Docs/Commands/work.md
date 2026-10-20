@@ -8,20 +8,41 @@ Start working on one or more issues with branch validation, context gathering, a
 |----------|----------|-------------|
 | `#issue` | Yes (one of) | Single issue number (e.g., `#42` or `42`) |
 | `#issue #issue...` | | Multiple issue numbers (e.g., `#42 #43 #44`) |
-| `all in <status>` | | All issues in a given status (e.g., `all in backlog`) |
+| `--status <status>` | | All issues in a given status (e.g., `--status backlog`) |
 | `--assign` | No | Auto-assign issue(s) to current branch before starting |
 | `--nonstop` | No | For epics/branch trackers: skip per-sub-issue STOP and process all sub-issues continuously to `in_review` |
 | `--wait` | No | Wait for pending CI to pass before beginning work |
+| `--concurrent` | No | For epics/branch trackers: run file-disjoint sub-issues at once in framework-owned worktrees, grouped by their `**Depends on:**` lines, each merged back through a review gate (see Concurrent Mode) |
+| `--agents N` | No | How many agents of any kind may run at once — implementers, their reviewers and fix cycles share the cap — and how many test runs; default 3. Requires `--concurrent` |
+| `--no-review` | No | Skip the merge-back gate's independent reviewer (Tier 3); the mechanical checks and the parent's own read still run, and the skip is reported. Requires `--concurrent` |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
+
+**Retired forms:** `all in <status>` is no longer accepted; use `--status <status>`. The `work all in <status>` trigger phrase still works.
 
 ## Usage
 
 ```
 /work #42
 /work #42 #43 #44
-/work all in backlog
+/work --status backlog
 /work #42 --assign
 /work #100 --nonstop
+/work #100 --concurrent
+/work #100 --nonstop --concurrent --agents 2 --no-review
 ```
+
+## Concurrent Mode
+
+`--concurrent` runs the sub-issues of an epic or branch tracker at the same time when they cannot collide. The plan comes from what each sub-issue declares: members whose `**Files to modify:**` blocks are disjoint and whose `**Depends on:**` lines are already satisfied form a group of at most `--agents N`, in dependency order. Anything the plan cannot prove safe — no declared scope, an overlap with another member, an always-protected path, a dependency that is unreadable or not yet merged — goes to a **sequential tail** and is worked one at a time, exactly as `/work` always has.
+
+Each group member gets its own worktree and its own agent, which does only the TDD cycle there. The parent session keeps everything else: the review-state and status gates, the peer announcements, the merge back onto your branch, the status moves and the STOP. Before a member merges, the **Merge-Back Review Gate** checks its branch three ways — every commit carries `Refs #N` and nothing is left uncommitted, the parent reads the diff file by file, and an independent reviewer agent reads it again without the implementer's summary. A failed gate gets exactly one fix cycle; a second failure halts the run with the worktree kept for you.
+
+| Mode | STOP cadence | What you see |
+|---|---|---|
+| `--concurrent` | **One STOP per group**, after the group has merged back and every member is `in_review`; the tail then stops per member as usual | A group report, then the usual per-member reports |
+| `--nonstop --concurrent` | **No STOP** between groups or in the tail | Each member reported as it reaches `in_review`, then the nonstop summary, which repeats any leftover-worktree warning |
+
+**Fallback to sequential:** a plan with **zero groups** — every member fell to the tail — runs exactly as sequential `/work` and tells you why no group formed. Without `--concurrent` nothing here applies; `--agents` or `--no-review` on their own are reported as ignored, not treated as errors. Which flags to pick, and how to recover from a halt: [Workflow Guide, Stage 8](../01-Getting-Started/03-Workflow-Guide.md#stage-8-work-work) and [When Things Go Wrong](../01-Getting-Started/05-When-Things-Go-Wrong.md).
 
 ## Key Behaviors
 

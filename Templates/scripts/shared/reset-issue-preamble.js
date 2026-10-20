@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Analyze an issue to determine what /issue-reset would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
  * @checksum sha256:placeholder
  *
@@ -15,6 +15,7 @@ const { execTimedAsync } = require('./lib/exec.js');
 const fs = require('fs');
 const path = require('path');
 const { bodyMentionsIssue } = require('./lib/issue-ref-match.js');
+const { normalizeEol } = require('./lib/normalize-eol.js');
 const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 const { REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
 
@@ -105,10 +106,15 @@ async function findReviewComments(issueNumber, owner, repo) {
     const reviewComments = comments.filter(c =>
       REVIEW_PATTERNS.some(p => p.test(c.body))
     );
-    return reviewComments.map(c => ({ id: c.id, preview: c.body.split('\n')[0].slice(0, 80) }));
+    return reviewComments.map(c => ({ id: c.id, preview: reviewCommentPreview(c.body) }));
   } catch {
     return [];
   }
+}
+
+// First line of a review comment, without a CRLF body's trailing `\r` (#3064).
+function reviewCommentPreview(body) {
+  return normalizeEol(body).split('\n')[0].slice(0, 80);
 }
 
 function findTestPlanFiles(issueNumber) {
@@ -227,4 +233,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { analyzeBody };
+module.exports = { analyzeBody, reviewCommentPreview };

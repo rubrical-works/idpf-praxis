@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "description": "Where `--help` on a deployed command sends the user (#3030). The URL is baseUrl + pathTemplate with {command} replaced by the command name. Change baseUrl here to move every command's docs at once; no command spec carries the URL.",
+    "consumer": ".claude/scripts/shared/command-help.js"
+  },
+  "baseUrl": "https://github.com/rubrical-works/idpf-praxis/blob/main/Docs/Commands/",
+  "pathTemplate": "{command}.md"
+}

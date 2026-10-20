@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Shared review format constants, emoji markers, section headers, and regex patterns for deterministic comment formatting and parsing. Exports EMOJI, SECTION_HEADERS, PATTERNS, and formatting helpers. Used by review-finalize.js and resolve-preamble.js.
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,7 @@
 // ─── Emoji Markers (derived from findings-schema.json) ───
 
 const findingsSchema = require('./findings-schema.json');
+const { normalizeEol } = require('./normalize-eol.js');
 const EMOJI = { ...findingsSchema.statusEmoji };
 
 // ─── Section Headers ───
@@ -100,7 +101,7 @@ function formatFindingLine(status, criterion, evidence) {
 
 function parseFindingLines(text) {
   const findings = [];
-  const lines = text.split('\n');
+  const lines = normalizeEol(text).split('\n');
   for (const line of lines) {
     const match = line.match(FINDING_LINE_PATTERN);
     if (match) {
@@ -117,6 +118,8 @@ function parseFindingLines(text) {
 }
 
 function parseReviewComment(commentBody) {
+  // CRLF bodies (GitHub web UI edits) parse as their LF equivalent (#3064).
+  commentBody = normalizeEol(commentBody);
   const result = { autoEvaluated: [], userEvaluated: [], recommendation: null };
 
   // Split into sections

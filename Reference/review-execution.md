@@ -1,5 +1,5 @@
 # Review Execution Rule
-**Version:** v0.108.0
+**Version:** v0.109.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` — the hybrid shell + rule architecture from #2329/#2368 applied to the review pair. Shells carry arguments, prerequisites and error handling; this carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks.** The three retired points live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.
@@ -168,27 +168,28 @@ Auto-resolved:
   ✓ Added AC section skeleton (confirmed)
 ```
 ### Step 3: Pass 2 — User Input
-Iterate `findings.needsUserInput`. Use `AskUserQuestion`:
+Iterate `findings.needsUserInput`. **Print the finding as markdown before each `AskUserQuestion`** (issue, criterion, full detail; proposed AC quoted), then:
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: `For Issue: #${ISSUE}\nFinding: ${finding.criterion}\nDetail: ${finding.detail}`,
+    question: `For Issue: #${ISSUE} — ${finding.criterion} How should this be resolved?`,
     header: "Resolution",
     options: [
-      { label: "Accept suggestion", description: "Apply suggested change" },
-      { label: "Provide alternative", description: "Specify your own resolution" },
+      { label: "Accept suggestion", description: "Apply the change shown", preview: "<exact change>" },
+      { label: "Provide alternative", description: "Specify your own resolution", preview: "<reviewer's alternative>" },
       { label: "Skip", description: "Leave unresolved" }
     ],
     multiSelect: false
   }]
 });
 ```
+**One-line question; the change goes in the previews.** `Accept suggestion` previews the exact change, verbatim; `Provide alternative` the reviewer's alternative when one is named, else no `preview`.
 - **Accept:** apply, `"✓ {change applied}"`
 - **Alternative:** ask conversationally, apply
 - **Skip:** `"⊘ Skipped: {finding}"`
 **Both prompts name the issue.** The number comes from the command's own `$ISSUE` argument, never a `resolve-preamble.js` context field.
 **Accepted suggestions that add or reword an AC are authored AC text — apply Step 1b before writing them.**
-**Title rewording:** Propose new title from content, present "Accept", "Edit", "Skip"; prefix the question with `For Issue: #${ISSUE}`.
+**Title rewording:** Propose new title from content, print both titles as markdown, present "Accept", "Edit", "Skip"; one-line question prefixed `For Issue: #${ISSUE}`, proposed title in the `Accept` `preview`.
 **Flagged `severity-proportionate`:** re-read `.claude/metadata/bug-priority-rubric.json`; derive its priority from the bug's stated impact as `/bug` Step 2c does (`classes`, `precedence`, no match → `fallback`). Offer it as the suggestion, naming the matched class id and the current board priority. **Accept** → `gh pmu move $ISSUE --priority <p>`; **Provide alternative** → user's `p0`/`p1`/`p2`, applied the same way. One confirmation suffices — a board field, trivially reverted. **Never auto-fix it:** `priority-set` fills a *missing* priority only; a set-but-wrong one is always a proposal, which is why `resolve-preamble.js` classifies it `needsUserInput`.
 
 ### Step 3a: Report Suggestions

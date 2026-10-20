@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Script-driven CLI for extension point operations. Replaces AI-interpreted markdown specs for read-only subcommands (list, view, diff, validate), reducing execution from 3-16+ tool calls to 1 Bash call. Used by /extensions command.
  * @checksum sha256:placeholder
  *
@@ -266,14 +266,14 @@ function runView(opts) {
   // Validate argument format
   const colonIdx = target.indexOf(':');
   if (colonIdx < 0) {
-    return { exitCode: 2, output: 'Usage: extensions-cli.js view <command>:<point>' };
+    return { exitCode: 2, output: 'Usage: extensions-cli.js --view <command>:<point>' };
   }
 
   const cmdName = target.slice(0, colonIdx).trim();
   const pointName = target.slice(colonIdx + 1).trim();
 
   if (!cmdName || !pointName) {
-    return { exitCode: 2, output: 'Usage: extensions-cli.js view <command>:<point>' };
+    return { exitCode: 2, output: 'Usage: extensions-cli.js --view <command>:<point>' };
   }
 
   // Load registry to validate command exists
@@ -741,17 +741,17 @@ function runRecipes(opts) {
  */
 function runHelp() {
   const text = [
-    'Usage: node extensions-cli.js <subcommand> [options]',
+    'Usage: node extensions-cli.js --<subcommand> [options]',
     '',
     'Subcommands:',
-    '  list [--command X]       List all extension points (optionally filter by command)',
-    '  list --status            List extension points with X/. filled/empty markers',
-    '  view <command>:<point>   View content of a specific extension point',
-    '  validate                 Validate extension point integrity (7 checks)',
-    '  summary                  Per-command filled/empty/total counts',
-    '  matrix                   Alias for summary',
-    '  recipes [category]       Browse extension recipes by category',
-    '  help                     Show this help message',
+    '  --list [--command X]     List all extension points (optionally filter by command)',
+    '  --list --status          List extension points with X/. filled/empty markers',
+    '  --view <command>:<point> View content of a specific extension point',
+    '  --validate               Validate extension point integrity (7 checks)',
+    '  --summary                Per-command filled/empty/total counts',
+    '  --matrix                 Alias for --summary',
+    '  --recipes [category]     Browse extension recipes by category',
+    '  --help                   Open the /extensions docs page (no other action)',
     '',
     'Exit codes:',
     '  0 = success',
@@ -769,6 +769,7 @@ function runHelp() {
 const os = require('os');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
+const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js');
 
 /**
  * Detect the user's preferred editor from environment variables.
@@ -824,7 +825,13 @@ function writeAndOpenEditor(content, label, spawnFn, fsModule) {
  * @returns {{ subcommand: string, args: string[], options: Object }}
  */
 function parseArgs(args) {
-  const subcommand = args[0] || 'help';
+  // --help takes precedence over every other argument and performs no action (#3030).
+  if (wantsHelp(args)) return { subcommand: 'docs', args: [], options: {} };
+  // Every subcommand is a --flag (#3030); the bare words are refused naming the flag.
+  const retired = findRetired('extensions', args);
+  if (retired) return { subcommand: 'retired', error: retired.message, args: [], options: {} };
+  // No argument still prints usage.
+  const subcommand = args[0] ? args[0].replace(/^--/, '') : 'usage';
   const rest = args.slice(1);
   const options = {};
   const positional = [];
@@ -854,11 +861,17 @@ function parseArgs(args) {
  * Main entry point.
  */
 function main() {
-  const { subcommand, args: posArgs, options } = parseArgs(process.argv.slice(2));
+  const { subcommand, args: posArgs, options, error } = parseArgs(process.argv.slice(2));
 
   let result;
 
   switch (subcommand) {
+    case 'docs':
+      result = { exitCode: 0, output: JSON.stringify(helpEnvelope('extensions'), null, 2) };
+      break;
+    case 'retired':
+      result = { exitCode: 2, output: error };
+      break;
     case 'list':
       result = runList({ command: options.command || null, status: options.status || false });
       break;
@@ -877,11 +890,11 @@ function main() {
     case 'recipes':
       result = runRecipes({ category: posArgs[0] || null, stack: options.stack || null });
       break;
-    case 'help':
+    case 'usage':
       result = runHelp();
       break;
     default:
-      result = { exitCode: 2, output: `Unknown subcommand: ${subcommand}\nRun: node extensions-cli.js help` };
+      result = { exitCode: 2, output: `Unknown subcommand: ${subcommand}\nRun with no argument for usage.` };
       break;
   }
 

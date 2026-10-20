@@ -172,6 +172,8 @@ Each `/work` cycle produces tested, committed code for one layer before the next
 
 Full-stack web applications are IDPF's bread and butter. The domain specialists map cleanly to the frontend/backend/data split, the skills cover the full testing pyramid, and the PRD-to-backlog decomposition naturally produces layer-organized stories. The sequential work/done cycle with specialist switching prevents the cross-layer bugs that plague full-stack development when all layers are built simultaneously. Expected framework utilization: ~85-95%.
 
+**Concurrent runs (`/work --concurrent`):** a mixed benefit. Stories split along the layers — a frontend component, an API route, a migration — declare disjoint files and run at once; a feature whose stories all touch the shared API client or a generated OpenAPI schema does not, until those files are declared as derived artifacts or accumulators under `concurrency` (Phase 1). Run the profiler first to see which.
+
 ---
 
 **End of Assessment**

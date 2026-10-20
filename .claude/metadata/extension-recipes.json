@@ -1,6 +1,6 @@
 {
   "$schema": "./extension-recipes-schema.json",
-  "generatedAt": "2026-10-17T19:57:00.025Z",
+  "generatedAt": "2026-10-20T20:22:33.161Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -56,7 +56,7 @@
           ],
           "template": "### Verify Cross-OS CI\n\n```bash\ngh run list --limit 1 --json jobs --jq '.[0].jobs[] | select(.name | test(\"ubuntu|windows|macos\"; \"i\")) | {name, status, conclusion}'\n```\n\nConfirm all OS matrix jobs passed:\n- **Ubuntu:** ✅\n- **Windows:** ✅\n- **macOS:** ✅\n\n**If any OS job failed or is missing, STOP and investigate before continuing.**\n\nCommon cross-OS failures:\n- Path separators: Use `path.join()` instead of string concatenation\n- Case sensitivity: macOS/Windows are case-insensitive, Linux is not\n- Symlinks: Windows requires elevated permissions for symlinks\n- Line endings: Git autocrlf can cause test mismatches on Windows",
           "prerequisites": [
-            "\"Cross-OS testing enabled in CI: /ci add cross-os-testing\""
+            "\"Cross-OS testing enabled in CI: /ci --add cross-os-testing\""
           ],
           "appliesTo": [
             "prepare-release:pre-validation",
@@ -102,7 +102,7 @@
           "prerequisites": [
             "Coverage tool configured",
             "(Optional) Codecov or similar service",
-            "\"CI integration: /ci add coverage-upload\""
+            "\"CI integration: /ci --add coverage-upload\""
           ],
           "appliesTo": [
             "prepare-release:post-validation",
@@ -316,7 +316,7 @@
           "template": "### Dependency Audit\n\n```bash\n# Node.js\nnpm audit --audit-level=high\n\n# Go\ngo list -m all | nancy sleuth\n\n# Python\npip-audit\n```\n\n**If high/critical vulnerabilities found, STOP and report.**",
           "prerequisites": [
             "Audit tool for your language (npm audit, nancy, pip-audit, etc.)",
-            "\"CI integration: /ci add dependency-audit\""
+            "\"CI integration: /ci --add dependency-audit\""
           ],
           "appliesTo": [
             "prepare-release:pre-validation",
@@ -572,7 +572,7 @@
     }
   },
   "_schema": {
-    "description": "Extension recipes for /extensions recipes command",
+    "description": "Extension recipes for /extensions --recipes command",
     "generatedFrom": ".claude/recipes/ source files",
     "category": {
       "name": "Display name",

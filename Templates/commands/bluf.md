@@ -1,8 +1,8 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 allowed-tools: Bash, Read
 description: Emit a short conclusion-first brief for one or more issues, using the IDPF framework.
-argument-hint: "#issue [#issue...]"
+argument-hint: "#issue [#issue...] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -17,6 +17,10 @@ Design record: #2932.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `#issue` | Yes | One or more issue numbers (`#42`, or `42 43 44`). Leading `#` optional |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js bluf`, report its output, and STOP.
+
 An epic among the arguments expands — see § Epic expansion.
 ## Execution Instructions
 **Task creation.** No routing decision and no gates, so create no task list: one fetch, one compose — not a step machine compaction could resume into the wrong half.

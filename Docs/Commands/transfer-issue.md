@@ -8,6 +8,7 @@ Transfer an issue from its current branch to a different branch.
 |----------|----------|-------------|
 | `<issue-number>` | Yes | Issue number to transfer (e.g., `42`) |
 | `--to branch` | No | Target branch name; omit to be prompted |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

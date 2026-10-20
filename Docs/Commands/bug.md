@@ -8,6 +8,7 @@ Create a bug issue with a standard template and add it to the project board.
 |----------|----------|-------------|
 | `<title>` | No | Bug title. Prompted if not provided. |
 | `--assignee <value>` | No | GitHub login to assign the new issue to. Omitted → `@me`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

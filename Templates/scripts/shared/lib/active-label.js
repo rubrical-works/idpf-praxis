@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Manage the 'active' label on branch tracker issues, ensuring at most one open tracker holds it. Exports ensureActiveLabel() and removeActiveLabelOnly(). Used by create-branch.js and destroy-branch.js.
  * @checksum sha256:placeholder
  *
@@ -47,6 +47,22 @@ function findActiveTracker() {
     try {
         const issues = JSON.parse(output);
         return issues.length > 0 ? issues[0].number : null;
+    } catch (_e) {
+        return null;
+    }
+}
+
+/**
+ * Every open tracker carrying the 'active' label (#3160). Unlike
+ * findActiveTracker this returns them all, so a caller can refuse an
+ * ambiguous label rather than act on whichever one gh listed first.
+ * @returns {number[]|null} Issue numbers, [] when none, null when the lookup failed
+ */
+function findActiveTrackers() {
+    const output = execSafe('gh issue list --label=branch --label=active --state=open --json=number');
+    if (output === null) return null;
+    try {
+        return JSON.parse(output).map(issue => issue.number);
     } catch (_e) {
         return null;
     }
@@ -169,6 +185,7 @@ if (require.main === module) {
 
 module.exports = {
     findActiveTracker,
+    findActiveTrackers,
     getAllOpenTrackers,
     getTrackerForBranch,
     ensureActiveLabel,

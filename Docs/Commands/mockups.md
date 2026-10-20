@@ -10,6 +10,7 @@ Create or modify text-based or interactive UI screen mockups, driven by the scre
 | `--from-image <path>` | No | Use a reference image (png/jpeg/webp) as the visual baseline for mockup generation. Bypasses the source-selection question. |
 | `--showcase` | No | Launch the Living Style Guide browser review surface on `127.0.0.1`. Renders the screen catalog (UI components / iconography) alongside the other seven design categories; captures accept/reject/annotate decisions to `Design-System/showcase/decisions.json`. Mutually exclusive with `--apply-decisions`. |
 | `--apply-decisions` | No | Read pending decisions from `Design-System/showcase/decisions.json` and apply mockup outcomes (revise / mark accepted / mark rejected / record annotations) without launching the server. For scripted / CI use. Mutually exclusive with `--showcase`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

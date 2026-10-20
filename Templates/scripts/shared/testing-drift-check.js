@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
- * @description Session-start check for tech-stack-dependent test configuration (#2903). Reports stack drift by delegating to charter-testing-audit.js, and reports framework-config.json testCoverageAudit overrides that no longer fit the imported tdd-refactor-coverage-audit skill. Read-only and advisory: it names /charter refresh as the remedy for drift and never prompts or writes.
+ * @framework-script 0.109.0
+ * @description Session-start check for tech-stack-dependent test configuration (#2903). Reports stack drift by delegating to charter-testing-audit.js, and reports framework-config.json testCoverageAudit overrides that no longer fit the imported tdd-refactor-coverage-audit skill. Read-only and advisory: it names /charter --refresh as the remedy for drift and never prompts or writes.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -266,7 +266,7 @@ function formatRows(result) {
     if (d.orphaned.length > 0) {
       parts.push(`${d.orphaned.length} orphaned suite(s) matching no file (${d.orphaned.map((s) => `${s.id} ${s.role}`).join(', ')})`);
     }
-    rows.drift = `${WARN}${parts.join('; ')} — remedy: /charter refresh`;
+    rows.drift = `${WARN}${parts.join('; ')} — remedy: /charter --refresh`;
   } else if (d && d.state === 'undetermined') {
     rows.drift = WARN + undeterminedText(d.reason, d.detail);
   }

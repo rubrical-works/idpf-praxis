@@ -186,6 +186,7 @@ The distinction that matters is what each produces. A spike's output is **knowle
 | No built-in time tracking | Low | Track via commit timestamps and issue close dates |
 | Branch management overhead for tiny projects | Low | Use a single `feature/` branch for all work in early stages |
 | Charter feels heavy for weekend projects | Medium | Use extraction mode on existing code; 2-3 minutes once |
+| One story at a time is slow for a reviewed backlog | Medium | `/work <epic> --concurrent` — the solo route to parallelism without setting up workstreams. Stories with disjoint `**Files to modify:**` blocks run at once in framework worktrees and merge back through a review gate; the rest run one at a time. One session, one branch, no `/plan-workstreams` |
 
 ---
 

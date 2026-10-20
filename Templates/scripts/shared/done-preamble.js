@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execTimedAsync } = require('./lib/exec.js');
+const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js');
 
 // Every spawn here goes through the timed wrapper (#2469). classifyError has
 // always had a TIMEOUT branch; until these spawns were bounded there was no
@@ -107,8 +108,14 @@ function parseArgs(args) {
     return { mode: 'discovery' };
   }
 
+  // --help takes precedence over every other argument and performs no action (#3030).
+  if (wantsHelp(args)) return { mode: 'help' };
+  // `-y` was dropped for `--yes` (#3030); refused rather than silently ignored.
+  const retired = findRetired('done', args);
+  if (retired) return { error: { code: 'RETIRED_ARGUMENT', message: retired.message } };
+
   const forceMove = args.includes('--force-move');
-  const yes = args.includes('--yes') || args.includes('-y');
+  const yes = args.includes('--yes');
   const hasAll = args.includes('--all');
 
   // --all conflicts with --issue/--issues
@@ -721,6 +728,12 @@ async function main() {
     const envelope = buildErrorEnvelope([parsed.error]);
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
     process.exit(1);
+    return;
+  }
+
+  if (parsed.mode === 'help') {
+    process.stdout.write(JSON.stringify(helpEnvelope('done'), null, 2) + '\n');
+    process.exit(0);
     return;
   }
 

@@ -8,6 +8,7 @@ Review and triage stories when project direction changes.
 |----------|----------|-------------|
 | `[epic-number]` | No | Epic issue number to pivot (e.g., `42` or `#42`) |
 | `[prd-name]` | No | PRD name to pivot all related stories |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

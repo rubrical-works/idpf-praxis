@@ -50,6 +50,41 @@
         "error": { "type": "string", "description": "Last filing error, while `failed`." },
         "entry": { "type": "object", "description": "The `file-issue.js` entry: type, title, priority (from finding severity), fields, labels, and `source.file` — the reviewed file whose `issueRefs` receives the number." }
       }
+    },
+    "lastDiffReview": {
+      "type": "object",
+      "description": "The most recent `/code-review --diff` run (#3114), replaced by each run. Optional; absent means no diff review has run. Read by the /prepare-release branch diff review gate (#3115), which owns the policy (which severities block, how headSha freshness is judged).",
+      "required": ["baseRef", "baseSha", "headSha", "reviewedAt", "workingTreeIncluded", "filesReviewed", "findings", "issues"],
+      "properties": {
+        "baseRef": { "type": "string", "description": "Base ref the diff was taken against (e.g. 'origin/main', or the explicit `--diff <ref>`)." },
+        "baseSha": { "type": "string", "description": "Merge-base SHA of HEAD with baseRef." },
+        "headSha": { "type": "string", "description": "HEAD SHA at the time of the run. A consumer compares it with the current HEAD to judge freshness." },
+        "reviewedAt": { "type": "string", "description": "ISO timestamp of the run." },
+        "workingTreeIncluded": { "type": "boolean", "description": "True when uncommitted changes were part of the reviewed set." },
+        "filesReviewed": { "type": "number", "description": "Files actually reviewed this run (manifest-skipped files excluded)." },
+        "findings": {
+          "type": "object",
+          "description": "Finding counts split by whether the branch introduced them (inside or overlapping a changed range) or inherited them (tagged `pre-existing`).",
+          "required": ["introduced", "preExisting"],
+          "properties": {
+            "introduced": { "$ref": "#/schema/severityCounts" },
+            "preExisting": { "$ref": "#/schema/severityCounts" }
+          }
+        },
+        "issues": { "type": "array", "description": "Issue numbers filed by Step 8 during this run.", "items": { "type": "number" } },
+        "domains": { "type": "array", "description": "Domain IDs active via --with, when any.", "items": { "type": "string" } }
+      }
+    },
+    "severityCounts": {
+      "type": "object",
+      "description": "Finding counts per severity.",
+      "required": ["high", "medium", "low", "info"],
+      "properties": {
+        "high": { "type": "number" },
+        "medium": { "type": "number" },
+        "low": { "type": "number" },
+        "info": { "type": "number" }
+      }
     }
   },
   "statusValues": {

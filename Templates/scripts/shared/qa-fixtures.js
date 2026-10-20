@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Provision, record, inspect and tear down the board fixtures a qa-required issue declares under `### Fixtures`, for /qa outcome 3 (#2827). `--provision` creates exactly the declared issues (a root with children, or a root-less selection), assigns children through assign-branch.js, labels `reviewed` items directly, and writes `**Fixtures created:**` into the QA body; `--teardown` deletes exactly the recorded numbers, children first; `--status` reports each recorded number as exists, deleted or unknown. One injectable exec, so the whole cycle runs against a mocked board. The consent gates live in the command spec, not here.
  * @checksum sha256:placeholder
  *
@@ -40,6 +40,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { execTimed } = require('./lib/exec.js');
+const { normalizeEol } = require('./lib/normalize-eol.js');
 
 const FIXTURES_HEADING = '### Fixtures';
 const CREATED_MARKER = '**Fixtures created:**';
@@ -83,7 +84,8 @@ function parseArgs(argv) {
  * @returns {{ok: true, declaration: object} | {ok: false, code: string, message: string}}
  */
 function parseFixturesSection(body) {
-  const lines = String(body || '').split('\n');
+  // A CRLF body would leave `\r` before each item regex's `$` (#3064).
+  const lines = normalizeEol(String(body || '')).split('\n');
   const start = lines.findIndex((l) => l.trim() === FIXTURES_HEADING);
   if (start === -1) {
     return { ok: false, code: 'NO_FIXTURES_SECTION', message: `No \`${FIXTURES_HEADING}\` section in the QA body.` };
@@ -212,7 +214,7 @@ function replaceOrInsertCreatedLine(body, line) {
 }
 
 function stripCreatedLine(body) {
-  return String(body || '').replace(/\n?[^\n]*\*\*Fixtures created:\*\*[^\n]*\n?/, '\n').replace(/\n{3,}/g, '\n\n');
+  return normalizeEol(String(body || '')).replace(/\n?[^\n]*\*\*Fixtures created:\*\*[^\n]*\n?/, '\n').replace(/\n{3,}/g, '\n\n');
 }
 
 // ─── envelopes ───
@@ -248,11 +250,19 @@ function scratchBody(issue, title, now) {
     `Not a real work item. \`node .claude/scripts/shared/qa-fixtures.js --issue ${issue} --teardown\` removes it once the check is recorded.\n`;
 }
 
+// The branch is interpolated into shell commands, so it is held to a git-ref
+// subset with no shell metacharacters before it reaches one (#3171).
+const SAFE_BRANCH_RE = /^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]+$/;
+
 function resolveBranch(issue, execFn, warnings) {
   try {
     const raw = execFn(`gh pmu view ${issue} --json=branch`, { encoding: 'utf8' });
     const data = JSON.parse(String(raw));
-    if (typeof data.branch === 'string' && data.branch.trim()) return data.branch.trim();
+    const branch = typeof data.branch === 'string' ? data.branch.trim() : '';
+    if (branch && SAFE_BRANCH_RE.test(branch)) return branch;
+    if (branch) {
+      warnings.push(`The Branch field of #${issue} is not a safe branch name (${JSON.stringify(branch.slice(0, 60))}) — using the current branch.`);
+    }
   } catch (e) {
     warnings.push(`Could not read the branch of #${issue}: ${e.message} — using the current branch.`);
   }
@@ -305,15 +315,18 @@ function provision(args, execFn, options) {
     const raw = execFn(`gh pmu create --title "${item.title}" ${labelArgs(item.labels)} --status ready --branch ${branch} -F ${tmp}`, { encoding: 'utf8' });
     return issueNumberFrom(raw, 'gh pmu create');
   };
-  const createChild = (parent, item) => {
+  // `onCreated` runs before assignment, so a child whose assign-branch fails
+  // is already in the record and --teardown can remove it (#3171).
+  const createChild = (parent, item, onCreated) => {
     io.writeFileSync(tmp, scratchBody(issue, item.title, now), 'utf8');
     const raw = execFn(`gh pmu sub create --parent ${parent} --title "${item.title}" ${labelArgs(item.labels)} -F ${tmp}`, { encoding: 'utf8' });
     const number = issueNumberFrom(raw, 'gh pmu sub create');
+    onCreated(number);
     // `sub create` carries no branch flag (#2762); assignment is a separate,
     // delegated step — never `gh pmu move --branch` by hand.
     const assignCmd = branch === 'current'
       ? `node .claude/scripts/shared/assign-branch.js ${number}`
-      : `node .claude/scripts/shared/assign-branch.js ${branch} ${number}`;
+      : `node .claude/scripts/shared/assign-branch.js --branch ${branch} ${number}`;
     execFn(assignCmd, { encoding: 'utf8' });
     return number;
   };
@@ -330,9 +343,10 @@ function provision(args, execFn, options) {
       created.push({ number: root, title: rootItem.title, type: rootItem.type, parent: null });
       if (rootItem.reviewed) markReviewed(root);
       for (const child of rootItem.children) {
-        const n = createChild(root, child);
-        numbers.push(n);
-        created.push({ number: n, title: child.title, type: child.type, parent: root });
+        const n = createChild(root, child, (num) => {
+          numbers.push(num);
+          created.push({ number: num, title: child.title, type: child.type, parent: root });
+        });
         if (child.reviewed) markReviewed(n);
       }
     } else {

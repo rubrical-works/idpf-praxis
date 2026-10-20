@@ -1,13 +1,20 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Change this project's IDPF domain specialist.
-argument-hint: "[specialist-name] (optional)"
+argument-hint: "[specialist-name] (optional) [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
 # /change-domain-expert
 Change the active domain specialist and load it into the session.
 **Prerequisites:** Framework v0.17.0+; `framework-config.json` in project root.
+## Arguments
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `[specialist-name]` | No | Specialist to switch to. Omitted → choose from the list |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js change-domain-expert`, report its output, and STOP.
 ## Selection and Loading
 `framework-manifest.json` `domainSpecialists` is an array of objects; every entry is selectable. `name` = identifier and file basename when loadable. `loadable` = `true` when a file exists to inject; `false` means **announce-only** — selectable and recorded as the active role, but no file exists so nothing loads. `description` = one-line remit, shown in the menu; it is what separates near-neighbors like `Data-Engineer` from `Database-Engineer`. `announceReason` (only when `loadable: false`) = `model-builtin` (base model covers it unprompted, no file warranted) or `pending-evaluation` (never assessed; #2536 decides). `loadable: false` and "no file on disk" are the same set (#2533) — the flag is not a quality gate on an existing file. Derive announce-only from `loadable` alone and do NOT print `announceReason` prose in the menu.
 Resolution and validation are **not** reimplemented here — this command and the startup hook both call `.claude/scripts/shared/lib/specialist-resolver.js`, so a mid-session selection gets the same allowlist and input validation as one read at startup.

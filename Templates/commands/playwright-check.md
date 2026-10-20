@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Verify the Playwright installation and browser availability, using the IDPF framework.
-argument-hint: "[--fix]"
+argument-hint: "[--fix] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -9,6 +9,14 @@ copyright: "Rubrical Works (c) 2026"
 # /playwright-check
 
 Verify Playwright is installed and browsers available. Report status with remediation steps.
+
+## Arguments
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--fix` | No | Attempt auto-fix for common issues |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js playwright-check`, report its output, and STOP.
 
 ## Usage
 

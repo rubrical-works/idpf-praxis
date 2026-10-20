@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  *
  * Stale `.tmp-*` scratch-file sweep for the startup hook (#2771).
  *
@@ -233,7 +233,10 @@ function findStale(cwd, signals, now) {
   const files = [];
   for (const entry of candidates) {
     if (entry.isDirectory()) {
-      skipped.push({ name: entry.name, reason: 'directory' });
+      // A framework worktree (`.tmp-wt-*`, #3124) shares the prefix so the
+      // sweep sees it, and is named as what it is: held by a run, never swept.
+      // The literal is kept local — this module takes no relative requires.
+      skipped.push({ name: entry.name, reason: entry.name.startsWith('.tmp-wt-') ? 'worktree' : 'directory' });
     } else if (!entry.isFile()) {
       // Symlink, socket, device. Not a scratch file this helper wrote.
       skipped.push({ name: entry.name, reason: 'not-a-regular-file' });

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -16,8 +16,9 @@
 // bulk --add-ready multiplies the exposure by the number of issues.
 const { execFile } = require('child_process');
 const { execFileTimed: execFileSync, DEFAULT_TIMEOUT_MS } = require('./lib/exec.js');
-const { getAllOpenTrackers } = require('./lib/active-label.js');
+const { getAllOpenTrackers, findActiveTrackers } = require('./lib/active-label.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');
+const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js');
 
 // Timing helper
 let showTiming = false;
@@ -305,6 +306,50 @@ function getOpenBranches() {
 }
 
 /**
+ * Resolve the branch for an assignment that names none (#3160). One open
+ * tracker is used as before, active or not. With 2+, the tracker carrying the
+ * `active` label wins — but only when exactly one does and it is open; anything
+ * else is ambiguous, never a guess.
+ *
+ * @param {{branches: Array<{name: string, tracker: number}>, activeTrackers: number[]|null}} input
+ *   `activeTrackers` is findActiveTrackers(): null when the lookup failed.
+ * @returns {{branch: string, source: 'single'|'active'}|{branch: null, ambiguous: true,
+ *   reason: 'no-active'|'multiple-active'|'active-not-open'|'active-lookup-failed'}}
+ */
+function resolveImplicitBranch({ branches, activeTrackers }) {
+    if (branches.length === 1) return { branch: branches[0].name, source: 'single' };
+    const ambiguous = (reason) => ({ branch: null, ambiguous: true, reason });
+    if (activeTrackers === null) return ambiguous('active-lookup-failed');
+    if (activeTrackers.length === 0) return ambiguous('no-active');
+    if (activeTrackers.length > 1) return ambiguous('multiple-active');
+    const active = branches.find(b => b.tracker === activeTrackers[0]);
+    return active ? { branch: active.name, source: 'active' } : ambiguous('active-not-open');
+}
+
+const AMBIGUITY_REASONS = {
+    'no-active': 'no open tracker carries the active label',
+    'multiple-active': 'more than one open tracker carries the active label',
+    'active-not-open': 'the active-labeled tracker is not among the open trackers',
+    'active-lookup-failed': 'the active-label lookup failed',
+};
+
+/**
+ * Report an ambiguous implicit branch and fail (#3160). It used to print help
+ * and exit 0, which a caller such as /work --assign read as an assignment.
+ * Written to stderr so performAssignment() carries it into ASSIGN_FAILED.
+ *
+ * @param {{reason: string}} resolution
+ * @param {Array<{name: string}>} branches
+ * @param {{error: Function, exitCode: number}} [io] process-like sink; defaults to console + process
+ */
+function reportUnresolvedBranch(resolution, branches, io = { error: console.error, set exitCode(v) { process.exitCode = v; } }) {
+    io.error(`BRANCH_AMBIGUOUS: ${AMBIGUITY_REASONS[resolution.reason] || resolution.reason}. No issues were assigned.`);
+    io.error(`Open branches: ${branches.map(b => b.name).join(', ')}`);
+    io.error('Re-run with --branch <name>.');
+    io.exitCode = 1;
+}
+
+/**
  * Check if an issue has a branch/release field assigned
  * Checks multiple field names for compatibility across projects
  */
@@ -417,6 +462,56 @@ async function linkAllToTracker(issueNumbers, tracker) {
     console.log(`  ${linked}/${issueNumbers.length} linked to tracker #${tracker}`);
 }
 
+/**
+ * Order-independent argument parsing (#3030). Issue numbers stay bare; the
+ * branch is `--branch <name>` (or `--branch=<name>`). A positional
+ * prefix/name token — the retired form — is refused naming `--branch`, and
+ * `--help` anywhere returns `{ help: true }` before anything else is read.
+ * @param {string[]} args
+ */
+function parseAssignArgs(args) {
+    if (wantsHelp(args)) return { help: true };
+    const retired = findRetired('assign-branch', args);
+    if (retired) {
+        const token = args.find((a, i) => !a.startsWith('-') && a.includes('/') && args[i - 1] !== '--branch');
+        return { error: { code: 'RETIRED_ARGUMENT', message: `${retired.message} (got \`${token}\`)` } };
+    }
+
+    let branch;
+    let branchIndex = -1;
+    const eq = args.findIndex(a => a.startsWith('--branch='));
+    if (eq !== -1) {
+        branch = args[eq].slice('--branch='.length);
+    } else {
+        branchIndex = args.indexOf('--branch');
+        if (branchIndex !== -1) branch = args[branchIndex + 1];
+    }
+    if ((eq !== -1 || branchIndex !== -1) && (!branch || branch.startsWith('-'))) {
+        return { error: { code: 'MISSING_ARGUMENT', message: '--branch requires a branch name.' } };
+    }
+
+    // Deduplicated: a repeated number is always the same issue, so a repeat can only
+    // produce a redundant second assignment — which the script then reports as a
+    // second issue assigned, overstating what it did (#2554).
+    const issueNumbers = [...new Set(
+        args.filter(a => a.match(/^#?\d+$/)).map(a => validateIssueNumber(a.replace('#', '')))
+    )];
+    // The token after `--branch` is its value, never free-text user input.
+    const branchValueIndex = branchIndex === -1 ? -1 : branchIndex + 1;
+    const userInput = args.find((a, i) => i !== branchValueIndex && !a.startsWith('-') && !a.includes('/') && !a.match(/^#?\d+$/));
+
+    const confirmRemove = args.includes('--confirm-remove');
+    return {
+        branch,
+        issueNumbers,
+        userInput,
+        addReady: args.includes('--add-ready'),
+        confirmRemove,
+        remove: args.includes('--remove') || confirmRemove,
+        timing: args.includes('--timing'),
+    };
+}
+
 async function main() {
     let args = process.argv.slice(2);
 
@@ -426,21 +521,23 @@ async function main() {
         args = args[0].split(/\s+/).filter(a => a.trim());
     }
 
-    // Parse args - order-independent parsing
-    const addReady = args.includes('--add-ready');
-    const confirmRemoveFlag = args.includes('--confirm-remove');
-    const removeFlag = args.includes('--remove') || confirmRemoveFlag;
-    showTiming = args.includes('--timing');
-
-    // Auto-detect: arguments starting with # are issues, prefix/name patterns are branches
-    let branch = args.find(a => !a.startsWith('-') && !a.match(/^#?\d+$/) && a.includes('/'));
-    // Deduplicated: a repeated number is always the same issue, so a repeat can only
-    // produce a redundant second assignment — which the script then reports as a
-    // second issue assigned, overstating what it did (#2554).
-    let issueNumbers = [...new Set(
-        args.filter(a => a.match(/^#?\d+$/)).map(a => validateIssueNumber(a.replace('#', '')))
-    )];
-    const userInput = args.find(a => !a.startsWith('-') && !a.includes('/') && !a.match(/^#?\d+$/));
+    const parsed = parseAssignArgs(args);
+    if (parsed.help) {
+        console.log(JSON.stringify(helpEnvelope('assign-branch'), null, 2));
+        return;
+    }
+    if (parsed.error) {
+        console.error(`Error: ${parsed.error.message}`);
+        process.exit(1);
+        return;
+    }
+    const addReady = parsed.addReady;
+    const confirmRemoveFlag = parsed.confirmRemove;
+    const removeFlag = parsed.remove;
+    showTiming = parsed.timing;
+    let branch = parsed.branch;
+    let issueNumbers = parsed.issueNumbers;
+    const userInput = parsed.userInput;
 
     // Handle --remove mode
     if (removeFlag) {
@@ -530,10 +627,23 @@ async function main() {
         return;
     }
 
-    // Step 3: Single-branch shortcut - if only one branch and issues/flags provided, use current
-    if (!branch && currentBranch && (issueNumbers.length > 0 || addReady)) {
-        branch = currentBranch;
-        console.log(`Using current branch: ${branch}\n`);
+    // Step 3: No --branch named but there is something to assign — one open
+    // tracker is used as before; with 2+, the active-labeled one (#3160).
+    // An ambiguous result fails non-zero instead of falling through to help.
+    if (!branch && (issueNumbers.length > 0 || addReady)) {
+        const resolution = resolveImplicitBranch({
+            branches,
+            activeTrackers: branches.length > 1 ? findActiveTrackers() : null,
+        });
+        if (resolution.ambiguous) {
+            reportUnresolvedBranch(resolution, branches);
+            endTimer('total');
+            return;
+        }
+        branch = resolution.branch;
+        console.log(resolution.source === 'active'
+            ? `Using active branch: ${branch}\n`
+            : `Using current branch: ${branch}\n`);
     }
 
     // Step 3a: Validate the branch token against the open-tracker list (#2554)
@@ -568,7 +678,7 @@ async function main() {
         } else {
             console.log('  /assign-branch --add-ready         # Assign all ready issues to current');
         }
-        console.log('  /assign-branch prefix/name #issue  # Assign to specific branch');
+        console.log('  /assign-branch #issue --branch <name>  # Assign to specific branch');
         console.log('');
         console.log('Examples:');
         if (currentBranch) {
@@ -576,7 +686,7 @@ async function main() {
             console.log(`  /assign-branch #123`);
             console.log(`  /assign-branch #123 #124 #125`);
         }
-        console.log(`  /assign-branch ${branches[0].version} #123\n`);
+        console.log(`  /assign-branch #123 --branch ${branches[0].version}\n`);
         endTimer('total');
         return;
     }
@@ -889,6 +999,9 @@ module.exports = {
     classifyExpansionResult,
     findBranchTrackers,
     hasBranchAssigned,
+    parseAssignArgs,
+    resolveImplicitBranch,
+    reportUnresolvedBranch,
     main,
     // Export helpers for testing
     execSyncSafe,

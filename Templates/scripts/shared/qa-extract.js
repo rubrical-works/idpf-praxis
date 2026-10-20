@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -12,7 +12,9 @@
  *
  * Output (JSON envelope on stdout):
  *   { ok, issueNumber, matched: [{ acText, keyword, subIssueNumber, annotation, fillPath, fillSources, placement }],
- *     skipped: [acText], errors: [], warnings: [] }
+ *     skipped: [acText], alreadyGated: [{ acText, marker }], errors: [], warnings: [] }
+ *   `skipped` = no keyword matched; `alreadyGated` = the AC already carries a marker from
+ *   .claude/metadata/ac-gate-markers.json and is never extracted again (#3161).
  *
  * Fill field types (#2976). `steps`: a non-empty string, or a non-empty array of
  * non-empty strings rendered as a numbered list. `expectedResult`, `fixtures`: a
@@ -47,6 +49,7 @@ const { execSync, execFileSync } = require('child_process');
 const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 
 const CONFIG_PATH = path.join(__dirname, 'lib', 'qa-config.json');
+const GATE_MARKERS_PATH = path.join(__dirname, '..', '..', 'metadata', 'ac-gate-markers.json');
 
 function parseArgs(argv) {
   const out = { issue: null, dryRun: false, fill: null };
@@ -442,13 +445,29 @@ function createSubIssue(parentIssue, title, bodyPath, execFileFn = execFileSync)
   return parseInt(m[1], 10);
 }
 
+/**
+ * The gate markers an unchecked AC may already carry (#3161), read from
+ * ac-gate-markers.json so this script declares none of its own.
+ * @returns {Array<{id: string, pattern: RegExp}>}
+ */
+function loadGateMarkers(markersPath = GATE_MARKERS_PATH) {
+  const data = JSON.parse(fs.readFileSync(markersPath, 'utf8'));
+  return (data.markers || []).map((m) => ({ id: m.id, pattern: new RegExp(m.pattern) }));
+}
+
+/** The id of the first marker the AC carries, or null. */
+function findGateMarker(acText, markers) {
+  const hit = markers.find((m) => m.pattern.test(acText));
+  return hit ? hit.id : null;
+}
+
 function buildAnnotation(format, acText, subIssueNumber) {
   return format
     .replace('{acText}', acText)
     .replace('{subIssueNumber}', String(subIssueNumber));
 }
 
-async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null }) {
+async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null, gateMarkers = loadGateMarkers() }) {
   // placeFn is injected, never defaulted to the live implementation. Every
   // other dependency here follows that rule and main() supplies all of them;
   // a live default would let any caller that forgot the stub reach `gh`
@@ -464,10 +483,20 @@ async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeT
 
   const matched = [];
   const skipped = [];
+  const alreadyGated = [];
   const errors = [];
   const warnings = [];
 
   for (const acText of acs) {
+    // An AC that already points at its gate is not extracted again (#3161):
+    // the keyword `QA:` otherwise matches the AC's own `→ QA: #N` annotation
+    // and files a duplicate QA sub-issue. Reported apart from `skipped`, which
+    // means "no keyword matched".
+    const marker = findGateMarker(acText, gateMarkers);
+    if (marker) {
+      alreadyGated.push({ acText, marker });
+      continue;
+    }
     const keyword = findMatchingKeyword(acText, config.keywords);
     if (!keyword) {
       skipped.push(acText);
@@ -514,7 +543,7 @@ async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeT
   // `ok` tracks creation, not placement. An unplaced sub-issue is a real gate
   // that is merely harder to reach, so it is a warning; failing the run would
   // suggest nothing was created when something was.
-  return { ok: errors.length === 0, issueNumber, matched, skipped, errors, warnings };
+  return { ok: errors.length === 0, issueNumber, matched, skipped, alreadyGated, errors, warnings };
 }
 
 async function main() {
@@ -554,6 +583,8 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   loadConfig,
+  loadGateMarkers,
+  findGateMarker,
   extractUncheckedAcs,
   findMatchingKeyword,
   renderBody,

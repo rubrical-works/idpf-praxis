@@ -9,6 +9,7 @@ Read or change which review domains apply to this project, without entering a ch
 | `--add {domain}` | Yes (one of) | Add one domain id to `activeDomains` |
 | `--remove {domain}` | | Remove one domain id from `activeDomains` |
 | `--list` | | Report the effective domain state. Alias: `--show` |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 Exactly one mode per invocation.
 
@@ -32,7 +33,7 @@ Exactly one mode per invocation.
 
 ## Limitations
 
-- **One domain per invocation.** There is no bulk mode; `/charter update` remains the multi-select surface for changing several at once.
+- **One domain per invocation.** There is no bulk mode; `/charter --update` remains the multi-select surface for changing several at once.
 - **An empty `activeDomains` means "not configured", not "nothing applies."** Removing the last entry leaves an empty list, which `/code-review` reads as unconfigured and falls through to charter inference rather than applying no domains. The command reports this when it happens.
 - **This command changes what is configured, not what `activeDomains` means.** Its two consumers interpret the key differently — one additively, one as a filter — and that is out of scope here.
 

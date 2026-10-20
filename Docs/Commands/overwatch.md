@@ -11,6 +11,7 @@ Dedicate a session to observing cross-session activity in the working directory:
 | `--on <keys>` | No | Turn config keys on (comma-separated, or `all`) and save them. Does not start the monitor. |
 | `--off <keys>` | No | Turn config keys off and save them. Does not start the monitor. |
 | `--show` | No | Show each config key, its value and where it came from, plus whether a monitor is running. Writes nothing and does not start the monitor. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

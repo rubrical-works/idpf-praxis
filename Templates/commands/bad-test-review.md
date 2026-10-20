@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Evaluate tests for charter alignment and functional authenticity, using the IDPF framework.
-argument-hint: "[--full] [--status]"
+argument-hint: "[--full] [--status] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -16,6 +16,10 @@ Evaluate every unit and e2e test to determine whether the code causing each test
 | *(none)* | | Normal incremental — skip approved+unchanged tests |
 | `--full` | No | Bypass manifest and review all tests |
 | `--status` | No | Report manifest statistics without running review |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js bad-test-review`, report its output, and STOP.
+
 ## Execution Instructions
 **REQUIRED:**
 1. **Create Task List:** Parse the workflow steps in this spec, then use `TaskCreate` to create tasks so progress is visible and resumable after compaction

@@ -7,18 +7,21 @@ Transform a proposal document into an Agile PRD with user stories, acceptance cr
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `<issue-number>` | No | Proposal issue number to transform (e.g., `123` or `#123`) |
-| `extract` | No | Extract a PRD from existing codebase (requires `codebase-analysis` skill) |
-| `extract <directory>` | No | Extract from a specific directory |
+| `--extract` | No | Extract a PRD from existing codebase (requires `codebase-analysis` skill) |
+| `--extract <directory>` | No | Extract from a specific directory |
 | *(none)* | No | Interactive mode — prompts for issue number or extraction |
 | `--assignee <value>` | No | GitHub login to assign the PRD tracker issue to. Omitted → `@me`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
+
+**Retired forms:** `extract` typed bare is no longer accepted; use `--extract`.
 
 ## Usage
 
 ```
 /create-prd 123
 /create-prd #123
-/create-prd extract
-/create-prd extract src/
+/create-prd --extract
+/create-prd --extract src/
 /create-prd
 ```
 

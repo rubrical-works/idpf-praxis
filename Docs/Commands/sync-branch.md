@@ -7,6 +7,7 @@ Reconcile the current branch with its upstream after seeing what diverged.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | — | | Takes no arguments; always the current branch and its configured upstream |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

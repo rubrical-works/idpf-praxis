@@ -11,6 +11,7 @@ Review one or more GitHub issues with type-specific criteria and tracked history
 | `--mode` | No | Transient review mode override: `solo`, `team`, or `enterprise` |
 | `--force` | No | Force re-review even if issue already has the `reviewed` label |
 | `--prior-art` | No | Force the prior-art sweep whatever the project’s `reviewSweep` mode (except `off`), and whatever the issue type. Boolean — takes no value |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

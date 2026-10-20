@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Create GitHub epics and stories from a PRD, using the IDPF framework.
-argument-hint: "<issue-number> (e.g., 151)"
+argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -16,6 +16,9 @@ Create GitHub epics and stories from an approved PRD with embedded TDD test case
 |----------|-------------|
 | `<prd-issue-number>` | PRD tracking issue (`151` or `#151`). |
 | `--assignee <value>` | GitHub login for created stories. Omitted → `@me`. |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js create-backlog`, report its output, and STOP.
 
 ## Execution
 
@@ -119,6 +122,7 @@ Read `PRD/{name}/PRD-{name}.md` and extract Epics, Stories, Acceptance criteria.
 | `## Epics` / `### Epic N:` | Issue with `epic` label |
 | User stories under epic | Issues with `story` label |
 | Acceptance criteria | Story body checkboxes |
+| Story `**Depends on:**` statement | Story body `**Depends on:**` line (resolved in Phase 6b) |
 | Priority (P0/P1/P2) | Priority field |
 
 ## Phase 4: Load Test Cases
@@ -230,6 +234,7 @@ Link to epic: `gh pmu sub add {epic_number} {story_number} || true`. Cleanup: `r
 
 | Template Section | Source |
 |---|---|
+| **Depends on** | PRD story's `**Depends on:**` statement, written **verbatim** at creation (`Story 1.1`, `none`); rewritten to issue numbers by Phase 6b. A PRD story with no statement gets `none (not stated in the PRD)` |
 | **Description** | PRD user story (As a / I want / So that) |
 | **Relevant Skills** | No input. Renders `N/A` when configured — the list is project-wide, not story-specific (#2817) |
 | **E2E** | `framework-config.json` `testing.suites[]` → the suite whose `role` is `e2e` — the declaration (#2851). Inverts the #2817 row, which named `Inception/Test-Strategy.md` and forbade a config key: that Framework table is now **rendered from** this declaration, so reading it would be reading a view. No detection heuristic |
@@ -294,6 +299,20 @@ Replace `/add-story` base DoD:
 - [ ] Edge cases handled
 - [ ] Acceptance criteria verified
 ```
+
+## Phase 6b: Resolve `**Depends on:**` Lines (#3127)
+**Runs once, after every story of every epic exists** — an issue number does not exist until Phase 6 creates it, and a PRD dependency can point forward (Story 1.14 → 1.24).
+1. Map PRD story id → issue number from the stories Phase 6 created.
+2. Replace each id in a story's line with `#<issue number>`, keeping any parenthetical (`#3124 (shares the link/unlink helpers)`). `Stories 1.1, 1.2` → `#3118, #3119`.
+3. Write via the editing flow: `gh pmu view <issue> --body-stdout > .tmp-<issue>.md`, edit, `gh pmu edit <issue> -F .tmp-<issue>.md`, `rm .tmp-<issue>.md`. A `none` line needs no edit.
+
+**An id the map cannot resolve stays verbatim** — never dropped, never guessed. `.claude/scripts/shared/lib/depends-on.js` reads a verbatim `Story 1.9` as malformed (no edge, never satisfied) and `/review-issue`'s `depends-on-valid` flags it; a dropped entry would read as no dependency. Report each:
+```
+⚠️ #{story_number}: Depends on "Story {id}" did not resolve to an issue in this backlog — left verbatim.
+```
+**`none (not stated in the PRD)` is the honest empty value**, not a fabricated `none`: it parses as empty (parenthetical ignored) while saying nobody asserted it. List those stories in the Phase 8 summary.
+
+**Why issue numbers:** `/work --nonstop`/`--concurrent` read the line to order members once the per-member STOP is gone, resolving `#N` against the epic's sub-issues; a story id names nothing it can look up.
 
 ## Phase 7: Update PRD Status
 

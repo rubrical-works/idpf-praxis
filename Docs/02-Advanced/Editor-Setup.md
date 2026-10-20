@@ -10,8 +10,8 @@
 Some IDPF commands produce output that is too wide or long for Claude Code's terminal display. Claude Code collapses tool output beyond ~30 lines into a summary (`+N lines (ctrl+o to expand)`), making tabular output like extension point matrices effectively unreadable.
 
 Commands affected:
-- `/extensions list` — extension point tree (36+ lines)
-- `/extensions matrix` — cross-command comparison table (57+ lines, very wide)
+- `/extensions --list` — extension point tree (36+ lines)
+- `/extensions --matrix` — cross-command comparison table (57+ lines, very wide)
 
 These commands automatically open their output in your configured editor, where width and scrolling are not constrained.
 
@@ -99,8 +99,8 @@ When no editor is configured:
 Use the `--stdout` flag to bypass the editor and print to the terminal:
 
 ```bash
-node .claude/scripts/shared/extensions-cli.js list --stdout
-node .claude/scripts/shared/extensions-cli.js matrix --stdout
+node .claude/scripts/shared/extensions-cli.js --list --stdout
+node .claude/scripts/shared/extensions-cli.js --matrix --stdout
 ```
 
 This is useful for piping output to other commands or when you want inline display despite the width.

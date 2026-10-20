@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -48,17 +48,6 @@ process.on('uncaughtException', (e) => {
   console.error(e.stack);
   process.exit(1);
 });
-
-// Startup breadcrumb (#2322): unconditional per-invocation trace so we can
-// distinguish "hook never started" vs "hook crashed mid-execution" on the
-// next reproduction. Wrapped in try/catch — a breadcrumb failure must never
-// crash the hook itself.
-try {
-  fs.appendFileSync(
-    path.resolve(__dirname, 'startup.log'),
-    `[${new Date().toISOString()}] pid=${process.pid} cwd=${process.cwd()}\n`
-  );
-} catch (_) { /* swallow breadcrumb failure */ }
 
 // Heartbeat (#2917): records this hook's outcome under the project root for the
 // startup Hook Health row. Installed only when run as the hook — the test suite
@@ -185,7 +174,8 @@ const TRIGGER_RE = {
     looseIssueRef: compilePattern(TRIGGER_DATA.patterns, 'looseIssueRef'),
     approvalVerb: compilePattern(TRIGGER_DATA.patterns, 'approvalVerb'),
     testPlanRef: compilePattern(TRIGGER_DATA.patterns, 'testPlanRef'),
-    refreshFlag: compilePattern(TRIGGER_DATA.patterns, 'refreshFlag')
+    refreshFlag: compilePattern(TRIGGER_DATA.patterns, 'refreshFlag'),
+    harnessFrame: compilePattern(TRIGGER_DATA.patterns, 'harnessFrame')
 };
 
 // Analysis keywords that trigger STOP-after-report behavior
@@ -241,19 +231,33 @@ process.stdin.on('end', () => {
         // on the text of the issue that specified this trigger.
         const hasApprovalVerb = matches(TRIGGER_RE.approvalVerb, prompt);
         const hasTestPlanRef = matches(TRIGGER_RE.testPlanRef, prompt);
+        // Harness-generated turns (task notifications, subagent hand-backs,
+        // agent and cross-session messages) also fire UserPromptSubmit. Both
+        // unanchored triggers below are for the user's own words, so a frame
+        // is exempt from each (#3163 analysis, #3173 test-plan approval).
+        const isHarnessFrame = matches(TRIGGER_RE.harnessFrame, prompt);
         const testPlanApprovalTrigger =
-            hasApprovalVerb && hasTestPlanRef && hasStrictIssueRef && !workTrigger && !reviewTrigger;
+            hasApprovalVerb && hasTestPlanRef && hasStrictIssueRef && !workTrigger && !reviewTrigger
+            && !isHarnessFrame;
         // Analysis trigger - detect analysis keywords with issue references
         // This prevents "evaluate #123" from drifting into implementation
         // Analysis keeps loose matching (bare numbers) since it's non-mutating (read-only)
         const hasIssueRef = matches(TRIGGER_RE.looseIssueRef, prompt);
-        const hasAnalysisKeyword = ANALYSIS_KEYWORDS.some(kw => promptLower.includes(kw));
+        // Whole words only (#3065): a substring test fired on "checklist" and
+        // "checkout". Splitting on non-letters keeps it linear with no
+        // per-keyword regex.
+        const promptWords = new Set(promptLower.split(/[^a-z]+/).filter(Boolean));
+        const hasAnalysisKeyword = ANALYSIS_KEYWORDS.some(kw => promptWords.has(kw));
         // Excluded alongside workTrigger/reviewTrigger so two handlers cannot
-        // both console.log - the analysis keyword match is a substring test, so
-        // an approval phrase mentioning a "checklist" would otherwise satisfy
-        // both and emit two JSON objects on one stdout.
+        // both console.log - an approval phrase can carry an analysis keyword
+        // as a word of its own ("I approve test-plan #12, check it"), which
+        // would satisfy both and emit two JSON objects on one stdout.
+        // Harness frames (isHarnessFrame, above) routinely carry
+        // "check"/"verify" plus an issue number; the STOP directive is for
+        // the user's own analysis requests, and on a hand-back it halted
+        // --nonstop runs (#3163).
         const analysisMatch = hasAnalysisKeyword && hasIssueRef && !workTrigger && !reviewTrigger
-            && !testPlanApprovalTrigger;
+            && !testPlanApprovalTrigger && !isHarnessFrame;
 
         if (!isCommandRequest && !triggerMatch && !workTrigger && !doneTrigger && !reviewTrigger && !testPlanApprovalTrigger && !analysisMatch) {
             process.exit(0);
@@ -421,9 +425,10 @@ process.stdin.on('end', () => {
             }
 
             // Batch work (has status but no specific issue number)
-            // Route to /work command with the full "all in <status>" argument
+            // Route to /work --status <status> (#3030): the trigger keeps its
+            // "work all in <status>" phrasing; the command takes the flag form.
             if (statusFilter) {
-                let contextMessage = `[INVOKE: /work all in ${statusFilter}]\n`;
+                let contextMessage = `[INVOKE: /work --status ${statusFilter}]\n`;
 
                 try {
                 // Opportunistically query issues for AUTO-TASK
@@ -462,11 +467,17 @@ process.stdin.on('end', () => {
         // Only triggers when issues are in in_review status
         // /done only handles in_review→done (not in_progress→in_review, which is /work's job)
         if (doneTrigger) {
-            // Extract optional issue numbers: "done #42 #43" or "done 42"
-            const issueNumbers = prompt.match(/#?(\d+)/g);
-            const args = issueNumbers
-                ? issueNumbers.map(n => n.replace('#', '')).slice(0).join(' ')
-                : '';
+            // Extract optional issue numbers: "done #42 #43" or "done 42".
+            // A bare number counts only in the run directly after "done"; any
+            // other bare number is prose ("done build took 45 seconds"), which
+            // previously routed to /done 45 (#3065).
+            const leadingNumbers = [];
+            for (const token of prompt.replace(/^done/i, '').trim().split(/[\s,]+/)) {
+                if (!/^#?\d+$/.test(token)) break;
+                leadingNumbers.push(token.replace('#', ''));
+            }
+            const explicitNumbers = (prompt.match(/#(\d+)/g) || []).map(n => n.replace('#', ''));
+            const args = [...new Set([...leadingNumbers, ...explicitNumbers])].join(' ');
 
             // If explicit issue numbers given, route directly (no context check needed)
             if (args) {
@@ -640,7 +651,7 @@ function getRecognizedFlags(command) {
  * The board's status aliases, from `.gh-pmu.json` `fields.status.values` (#2782).
  *
  * Returns the KEYS (`ready`, `in_review`, `parking_lot`, …), which are the
- * forms `gh pmu list --status` and `/work all in <status>` both take.
+ * forms `gh pmu list --status` and `/work --status <status>` both take.
  *
  * An unreadable or absent file returns `[]`, which makes every capture in
  * `resolveStatusFilter` a miss and emits nothing. That is the safe direction:
@@ -999,7 +1010,7 @@ function getDetailedCommands(forceRefresh = false) {
 | \`proposal: <title>\` | Create a proposal document + tracking issue |
 | \`idea: <title>\` | Alias for proposal: |
 | \`work #N\` | Start working on an issue |
-| \`work all in <status>\` | Batch work on issues by status |
+| \`work all in <status>\` | Batch work on issues by status (routes to \`/work --status <status>\`) |
 | \`done [#N]\` | Complete issue (in_review → done) |
 | \`review #N\` | Route to /review-issue |
 | \`commands\` | Show available triggers and slash commands |
@@ -1086,7 +1097,7 @@ function getAgileDetailedCommands() {
 | \`proposal: <title>\` | Create a proposal document + tracking issue |
 | \`idea: <title>\` | Alias for proposal: |
 | \`work #N\` | Start working on an issue (validates branch, extracts auto-TASK) |
-| \`work all in <status>\` | Batch work on issues by status |
+| \`work all in <status>\` | Batch work on issues by status (routes to \`/work --status <status>\`) |
 | \`done [#N]\` | Complete issue (in_review → done) |
 | \`review #N\` | Route to /review-issue |
 | \`commands\` | Show available triggers and slash commands |

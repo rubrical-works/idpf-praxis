@@ -238,6 +238,11 @@
                       "full"
                     ],
                     "description": "What a `none` mode does at scoped time — `skip` this suite, or run its `full` command."
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The narrowed command template, used in place of `full` at scoped time (#3159). Placeholders `{files}`, `{dir}`, `{stem}` and `{package}` expand from the suite's matched changed files, each value shell-checked by test-runner.js. A template that expands no placeholder does not narrow: the Merge-Back Review Gate defers such a suite to the parent's run on the tracker rather than running it in full inside a worktree. Absent means `full` is the template, which narrows only if `full` itself carries a placeholder."
                   }
                 }
               },
@@ -249,6 +254,11 @@
               "sweep": {
                 "type": "boolean",
                 "description": "Per-suite sweep opt-out. Absent means included in the sweep."
+              },
+              "concurrency": {
+                "type": "string",
+                "enum": ["parallel", "exclusive"],
+                "description": "Whether this suite may run inside a concurrent member's worktree (#3132). `parallel` suites run per member in the worktree; `exclusive` suites are deferred and run once, serially, on the tracker branch after the group's merge-back and worktree teardown — never skipped. Absent means the role default: `e2e` → `exclusive`, every other role → `parallel`, applied by `resolveConcurrency` in test-runner.js. An invalid value is refused by this enum at write time and, if it reaches the runner anyway, is reported as invalid rather than defaulted to `parallel`."
               },
               "execution": {
                 "type": "string",
@@ -388,6 +398,82 @@
         "type": "string"
       },
       "description": "Path prefixes this project deploys to its users. Consumed by .claude/scripts/shared/lib/deployment-scope.js (#2602) as the classification basis for projects that have no minimize-config.json — which is every project except the framework repo itself. Without either basis the classifier returns \"unknown\" rather than a confident \"dev-only\", so an undeclared project is distinguishable from one whose files are genuinely internal. An empty array is not a declaration and does not establish a basis."
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Derived-artifact merge policy (#3118, PRD Concurrent-Work Phase 1): which files a merge reconciles BY KIND instead of merging as text. Three kinds, and exactly three — `additionalProperties: false` is what makes an unknown kind a rejection rather than a silently ignored entry. `derivedArtifacts` are fully reproducible from committed sources, so both sides are discarded and the generator re-run; `accumulators` are append-only keyed records, unioned by key through a JSON-aware merge driver; `recomputed` values derive from repository state and are recomputed after a merge and verified by the named test. OPTIONAL, and absent is the no-op: with no block the runner regenerates nothing and the driver registers nothing, so every project that never declares one merges exactly as before. Read through .claude/scripts/shared/lib/derived-artifacts.js loadConcurrency(), which validates against this fragment AND checks what a schema cannot — that each `recomputed[].verifiedBy` file exists — and on ANY error returns every kind empty, so a malformed block is never half-applied. Lives here rather than in .claude/metadata/ for the reason #2702 recorded: that directory is a read-only hub junction in deployed projects, and this is a per-project declaration.",
+      "properties": {
+        "derivedArtifacts": {
+          "type": "array",
+          "description": "Files fully reproducible from committed sources. Any merge outcome is either identical to regeneration or wrong, so the policy is: discard both sides, re-run the generator.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["paths", "regenerate"],
+            "properties": {
+              "paths": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Glob patterns naming the generated files this entry covers."
+              },
+              "inputs": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Optional glob patterns naming the SOURCES this entry is generated from. The regeneration runner regenerates the entry when a changed path matches `paths` OR `inputs` (#3152): a merge that took one side of a derived file leaves the output unchanged against ORIG_HEAD, so only the changed source can say the output is stale."
+              },
+              "regenerate": {
+                "description": "How the files are regenerated. TWO FORMS, deliberately: a STRING is a shell command the regeneration runner executes; an OBJECT `{ \"skill\": \"<name>\", \"args\": \"<args>\" }` names a Skill-invoked LLM task the runner cannot run — it is returned as `deferred-to-session` for the parent session to invoke through the Skill tool. `/fw-minimize-files` is one (rule 04 Step 4d forbids substituting a script for it), which is why this repository's own declaration uses the object form.",
+                "anyOf": [
+                  { "type": "string", "minLength": 1 },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["skill"],
+                    "properties": {
+                      "skill": { "type": "string", "minLength": 1, "description": "The skill name, as the Skill tool takes it (no leading slash)." },
+                      "args": { "type": "string", "description": "Arguments passed to the skill verbatim. Optional." }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "accumulators": {
+          "type": "array",
+          "description": "Append-only documents of keyed records. Two branches adding DIFFERENT keys to one document conflict only textually, so a JSON-aware merge driver (named in .gitattributes, Story 1.2) unions them by the declared key in deterministic order. The same key with different values on both sides is a real conflict and is surfaced, never resolved by picking a side.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "strategy", "key"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "description": "The accumulator file, relative to the project root." },
+              "strategy": {
+                "type": "string",
+                "enum": ["json-merge"],
+                "description": "The merge driver strategy. `json-merge` is the one Story 1.2 ships; the enum is what rejects a strategy no driver implements."
+              },
+              "key": { "type": "string", "minLength": 1, "description": "The field (or key path) records are unioned on. REQUIRED: without it the driver cannot tell a changed record from a new one, which is Negative Test Scenario 2's `accumulator without key`." }
+            }
+          }
+        },
+        "recomputed": {
+          "type": "array",
+          "description": "Values derived from repository state — counts, inventories — whose guard tests already exist. Recomputed after a merge and verified by running the named test; a failing verification is reported, not silently accepted.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "verifiedBy"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "description": "The recomputed file, relative to the project root." },
+              "verifiedBy": { "type": "string", "minLength": 1, "description": "The test file that verifies the recomputed value, relative to the project root. The schema admits any non-empty string; derived-artifacts.js rejects a declaration whose file does not exist, because a verifier that cannot run is a verification that never happens." }
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "./extension-points-schema.json",
-  "generatedAt": "2026-10-17T19:56:59.851Z",
+  "generatedAt": "2026-10-20T20:22:33.440Z",
   "version": "1.0.0",
   "commandCount": 18,
   "extensionPointCount": 77,
@@ -106,25 +106,25 @@
       "extensionPoints": [
         {
           "name": "pre-add",
-          "location": "/ci add subcommand, before feature validation",
+          "location": "/ci --add subcommand, before feature validation",
           "purpose": "Add custom validation or transformation before a CI feature is added to the workflow",
           "provenance": "unverified"
         },
         {
           "name": "post-add",
-          "location": "/ci add subcommand, after feature added to workflow",
+          "location": "/ci --add subcommand, after feature added to workflow",
           "purpose": "Run post-add actions such as testing the workflow or notifying the team",
           "provenance": "unverified"
         },
         {
           "name": "pre-recommend",
-          "location": "/ci recommend subcommand, before analyzing project stack",
+          "location": "/ci --recommend subcommand, before analyzing project stack",
           "purpose": "Inject custom signals or constraints before CI recommendations are generated",
           "provenance": "unverified"
         },
         {
           "name": "post-recommend",
-          "location": "/ci recommend subcommand, after recommendations presented",
+          "location": "/ci --recommend subcommand, after recommendations presented",
           "purpose": "Add follow-up actions after recommendations are applied",
           "provenance": "unverified"
         },

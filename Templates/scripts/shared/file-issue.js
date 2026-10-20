@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description File bug and enhancement issues on the local board — one entry
  * or a batch — with the standard template (#3049). The single creation path
  * for `/bug`, `/enhancement` and `/code-review` Step 8.
@@ -97,8 +97,9 @@ function scopeLines(f) {
 
 /**
  * Render the issue body — the same template `/bug` and `/enhancement` Step 3
- * carry. `**Deployment Impact:**` is emitted only when supplied: it is a
- * FRAMEWORK-ONLY line in both specs, so a deployed caller never supplies it.
+ * carry. `**Deployment Impact:**` and `**External source:**` are emitted only
+ * when supplied: they are FRAMEWORK-ONLY lines in the specs, so a deployed
+ * caller never supplies them.
  */
 function renderBody(entry) {
   const f = (entry && entry.fields) || {};
@@ -118,6 +119,10 @@ function renderBody(entry) {
     }
     parts.push('**Motivation:**', text(f.motivation), '');
     parts.push('**Proposed Solution:**', text(f.proposedSolution), '');
+    // FRAMEWORK-ONLY in /enhancement, like Deployment Impact (#3039).
+    if (typeof f.externalSource === 'string' && f.externalSource.trim()) {
+      parts.push(`**External source:** ${f.externalSource.trim()}`, '');
+    }
   }
   parts.push('**Scope:**', scopeLines(f), '');
   if (typeof f.deploymentImpact === 'string' && f.deploymentImpact.trim()) {

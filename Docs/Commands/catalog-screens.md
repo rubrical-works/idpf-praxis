@@ -11,6 +11,7 @@ Discover and catalog UI screen elements from application source code — or from
 | `--from-screenshots <dir>` | No | Bulk-extract specs from a directory of screenshots; non-image files skipped with warning. |
 | `--showcase` | No | Launch the Living Style Guide browser review surface on `127.0.0.1`. Renders the catalog alongside design tokens in nine canonical categories; captures accept/reject/annotate decisions to `Design-System/showcase/decisions.json`. Mutually exclusive with `--apply-decisions`. |
 | `--apply-decisions` | No | Read pending decisions from `Design-System/showcase/decisions.json` and apply catalog outcomes (mark accepted / annotated / flagged for rework) without launching the server. For scripted / CI use. Mutually exclusive with `--showcase`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 
@@ -28,7 +29,7 @@ Discover and catalog UI screen elements from application source code — or from
 - Fully interactive: uses `AskUserQuestion` throughout to guide scope (create new / update existing / re-scan / **initialize full catalog**), mockup set selection, discovery method (auto-scan, specific directory, manual entry, or screenshot input), screen selection, and element enrichment.
 - Supports React/Next.js, Electron, Vue, vanilla HTML, and React Native. For Electron bridge patterns and other delegation layers, traces through to the actual DOM-rendering code rather than trusting the wrapper API shape.
 - Element fields are defined by `.claude/metadata/screen-spec-schema.json` — all fields (including `dataTestId`, `ariaLabel`, `conditionalRender`, `stateBinding`, etc.) come from that schema.
-- **Initialize full screen catalog** (brownfield): bulk-discovers screens from project source and seeds `Mockups/screen-catalog.json`, then renders the navigation graph.
+- **Initialize full screen catalog** (brownfield): bulk-discovers screens from project source and seeds `Mockups/screen-catalog.json`, writing one placeholder spec per screen at `Mockups/Catalog/Specs/{Name}.json` (marked `placeholder: true`, never overwriting an existing file) so validation passes on a fresh project, then renders the navigation graph.
 - **Registry upsert + drift report:** every run detects new / missing / changed screens against `Mockups/screen-catalog.json` before writing, so you see drift before any spec is overwritten.
 - **Navigation graph regeneration:** after specs land, regenerates `Mockups/NAVIGATION.md` with Pages, Wizards (with steps), and Unreachable sections (paginated for 200+ screen catalogs).
 - **Catalog validation:** runs `validate-screen-catalog.js` (9 invariants) as a non-blocking report after re-scans.

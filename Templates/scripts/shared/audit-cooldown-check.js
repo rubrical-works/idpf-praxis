@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  *
  * Cooldown-aware npm audit gate (#2537; deployed to user projects by #3016).
  *
@@ -44,7 +44,7 @@
  * with that root as its cwd for the same reason.
  *
  * Deployed shared script: Node built-ins only, per the runtime dependency
- * contract in `04-deployment-awareness.md`. `/ci add dependency-audit` copies
+ * contract in `04-deployment-awareness.md`. `/ci --add dependency-audit` copies
  * this file into the project (`.github/scripts/`) because the symlinked
  * `.claude/scripts/shared/` tree does not exist on a CI runner; this repo's
  * own `test.yml` runs it from here directly.

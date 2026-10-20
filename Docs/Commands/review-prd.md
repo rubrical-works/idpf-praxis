@@ -10,6 +10,7 @@ Review a PRD document linked from a GitHub issue, with tracked review history.
 | `--with` | No | Comma-separated domain extensions (e.g., `--with security,performance`) or `--with all` |
 | `--mode` | No | Transient review mode override: `solo`, `team`, or `enterprise` |
 | `--force` | No | Force re-review even if issue already has the `reviewed` label |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

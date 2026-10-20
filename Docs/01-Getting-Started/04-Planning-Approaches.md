@@ -203,6 +203,8 @@ Discovery                         Implementation
 
 **Scaling up:** When multiple epics are ready to execute in parallel, use `/plan-workstreams` to create dedicated branches with conflict-aware grouping. See [Concurrent Workstreams](../02-Advanced/Concurrent-Workstreams.md) for the full workflow.
 
+**Scaling within one epic:** `/work <epic>` has three speeds. The default stops after every story; `--nonstop` runs them all and stops once; `--concurrent` runs the stories that declare disjoint files at the same time, in their own worktrees, and stops once per group after that group has merged back through a review gate — the rest run one at a time. Top-down backlogs suit `--concurrent` best, because `/create-backlog` writes the `**Files to modify:**` and `**Depends on:**` lines the plan is built from; a bottom-up epic of `/add-story` issues qualifies as soon as its stories carry them. See [Workflow Guide, Stage 8](03-Workflow-Guide.md#stage-8-work-work) for when to choose which.
+
 ---
 
 ## Project Lifecycle Integration

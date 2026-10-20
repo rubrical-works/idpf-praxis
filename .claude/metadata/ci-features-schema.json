@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ci-features-schema.json",
   "title": "CI Features Schema",
-  "description": "Schema for .claude/metadata/ci-features.json — CI feature registry for /ci list and /ci add",
+  "description": "Schema for .claude/metadata/ci-features.json — CI feature registry for /ci --list and /ci --add",
   "type": "object",
   "description": "CI features keyed by feature ID",
   "properties": {

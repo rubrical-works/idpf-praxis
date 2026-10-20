@@ -127,11 +127,11 @@ Transition/
 ### Updating Later
 
 As your project evolves:
-- `/charter update` — Modify specific sections (vision, scope, tech stack)
-- `/charter refresh` — Re-analyze the codebase and merge findings. For testing, refresh acts only on what changed: a newly added language or role gets harness selection for that pair alone, existing choices are never re-asked or overwritten, suites that no longer match any file are reported (never removed), and "install pending" suites are re-checked with an offer to put them back in the gate once their tooling is present
-- `/charter validate` — Check if current work aligns with charter scope
+- `/charter --update` — Modify specific sections (vision, scope, tech stack)
+- `/charter --refresh` — Re-analyze the codebase and merge findings. For testing, refresh acts only on what changed: a newly added language or role gets harness selection for that pair alone, existing choices are never re-asked or overwritten, suites that no longer match any file are reported (never removed), and "install pending" suites are re-checked with an offer to put them back in the gate once their tooling is present
+- `/charter --validate` — Check if current work aligns with charter scope
 
-**Testing drift at startup.** When your charter is active, the session startup block adds a `Testing Drift:` row if your stack has gained a language or role with no declared suite, or a declared suite matches no files. The row names `/charter refresh` as the remedy. A `Coverage Overrides:` row may also appear when test-coverage settings in `framework-config.json` no longer fit the installed coverage-audit skill. Both rows are advisory — nothing is changed for you, and no row appears when everything is in order.
+**Testing drift at startup.** When your charter is active, the session startup block adds a `Testing Drift:` row if your stack has gained a language or role with no declared suite, or a declared suite matches no files. The row names `/charter --refresh` as the remedy. A `Coverage Overrides:` row may also appear when test-coverage settings in `framework-config.json` no longer fit the installed coverage-audit skill. Both rows are advisory — nothing is changed for you, and no row appears when everything is in order.
 
 ---
 
@@ -463,7 +463,7 @@ Branch naming uses a `{prefix}/{name}` format. Common prefixes:
 Before you can `/work` an issue, it must be assigned to a branch:
 
 ```
-/assign-branch #60 #61 #62 release/v1.0.0
+/assign-branch #60 #61 #62 --branch release/v1.0.0
 ```
 
 Or let the assistant detect the current branch:
@@ -532,6 +532,17 @@ Each acceptance criterion goes through this cycle. You'll see progress as it wor
 **Your role during `/work`:** Wait. The AI is implementing. Your turn comes when it stops and presents the result for review. If you're technically inclined, you can watch the output and intervene ("that's the wrong approach — try X instead"), but this is optional.
 
 **For epics:** Before the first story is touched, the assistant checks the review state of the epic and every story it will work and asks one question if any are unreviewed or carry unresolved findings. It then works through the stories one at a time, with a STOP boundary after each story reaches `in_review`. You review and approve each story before the next one begins.
+
+**Three ways to run an epic.** The default above is one story at a time with a STOP after each. `--nonstop` removes the STOPs and runs every story to `in_review` before stopping once. `--concurrent` keeps the one-at-a-time safety where it matters and adds parallelism where it is provably safe: stories whose declared files do not overlap and whose `**Depends on:**` lines are satisfied run at once, each in its own worktree with its own agent, and are merged back through a review gate. It **STOPs once per group** after the group has merged back (add `--nonstop` to remove those STOPs too); stories the plan cannot prove safe run one at a time afterwards.
+
+| Choose | When |
+|---|---|
+| default | You want to read each story before the next one starts |
+| `--nonstop` | The stories are reviewed and small, and you will read them together at the end |
+| `--concurrent` | The epic has several reviewed stories with disjoint `**Files to modify:**` blocks — a backlog from `/create-backlog` usually does — and you want wall-clock time back without giving up the per-group checkpoint |
+| `--nonstop --concurrent` | Same, unattended; a halt leaves every worktree in place for you (see [When Things Go Wrong](05-When-Things-Go-Wrong.md)) |
+
+Prefer `--concurrent` over `--nonstop` whenever the stories declare their files: the gate reads every merge before it lands, which `--nonstop` alone never does. If the plan finds no safe group it says so and runs sequentially, so trying it costs nothing.
 
 **Next step:** Review the work, then complete it with `/done`.
 

@@ -9,6 +9,7 @@ Evaluate every unit and e2e test for charter alignment and functional authentici
 | *(none)* | | Incremental run — skips approved, unchanged tests |
 | `--full` | No | Bypass the manifest and review all tests |
 | `--status` | No | Report manifest statistics without running a review |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

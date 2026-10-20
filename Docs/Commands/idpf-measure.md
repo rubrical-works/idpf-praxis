@@ -10,6 +10,7 @@ Instrument a command run and report where its time went, separating **tool execu
 | `--stop` | | Disarm — remove the marker and the wiring — and print the report. |
 | `--report` | | Print the report without disarming, so a long run can be inspected while it is still going. |
 | `--schema` | | Print the envelope reference and exit, changing nothing. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 Exactly one mode per invocation. Two at once is an error rather than a silent choice between them.
 

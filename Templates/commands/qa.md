@@ -1,8 +1,8 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 allowed-tools: Bash, Read, AskUserQuestion, Skill, SendMessage
 description: Verify one qa-required issue through a bounded set of outcomes and offer to close it with recorded evidence, using the IDPF framework.
-argument-hint: "#issue [PASS] [--assign]"
+argument-hint: "#issue [--pass] [--assign] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 
@@ -20,8 +20,16 @@ A `qa-required` issue is a **gate**, not a story (`02-github-workflow.md` § Clo
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `#issue` | Yes | The `qa-required` issue to verify (`#42` or `42`). One per invocation |
-| `PASS` | No | Optional positional verdict token after the issue number, case-insensitive. Records a passing verdict with pre-generated evidence the person confirms — § Recording a PASS typed on the command line (#3011). Any other trailing token is **reported as unrecognized and ignored** (rule 02 pass-through), never parsed as a second issue number. `FAIL` is deliberately not a token: a failure's observed result cannot be pre-generated |
+| `--pass` | No | Records a passing verdict with pre-generated evidence the person confirms — § Recording a PASS typed on the command line (#3011). Any other trailing token is **reported as unrecognized and ignored** (rule 02 pass-through), never parsed as a second issue number. There is deliberately no `--fail`: a failure's observed result cannot be pre-generated |
 | `--assign` | No | Direct invocation only: assign to the current branch first, no prompt. Never arrives via the `/work` redirect — see § Branch assignment |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js qa`, report its output, and STOP.
+
+**Retired forms:** `PASS` typed bare after the issue number (any case) is no longer accepted — reject it with a message naming `--pass`, and do nothing else.
+
+**Retired forms:** `PASS` typed bare after the issue number (any case) is no longer accepted — reject it with a message naming `--pass`, and do nothing else.
+
 ---
 ## Execution Instructions
 **Task creation.** No routing decision: create every step task upfront, **in one message as parallel tool calls** (`07-task-creation-timing.md` § Emission). Track `in_progress` → `completed`; never mark complete what was not executed. Prune this invocation's tasks at the Step 6 STOP.
@@ -36,7 +44,7 @@ The verification needs a place and a time. Delegate to `.claude/scripts/shared/a
 |---|---|
 | Already assigned | **Leave it.** Report the assignment; an issue on another branch is not moved. Common case since #2821, including every `/work` redirect arrival |
 | `--assign` (direct invocation) | `node .claude/scripts/shared/assign-branch.js "$ISSUE"` — current branch, report. No prompt; the flag is the answer, as on `/work` |
-| Unassigned, no `--assign` | **`AskUserQuestion`** over open branch trackers, current branch recommended, then `node .claude/scripts/shared/assign-branch.js "<branch>" "$ISSUE"`. The chosen branch records where the check ran |
+| Unassigned, no `--assign` | **`AskUserQuestion`** over open branch trackers, current branch recommended, then `node .claude/scripts/shared/assign-branch.js --branch "<branch>" "$ISSUE"`. The chosen branch records where the check ran |
 | No open branch tracker | Report the verification as **unattributed**, continue. **Never create a branch from `/qa`** — `/assign-branch` owns `gh pmu branch start` |
 **`/work --assign` is consumed by the preamble, never forwarded.** The preamble assigns before detecting the redirect, so the *Already assigned* row fires; forwarding would re-run `assign-branch.js` as a no-op that asserts nothing. `/qa`'s own `--assign` is for direct invocation only.
 ---
@@ -71,10 +79,10 @@ A QA issue that reached outcome 3 earlier may already carry the answer. **Read t
 | `FAIL` | Report the recorded failure verbatim, **STOP** — a real finding for the parent, not a formality. Recorded fixtures are **left standing — the reproduction**; the teardown gate is never raised on a `FAIL` |
 | absent | Step 3; if outcome 3 is reached, the report is emitted again |
 The human still performs the check; this step removes the bookkeeping, not the check.
-**A `PASS` token (#3011) does not change this table.** An existing `PASS` still short-circuits to Step 4 with **no second comment** — the token is reported as redundant. An existing `FAIL` is **never silently overridden**: one `AskUserQuestion` names the recorded failure and asks whether the check was re-performed and passed; only an explicit yes proceeds to § Recording a PASS typed on the command line, and the default keeps the `FAIL` and STOPs. Absent → Step 3; the token applies only where Step 3 says.
+**`--pass` (#3011) does not change this table.** An existing `PASS` still short-circuits to Step 4 with **no second comment** — `--pass` is reported as redundant. An existing `FAIL` is **never silently overridden**: one `AskUserQuestion` names the recorded failure and asks whether the check was re-performed and passed; only an explicit yes proceeds to § Recording a PASS typed on the command line, and the default keeps the `FAIL` and STOPs. Absent → Step 3; `--pass` applies only where Step 3 says.
 ### Step 3: Outcome selection
 Three outcomes, **in preference order**; take the first that applies.
-**A `PASS` token does not choose the outcome (#3011).** Step 3 runs as normal, token or not. The token applies **only when Step 3 resolves to outcome 3**, entering § Recording a PASS typed on the command line in place of the verdict question. Outcome 1 or 2 → the token is **reported as not used**, naming the outcome, and the run continues on that outcome's path — a typed `PASS` never bypasses outcome 1's candidate run or outcome 2's red-suite rule.
+**`--pass` does not choose the outcome (#3011).** Step 3 runs as normal, flag or not. `--pass` applies **only when Step 3 resolves to outcome 3**, entering § Recording a PASS typed on the command line in place of the verdict question. Outcome 1 or 2 → `--pass` is **reported as not used**, naming the outcome, and the run continues on that outcome's path — `--pass` never bypasses outcome 1's candidate run or outcome 2's red-suite rule.
 #### Step 3a: Candidate derivation (bounds outcome 1)
 Nothing in the framework matches a described behavior to a test; pairing is a skill, so the candidate set is **derived, not guessed**:
 1. **Parent** — `$PARENT`.
@@ -164,7 +172,7 @@ When the check is on something locally producible (rendered diagram or HTML page
 ##### Recording the verdict on a re-invocation (#2835)
 The template above serves the hand-off path. On a **direct** `/qa #N` re-invocation the check has already been performed, so the paste is clerical. After the structured report raise **one** `AskUserQuestion` — *Record PASS*, *Record FAIL*, *Not yet performed*; **the default when nothing is chosen is *Not yet performed***, leaving the run untouched.
 **The question text names the numbered steps and the PASS/FAIL evidence property (#2979)** — items 1 and 3 carried into the question, **not a one-line summary**. The question may render over the earlier prose, so one merely referring back leaves the person choosing with nothing on screen; *Not yet performed* then only ends the run, the report already shown.
-**The observation is collected as free text, in the user's own words — with one exception, scoped to a `PASS` typed on the command line (#3011), stated in the next subsection.** The verdict is two tokens and may be an option; *Observed result* and *Steps performed* are not — ask conversationally and record what comes back. A session-composed option describing what happened ("the prompt fired as expected") reintroduces the self-report the boundary below forbids, the person reduced to confirming this session's account of itself. **Why the `PASS`-only relaxation stays inside that boundary (#3011, narrowing #2835):** the pre-generated observation is the QA body's own expected result, not this session's account of itself; the person typed the verdict and vouches for the composed text at the confirm step. The attestation stays human; only clerical composition moves. **`FAIL` stays free text** on every path — a failure's observed result is what only the person who saw it can supply.
+**The observation is collected as free text, in the user's own words — with one exception, scoped to `--pass` typed on the command line (#3011), stated in the next subsection.** The verdict is two tokens and may be an option; *Observed result* and *Steps performed* are not — ask conversationally and record what comes back. A session-composed option describing what happened ("the prompt fired as expected") reintroduces the self-report the boundary below forbids, the person reduced to confirming this session's account of itself. **Why the `PASS`-only relaxation stays inside that boundary (#3011, narrowing #2835):** the pre-generated observation is the QA body's own expected result, not this session's account of itself; the person typed the verdict and vouches for the composed text at the confirm step. The attestation stays human; only clerical composition moves. **`FAIL` stays free text** on every path — a failure's observed result is what only the person who saw it can supply.
 **Compose the comment from the template above, verbatim** — the same `**QA Evidence:**` block — so Step 2's reader matches it unchanged. Write to `.tmp-qa-evidence-$ISSUE.md`, post, then `rm`:
 ```bash
 gh issue comment $ISSUE -F .tmp-qa-evidence-$ISSUE.md
@@ -181,7 +189,7 @@ gh issue comment $ISSUE -F .tmp-qa-evidence-$ISSUE.md
 - **The fixtures hand-off path** below: `Skill("work", …)` never returns, so no `/qa` invocation is alive when the observation happens. Nothing can ask or post; the evidence crosses a session boundary, which the pasted comment carries.
 - **`--nonstop`**: the offer is a question and an unattended run has nobody to answer it — as the two fixture consent gates.
 ##### Recording a PASS typed on the command line (#3011)
-The common return is "I did the check and it passed", and the person knows the verdict when they type the command. `/qa #NNN PASS` carries it: the verdict question above (*Record PASS* / *Record FAIL* / *Not yet performed*) and the free-text prompts for *Steps performed* and *Observed result* are **not raised**; instead of collecting them, `/qa` **pre-generates** the evidence comment and asks the person to **confirm** it. Only the typing moves. **`FAIL` has no shortcut** — its observed result cannot be pre-generated, so a failing check goes through the question above.
+The common return is "I did the check and it passed", and the person knows the verdict when they type the command. `/qa #NNN --pass` carries it: the verdict question above (*Record PASS* / *Record FAIL* / *Not yet performed*) and the free-text prompts for *Steps performed* and *Observed result* are **not raised**; instead of collecting them, `/qa` **pre-generates** the evidence comment and asks the person to **confirm** it. Only the typing moves. **`FAIL` has no shortcut** — its observed result cannot be pre-generated, so a failing check goes through the question above.
 **Compose the `**QA Evidence:**` block from the template above, verbatim** — the same five lines — so Step 2's reader is unchanged. Every field names its source:
 - **Date:** today, `date "+%Y-%m-%d"`.
 - **Environment:** current branch and platform (`git branch --show-current`; OS name), as where the check was performed. The line most likely to need correcting — a manual check may have run on a deployed hub or another OS — which is what the confirm step is for.
@@ -197,7 +205,7 @@ The common return is "I did the check and it passed", and the person knows the v
 gh issue comment $ISSUE -F .tmp-qa-evidence-$ISSUE.md
 ```
 Then continue as a recorded `PASS` in the table above: **Step 4**, citing the comment just posted, then the Step 5 close offer. No second `/qa` run needed.
-**Suppressed where the verdict question is suppressed, for the same two reasons** — the fixtures hand-off path (nothing running to ask) and `--nonstop` (nobody to answer); the token is reported as not used and the run behaves as if it were absent. **It never bypasses the Step 4 all-green closure condition** — a confirmed `PASS` is evidence; the full declared verification set must still be green before Step 5 offers to close.
+**Suppressed where the verdict question is suppressed, for the same two reasons** — the fixtures hand-off path (nothing running to ask) and `--nonstop` (nobody to answer); `--pass` is reported as not used and the run behaves as if it were absent. **It never bypasses the Step 4 all-green closure condition** — a confirmed `PASS` is evidence; the full declared verification set must still be green before Step 5 offers to close.
 ##### Declared board fixtures (#2827)
 A QA body carrying `### Fixtures` lets `/qa` create the board state itself instead of describing it. Grammar (`.claude/metadata/qa-fixtures-schema.json`): `- <type>: "<title>" [label:<name>] [reviewed]`; one root with two-space-indented children (a **tree**) or siblings with no root (a **selection**, the #2756 shape). Mechanics: `.claude/scripts/shared/qa-fixtures.js` (`--provision`, `--teardown`, `--status`; suite `tests/scripts/shared/qa-fixtures.test.js`). The two consent gates are this section's; the helper asks nothing.
 **Absent `### Fixtures` → outcome 3 reports exactly as today, no offer.** Absence means the check needs a hub, a second OS or a re-scan, not board state; `/qa` does not guess. **Never under `--nonstop`:** both gates are questions.

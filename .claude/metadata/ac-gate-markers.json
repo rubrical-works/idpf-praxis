@@ -3,7 +3,7 @@
   "version": 1,
   "_meta": {
     "description": "The intentionally-open gate markers an unchecked acceptance-criterion box may carry, with meaning, precedent and closure rule. Consolidated from the /work Step 4b marker table and the Step 5 closure-by-marker rules (#2765, target identified in #2605). Consumed by both steps; nonstop-audit.js pins the same GATE tokens as GATE_PHASES.",
-    "consumers": ["/work Step 4b (force-move prohibition)", "/work Step 5 (move to in_review; closure)"],
+    "consumers": ["/work Step 4b (force-move prohibition)", "/work Step 5 (move to in_review; closure)", "qa-extract.js (/work Step 4a — an AC already carrying a marker is not extracted again, #3161)"],
     "relatedPrompt": ".claude/metadata/ac-feasibility-prompts.json phaseFeasibility (annotationFormat, gatePhases)"
   },
   "markers": [
@@ -18,7 +18,7 @@
     {
       "id": "gate-review",
       "literal": "- [ ] … → GATE: review",
-      "pattern": "→ GATE: review",
+      "pattern": "→ GATE: review\\b",
       "meaning": "The condition resolves after the issue reaches in_review — a human read-and-approve step.",
       "precedent": "#2508",
       "closure": "Checked by the user during review; these boxes are precisely what the STOP boundary hands off, so done implies the user has satisfied them."
@@ -26,7 +26,7 @@
     {
       "id": "gate-release",
       "literal": "- [ ] … → GATE: release",
-      "pattern": "→ GATE: release",
+      "pattern": "→ GATE: release\\b",
       "meaning": "The condition resolves during /prepare-release.",
       "precedent": "#2508",
       "closure": "Checked when the owning release step runs; if one is still open at /done, say so rather than checking it."

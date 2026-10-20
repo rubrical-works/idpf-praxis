@@ -6,16 +6,19 @@ Audit command spec files for formatting weaknesses that impact LLM processing re
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `all` | No | Audit every command in `.claude/commands/` |
+| `--all` | No | Audit every command in `.claude/commands/` |
 | `<command-name>` | No | Audit a single command (e.g., `work`, `done`) |
 | `<group description>` | No | Natural-language grouping (e.g., `"release commands"`) |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
+
+**Retired forms:** `all` as the whole argument is no longer accepted; use `--all`.
 
 If no argument is provided, the command prompts for scope.
 
 ## Usage
 
 ```
-/audit-commands all
+/audit-commands --all
 /audit-commands work
 /audit-commands "review commands"
 ```

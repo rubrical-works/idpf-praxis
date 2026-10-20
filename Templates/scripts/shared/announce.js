@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
@@ -49,6 +49,7 @@ const { execFileSync } = require('child_process');
 
 const { buildAnnouncement, EVENTS } = require('./peer-announce.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
+const { BASE_REF_CANDIDATES, resolveBranchBase } = require('./lib/branch-diff.js');
 const ledger = require('./lib/announce-ledger.js');
 const { appendLedgerId } = require('./lib/overwatch-receipt.js');
 
@@ -190,12 +191,6 @@ function git(args, cwd) {
 }
 
 /**
- * The refs a working branch may have been cut from, in lookup order.
- * `origin/HEAD` is resolved first and prepended when it exists.
- */
-const BASE_REF_CANDIDATES = Object.freeze(['origin/main', 'origin/master', 'main', 'master']);
-
-/**
  * Where this branch left the default branch — the lower bound of the commit
  * range a `work-completed` may name (#2888).
  *
@@ -214,41 +209,25 @@ const BASE_REF_CANDIDATES = Object.freeze(['origin/main', 'origin/master', 'main
  * and the commits between the two — released ones included — would fall back
  * inside the range. The nearest branch point is never too wide.
  *
+ * Resolution lives in lib/branch-diff.js (#3114) so /code-review --diff and this
+ * range share one definition of the branch point; this wrapper keeps the
+ * announce-specific error text and result shape.
+ *
  * No candidate resolves → `ok: false`. The fallback is NOT all history: that
  * is the defect, and a named-nothing announcement with a warning is honest
  * where an unbounded one is not.
  */
 function resolveCommitBase(options = {}) {
-  const { cwd } = options;
-  const refs = [];
-  try {
-    const sym = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], cwd).trim();
-    if (sym) refs.push(sym.replace(/^refs\/remotes\//, ''));
-  } catch { /* no origin/HEAD — the fixed candidates still apply */ }
-  for (const ref of BASE_REF_CANDIDATES) if (!refs.includes(ref)) refs.push(ref);
-
-  let nearest = null;
-  for (const ref of refs) {
-    try {
-      git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], cwd);
-      const base = git(['merge-base', 'HEAD', ref], cwd).trim();
-      if (!base) continue;
-      const distance = Number(git(['rev-list', '--count', `${base}..HEAD`], cwd).trim());
-      if (!Number.isFinite(distance)) continue;
-      if (!nearest || distance < nearest.distance) nearest = { base, ref, distance };
-    } catch {
-      // Ref absent, or no common history with HEAD — not a candidate.
-    }
-  }
-
-  if (!nearest) {
+  const resolved = resolveBranchBase({ cwd: options.cwd });
+  if (!resolved.ok) {
+    const looked = (resolved.tried || BASE_REF_CANDIDATES).join(', ');
     return {
       ok: false,
-      error: `no base branch could be resolved (looked for ${refs.join(', ')}), so commits were not searched `
+      error: `no base branch could be resolved (looked for ${looked}), so commits were not searched `
         + '— an unbounded search would name commits from earlier runs (#2888)',
     };
   }
-  return { ok: true, base: nearest.base, ref: nearest.ref };
+  return { ok: true, base: resolved.sha, ref: resolved.ref };
 }
 
 /**

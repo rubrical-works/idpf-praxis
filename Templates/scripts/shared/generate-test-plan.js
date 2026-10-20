@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Generate a test plan skeleton markdown file from the issues assigned to the current git branch. Auto-detects version from branch name or accepts version parameter. Outputs to Construction/Test-Plans/ directory. Used by /prepare-release test plan generation.
  * @checksum sha256:placeholder
  *
@@ -17,6 +17,7 @@ const { execTimed: execSync } = require('./lib/exec.js');
 // "every framework code path extracting checkboxes from an issue body", and
 // this is one — it was fence-blind like the rest.
 const { extractAcceptanceCriteria: sharedExtractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
+const { normalizeEol } = require('./lib/normalize-eol.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -165,7 +166,8 @@ function generateTestCase(issue, index) {
   md += `**Issue:** #${issue.number}\n\n`;
 
   // Background section (first paragraph of issue body or generated)
-  const firstParagraph = issue.body?.split('\n\n')[0]?.replace(/^#+.*\n?/, '').trim();
+  // A CRLF body has no `\n\n`, so the "first paragraph" would be all of it (#3064).
+  const firstParagraph = normalizeEol(issue.body)?.split('\n\n')[0]?.replace(/^#+.*\n?/, '').trim();
   if (firstParagraph && firstParagraph.length > 20) {
     md += `**Background:** ${firstParagraph.substring(0, 200)}${firstParagraph.length > 200 ? '...' : ''}\n\n`;
   }

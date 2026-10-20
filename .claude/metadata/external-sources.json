@@ -1,0 +1,101 @@
+{
+  "$schema": "./external-sources-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "External-source attribution registry (#3039). One entry per external project, skill, command or idea IDPF has copied, adapted, been inspired by, or compared itself against. THIRD-PARTY-NOTICES.md is the human page; tests/reference/external-sources.test.js keeps the two in step. Dev-only.",
+    "issue": 3039
+  },
+  "sources": [
+    {
+      "id": "ponytail",
+      "name": "Ponytail",
+      "url": "https://github.com/DietrichGebert/ponytail",
+      "pinned": "16352ac229eb08a9598dcae48fe9f2b342567d86",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 DietrichGebert",
+      "relationship": "adapted",
+      "taken": "The code review rubric, adapted for the 2026-10-17 lean audit.",
+      "landedIn": [
+        "Docs/05-Comparisons/Compare-Ponytail.md",
+        "Construction/Code-Reviews/2026-10-17-lean-audit.md"
+      ],
+      "issue": 3039,
+      "date": "2026-10-17"
+    },
+    {
+      "id": "pstack",
+      "name": "pstack",
+      "url": "https://github.com/cursor/plugins/tree/0317eb8b858c991c57721358daaee19dbe8c814d/pstack",
+      "pinned": "0317eb8b858c991c57721358daaee19dbe8c814d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Lauren Tan",
+      "relationship": "compared",
+      "taken": "nothing",
+      "landedIn": [
+        "Docs/05-Comparisons/Compare-pstack.md"
+      ],
+      "issue": 3074,
+      "date": "2026-10-17"
+    },
+    {
+      "id": "thermos",
+      "name": "Thermos",
+      "url": "https://github.com/cursor/plugins/tree/0317eb8b858c991c57721358daaee19dbe8c814d/thermos",
+      "pinned": "0317eb8b858c991c57721358daaee19dbe8c814d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Cursor",
+      "relationship": "compared",
+      "taken": "nothing",
+      "landedIn": [
+        "Docs/05-Comparisons/Compare-Thermos.md"
+      ],
+      "issue": 3074,
+      "date": "2026-10-17"
+    },
+    {
+      "id": "cli-for-agent",
+      "name": "cli-for-agent",
+      "url": "https://github.com/cursor/plugins/tree/0317eb8b858c991c57721358daaee19dbe8c814d/cli-for-agent",
+      "pinned": "0317eb8b858c991c57721358daaee19dbe8c814d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Cursor",
+      "relationship": "compared",
+      "taken": "nothing",
+      "landedIn": [
+        "Docs/05-Comparisons/Compare-Cli-For-Agent.md"
+      ],
+      "issue": 3074,
+      "date": "2026-10-17"
+    },
+    {
+      "id": "agent-compatibility",
+      "name": "Agent Compatibility",
+      "url": "https://github.com/cursor/plugins/tree/0317eb8b858c991c57721358daaee19dbe8c814d/agent-compatibility",
+      "pinned": "0317eb8b858c991c57721358daaee19dbe8c814d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Cursor",
+      "relationship": "compared",
+      "taken": "nothing",
+      "landedIn": [
+        "Docs/05-Comparisons/Compare-Agent-Compatibility.md"
+      ],
+      "issue": 3074,
+      "date": "2026-10-17"
+    },
+    {
+      "id": "cursor-team-kit",
+      "name": "Cursor Team Kit",
+      "url": "https://github.com/cursor/plugins/tree/0317eb8b858c991c57721358daaee19dbe8c814d/cursor-team-kit",
+      "pinned": "0317eb8b858c991c57721358daaee19dbe8c814d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Cursor",
+      "relationship": "compared",
+      "taken": "nothing",
+      "landedIn": [
+        "Docs/05-Comparisons/Compare-Cursor-Team-Kit.md"
+      ],
+      "issue": 3074,
+      "date": "2026-10-17"
+    }
+  ]
+}

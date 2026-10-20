@@ -9,6 +9,9 @@ Create a proposal document (`Proposal/[Name].md`) and a tracking issue with the 
 | `<title>` | No | Proposal title (e.g., `Dark Mode Support`) |
 | `--prior-art` | No | Run a prior-art sweep before composing the proposal. Absent means no sweep. |
 | `--assignee <value>` | No | GitHub login to assign the new issue to. Omitted → `@me`. |
+| `--target <owner/name>` | No | File the tracking issue into a registered companion repository instead of this one. |
+| `--target-path <dir>` | No | With `--target`: a local checkout of that companion, where the proposal document is written. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 
@@ -27,6 +30,23 @@ idea: Dark Mode Support
 - After creating the document, creates a GitHub issue with the `proposal` label (priority P2, status Backlog) and updates the document with the issue number
 - **STOP** after reporting — does not implement anything unless the user explicitly says "work" or "implement"
 - Warns before overwriting an existing `Proposal/[Name].md`
+
+## Filing Into a Companion Repository (`--target`)
+
+`--target <owner/name>` files the tracking issue into a **companion** repository instead of this one. The repository must be registered in `CHARTER.md` as filable; if it is registered read-only, or not registered at all, the command says which and stops without creating anything.
+
+**The issue goes onto the companion's board, not this project's,** exactly as with `/bug --target` and `/enhancement --target`. Status and Priority are set from the companion board's own fields; anything that does not resolve there is reported **unset** rather than guessed, and with no board registered no board is touched and the command says so.
+
+**The proposal document belongs to the companion too.** The issue's `**File:** Proposal/[Name].md` line is what `/create-prd` reads, and it runs in the companion — so the document must live in the companion's tree, not here. Nothing is written to this repository's `Proposal/`:
+
+- **With `--target-path <dir>`** — `<dir>` must be a local checkout of the target (its `origin` remote is checked). The document is written to `<dir>/Proposal/[Name].md`. It is **not committed**: commit it in the companion through that project's own workflow.
+- **Without `--target-path`** — the document is printed in full after the issue is filed, for you to add to the companion as `Proposal/[Name].md`.
+
+```
+/proposal --target rubrical-worker/px-manager --target-path ../px-manager Hub Health Panel - shows hook status per project
+```
+
+**Before 0.109.0 this landed on the wrong board.** `/proposal --target` added the companion issue to this project's board and wrote the document here, where the companion's `/create-prd` could not find it.
 
 ## Prior-Art Sweep
 

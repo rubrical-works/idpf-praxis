@@ -9,7 +9,7 @@ appliesTo:
   - prepare-beta:pre-validation
   - merge-branch:pre-gate
 prerequisites:
-  - "Cross-OS testing enabled in CI: /ci add cross-os-testing"
+  - "Cross-OS testing enabled in CI: /ci --add cross-os-testing"
 ---
 
 ### Verify Cross-OS CI

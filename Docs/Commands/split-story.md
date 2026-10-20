@@ -8,6 +8,7 @@ Split a story issue into two or more smaller, focused stories.
 |----------|----------|-------------|
 | `<story-number>` | Yes | Story issue number to split (e.g., `123` or `#123`) |
 | `--assignee <value>` | No | GitHub login to assign the new stories to. Omitted → `@me`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

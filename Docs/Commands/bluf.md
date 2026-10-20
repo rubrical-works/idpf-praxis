@@ -9,6 +9,7 @@ Not the same thing as an output style. `/bluf` digests *issues* on demand; an ou
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `#issue` | Yes | One or more issue numbers (e.g. `#42`, or `42 43 44`). A leading `#` is optional |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

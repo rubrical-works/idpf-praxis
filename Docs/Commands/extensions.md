@@ -6,26 +6,29 @@ Discover, view, edit, and validate extension points in slash commands.
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `list` | No | Show all extension points across all commands |
-| `list --command <cmd>` | No | Show extension points for a specific command |
-| `list --status` | No | Show filled (X) / empty (.) markers per extension point |
-| `view <cmd>:<point>` | No | Show the current content of a specific extension point |
-| `edit <cmd>:<point>` | No | Edit a specific extension point interactively |
-| `validate` | No | Check all extension blocks for formatting issues |
-| `summary` | No | Per-command filled/empty/total counts |
-| `recipes [category]` | No | Show common patterns for extension points |
-| *(none)* or `--help` | No | Show help |
+| `--list` | No | Show all extension points across all commands |
+| `--list --command <cmd>` | No | Show extension points for a specific command |
+| `--list --status` | No | Show filled (X) / empty (.) markers per extension point |
+| `--view <cmd>:<point>` | No | Show the current content of a specific extension point |
+| `--edit <cmd>:<point>` | No | Edit a specific extension point interactively |
+| `--validate` | No | Check all extension blocks for formatting issues |
+| `--summary` | No | Per-command filled/empty/total counts |
+| `--recipes [category]` | No | Show common patterns for extension points |
+| *(none)* | No | Print usage |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
+
+**Retired forms:** The bare subcommand words (`list`, `view`, …) are no longer accepted; use the `--` form. Running `/extensions` with no argument prints usage.
 
 ## Usage
 
 ```
-/extensions list
-/extensions list --command create-branch --status
-/extensions view prepare-release:post-validation
-/extensions edit prepare-release:post-validation
-/extensions validate
-/extensions summary
-/extensions recipes ci
+/extensions --list
+/extensions --list --command create-branch --status
+/extensions --view prepare-release:post-validation
+/extensions --edit prepare-release:post-validation
+/extensions --validate
+/extensions --summary
+/extensions --recipes ci
 ```
 
 ## Key Behaviors

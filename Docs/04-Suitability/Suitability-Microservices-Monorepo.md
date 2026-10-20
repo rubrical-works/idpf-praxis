@@ -137,6 +137,8 @@ A monorepo microservices project is structurally similar to an N-Tier applicatio
 
 For real-world examples of both approaches, see [Reference: Microservices Platforms on GitHub](Reference-Microservices-Repos.md). For a conceptual design that would close the remaining process gaps, see [Concept: IDPF-Agile-MS](Concept-IDPF-Agile-MS.md).
 
+**Concurrent runs (`/work --concurrent`):** benefits, with one catch. Per-service stories declare disjoint paths and run at once, but a monorepo's shared generated files — a root lockfile, a generated API index, a workspace manifest every service appends to — collide on every pair until Phase 1 declares them as accumulators or derived artifacts. The profiler ranks exactly those files; configure them first, then the rate you measured is the rate you keep.
+
 ---
 
 **End of Monorepo Microservices Assessment**

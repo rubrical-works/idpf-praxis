@@ -7,32 +7,38 @@ View, create, or manage the project charter.
 | Argument | Required | Description |
 |----------|----------|-------------|
 | *(none)* | | Show charter summary if complete, or start creation if missing/template |
-| `update` | No | Update specific charter sections interactively |
-| `update --register-proj` | No | Register a companion repository or board |
-| `update --deregister-proj` | No | Remove a companion registration by `owner/name` |
-| `update --list-proj` | No | List registered companions with their capability flags |
-| `refresh` | No | Re-extract charter from the codebase and merge with existing |
-| `validate` | No | Check current work against charter scope |
+| `--update` | No | Update specific charter sections interactively |
+| `--update --register-proj` | No | Register a companion repository or board |
+| `--update --deregister-proj` | No | Remove a companion registration by `owner/name` |
+| `--update --list-proj` | No | List registered companions with their capability flags |
+| `--refresh` | No | Re-extract charter from the codebase and merge with existing |
+| `--validate` | No | Check current work against charter scope |
 | `--create-domain-entities` | No | Regenerate `domain-entities.json` from the current charter |
 | `--testing` | No | Run harness selection per language and role, writing `testing.suites[]` |
 | `--dry-run` | No | With `--testing` only: run selection and show what would be written, writing nothing |
 | `--check` | No | With `--testing --dry-run` only: non-interactive audit for CI, ending in a `clean` or `drift` verdict |
 | `--sweep-e2e on\|off` | No | With `--testing` only: set whether every e2e suite runs in the full test sweep `/work` runs before review, without re-running selection |
+| `--sweep-scope all\|touched` | No | With `--testing` only: set whether the full test sweep runs every suite or only the suites whose files changed, without re-running selection |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
+
+**Retired forms:** `update`, `refresh` and `validate` typed bare are no longer accepted; use `--update`, `--refresh` or `--validate`.
 
 ## Usage
 
 ```
 /charter
-/charter update
-/charter update --list-proj
-/charter refresh
-/charter validate
+/charter --update
+/charter --update --list-proj
+/charter --refresh
+/charter --validate
 /charter --create-domain-entities
 /charter --testing
 /charter --testing --dry-run
 /charter --testing --dry-run --check
 /charter --testing --sweep-e2e off
 /charter --testing --sweep-e2e on
+/charter --testing --sweep-scope all
+/charter --testing --sweep-scope touched
 ```
 
 ## Key Behaviors
@@ -42,9 +48,9 @@ View, create, or manage the project charter.
 - **Inception artifacts are written in intent voice.** No code exists yet on this path, so no `Inception/` artifact may claim to have detected anything — each one records what the project *will* use, sourced from your answers. `Inception/Tech-Stack.md` comes from the tech-stack answer alone and uses `TBD` for any detail that answer did not supply (version, package manager, runtime, build tool). This is separate from the `TBD` used for questions you skipped: that covers an unanswered question, this covers a detail that is unobservable because nothing is installed yet.
 - **Extraction mode** (existing project): loads the `codebase-analysis` skill, analyzes source code, presents findings for confirmation, then generates charter artifacts from the analysis. Artifacts here are observations, so a "detected" or "found via `<file>`" claim is permitted — each must trace back to a file that was actually read. Test commands found in `package.json` scripts, `Makefile`, `pyproject.toml` or CI workflows are shown with the file they came from and pre-filled into harness selection. If the skill is not installed the command stops and tells you to install it via Praxis Hub Manager rather than proceeding without analysis.
 - After charter creation, suggests relevant skills from `.claude/metadata/skill-keywords.json` (default skills are pre-selected) and installs confirmed selections. Also suggests matching extension recipes.
-- `/charter validate` compares current work (issue, recent commits, staged changes) against `CHARTER.md` scope boundaries and flags anything potentially out of scope.
-- Tech stack changes in `/charter update` trigger additive skill and recipe suggestions for newly relevant items only.
-- **Project `.npmrc` offer.** When the stack includes JavaScript or TypeScript and the project root has no `.npmrc`, `/charter` offers to copy the framework's project template. The template sets a `min-release-age` cooldown for new package versions and turns on `ignore-scripts`. The offer is made during Inception, during Extraction, and on `/charter refresh` for charters created before the offer existed. The file is written only if you accept, and declining is not asked again in the same run. An existing `.npmrc` is never overwritten: `/charter` reports it and names the two keys so you can merge them by hand.
+- `/charter --validate` compares current work (issue, recent commits, staged changes) against `CHARTER.md` scope boundaries and flags anything potentially out of scope.
+- Tech stack changes in `/charter --update` trigger additive skill and recipe suggestions for newly relevant items only.
+- **Project `.npmrc` offer.** When the stack includes JavaScript or TypeScript and the project root has no `.npmrc`, `/charter` offers to copy the framework's project template. The template sets a `min-release-age` cooldown for new package versions and turns on `ignore-scripts`. The offer is made during Inception, during Extraction, and on `/charter --refresh` for charters created before the offer existed. The file is written only if you accept, and declining is not asked again in the same run. An existing `.npmrc` is never overwritten: `/charter` reports it and names the two keys so you can merge them by hand.
 - `domain-entities.json` is always written beside `CHARTER.md` at the project root. If that path would resolve outside the project (for example through a linked directory), the error is reported and nothing is written.
 
 ## Harness Selection
@@ -57,6 +63,7 @@ Harness selection replaces the old "testing framework" and "test command" questi
 - **Defaults are armed only on clear evidence** — when exactly one harness matches a detect signal (for example `pytest.ini`), and the evidence is shown beside the default.
 - **"None of these"** asks for the assurance tier — `script`, `golden` (both run at the verification gate, with the command you supply) or `manual` (declared but not run) — and offers to save the harness to `.claude/local-metadata/test-harnesses.json` for reuse.
 - Answers are written to `framework-config.json` `testing.suites[]`. `/charter` no longer writes `verificationCommands`; an existing key is left in place and still read.
+- **Each suite is written with a `concurrency` field** — `exclusive` for an `e2e` suite, `parallel` for every other role. It says where `/work --concurrent` may run the suite: `parallel` suites run inside each member's worktree, `exclusive` suites wait and run once on your branch after the group has merged back, so a browser-bound or port-bound suite never runs twice at once and is never skipped. Selection never asks; edit the value by hand if an e2e suite really can run in parallel.
 - Skipped selection is reported with its reason: a non-code project (documentation, config, terraform, ansible), or a detected language with no harness available for a role.
 - **`Inception/Test-Strategy.md`'s Framework table is generated from `testing.suites[]`** — one row per suite with role, harness, command and execution — and marked as generated. A suite left out of the full sweep is shown as *not swept*, or as *never runs during `/work`* when it is also skipped for changed files.
 
@@ -73,6 +80,10 @@ Before an issue moves to review, `/work` runs every test suite in full (the "ful
   - With no e2e suites it writes nothing and says so.
   - With `--dry-run` it shows what would change.
   - A missing or unknown value, or use without `--testing`, is rejected with the valid form.
+- **`/charter --testing --sweep-scope all` or `touched`** decides which suites the full sweep runs. `all`, the default, runs every suite. `touched` runs only the suites whose file patterns match a file the issue changed, which makes the sweep faster.
+  - Before switching to `touched`, `/charter` warns about any suite whose patterns match only test files, naming it. Such a suite would be skipped when an issue changes source files but not their tests. The warning does not stop the change.
+  - The previous and new value are reported, or `unchanged` if it was already set. `all` is saved explicitly rather than by removing the setting.
+  - With `--dry-run` it shows what would change. A missing or unknown value, or use without `--testing`, is rejected with the valid form.
 
 ### Tooling Verification and Guided Install
 
@@ -93,7 +104,7 @@ After selection completes, the tooling each selected harness requires (packages,
 
 ## Refresh and Testing
 
-`/charter refresh` re-applies harness selection against what changed rather than re-asking everything:
+`/charter --refresh` re-applies harness selection against what changed rather than re-asking everything:
 
 - Only newly gained language/role pairs are asked about; an existing suite is never re-asked or overwritten. A language whose `unit` or `e2e` role has neither a suite nor a "none applicable" record is named and selection runs for it.
 - Suites whose file patterns match nothing are reported, never removed.

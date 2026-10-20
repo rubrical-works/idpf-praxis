@@ -9,8 +9,9 @@ Complete one or more issues — transitions from `in_review` to `done`, pushes, 
 | `#issue` | No | Single issue number (e.g., `#42` or `42`) |
 | `#issue #issue...` | No | Multiple issue numbers (e.g., `#42 #43 #44`) |
 | `--all` | No | Complete all `in_review` issues on the current branch (with confirmation) |
-| `--yes` / `-y` | No | Auto-approve interactive prompts. With `--all`, runs unattended. |
+| `--yes` | No | Auto-approve interactive prompts. With `--all`, runs unattended. `-y` is no longer accepted. |
 | *(none)* | No | Query `in_review` issues for interactive selection |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

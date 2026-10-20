@@ -7,6 +7,7 @@ Verify all epics and stories derived from a PRD are complete, then close the PRD
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `<issue-number>` | Yes | PRD tracker issue number (e.g., `151` or `#151`) |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 

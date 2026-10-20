@@ -12,7 +12,7 @@ appliesTo:
 prerequisites:
   - Coverage tool configured
   - (Optional) Codecov or similar service
-  - "CI integration: /ci add coverage-upload"
+  - "CI integration: /ci --add coverage-upload"
 technology:
   - node
 ---

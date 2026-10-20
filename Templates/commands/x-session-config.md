@@ -1,5 +1,5 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Configure this project's IDPF cross-session peer messaging.
 argument-hint: "[--on <levers>] [--off <levers>] [--quiet] [--loud] [--show] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -16,12 +16,15 @@ Edit the cross-session peer messaging levers (#2702). They live in `.claude/x-se
 | `--quiet` | No | Alias for `--off noticeNarration`. No value. |
 | `--loud` | No | Alias for `--on noticeNarration`. No value. |
 | `--show` | No | Prints the resolved state. **Writes nothing.** |
-| `--help` | No | Prints usage and the lever names. **Writes nothing.** |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument, performs no action and writes nothing. |
 | *(none)* | — | Changes nothing, but still writes the resolved object and displays it. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js x-session-config`, report its output, and STOP.
+
 **Levers:** `enabled`, `discovery`, `notices`, `upstreamMonitor`, `noticeNarration`, `overlapNotices`, `broadcast`, `work`, `push`, `review` — the last three addressing `groups.*` without the prefix. **Non-interactive:** asks nothing, blocks on nothing.
 **`--show` is the read-only mode.** A bare invocation writes by design, so without it there is no way to look without changing the file. It reports exactly what a bare run would have written — a preview, not a second opinion.
 **`--show` with `--on`/`--off` is rejected** — opposite intents, and silently honoring one produces output that looks like a write but was not. "Did it write?" stays answerable from the flags alone.
-**`--help` takes precedence over every other flag**, `--show` and an invalid lever included — the likeliest reason to type it is not knowing the lever names, so `--help --off nonsense` prints help rather than complaining.
+**`--help` takes precedence over every other flag**, `--show` and an invalid lever included — the likeliest reason to type it is not knowing the lever names, so `--help --off nonsense` opens the docs page (which lists them) rather than complaining.
 ## Workflow
 **One step.** Pass the arguments through verbatim:
 ```bash

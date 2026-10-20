@@ -54,7 +54,7 @@ To create an RC workflow, you customize `/prepare-release`:
 - **`checklist-before-tag`** — Add RC-specific sign-off requirements
 - **`pre-tag`** — Gate on integration test results
 
-Run `/extensions list --command prepare-beta` or `/extensions list --command prepare-release` to see all available extension points. Run `/extensions recipes` for pre-built patterns.
+Run `/extensions --list --command prepare-beta` or `/extensions --list --command prepare-release` to see all available extension points. Run `/extensions --recipes` for pre-built patterns.
 
 ---
 
@@ -65,13 +65,13 @@ Release workflows don't exist in isolation. The `/ci` command provides the CI/CD
 | Subcommand | What It Does |
 |------------|-------------|
 | `/ci` | View existing workflow status |
-| `/ci list` | Show available CI features (18 features, tiered) |
-| `/ci add <feature>` | Add CI features (caching, cross-OS testing, etc.) |
-| `/ci validate` | Check workflows for errors, anti-patterns, security issues |
-| `/ci recommend` | Analyze your project and suggest CI improvements |
-| `/ci watch` | Monitor CI run status for a commit |
+| `/ci --list` | Show available CI features (18 features, tiered) |
+| `/ci --add <feature>` | Add CI features (caching, cross-OS testing, etc.) |
+| `/ci --validate` | Check workflows for errors, anti-patterns, security issues |
+| `/ci --recommend` | Analyze your project and suggest CI improvements |
+| `/ci --watch` | Monitor CI run status for a commit |
 
-An alpha release that needs a different CI gate? Use `/ci add` to configure the workflow, then use a `pre-validation` extension in `/prepare-beta` to invoke it. A nightly that should only release if CI is green? Use `/ci watch` in a `pre-tag` extension.
+An alpha release that needs a different CI gate? Use `/ci --add` to configure the workflow, then use a `pre-validation` extension in `/prepare-beta` to invoke it. A nightly that should only release if CI is green? Use `/ci --watch` in a `pre-tag` extension.
 
 The `/ci` command itself is extensible — its `custom-subcommands` extension point lets you add project-specific CI operations without forking the command.
 
@@ -94,11 +94,11 @@ The trap: a typical Electron CI workflow uses `actions/upload-artifact` to pass 
 
 | Feature | Command | What It Does |
 |---------|---------|-------------|
-| `artifact-retention` | `/ci add artifact-retention` | Injects `retention-days: 1` into all `upload-artifact` steps |
-| `artifact-conditional-upload` | `/ci add artifact-conditional-upload` | Wraps uploads with `if: startsWith(github.ref, 'refs/tags/')` |
-| `artifact-cleanup` | `/ci add artifact-cleanup` | Adds `delete-artifact` step after release publish |
+| `artifact-retention` | `/ci --add artifact-retention` | Injects `retention-days: 1` into all `upload-artifact` steps |
+| `artifact-conditional-upload` | `/ci --add artifact-conditional-upload` | Wraps uploads with `if: startsWith(github.ref, 'refs/tags/')` |
+| `artifact-cleanup` | `/ci --add artifact-cleanup` | Adds `delete-artifact` step after release publish |
 
-`/ci recommend` flags missing artifact hygiene, and `/ci validate` warns on `upload-artifact` without `retention-days`.
+`/ci --recommend` flags missing artifact hygiene, and `/ci --validate` warns on `upload-artifact` without `retention-days`.
 
 The principles behind these features:
 - Set `retention-days: 1` on `upload-artifact` — artifacts only need to survive until the release job runs
@@ -116,7 +116,7 @@ The principles behind these features:
 | Bandwidth costs at scale | Push to S3, Cloudflare R2, or CDN | `post-tag` |
 | Commercial distribution | Integrate Keygen.sh or Paddle | `post-tag` |
 | Air-gapped / enterprise | Self-hosted update server (nuts, hazel) | `post-tag` |
-| Cross-platform build matrix | Multi-OS CI workflow | `/ci add cross-os-testing` |
+| Cross-platform build matrix | Multi-OS CI workflow | `/ci --add cross-os-testing` |
 
 The pattern is always the same: `/prepare-release` or `/prepare-beta` handles versioning and git operations. Extensions handle delivery. `/ci` handles the build infrastructure. The release commands don't need to know *where* your artifacts go — only that versioning and tagging happened correctly.
 
@@ -144,10 +144,10 @@ This means IDPF doesn't need to predict whether your team uses alpha/beta/RC, or
 | Beta from a feature branch | `/prepare-beta` |
 | Alpha release | `/prepare-beta` + `post-analysis` extension |
 | Release candidate | `/prepare-release` + `post-analysis` extension |
-| Nightly build | `/prepare-beta` + `post-analysis` + `/ci watch` in `pre-tag` |
+| Nightly build | `/prepare-beta` + `post-analysis` + `/ci --watch` in `pre-tag` |
 | QA release | `/prepare-beta` + `checklist-before-tag` for QA sign-off |
-| Large desktop app (Electron) | `/ci add cross-os-testing` + `post-tag` for artifact delivery |
-| Custom CI gates | `/ci add` + validation extensions in release commands |
+| Large desktop app (Electron) | `/ci --add cross-os-testing` + `post-tag` for artifact delivery |
+| Custom CI gates | `/ci --add` + validation extensions in release commands |
 
 See also: [Customizing Commands](../02-Advanced/Customizing-Commands.md) for hands-on extension examples.
 

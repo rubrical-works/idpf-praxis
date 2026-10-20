@@ -2,8 +2,8 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.108.0
- * @description Format CI recommendations as a numbered interactive menu and parse user selections. Provides the display layer between ci-recommend.js (analysis) and ci-apply.js (execution). Part of the /ci recommend subcommand.
+ * @framework-script 0.109.0
+ * @description Format CI recommendations as a numbered interactive menu and parse user selections. Provides the display layer between ci-recommend.js (analysis) and ci-apply.js (execution). Part of the /ci --recommend subcommand.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -91,7 +91,7 @@ function formatNoRecommendations() {
   return [
     'Your CI configuration looks good — no recommendations found.',
     '',
-    'Tip: Run /ci validate to check for syntax errors and anti-patterns.'
+    'Tip: Run /ci --validate to check for syntax errors and anti-patterns.'
   ].join('\n');
 }
 

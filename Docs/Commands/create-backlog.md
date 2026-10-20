@@ -8,6 +8,7 @@ Create GitHub epics and stories from an approved PRD, with TDD test case skeleto
 |----------|----------|-------------|
 | `<issue-number>` | Yes | PRD tracker issue number (e.g., `151` or `#151`) |
 | `--assignee <value>` | No | GitHub login to assign every created epic and story to. Omitted → `@me`. |
+| `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
 
@@ -22,6 +23,7 @@ Create GitHub epics and stories from an approved PRD, with TDD test case skeleto
 - Parses `PRD/{name}/PRD-{name}.md` to extract epics and stories, then creates matching GitHub issues using `gh pmu create` (automatically added to project board).
 - Test case skeletons from the approved `Test-Plan-{name}.md` are embedded directly in each story's body, using the correct syntax for the project's language and test framework.
 - Each story's **E2E** line is taken from `framework-config.json` `testing.suites[]` — the suite whose `role` is `e2e`, as declared by `/charter` harness selection. No e2e framework is detected or guessed.
+- Each story gets a **Depends on:** line taken from the PRD story. After every story exists, PRD story ids (`Story 1.1`) are rewritten to issue numbers (`#3118`), including forward references. An id that does not resolve to a story in this backlog is left as written and reported, never dropped or guessed. A PRD story with no dependency statement gets `none (not stated in the PRD)` and is listed in the closing summary.
 - Epic priority is set to the highest priority among its child stories.
 - After creation, runs keyword matching against story content and suggests relevant skills to install — can be skipped or selectively accepted.
 - Moves the PRD tracker to `in_progress` status; the tracker stays open until `/complete-prd` is run.

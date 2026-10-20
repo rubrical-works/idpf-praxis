@@ -19,7 +19,7 @@
     },
     "analysisKeywords": {
       "type": "array",
-      "description": "Keywords that, combined with an issue reference, mark a prompt as analysis rather than work. Matched as SUBSTRINGS of the lowercased prompt, not as whole words — so 'check' matches inside 'checklist'. That looseness is pre-existing and deliberate for a read-only trigger; it is also why the hook excludes competing triggers explicitly rather than relying on these keywords being disjoint.",
+      "description": "Keywords that, combined with an issue reference, mark a prompt as analysis rather than work. Matched as WHOLE WORDS of the lowercased prompt (#3065) — 'check' does not match inside 'checklist' or 'checkout'. The hook still excludes competing triggers explicitly rather than relying on these keywords being disjoint, and exempts harness-generated prompts via the harnessFrame pattern (#3163).",
       "items": { "type": "string", "minLength": 1 },
       "minItems": 1,
       "uniqueItems": true

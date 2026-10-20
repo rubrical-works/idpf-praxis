@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Split a story into smaller stories, using the IDPF framework.
-argument-hint: "<story-number> (e.g., 123)"
+argument-hint: "<story-number> (e.g., 123) [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -13,6 +13,10 @@ Split a story into smaller stories while maintaining charter compliance and test
 |----------|-------------|
 | `<story-number>` | Story to split (e.g., `123` or `#123`) |
 | `--assignee <value>` | GitHub login for the new issue. Omitted → `@me`. |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js split-story`, report its output, and STOP.
+
 ---
 ## Execution
 **REQUIRED:**

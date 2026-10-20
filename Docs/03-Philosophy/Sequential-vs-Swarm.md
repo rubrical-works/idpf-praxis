@@ -125,6 +125,20 @@ A swarm pays none of these. It pays tokens instead, and gives up the audit trail
 
 ---
 
+## Where IDPF Now Fans Out — and What It Keeps
+
+`/work --concurrent` is the one place IDPF runs implementation in parallel, and it is built to concede nothing the thesis above argues for.
+
+**It fans out only what it can prove independent.** Members of an epic run at once only when their declared `**Files to modify:**` blocks are disjoint and their `**Depends on:**` lines are satisfied. Undeclared scope, an overlap, an always-protected path, an unreadable dependency — anything the disjointness check cannot prove — falls to a sequential tail. The decision is made from declarations on disk, not from an orchestrator's judgment in context.
+
+**Every gate and the externalized-state model survive per member.** Each member passes the Review-State Gate and the Pre-Work Status Gate, fires its own peer announcement pair, commits as `Refs #N`, and reaches `in_review` through Steps 4–4f in the parent session. The parent's task list holds one entry per member; the ledger holds one opener and one closer per member; the audits read a concurrent run exactly as a sequential one. A swarm's coordination evaporates when the run ends; here it is still on disk.
+
+**Nothing merges without a second read.** A member's branch comes back through the Merge-Back Review Gate — mechanical checks, the parent's file-by-file read, and an independent reviewer that never sees the implementer's summary. One fix cycle; a second fail halts with the worktree kept. The member agent, like every delegable agent in IDPF, has no `AskUserQuestion`: it cannot decide, only implement.
+
+**The sequential thesis still governs** everything the disjointness check cannot prove: the tail, the merge-back order, the gates, the audits, and the halt that keeps every worktree rather than leaving a partial merge. `--concurrent` moves the TDD cycle of provably independent members into parallel worktrees and brings each result back through a gate before it counts. It is a bounded concession to wall clock, not a change of model. The mechanics are in [Concurrent Work Within One Epic](../02-Advanced/Concurrent-Work.md).
+
+---
+
 ## Practical Guidance
 
 **Reach for a swarm when** the work is wide, the sub-tasks are independent, verification is cheap in bulk, and being wrong is inexpensive. Codebase sweeps, multi-file pattern searches, gathering candidates across many directories.
@@ -146,6 +160,7 @@ A swarm pays none of these. It pays tokens instead, and gives up the audit trail
 | Does IDPF coordinate across sessions? | It broadcasts, deliberately without coordinating — advisory, never a gate |
 | What does sequential cost? | Wall clock, round-trip bookkeeping, and ~43k tokens of rules per session |
 | What does a swarm cost? | Attribution, compaction survival, and the audit trail |
+| Does IDPF ever parallelize implementation? | Yes — `--concurrent`, only for members with disjoint declared scopes, every gate kept per member, merged back through a review gate; the sequential thesis still governs the rest |
 
 ---
 

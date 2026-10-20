@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.108.0
+ * @framework-script 0.109.0
  * @description Check branch sync status with upstream. Detects behind, ahead,
  *   diverged, and no-upstream states, and reports the post-fetch upstream tip.
  *   On diverged, derives the analysis a person needs to pick a recovery path
@@ -16,8 +16,9 @@
  */
 
 // Spawns bounded via lib/exec.js (#2469) — aliased to the original names
-// so call sites are unchanged.
-const { execTimed: execSync } = require('./lib/exec.js');
+// so call sites are unchanged. execFileTimed is the shell-free form: anything
+// derived from a ref name or read back from git config goes through it (#3042).
+const { execTimed: execSync, execFileTimed } = require('./lib/exec.js');
 
 const EXEC_OPTS = { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] };
 
@@ -42,6 +43,11 @@ const FETCH_TIMEOUT_MS = 10000;
  * configured upstream — returns false and leaves the caller to measure against
  * the cached ref. A failed fetch degrades accuracy, never availability.
  *
+ * Shell-free by necessity (#3042): git accepts `$`, `(`, `)`, `;`, `&`,
+ * `|` and backticks in a ref name, and the remote and merge ref come back
+ * from config unsanitized. This runs unattended at every session start, so
+ * each value is passed to git as one argv element and no shell ever sees it.
+ *
  * @param {string} branch - Current branch name
  * @returns {boolean} true if the fetch ran successfully
  */
@@ -52,12 +58,12 @@ function fetchUpstream(branch) {
     // Read remote and merge ref from config rather than splitting the upstream
     // name: branch names contain slashes, so 'origin/idpf/0.94.0' cannot be
     // decomposed into remote and ref by string manipulation.
-    const remote = execSync(`git config branch.${branch}.remote`, EXEC_OPTS).trim();
-    const mergeRef = execSync(`git config branch.${branch}.merge`, EXEC_OPTS).trim();
+    const remote = execFileTimed('git', ['config', `branch.${branch}.remote`], EXEC_OPTS).trim();
+    const mergeRef = execFileTimed('git', ['config', `branch.${branch}.merge`], EXEC_OPTS).trim();
     if (!remote || !mergeRef) return false;
 
     // Scoped to the one ref. A bare `git fetch` pulls every branch on the remote.
-    execSync(`git fetch --quiet ${remote} ${mergeRef}`, {
+    execFileTimed('git', ['fetch', '--quiet', remote, mergeRef], {
       ...EXEC_OPTS,
       timeout: FETCH_TIMEOUT_MS,
       // A credential prompt would block until the timeout fires; refusing the

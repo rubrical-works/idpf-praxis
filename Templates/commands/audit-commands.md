@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Audit this project's command specs for LLM processing reliability, using the IDPF framework.
-argument-hint: "[all|<command-name>|<group description>]"
+argument-hint: "[--all|<command-name>|<group description>] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -14,9 +14,14 @@ Audit command specs for formatting weaknesses impacting LLM processing reliabili
 ## Arguments
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `all` | No | Audit every auditable command in `.claude/commands/` |
+| `--all` | No | Audit every auditable command in `.claude/commands/` |
 | `<command-name>` | No | Single command (e.g., `work`, `my-custom-cmd`) |
 | `<group description>` | No | NL grouping (e.g., "review commands") |
+| `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js audit-commands`, report its output, and STOP.
+
+**Retired forms:** `all` typed as the whole argument is no longer accepted — reject it with a message naming `--all`, and do nothing else. A command name or group description stays bare, and `all` inside a group description is prose, not the retired form.
 
 No argument → prompt for scope.
 ## Execution Instructions
@@ -40,7 +45,7 @@ Report classification summary.
 ### Step 2: Resolve Scope
 | Input | Resolution |
 |-------|-----------|
-| `all` | All extensible + local (managed always skipped) |
+| `--all` | All extensible + local (managed always skipped) |
 | `<command-name>` | `.claude/commands/<name>.md` |
 | `<group description>` | Match by NL against frontmatter descriptions |
 

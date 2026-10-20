@@ -1,7 +1,7 @@
 ---
-version: "v0.108.0"
+version: "v0.109.0"
 description: Instrument an IDPF command run and report where its time went.
-argument-hint: "--start | --stop | --report"
+argument-hint: "--start | --stop | --report [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -19,6 +19,10 @@ Exactly one mode per invocation.
 | `--stop` | Disarm — remove marker and wiring — and print report |
 | `--report` | Print report **without** disarming, so a long `--nonstop` run can be inspected mid-flight |
 | `--reset` | Clear the event log **without** disarming: marker, calibrated `spawnMs`/`startedAt` and wiring all untouched. Reports events discarded and the span they covered |
+| `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
+
+**`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js idpf-measure`, report its output, and STOP.
+
 **`--reset` is NOT "clear everything" — `--start` already does that**, unlinking the log on every arm, while `--stop` retains it so a post-hoc `--report` works. So the arm/disarm cycle already gives a clean log per run, and a clear-everything reset would be a second spelling of `--start`. What no combination gives is clearing the log while **staying armed**: you arm, do setup — inspect a file, check a branch, fix a typo — then run what you meant to measure, setup calls already in the log.
 `--stop` then `--start` is more disruptive than warranted: it recalibrates, so figures either side sit on different bases; rewrites the git-tracked settings file twice for a log truncation; and briefly disarms, a visible window where peers may be collecting.
 | `--schema` | Print the envelope reference; mutates nothing |

@@ -106,7 +106,7 @@ The command will:
 - Move the issue to `in_progress`
 - Set up your working context
 
-**Note:** If you need to assign issues to a branch you're not currently on, use `/assign-branch #N branch/name` directly.
+**Note:** If you need to assign issues to a branch you're not currently on, use `/assign-branch #N --branch <name>` directly.
 
 **During the spike:**
 - Focus on answering the question, not production quality
