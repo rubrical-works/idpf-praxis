@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.0
+ * @framework-script 0.109.1
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -36,6 +36,9 @@ const {
 // session start before a single check is spawned. This one requires nothing
 // but Node built-ins.
 const tmpCleanup = require('../scripts/shared/lib/tmp-cleanup.js');
+// #3187: leftover framework worktrees. test-runner.js already enumerates them
+// for /work's post-run check; reused rather than walking the root twice.
+const { leftoverWorktrees } = require('../scripts/shared/lib/test-runner.js');
 
 // #2769: the /overwatch presence marker, at .claude/.overwatch/.overwatch.json
 // since #2957 (readPresence falls back to the pre-move root .overwatch.json for
@@ -251,6 +254,41 @@ const TIMEOUT_STAGES = [15000, 30000, 45000, 60000]; // monotonic milestones fro
  * Each check is `{ name, script, args? }`; `args` are appended to the spawned
  * `node script` argv, one entry each (shell: false). Omitted → no extra args (#2907).
  */
+/** The teardown command a session should run instead of git worktree remove. */
+const TEARDOWN_COMMAND = 'node .claude/scripts/shared/lib/worktree-teardown.js --root . --worktree <path>';
+
+/**
+ * Framework worktrees (`.tmp-wt-*`) present under the project root (#3187).
+ * Claude Code keeps a subagent's hook-made worktree and never runs the
+ * WorktreeRemove hook for it, so this row is the only place they surface.
+ * Read-only: it lists, never removes. An unreadable root yields an empty list.
+ *
+ * @param {string} cwd
+ * @returns {{paths: string[]}}
+ */
+function gatherLeftoverWorktrees(cwd) {
+  try {
+    return { paths: leftoverWorktrees({ root: cwd }).paths };
+  } catch {
+    return { paths: [] };
+  }
+}
+
+/**
+ * The Worktrees row text, or '' when there is nothing to say. Names the safe
+ * teardown and warns off git worktree remove, which deletes through the
+ * worktree's hub links (#3124).
+ *
+ * @param {{paths: string[]}|null} worktrees
+ * @returns {string}
+ */
+function formatWorktreesRow(worktrees) {
+  const paths = worktrees && Array.isArray(worktrees.paths) ? worktrees.paths : [];
+  if (paths.length === 0) return '';
+  const noun = paths.length === 1 ? 'framework worktree present' : 'framework worktrees present';
+  return `⚠️ ${paths.length} ${noun} (${paths.join(', ')}) — if no run is using one, remove it with \`${TEARDOWN_COMMAND}\`, never git worktree remove (it deletes through the hub links)`;
+}
+
 async function runChecksParallel(checks, stages = TIMEOUT_STAGES) {
   const startTs = Date.now();
   const pending = new Map(); // name → { promise, child, settled, result, resolve }
@@ -616,6 +654,11 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       lines.push(`- Trash: ${w(row)}`);
     }
   }
+
+  // Leftover framework worktrees (#3187). Read off `info` like Trash: an absent
+  // field renders nothing, so hand-made info objects in tests are unaffected.
+  const worktreesRow = formatWorktreesRow(info.worktrees);
+  if (worktreesRow) lines.push(`- Worktrees: ${w(worktreesRow)}`);
 
   // Charter status
   if (info.charterStatus === 'Active') {
@@ -1190,6 +1233,7 @@ async function main() {
   // inside the helper — a failed sweep degrades to no row, never to a missing
   // Session Initialized block.
   info.trash = sweepStaleTempFiles(cwd, info);
+  info.worktrees = gatherLeftoverWorktrees(cwd);
 
   // Render block — colored for stderr, plain for additionalContext
   const coloredBlock = renderBlock(info, checkResults, { color: true });
@@ -1217,6 +1261,8 @@ module.exports = {
   runChecksParallel,
   buildChecks,
   sweepStaleTempFiles,
+  gatherLeftoverWorktrees,
+  formatWorktreesRow,
   renderBlock,
   buildAdditionalContext,
   rowExplanations,

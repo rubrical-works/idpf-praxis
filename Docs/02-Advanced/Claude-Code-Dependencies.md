@@ -87,7 +87,7 @@ This line previously asserted the behavior with nothing having checked it. Measu
 
 **What would break:** If rules stopped auto-loading, the assistant would lose its quality guardrails mid-session. Anti-hallucination rules prevent version number invention during releases. GitHub workflow rules enforce STOP boundaries. Without these, the assistant becomes unreliable for framework development.
 
-### 3. Hooks (11 hook registrations, 6 event types)
+### 3. Hooks (12 hook registrations, 7 event types)
 
 **How it works:** Claude Code fires JavaScript hooks in response to events. Hooks are registered in `.claude/settings.local.json` under the `hooks` key. Each hook specifies an event type, a matcher pattern (for the events that support one), and a command to execute.
 
@@ -99,11 +99,11 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 
 | Basis | Count | What it counts |
 |-------|-------|----------------|
-| **Registrations** (used above) | **11** | Entries in this repo's `settings.local.json`, across 6 event types |
-| Files in `.claude/hooks/` | 12 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/`, while `pre-push` and the two dev-only hooks below are files without a `settings.local.json` registration of this shape |
-| Deployed to user projects | 10 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 9 `.js` plus the non-`.js` `pre-push` script |
+| **Registrations** (used above) | **12** | Entries in this repo's `settings.local.json`, across 7 event types |
+| Files in `.claude/hooks/` | 13 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/`, while `pre-push` and the two dev-only hooks below are files without a `settings.local.json` registration of this shape |
+| Deployed to user projects | 11 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 10 `.js` plus the non-`.js` `pre-push` script |
 
-**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js`, `shell-safety-hook.js` and `worktree-create-hook.js` are deployed but registered by the hub installer (from `deploymentFiles.hooksConfig`), not by this file.
+**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js`, `shell-safety-hook.js`, `worktree-create-hook.js` and `worktree-remove-hook.js` are deployed but registered by the hub installer (from `deploymentFiles.hooksConfig`), not by this file.
 
 **Event types we use:**
 
@@ -111,7 +111,7 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 |-------|---------|------|---------|
 | `PreToolUse` | `Edit\|Write` | `guard-commands-src.js` | Guards direct edits to generated command specs |
 | `PreToolUse` | `Bash\|PowerShell` | `block-cd.js` | Denies working-directory changes (`cd`, `pushd`, `chdir`, and in PowerShell `Set-Location`, `sl`, `Push-Location`), whose persisted cwd silently breaks later relative paths (#3017) |
-| `PreToolUse` | `Bash` | `shell-safety-hook.js` | Emits the Git Bash correction for a matching command shape; blocks `date /t` and `taskkill /F` (#2997) |
+| `PreToolUse` | `Bash` | `shell-safety-hook.js` | Emits the Git Bash correction for a matching command shape; blocks `date /t` and `taskkill /F` (#2997), and `git worktree remove` on a `.tmp-wt-*` target, naming `worktree-teardown.js` instead (#3186) |
 | `PostToolUse` | `Edit\|Write` | `test-on-change.js` | Runs tests automatically when files are edited/written |
 | `UserPromptSubmit` | — | `workflow-trigger.js` | Detects `bug:`, `work #N`, `done`, `review #N` and routes to commands |
 | `SessionStart` | `startup` | `startup-hook.js` | Initializes session state |
@@ -120,6 +120,7 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 | `SessionStart` | `compact` | `compact-hook.js` | Fires **after context compaction** |
 | `PreCompact` | — | `precompact-hook.js` | Fires **before** compaction begins |
 | `WorktreeCreate` | — (the event supports no matcher) | `worktree-create-hook.js` | Replaces Claude Code's default worktree creation: every worktree — a subagent's `isolation: "worktree"`, `claude --worktree`, `EnterWorktree` — is created from the **caller's branch tip** under `<root>/.tmp-wt-<name>`, with hub links and the merge-driver entry recreated inside before the path is printed (#3122, #3123, #3125) |
+| `WorktreeRemove` | — (the event supports no matcher) | `worktree-remove-hook.js` | Replaces Claude Code's fallback removal at session exit and `ExitWorktree` — a git removal that would delete through the worktree's hub links — with `worktree-teardown.js`: refuse anything not a `.tmp-wt-*` directly under the root, unlink and verify the links, `git worktree remove` without `--force`, then `git branch -d wt/<name>` (#3187) |
 
 #### WorktreeCreate in deployed projects (#3125)
 
@@ -128,16 +129,19 @@ The framework ships the hook and declares it in `framework-manifest.json` `deplo
 - **px-manager#1414** — hook commands written in the `${CLAUDE_PROJECT_DIR}` form. A hook invoked inside a worktree runs with the **worktree** as cwd while `CLAUDE_PROJECT_DIR` stays the project root (verified on Claude Code 2.1.302), so a relative command path breaks there.
 - **px-manager#1415** — installing the `WorktreeCreate` entry itself at project setup and upgrade.
 
+**WorktreeRemove must ship with it (#3187).** Once a project has a `WorktreeCreate` hook, Claude Code hands removal to the project: with no `WorktreeRemove` hook it removes a hook-made worktree at exit or `ExitWorktree` as `git worktree remove --force` would, which in a Praxis Hub Manager project deletes through the hub links. Praxis Hub Manager must install the two entries together. Subagent and workflow-agent worktrees are a separate case: Claude Code keeps them and runs no `WorktreeRemove` hook, so the startup block's `Worktrees:` row names any `.tmp-wt-*` left under the root, with the `worktree-teardown.js` command to remove it.
+
 Until both ship, Phase 2 of the Concurrent-Work PRD (hook, link recreation, teardown) works in the dev repo only; this repository registers the entry in its own tracked `.claude/settings.local.json`, in the same `${CLAUDE_PROJECT_DIR}` form, and `tests/hooks/worktree-create-settings.test.js` guards it.
 
 **`resume` and `compact` are different matchers and different hooks.** This section previously credited compaction to `resume-hook.js`, which fires on `--resume`/`--continue` and never on compaction — leaving a reader to conclude no compaction hook existed. `SessionStart` firing with matcher `compact` is the fact #2736 AC8 turned on, and §3 is where a reader would come to check it.
 
 **What we depend on:**
 - `settings.local.json` format is stable (JSON with `hooks` key)
-- Six event types exist: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `PreCompact`, `WorktreeCreate`
+- Seven event types exist: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `PreCompact`, `WorktreeCreate`, `WorktreeRemove`
 - Matcher patterns work — `Edit|Write` and `Bash` for `PreToolUse`, `Edit|Write` for `PostToolUse`, and `startup`/`clear`/`resume`/`compact` for `SessionStart`; `WorktreeCreate` accepts none and fires on every creation
 - `SessionStart` distinguishes its four matchers, so `compact` fires only after compaction
 - `WorktreeCreate` reads the worktree `name` from the hook's stdin and takes the **last non-empty stdout line** as the created worktree's absolute path; a non-zero exit fails the creation with no fallback to the default
+- `WorktreeRemove` reads `worktree_path` from stdin; exit 0 means the worktree counts as removed (nothing else is read), and a non-zero exit fails the removal while the directory exists, with no git fallback. It fires at session exit and `ExitWorktree`, **not** when a subagent finishes — Claude Code keeps a subagent's hook-made worktree and its branch
 - Hooks execute as `node <script>` with a configurable timeout
 - Hook output is treated as feedback to the assistant
 

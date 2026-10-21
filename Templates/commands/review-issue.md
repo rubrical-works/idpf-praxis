@@ -1,5 +1,5 @@
 ---
-version: "v0.109.0"
+version: "v0.109.1"
 description: Review issues against the IDPF framework's type-specific criteria.
 argument-hint: "#issue [#issue...] [--with ...] [--mode ...] [--force] [--prior-art] [--help]"
 copyright: "Rubrical Works (c) 2026"

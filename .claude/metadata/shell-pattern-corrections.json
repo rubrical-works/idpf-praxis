@@ -4,7 +4,7 @@
   "_meta": {
     "description": "Per-pattern Git Bash corrections moved out of the always-on 05-windows-shell rule (#2997). .claude/hooks/shell-safety-hook.js tests each detector against the Bash tool_input.command and emits only the matching corrections: `advise` as PreToolUse additionalContext (the call proceeds), `block` as exit 2 with the correction on stderr. Text is the minimized rule wording, carried verbatim; the two block entries are new short texts drawn from the Command Translations table and Process Management.",
     "consumer": ".claude/hooks/shell-safety-hook.js",
-    "detectors": "Detectors favor recall over precision for `advise` (a spurious hint costs a paragraph) and precision for `block` (a false block stops a legitimate command). Only command shapes that are always wrong on Git Bash block."
+    "detectors": "Detectors favor recall over precision for `advise` (a spurious hint costs a paragraph) and precision for `block` (a false block stops a legitimate command). Two kinds of shape block: the ones always wrong on Git Bash (`dateSlashT`, `taskkill`), and one safety block, `gitWorktreeRemove` (#3186), which refuses `git worktree remove` only when the command names a `.tmp-wt-` target — the one place the framework recreates hub links."
   },
   "corrections": {
     "heredocBackticks": {
@@ -118,6 +118,14 @@
       },
       "disposition": "block",
       "text": "**`date /t` is blocked on Git Bash** — it is the Windows CMD form and fails with `date: invalid date '/t'`. Use `date \"+%Y-%m-%d\"`."
+    },
+    "gitWorktreeRemove": {
+      "detector": {
+        "source": "^(?:[^'\"]|'[^']*'|\"(?:[^\"\\\\]|\\\\.)*\")*?(?:^|[;&|(]\\s*|\\n\\s*)git(?:\\s+(?:-C\\s+\\S+|-c\\s+\\S+|--git-dir(?:=\\S+|\\s+\\S+)|--work-tree(?:=\\S+|\\s+\\S+)|--?[A-Za-z][\\w-]*(?:=\\S+)?))*\\s+['\"]?worktree['\"]?\\s+['\"]?remove['\"]?(?=\\s)[^\\n;&|]*\\.tmp-wt-",
+        "flags": ""
+      },
+      "disposition": "block",
+      "text": "**`git worktree remove` is blocked on a framework worktree (`.tmp-wt-*`).** It deletes THROUGH the gitignored hub links inside the worktree, with or without `--force` — in a Praxis Hub Manager project that empties the hub for every project on the machine (#3124). Tear it down with the unlink-first route instead:\n`node .claude/scripts/shared/lib/worktree-teardown.js --root <root> --worktree <path>`\nIt unlinks and verifies every link, then runs `git worktree remove` without `--force`. A `workstream/*` worktree holds no hub links and is not blocked."
     }
   }
 }

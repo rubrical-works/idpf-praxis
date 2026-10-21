@@ -1,5 +1,5 @@
 ---
-version: "v0.109.0"
+version: "v0.109.1"
 description: Resolve an issue's review findings, using the IDPF framework.
 argument-hint: "#issue [--prior-art] [--help]"
 copyright: "Rubrical Works (c) 2026"

@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.109.0
+ * @framework-script 0.109.1
  *
  * Living Style Guide showcase resume helper (#2432, Story 1.3).
  *

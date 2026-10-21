@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.0
+ * @framework-script 0.109.1
  * block-cd.js
  *
  * PreToolUse hook that blocks working-directory changes in the Bash and

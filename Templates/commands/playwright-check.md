@@ -1,5 +1,5 @@
 ---
-version: "v0.109.0"
+version: "v0.109.1"
 description: Verify the Playwright installation and browser availability, using the IDPF framework.
 argument-hint: "[--fix] [--help]"
 copyright: "Rubrical Works (c) 2026"

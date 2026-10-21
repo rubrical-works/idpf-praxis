@@ -1,6 +1,6 @@
 # Concurrent Work Within One Epic
 
-**Version:** v0.109.0
+**Version:** v0.109.1
 **Topic:** How `/work --concurrent` runs several sub-issues of one epic or branch tracker at the same time without giving up the gates, the attribution or the audit trail a sequential run leaves behind.
 
 ---

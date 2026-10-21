@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.0
+ * @framework-script 0.109.1
  * measure-report.js
  *
  * Report generation for `/idpf-measure` (#2794). `--stop` and `--report` both

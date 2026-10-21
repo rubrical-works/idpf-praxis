@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.0
+ * @framework-script 0.109.1
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -430,7 +430,9 @@ function createWorktrees({ members = [], create, nonstop = false, epic, total } 
       break;
     }
   }
-  const lines = notStarted.map((n) => `#${n.issue} not started: ${n.error}${n.path ? ` — half-made worktree at ${n.path} (inspect, or git worktree remove it)` : ''}`);
+  // The half-made path is a .tmp-wt-* worktree that may hold hub links, so the
+  // way out is the unlink-first teardown — never git worktree remove (#3186).
+  const lines = notStarted.map((n) => `#${n.issue} not started: ${n.error}${n.path ? ` — half-made worktree at ${n.path} (inspect, or tear it down with \`${TEARDOWN_CLI} --root <project-root> --worktree ${n.path}\` — never git worktree remove)` : ''}`);
   if (halted) {
     lines.unshift(`Halted: worktree creation failed for #${notStarted[notStarted.length - 1].issue}; ${neverStarted.length ? `never started: ${list(neverStarted)}` : 'no member after it'}. Created worktrees are kept. Resume: /work ${epic || '<epic>'} --nonstop --concurrent.`);
   }

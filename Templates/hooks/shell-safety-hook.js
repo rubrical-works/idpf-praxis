@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.0
+ * @framework-script 0.109.1
  * shell-safety-hook.js
  *
  * PreToolUse hook (matcher: Bash) that emits Git Bash corrections only for the
@@ -13,8 +13,22 @@
  *   advise → stdout {hookSpecificOutput: {hookEventName, additionalContext}},
  *            exit 0; the call proceeds.
  *   block  → the correction on stderr, exit 2; Claude Code blocks the call and
- *            shows stderr as the reason. Reserved for shapes that are always
- *            wrong on Git Bash (`date /t`, `taskkill /F`).
+ *            shows stderr as the reason. Two kinds block: shapes always wrong
+ *            on Git Bash (`date /t`, `taskkill /F`), and one safety block —
+ *            `git worktree remove` naming a `.tmp-wt-*` target (#3186), which
+ *            deletes through the worktree's hub links (#3124); the correction
+ *            names worktree-teardown.js.
+ *
+ * Gaps in the worktree block, stated rather than hidden:
+ *   - PowerShell: the matcher is `Bash`, so a PowerShell-tool removal is not
+ *     seen here. Widening it would send every Git Bash advise entry to
+ *     PowerShell commands, where they are wrong. px-manager#1424's
+ *     `PowerShell(git worktree remove *)` deny rule covers the plain form in
+ *     Praxis Hub Manager projects.
+ *   - Text only: the detector sees command text, so a target with no `.tmp-wt-`
+ *     in it — `git worktree remove .` run from inside the worktree, or a path
+ *     held in a shell variable — is not blocked. A bare `.` is left alone on
+ *     purpose: inside a `workstream/*` worktree it is safe and has no other route.
  *
  * Fails open, always: unparseable input, no command, unreadable or malformed
  * data, or a detector that will not compile contribute nothing — a hook on
