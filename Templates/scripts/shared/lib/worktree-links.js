@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * worktree-links.js — Hub link recreation in worktrees, and the platform
  * link/unlink helpers teardown shares (#3123, PRD Concurrent-Work Story 1.6)
  *
@@ -23,7 +23,9 @@
  * `deploymentFiles` targets (read from the hub root, since a deployed
  * project does not carry the manifest); nested targets fold into their
  * parent, and the four known targets are the fallback when no manifest
- * is readable — reported, never silent.
+ * is readable — reported, never silent. A relative `frameworkPath` that is
+ * itself a link in the checkout joins them (#3195), or `{frameworkPath}`
+ * resolves to nothing inside the worktree.
  *
  * TWO THINGS ARE DELIBERATELY ABSENT. No `node_modules` link: worktrees sit
  * under the project root, so Node's upward lookup reaches the parent's, and
@@ -96,6 +98,58 @@ function linkCandidates(manifest) {
 }
 
 /**
+ * The `frameworkPath` target as a link candidate (#3195): a Praxis Hub
+ * Manager project can commit `frameworkPath: ".claude/framework"` and keep
+ * that path as a gitignored link to the hub version folder, which no
+ * manifest `deploymentFiles` target names. Generic on `frameworkPath` —
+ * a candidate only when the project is not self-hosted, the path is
+ * relative, stays under the root, and is a link in the root checkout.
+ *
+ * @param {{root: string, config?: object|null}} input
+ * @returns {string|null} The normalized relative path, or null.
+ */
+function frameworkPathCandidate({ root, config = readConfig(root) }) {
+  if (!config || config.selfHosted === true) return null;
+  const fp = typeof config.frameworkPath === 'string' ? config.frameworkPath.trim() : '';
+  if (fp === '' || path.isAbsolute(fp)) return null;
+  // Containment is checked on the RESOLVED path (#3206): a string check
+  // alone lets an interior `..` ("a/../../x") escape the root.
+  const relNative = path.relative(path.resolve(root), path.resolve(root, fp));
+  if (relNative === '' || relNative === '..' || relNative.startsWith(`..${path.sep}`) || path.isAbsolute(relNative)) return null;
+  const rel = norm(relNative);
+  try {
+    return fs.lstatSync(path.join(root, rel)).isSymbolicLink() ? rel : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fold the `frameworkPath` candidate into the manifest candidates with the
+ * same top-level filter `linkCandidates` applies (#3210): candidates nested
+ * under it are dropped (its link covers them), and it is dropped when it is
+ * nested under, or equal to, one of them. Without this, a nested candidate
+ * that is itself a link would be created first with real parent directories,
+ * and the frameworkPath link then skipped as a real directory in its place.
+ *
+ * Comparison is case-insensitive on win32, where `.claude/Metadata` and
+ * `.claude/metadata` name the same directory.
+ *
+ * @param {string[]} candidates Normalized relative paths.
+ * @param {string|null} fpLink The normalized frameworkPath candidate, or null.
+ * @param {{platform?: string}} [opts]
+ * @returns {string[]} A new list.
+ */
+function foldFrameworkPathCandidate(candidates, fpLink, { platform = process.platform } = {}) {
+  if (!fpLink) return [...candidates];
+  const key = platform === 'win32' ? (p) => p.toLowerCase() : (p) => p;
+  const fp = key(fpLink);
+  const under = (child, parent) => child.startsWith(`${parent}/`);
+  if (candidates.some((c) => key(c) === fp || under(fp, key(c)))) return [...candidates];
+  return [...candidates.filter((c) => !under(key(c), fp)), fpLink];
+}
+
+/**
  * The candidates that are links in the parent checkout, with their targets
  * read from the link itself.
  *
@@ -124,10 +178,10 @@ function readParentLinks({ root, candidates = DEFAULT_CANDIDATES }) {
  * @returns {{layout: 'self-hosted'|'phm', source: 'selfHosted'|'frameworkPath'|'links'|'assumed',
  *   reason: string, candidates: string[], manifestFound: boolean}}
  */
-function detectLayout({ root }) {
+function detectLayout({ root, platform = process.platform }) {
   const config = readConfig(root);
   const manifest = readManifest(root, config);
-  const candidates = linkCandidates(manifest);
+  const candidates = foldFrameworkPathCandidate(linkCandidates(manifest), frameworkPathCandidate({ root, config }), { platform });
   const base = { candidates, manifestFound: manifest !== null };
 
   if (config && config.selfHosted === true) {
@@ -208,7 +262,7 @@ function removeDirLink({ linkPath, fsImpl = fs }) {
  *   whole call naming it; the caller (the hook) reports the half-made worktree.
  */
 function recreateLinks({ root, worktree, platform = process.platform, fsImpl = fs }) {
-  const detected = detectLayout({ root });
+  const detected = detectLayout({ root, platform });
   const out = {
     ok: true,
     layout: detected.layout,
@@ -251,6 +305,8 @@ function recreateLinks({ root, worktree, platform = process.platform, fsImpl = f
 module.exports = {
   DEFAULT_CANDIDATES,
   linkCandidates,
+  frameworkPathCandidate,
+  foldFrameworkPathCandidate,
   readParentLinks,
   detectLayout,
   createDirLink,

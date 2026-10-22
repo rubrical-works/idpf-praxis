@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * worktree-teardown.js — Non-destructive teardown of a framework worktree
  * (#3124, PRD Concurrent-Work Story 1.7)
  *
@@ -20,7 +20,8 @@
  *      touched for a refused path.
  *   2. UNLINK every junction or symlink inside the worktree, without ever
  *      descending into one, and VERIFY each target still exists afterwards.
- *   3. If any link could not be removed, or a re-walk still finds one, HALT:
+ *   3. If any link could not be removed, a re-walk still finds one, or a hub
+ *      link candidate (`frameworkPath` included, #3195) is still a link, HALT:
  *      report the worktree and the remaining links by path, and never reach
  *      step 4. A link left in place is precisely what the remove would
  *      delete through.
@@ -33,6 +34,9 @@
  * From a session: `node .claude/scripts/shared/lib/worktree-teardown.js
  * --root <root> --worktree <path> [--worktree <path> ...]` prints `{ok, results}`
  * (#3158) — the entry point the concurrent run's teardown step names.
+ * `--workstream-prefix <prefix>` (#3194) also accepts a `/plan-workstreams`
+ * worktree outside the root: registered, on a branch carrying that prefix,
+ * given by its own path. Every other refusal, and the sequence, is unchanged.
  *
  * The branch `wt/<name>` is reported, never deleted — merge-back decides
  * what happens to it. Git calls and the unlink are injectable so a test can
@@ -43,7 +47,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { removeDirLink } = require('./worktree-links');
+const { removeDirLink, detectLayout } = require('./worktree-links');
 
 /** Where framework worktrees live; equal to the hook's constant by test. */
 const WORKTREE_PREFIX = '.tmp-wt-';
@@ -104,6 +108,28 @@ function findLinks(worktree) {
   return found;
 }
 
+/**
+ * The root's hub link candidates (`frameworkPath` included, #3195) that are
+ * still links inside the worktree.
+ *
+ * @returns {Array<{linkPath: string, target: string|null}>}
+ */
+function uncoveredCandidateLinks(root, worktree) {
+  let candidates;
+  try { candidates = detectLayout({ root }).candidates; } catch { return []; }
+  const left = [];
+  for (const rel of candidates) {
+    const linkPath = path.join(worktree, rel);
+    let st;
+    try { st = fs.lstatSync(linkPath); } catch { continue; }
+    if (!st.isSymbolicLink()) continue;
+    let target = null;
+    try { target = fs.readlinkSync(linkPath); } catch { target = null; }
+    left.push({ linkPath, target });
+  }
+  return left;
+}
+
 /** The registered worktrees of a repository, main checkout first. */
 function registeredWorktrees(root, exec) {
   const r = exec(['worktree', 'list', '--porcelain'], { cwd: root });
@@ -128,7 +154,7 @@ function registeredWorktrees(root, exec) {
  * @param {{root: string, worktreePath: string, exec: Function}} input
  * @returns {{ok: boolean, reason: string|null, resolved: string|null, branch: string|null}}
  */
-function checkTarget({ root, worktreePath, exec }) {
+function checkTarget({ root, worktreePath, exec, workstreamPrefix = null }) {
   const refuse = (reason) => ({ ok: false, reason, resolved: null, branch: null });
 
   const realRoot = realOrNull(root);
@@ -138,6 +164,13 @@ function checkTarget({ root, worktreePath, exec }) {
   if (!resolved) return refuse(`path does not exist: ${worktreePath}`);
 
   if (resolved === realRoot) return refuse('refusing to tear down the main checkout itself');
+
+  if (workstreamPrefix !== null && workstreamPrefix !== undefined) {
+    const prefix = String(workstreamPrefix).trim();
+    if (prefix === '') return refuse('an empty workstream prefix would match every branch; give the run\'s prefix');
+    const frameworkShaped = isUnder(resolved, realRoot) && path.basename(resolved).startsWith(WORKTREE_PREFIX);
+    if (!frameworkShaped) return checkWorkstreamTarget({ root, worktreePath, lexical, resolved, prefix, exec });
+  }
   if (!isUnder(resolved, realRoot)) {
     return refuse(`path resolves outside the project root (${resolved}); a path through a link to the hub is refused`);
   }
@@ -160,6 +193,52 @@ function checkTarget({ root, worktreePath, exec }) {
 }
 
 /**
+ * Whether a branch carries a workstream prefix (#3207). A prefix ending in
+ * `/` or `-` is its own boundary; any other prefix matches only the branch
+ * equal to it or one whose next character is `/` or `-`, so a short prefix
+ * (`f`) cannot accept an unrelated branch (`feature/x`).
+ *
+ * @param {string|null} branch
+ * @param {string} prefix - non-empty
+ * @returns {boolean}
+ */
+function matchesWorkstreamPrefix(branch, prefix) {
+  if (!branch || !branch.startsWith(prefix)) return false;
+  if (prefix.endsWith('/') || prefix.endsWith('-')) return true;
+  const next = branch.charAt(prefix.length);
+  return next === '' || next === '/' || next === '-';
+}
+
+/**
+ * The workstream allowance (#3194): `/plan-workstreams` worktrees live beside
+ * the root (`../<prefix-as-dashes>N`), so its cleanup reminder can name this
+ * teardown only if a path outside the root is accepted. It is accepted ONLY
+ * when it is the worktree itself (not a link to one), registered in the
+ * root's `git worktree list`, and checked out on a branch carrying the run's
+ * prefix. The main-checkout refusal has already run.
+ */
+function checkWorkstreamTarget({ root, worktreePath, lexical, resolved, prefix, exec }) {
+  const refuse = (reason) => ({ ok: false, reason, resolved: null, branch: null });
+  let leafIsLink = false;
+  try { leafIsLink = fs.lstatSync(lexical).isSymbolicLink(); } catch { leafIsLink = false; }
+  const parentReal = realOrNull(path.dirname(lexical));
+  if (leafIsLink || !parentReal || path.join(parentReal, path.basename(lexical)) !== resolved) {
+    return refuse(`path resolves through a link (${worktreePath} -> ${resolved}); give the worktree's own path`);
+  }
+  const listed = registeredWorktrees(root, exec);
+  if (!listed.ok) return refuse(`cannot list worktrees: ${listed.error}`);
+  const hit = listed.entries.slice(1).find((e) => realOrNull(e.path) === resolved);
+  if (!hit) return refuse(`not a registered worktree of ${root}: ${worktreePath}`);
+  if (!matchesWorkstreamPrefix(hit.branch, prefix)) {
+    if (hit.branch && hit.branch.startsWith(prefix)) {
+      return refuse(`branch ${hit.branch} starts with the workstream prefix ${prefix} but not at a boundary: the prefix must equal the branch or be followed by / or -; not a workstream worktree`);
+    }
+    return refuse(`branch ${hit.branch || '(detached)'} does not start with the workstream prefix ${prefix}; not a workstream worktree`);
+  }
+  return { ok: true, reason: null, resolved, branch: hit.branch };
+}
+
+/**
  * Tear a framework worktree down: refuse → unlink → verify → confirm → remove.
  *
  * @param {{root: string, worktreePath: string, execFn?: Function, unlinkFn?: Function}} input
@@ -173,14 +252,16 @@ function checkTarget({ root, worktreePath, exec }) {
  *   place and name it; `refused` touched nothing. `commands` lists every git
  *   argv issued — the proof that nothing else ever was.
  */
-function teardownWorktree({ root, worktreePath, execFn = defaultExec, unlinkFn = removeDirLink }) {
+function teardownWorktree({
+  root, worktreePath, workstreamPrefix = null, execFn = defaultExec, unlinkFn = removeDirLink, findLinksFn = findLinks,
+}) {
   const out = {
     ok: false, status: null, worktreePath, reason: null, branch: null,
     unlinked: [], verified: [], remaining: [], commands: [],
   };
   const exec = (argv, opts) => { out.commands.push(argv.slice()); return execFn(argv, opts); };
 
-  const check = checkTarget({ root, worktreePath, exec });
+  const check = checkTarget({ root, worktreePath, exec, workstreamPrefix });
   if (!check.ok) {
     out.status = 'refused';
     out.reason = check.reason;
@@ -188,7 +269,7 @@ function teardownWorktree({ root, worktreePath, execFn = defaultExec, unlinkFn =
   }
   out.branch = check.branch;
 
-  for (const link of findLinks(worktreePath)) {
+  for (const link of findLinksFn(worktreePath)) {
     let r;
     try { r = unlinkFn({ linkPath: link.linkPath }); } catch (err) { r = { ok: false, error: err.message }; }
     if (!r || r.ok === false) {
@@ -204,11 +285,23 @@ function teardownWorktree({ root, worktreePath, execFn = defaultExec, unlinkFn =
     return out;
   }
 
-  const stillThere = findLinks(worktreePath);
+  const stillThere = findLinksFn(worktreePath);
   if (stillThere.length > 0) {
     out.remaining = stillThere.map((l) => ({ ...l, error: 'still present after unlink' }));
     out.status = 'halted';
     out.reason = `links remain after unlink: ${stillThere.map((l) => l.linkPath).join(', ')} — git worktree remove not run; worktree left at ${worktreePath}`;
+    return out;
+  }
+
+  // Coverage (#3195): every path recreateLinks could have made — the hub
+  // candidates, `frameworkPath` included — must no longer be a link. The walk
+  // above is the unlink set; this is an independent check that it reached
+  // them, so a link to a whole hub version folder can never be left for git.
+  const uncovered = uncoveredCandidateLinks(root, worktreePath);
+  if (uncovered.length > 0) {
+    out.remaining = uncovered.map((l) => ({ ...l, error: 'hub link candidate not unlinked' }));
+    out.status = 'halted';
+    out.reason = `hub link candidate(s) not unlinked: ${uncovered.map((l) => l.linkPath).join(', ')} — git worktree remove not run; worktree left at ${worktreePath}`;
     return out;
   }
 
@@ -240,19 +333,24 @@ function keepForInspection({ worktrees = [], reason = 'halt' } = {}) {
 }
 
 /**
- * Parse `--root <dir> --worktree <path> [--worktree <path> ...]`.
+ * Parse `--root <dir> [--workstream-prefix <prefix>] --worktree <path> [--worktree <path> ...]`.
  *
  * @param {string[]} argv
- * @returns {{root: string|null, worktrees: string[], error: string|null}}
+ * @returns {{root: string|null, worktrees: string[], workstreamPrefix: string|null, error: string|null}}
  */
 function parseArgs(argv) {
-  const out = { root: null, worktrees: [], error: null };
+  const out = { root: null, worktrees: [], workstreamPrefix: null, error: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--root' || a === '--worktree') {
+    if (a === '--root' || a === '--worktree' || a === '--workstream-prefix') {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--')) { out.error = `${a} requires a path`; return out; }
-      if (a === '--root') out.root = v; else out.worktrees.push(v);
+      if (v === undefined || v.startsWith('--')) {
+        out.error = `${a} requires ${a === '--workstream-prefix' ? 'a branch prefix' : 'a path'}`;
+        return out;
+      }
+      if (a === '--root') out.root = v;
+      else if (a === '--workstream-prefix') out.workstreamPrefix = v;
+      else out.worktrees.push(v);
       i++;
     } else {
       out.error = `unrecognized argument: ${a}`;
@@ -278,7 +376,9 @@ function main(argv = process.argv.slice(2)) {
     process.stdout.write(JSON.stringify({ ok: false, error: args.error, results: [] }, null, 2) + '\n');
     return 2;
   }
-  const results = args.worktrees.map((worktreePath) => teardownWorktree({ root: args.root, worktreePath }));
+  const results = args.worktrees.map((worktreePath) => teardownWorktree({
+    root: args.root, worktreePath, workstreamPrefix: args.workstreamPrefix,
+  }));
   const ok = results.every((r) => r.ok);
   process.stdout.write(JSON.stringify({ ok, results }, null, 2) + '\n');
   return ok ? 0 : 1;
@@ -294,6 +394,7 @@ module.exports = {
   findLinks,
   registeredWorktrees,
   checkTarget,
+  matchesWorkstreamPrefix,
   teardownWorktree,
   keepForInspection,
   parseArgs,

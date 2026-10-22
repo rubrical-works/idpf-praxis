@@ -18,7 +18,7 @@
  * projects from the hub framework root, so an undeclared external `require`
  * would throw MODULE_NOT_FOUND at module load.
  *
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * Refs #2665
  */
 
@@ -37,6 +37,9 @@ const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 /** A project board as `owner/number`. */
 const BOARD_PATTERN = /^[A-Za-z0-9._-]+\/\d+$/;
 
+/** Entry fields rendered as free text into a table cell. */
+const TEXT_FIELDS = ['name', 'responsibility', 'relationship', 'repo', 'board'];
+
 const SECTION_HEADING = /###?\s+Companion Repositories[^\n]*/;
 
 /**
@@ -50,8 +53,54 @@ const SECTION_HEADING = /###?\s+Companion Repositories[^\n]*/;
 function splitTableRow(line) {
   let s = line.trim();
   if (s.startsWith('|')) s = s.slice(1);
-  if (s.endsWith('|')) s = s.slice(0, -1);
-  return s.split('|').map(c => c.trim());
+  if (s.endsWith('|') && !isEscapedPipeAt(s, s.length - 1)) s = s.slice(0, -1);
+
+  // Split on UNESCAPED pipes only (#3218). A run of n backslashes before a
+  // pipe is the inverse of `escapeCell`: n odd -> a literal pipe preceded by
+  // (n-1)/2 backslashes; n even -> n/2 backslashes, then a cell boundary.
+  // Backslashes not followed by a pipe are kept verbatim, so a hand-written
+  // cell such as `C:\path` parses exactly as before.
+  const cells = [];
+  let cell = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '\\') {
+      let j = i;
+      while (j < s.length && s[j] === '\\') j++;
+      const run = j - i;
+      if (s[j] === '|') {
+        cell += '\\'.repeat(Math.floor(run / 2));
+        if (run % 2 === 1) { cell += '|'; i = j + 1; continue; }
+        i = j;                                     // even run: pipe is a boundary
+        continue;
+      }
+      cell += s.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (s[i] === '|') { cells.push(cell); cell = ''; i++; continue; }
+    cell += s[i];
+    i++;
+  }
+  cells.push(cell);
+  return cells.map(c => c.trim());
+}
+
+/** True when the pipe at `idx` is preceded by an odd run of backslashes. */
+function isEscapedPipeAt(s, idx) {
+  let n = 0;
+  for (let k = idx - 1; k >= 0 && s[k] === '\\'; k--) n++;
+  return n % 2 === 1;
+}
+
+/**
+ * Escape a field for a table cell (#3218): every pipe becomes `\|`, and the
+ * backslashes immediately before it are doubled so a literal `\|` survives
+ * the round trip. Unescaped, a pipe shifts every later column -- the entry
+ * re-parses without its repo, and `deregisterCompanion` cannot find it.
+ */
+function escapeCell(value) {
+  return String(value).replace(/(\\*)\|/g, (_m, bs) => bs + bs + '\\|');
 }
 
 function isSeparatorRow(line) {
@@ -70,9 +119,9 @@ function formatBool(value) {
 
 /**
  * Locate the Companion Repositories table.
- * Returns null when the section or its table is absent -- callers report that
- * rather than creating a section, since inventing charter structure is a
- * larger promise than filling a table.
+ * Returns null when the section or its table is absent. Read-only callers
+ * report that; `registerCompanion` creates a wholly absent section first
+ * (#3193) but still refuses a heading with no table under it.
  */
 function locateTable(content) {
   const lines = content.split('\n');
@@ -140,6 +189,16 @@ function validateCompanion(entry) {
   const errors = [];
   const e = entry || {};
 
+  // A line break ends the table row (#3218): everything after it lands in
+  // CHARTER.md as free lines -- headings included -- and the row re-parses
+  // without its repo. Checked on the RAW value, before any trim: the repo and
+  // board checks below trim first, so a trailing newline would pass them.
+  for (const field of TEXT_FIELDS) {
+    if (/[\r\n]/.test(String(e[field] == null ? '' : e[field]))) {
+      errors.push(`Field "${field}" must not contain a line break (CR or LF).`);
+    }
+  }
+
   if (!String(e.name || '').trim()) {
     errors.push('A repository name is required.');
   }
@@ -163,7 +222,7 @@ function renderRow(entry) {
     entry.board || '',
     formatBool(entry.searchable),
     formatBool(entry.fileIssues)
-  ].join(' | ') + ' |';
+  ].map(escapeCell).join(' | ') + ' |';
 }
 
 function extendedHeaderRows() {
@@ -171,6 +230,57 @@ function extendedHeaderRows() {
     '| ' + COMPANION_COLUMNS.join(' | ') + ' |',
     '|' + COMPANION_COLUMNS.map(() => '---').join('|') + '|'
   ];
+}
+
+/**
+ * Insert an empty `## Companion Repositories` section (heading + extended
+ * header rows) into a charter that has none (#3193).
+ *
+ * Placed before the charter's trailing `---` rule when one follows a heading,
+ * otherwise appended at the end. Only a `---` after the first heading counts,
+ * so a YAML frontmatter fence is never mistaken for the trailing rule.
+ */
+function insertCompanionSection(content) {
+  const lines = content.split('\n');
+  const firstHeading = lines.findIndex(l => /^#{1,6}\s/.test(l));
+
+  let ruleIdx = -1;
+  if (firstHeading !== -1) {
+    for (let i = lines.length - 1; i > firstHeading; i--) {
+      if (lines[i].trim() === '---') { ruleIdx = i; break; }
+    }
+  }
+
+  const section = ['## Companion Repositories', ''].concat(extendedHeaderRows());
+
+  if (ruleIdx !== -1) {
+    const before = lines.slice(0, ruleIdx);
+    while (before.length && before[before.length - 1].trim() === '') before.pop();
+    return before.concat([''], section, [''], lines.slice(ruleIdx)).join('\n');
+  }
+
+  // Append: keep the charter's trailing-newline shape.
+  const body = lines.slice();
+  let trailing = 0;
+  while (body.length && body[body.length - 1].trim() === '') { body.pop(); trailing++; }
+  const tail = trailing > 0 ? [''] : [];
+  return body.concat(body.length ? [''] : [], section, tail).join('\n');
+}
+
+/**
+ * The charter's line ending plus its LF-normalized text.
+ *
+ * Rewriters work in LF and re-join with `eol`: rows built here are LF-only,
+ * so splicing them among CRLF lines leaves mixed endings (#3193, #3205).
+ * One helper for every rewriter -- #3193 fixed register inline and left
+ * deregister carrying the same defect.
+ */
+function detectLineEnding(source) {
+  const text = String(source || '');
+  return {
+    eol: text.includes('\r\n') ? '\r\n' : '\n',
+    normalized: text.replace(/\r\n/g, '\n')
+  };
 }
 
 /**
@@ -190,7 +300,14 @@ function registerCompanion(content, entry) {
     return { ok: false, content: source, action: null, errors: validation.errors };
   }
 
-  const t = locateTable(source);
+  // An absent section is CREATED (#3193): a charter predating the section, or
+  // one generated by `/charter` inception, otherwise could never register its
+  // first companion. A heading present WITHOUT a table still refuses -- that
+  // section carries hand-written content this function would have to guess
+  // around, which is the larger promise `locateTable` declines to make.
+  const { eol, normalized } = detectLineEnding(source);
+  const working = SECTION_HEADING.test(normalized) ? normalized : insertCompanionSection(normalized);
+  const t = locateTable(working);
   if (!t) {
     return {
       ok: false,
@@ -200,7 +317,7 @@ function registerCompanion(content, entry) {
     };
   }
 
-  const { entries } = parseCompanionTable(source);
+  const { entries } = parseCompanionTable(working);
   const targetRepo = String(entry.repo).trim();
   const existingIdx = entries.findIndex(e => e.repo && e.repo === targetRepo);
 
@@ -218,7 +335,7 @@ function registerCompanion(content, entry) {
 
   return {
     ok: true,
-    content: rebuilt.join('\n'),
+    content: rebuilt.join(eol),
     action: existingIdx === -1 ? 'added' : 'updated',
     errors: []
   };
@@ -234,8 +351,9 @@ function registerCompanion(content, entry) {
 function deregisterCompanion(content, repo) {
   const source = String(content || '');
   const target = String(repo || '').trim();
+  const { eol, normalized } = detectLineEnding(source);
 
-  const t = locateTable(source);
+  const t = locateTable(normalized);
   if (!t) {
     return {
       ok: false,
@@ -245,7 +363,7 @@ function deregisterCompanion(content, repo) {
     };
   }
 
-  const { entries } = parseCompanionTable(source);
+  const { entries } = parseCompanionTable(normalized);
   const idx = entries.findIndex(e => e.repo && e.repo === target);
   if (idx === -1) {
     return {
@@ -262,7 +380,7 @@ function deregisterCompanion(content, repo) {
     .concat(next.map(renderRow))
     .concat(t.lines.slice(t.endIdx));
 
-  return { ok: true, content: rebuilt.join('\n'), action: 'removed', errors: [] };
+  return { ok: true, content: rebuilt.join(eol), action: 'removed', errors: [] };
 }
 
 /**
@@ -466,6 +584,7 @@ module.exports = {
   parseCompanionTable,
   listCompanions,
   validateCompanion,
+  detectLineEnding,
   registerCompanion,
   deregisterCompanion,
   formatCompanionList,

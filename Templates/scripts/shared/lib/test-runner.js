@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -482,20 +482,116 @@ function leftoverWorktrees({ root, fs = require('fs') } = {}) {
   };
 }
 
+/** Whether the sweep reaches this suite at all — before any selection. */
+function isSwept(suite, sweepScope, changedFiles) {
+  if (isManualOnly(suite) || suite.sweep === false) return false;
+  return !(sweepScope === 'touched' && filesForSuite(suite, changedFiles).length === 0);
+}
+
+function declaresSelector(suite) {
+  return typeof suite.sweepSelect === 'string' && suite.sweepSelect.trim() !== '';
+}
+
+/**
+ * The selector commands a sweep needs run first (#3201).
+ *
+ * A suite declaring `sweepSelect` maps the changed files to the tests that can
+ * observe them. `{files}` expands to EVERY changed file, not only the suite's
+ * `match[]` hits: a selector exists to reach tests from source changes, so
+ * filtering its input to test files would defeat it. No changed files → no
+ * selector run, since an empty input selects nothing and would skip the suite;
+ * `sweepInvocations` reports that case as a fallback to `full`.
+ *
+ * PURE, like the rest of this helper: the caller runs each command and hands
+ * `{exitCode, stdout, spawnError}` back to `sweepInvocations` as `selections`.
+ *
+ * @returns {{runs: Array<{suiteId: string, command: string, cwd: string|null}>,
+ *            notRun: {suiteId: string, reason: string}[]}}
+ */
+function selectorInvocations({ suites = [], sweepScope = 'all', changedFiles = [] } = {}) {
+  const runs = [];
+  const notRun = [];
+  if (changedFiles.length === 0) return { runs, notRun };
+  for (const suite of suites) {
+    if (!isSwept(suite, sweepScope, changedFiles) || !declaresSelector(suite)) continue;
+    try {
+      runs.push({ suiteId: suite.id, command: expandPlaceholders(suite.sweepSelect, changedFiles), cwd: suiteCwd(suite) });
+    } catch (err) {
+      notRun.push({ suiteId: suite.id, reason: err.message });
+    }
+  }
+  return { runs, notRun };
+}
+
+/**
+ * What a suite's selector result means for its sweep run (#3201).
+ *
+ * Every path that cannot narrow resolves to `full` and names why — a selector
+ * that cannot decide must never decide "fewer tests". The selector's output is
+ * one JSON document: `mode` `selected` | `none` | `full`, `tests[]`, and
+ * optionally `total` and `reason`.
+ *
+ * @returns {{mode: 'selected'|'none'|'full', report: string, fallback?: string,
+ *            reason?: string, tests?: string[], selected?: number, total?: number}}
+ */
+function resolveSelection(suite, result, changedFiles) {
+  const full = (fallback, why) => ({ mode: 'full', fallback, report: `full — ${why}` });
+  if (!declaresSelector(suite)) return full('no-selector', 'no sweepSelect declared');
+  if (changedFiles.length === 0) return full('no-changed-files', 'no changed files to select from');
+  if (!result) return full('selector-not-run', 'the selector was not run');
+  if (result.spawnError) return full('selector-failed', `the selector could not be spawned (${result.spawnError})`);
+  if (result.exitCode !== 0) return full('selector-failed', `the selector exited ${result.exitCode}`);
+
+  let out;
+  try {
+    out = JSON.parse(String(result.stdout || ''));
+  } catch {
+    return full('selector-unparseable', 'the selector output is not JSON');
+  }
+  if (!out || !['selected', 'none', 'full'].includes(out.mode)) {
+    return full('selector-unparseable', 'the selector output names no recognized mode');
+  }
+  if (out.mode === 'full') {
+    return full('selector-full', `the selector chose the full suite${out.reason ? `: ${out.reason}` : ''}`);
+  }
+  const tests = Array.isArray(out.tests) ? out.tests.filter((t) => typeof t === 'string' && t !== '') : [];
+  if (out.mode === 'none') {
+    return { mode: 'none', report: 'selected none', reason: out.reason || 'the selector returned no tests' };
+  }
+  // `selected` naming no valid test contradicts itself: it cannot narrow, so it runs full (#3216).
+  if (tests.length === 0) return full('selector-unparseable', 'the selector chose selected but named no valid tests');
+  const total = Number.isInteger(out.total) ? out.total : undefined;
+  return {
+    mode: 'selected',
+    tests,
+    selected: tests.length,
+    ...(total === undefined ? {} : { total }),
+    report: total === undefined ? `selected ${tests.length}` : `selected ${tests.length} of ${total}`,
+  };
+}
+
 /**
  * The full-sweep invocation set.
  *
+ * A suite declaring `sweepSelect` runs its scoped command over the tests its
+ * selector returned (#3201); `selections` carries each selector's result,
+ * keyed by suite id. Every run carries `selection` — `selected N of M`, or
+ * `full — <reason>` naming the fallback — so a narrowed sweep is never
+ * reported as a full one. An empty selection runs nothing and is listed in
+ * `selectedNone`, never in `runs` (it is not a pass) or `skipped`.
+ *
  * @returns {{runs: object[], collapsed: {suiteIds: string[]}[], manualOnly: string[],
- *            skipped: string[], warnings: string[]}} A run carries `phases`,
- *   ordered `prepare` then `full`, so a caller cannot accidentally run tests
- *   against an unbuilt tree and report a failure that is not the code's.
- *   Suites whose phases and `cwd` match share one run carrying every id
- *   (#3025); `collapsed` names each merge.
+ *            skipped: string[], selectedNone: object[], warnings: string[]}} A run
+ *   carries `phases`, ordered `prepare` then `full`, so a caller cannot
+ *   accidentally run tests against an unbuilt tree and report a failure that
+ *   is not the code's. Suites whose phases, `cwd` and selection match share
+ *   one run carrying every id (#3025); `collapsed` names each merge.
  */
-function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [] } = {}) {
+function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], selections = {} } = {}) {
   const runs = [];
   const manualOnly = [];
   const skipped = [];
+  const selectedNone = [];
 
   for (const suite of suites) {
     if (isManualOnly(suite)) {
@@ -504,27 +600,47 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [] }
       manualOnly.push(suite.id);
       continue;
     }
-    if (suite.sweep === false) {
+    if (!isSwept(suite, sweepScope, changedFiles)) {
       skipped.push(suite.id);
       continue;
     }
-    if (sweepScope === 'touched' && filesForSuite(suite, changedFiles).length === 0) {
-      skipped.push(suite.id);
+
+    let selection = resolveSelection(suite, (selections || {})[suite.id], changedFiles);
+    if (selection.mode === 'none') {
+      selectedNone.push({ suiteId: suite.id, report: selection.report, reason: selection.reason });
       continue;
     }
+    let command = suite.full;
+    if (selection.mode === 'selected') {
+      const template = (suite.scoped || {}).command;
+      if (typeof template !== 'string' || !PLACEHOLDER_RE.test(template)) {
+        selection = { mode: 'full', fallback: 'no-scoped-command', report: 'full — no scoped command with a placeholder to narrow with' };
+      } else if (!template.includes('{files}')) {
+        // {dir}, {stem} and {package} expand from the FIRST file only, so they
+        // would run one selected test's scope while reporting all of them.
+        selection = { mode: 'full', fallback: 'no-files-placeholder', report: 'full — the scoped command has no {files} placeholder to carry every selected test' };
+      } else {
+        try {
+          command = expandPlaceholders(template, selection.tests);
+        } catch (err) {
+          selection = { mode: 'full', fallback: 'selection-unsafe', report: `full — a selected test is not shell-safe: ${err.message}` };
+        }
+      }
+    }
+    const { tests, ...reported } = selection;
 
     const phases = [];
     if (typeof suite.prepare === 'string' && suite.prepare.trim() !== '') {
       phases.push({ phase: 'prepare', command: suite.prepare });
     }
-    phases.push({ phase: 'full', command: suite.full });
+    phases.push({ phase: 'full', command });
 
-    runs.push({ suiteId: suite.id, phases, cwd: suiteCwd(suite), kind: suite.kind });
+    runs.push({ suiteId: suite.id, phases, cwd: suiteCwd(suite), kind: suite.kind, selection: reported });
   }
 
-  const merged = collapseRuns(runs, (run) => run.phases.map((p) => [p.phase, p.command]));
+  const merged = collapseRuns(runs, (run) => [run.phases.map((p) => [p.phase, p.command]), run.selection.report]);
 
-  return { runs: merged.runs, collapsed: merged.collapsed, manualOnly, skipped, warnings: [] };
+  return { runs: merged.runs, collapsed: merged.collapsed, manualOnly, skipped, selectedNone, warnings: [] };
 }
 
 /**
@@ -566,6 +682,7 @@ module.exports = {
   resolveSuites,
   scopedInvocations,
   sweepInvocations,
+  selectorInvocations,
   resolveConcurrency,
   deferredInvocations,
   leftoverWorktrees,

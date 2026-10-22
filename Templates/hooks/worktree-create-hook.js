@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * worktree-create-hook.js — WorktreeCreate hook (#3122, PRD Concurrent-Work
  * Story 1.5)
  *
@@ -34,7 +34,13 @@
  *      complete. A failure here exits non-zero, prints NO path, and leaves
  *      the half-made worktree in place, named on stderr, for the caller to
  *      report (Exception Path 5): removing it would be a second destructive
- *      operation inside a hook that already failed once.
+ *      operation inside a hook that already failed once. The driver step
+ *      retries config-lock contention itself (#3200: hooks started together
+ *      race for `.git/config`), so a driver failure that reaches here has
+ *      outlasted that budget or is not contention at all (a spawn error,
+ *      timeout or other stderr fails on the first attempt). It too keeps the
+ *      worktree — the caller removes it with worktree-teardown.js, never
+ *      `git worktree remove`.
  *
  * It assumes nothing about who asked. Once the entry is installed the hook
  * fires for every worktree created in the project — a peer's session, an
@@ -48,6 +54,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { runGitContended } = require('../scripts/shared/lib/merge-driver-config.js');
 
 /** The line kept in `.git/info/exclude`; the trailing slash matches directories only. */
 const EXCLUDE_LINE = '.tmp-wt-*/';
@@ -96,9 +103,19 @@ function gitFailure(r) {
   return r.stderr || `git exited ${r.status}`;
 }
 
-/** The shared git directory for `dir` — the main checkout's `.git`, even from a linked worktree. */
-function commonDirOf(dir) {
-  const r = runGit(['rev-parse', '--git-common-dir'], dir);
+/**
+ * The shared git directory for `dir` — the main checkout's `.git`, even from
+ * a linked worktree. `rev-parse` reads .git/config, so a read refused while a
+ * concurrent hook renames config.lock over it is retried through the merge
+ * driver helper's contention budget (#3234); any other failure fails at once.
+ *
+ * @param {string} dir
+ * @param {{runGit?: function, retry?: {attempts?: number, sleep?: function(number): void}}} [opts]
+ *   `runGit` replaces the git runner and `retry` tunes the contention loop (tests)
+ * @returns {{ok: boolean, commonDir?: string, error?: string}}
+ */
+function commonDirOf(dir, opts = {}) {
+  const r = runGitContended(['rev-parse', '--git-common-dir'], dir, opts.retry, opts.runGit || runGit);
   if (r.error || r.status !== 0) return { ok: false, error: `not a git repository: ${gitFailure(r)}` };
   return { ok: true, commonDir: path.resolve(dir, r.stdout) };
 }
@@ -147,7 +164,11 @@ function ensureExclude({ commonDir }) {
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const sep = existing === '' || existing.endsWith('\n') ? '' : '\n';
-    fs.writeFileSync(file, `${existing}${sep}${EXCLUDE_LINE}\n`);
+    // Append, never rewrite (#3200): hooks started together each read the line
+    // as absent, and a rewrite of `existing + line` truncates the file under a
+    // concurrent hook's confirm-read and drops what another writer added. The
+    // cost of a race is the line twice, which git reads as once.
+    fs.appendFileSync(file, `${sep}${EXCLUDE_LINE}\n`);
 
     const confirmed = fs.readFileSync(file, 'utf8').split(/\r?\n/).some((l) => l.trim() === EXCLUDE_LINE);
     if (!confirmed) return { ok: false, written: false, file, error: 'line not present after write' };
@@ -338,6 +359,7 @@ module.exports = {
   isSafeName,
   ensureExclude,
   resolveRoot,
+  commonDirOf,
   createWorktree,
   defaultLinkStep,
 };

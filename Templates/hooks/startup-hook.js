@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -241,19 +241,6 @@ function sweepStaleTempFiles(cwd, info) {
 
 const TIMEOUT_STAGES = [15000, 30000, 45000, 60000]; // monotonic milestones from start
 
-/**
- * Run all checks in parallel with monotonic staged timeout warnings.
- * - At each TIMEOUT_STAGES milestone, if checks are still pending, emit
- *   an ANSI-yellow warning to stderr naming each pending check.
- * - At the final stage (60s), kill remaining children and mark them
- *   as { status: 'error', error: 'timeout' }.
- *
- * Uses monotonic timestamps (Date.now()) so a check resolving between
- * deadlines does not desync the warning ladder.
- *
- * Each check is `{ name, script, args? }`; `args` are appended to the spawned
- * `node script` argv, one entry each (shell: false). Omitted → no extra args (#2907).
- */
 /** The teardown command a session should run instead of git worktree remove. */
 const TEARDOWN_COMMAND = 'node .claude/scripts/shared/lib/worktree-teardown.js --root . --worktree <path>';
 
@@ -289,6 +276,19 @@ function formatWorktreesRow(worktrees) {
   return `⚠️ ${paths.length} ${noun} (${paths.join(', ')}) — if no run is using one, remove it with \`${TEARDOWN_COMMAND}\`, never git worktree remove (it deletes through the hub links)`;
 }
 
+/**
+ * Run all checks in parallel with monotonic staged timeout warnings.
+ * - At each TIMEOUT_STAGES milestone, if checks are still pending, emit
+ *   an ANSI-yellow warning to stderr naming each pending check.
+ * - At the final stage (60s), kill remaining children and mark them
+ *   as { status: 'error', error: 'timeout' }.
+ *
+ * Uses monotonic timestamps (Date.now()) so a check resolving between
+ * deadlines does not desync the warning ladder.
+ *
+ * Each check is `{ name, script, args? }`; `args` are appended to the spawned
+ * `node script` argv, one entry each (shell: false). Omitted → no extra args (#2907).
+ */
 async function runChecksParallel(checks, stages = TIMEOUT_STAGES) {
   const startTs = Date.now();
   const pending = new Map(); // name → { promise, child, settled, result, resolve }

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -11,8 +11,10 @@
  *   - each MEMBER agent owns Step 3 only: the TDD cycle, in its own worktree
  *     (`isolation: "worktree"`), committing per AC with `Refs #N`.
  * So every per-issue guarantee of sequential `/work` holds per member: the
- * gates fire once each, event 1 is matched by event 2, and the Step 4f sweep
- * precedes the `in_review` move.
+ * gates fire once each, event 1 is matched by event 2, and — in default mode
+ * — the Step 4f sweep precedes the `in_review` move. Under `--nonstop` one
+ * end-of-run sweep follows every `in_review` move instead, and a halt names
+ * the processed members it never covered (#3202).
  *
  * `buildRun` turns a concurrency plan (`concurrency-plan.js` — groups by
  * dependency layer, then the sequential tail) into that sequence:
@@ -23,9 +25,11 @@
  *          per member → STOP (default mode only)
  *   tail:  each member as sequential `/work`, the parent working Step 3
  *          inline, with the default per-member STOP
- *   end:   the nonstop summary (`--nonstop` only)
+ *   end:   one run-level Step 4f over every processed member, then the
+ *          nonstop summary (`--nonstop` only)
  * `--nonstop` removes every STOP and reports each member as it reaches
- * `in_review`.
+ * `in_review`; it also drops the per-group and per-tail-member Step 4f for
+ * that single end-of-run sweep (#3202).
  *
  * The helper returns spawn REQUESTS; the Agent call itself is a model tool
  * call it cannot make, and the Story 1.22 qa-required live run checks that
@@ -73,6 +77,14 @@ const STEP_INSTRUCTION_EXEMPT = Object.freeze({
 
 const titleOf = (members, n) => (members[n] && members[n].title) || `#${n}`;
 const acsOf = (members, n) => (members[n] && Array.isArray(members[n].acceptanceCriteria) ? members[n].acceptanceCriteria : []);
+const briefDataOf = (members, n) => {
+  const m = members[n] || {};
+  return {
+    description: typeof m.description === 'string' ? m.description : '',
+    proposedSolution: typeof m.proposedSolution === 'string' ? m.proposedSolution : '',
+    declaredScope: Array.isArray(m.declaredScope) ? m.declaredScope : [],
+  };
+};
 
 /**
  * The inline brief a member agent receives. It carries everything the member
@@ -87,10 +99,24 @@ const acsOf = (members, n) => (members[n] && Array.isArray(members[n].acceptance
  * @param {{issue: number, title?: string, acceptanceCriteria?: string[], tddChecklist?: object|null, root?: string}} input
  * @returns {string}
  */
-function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist, root } = {}) {
+function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist, root, description = '', proposedSolution = '', declaredScope = [] } = {}) {
   const skillsRoot = root ? `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/.claude/skills/` : null;
   const resolveSkills = (line) => (skillsRoot ? line.replace(/(^|[\s`'"(])\.claude\/skills\//g, `$1${skillsRoot}`) : line);
   const lines = [`## Work #${issue}: ${title || `#${issue}`}`, ''];
+
+  // The approach and scope the issue was reviewed with (#3203). Without them a
+  // member implements from AC text alone, and Tier 1 then enforces a declared
+  // scope the member never saw. An absent section is said, never left blank.
+  if (description) lines.push('### Description', description, '');
+  lines.push('### Proposed solution', proposedSolution || 'No proposed solution was found in the issue body — derive the approach from the acceptance criteria and the code.', '');
+  lines.push('### Declared scope');
+  if (declaredScope.length > 0) {
+    lines.push(...declaredScope.map((p) => `- \`${p}\``));
+    lines.push('Change only these paths; the parent\'s merge-back gate checks scope drift against them.');
+  } else {
+    lines.push('No declared scope (`Files to modify:`) was found in the issue body — keep the change to the files the acceptance criteria need.');
+  }
+  lines.push('');
 
   lines.push('### Acceptance criteria');
   if (acceptanceCriteria.length === 0) {
@@ -136,11 +162,113 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
  *
  * @returns {{description: string, isolation: 'worktree', prompt: string}}
  */
-function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, root } = {}) {
+function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope } = {}) {
   return {
     description: `Work #${issue}: ${title || `#${issue}`}`,
     isolation: 'worktree',
-    prompt: buildMemberBrief({ issue, title, acceptanceCriteria, tddChecklist, root }),
+    prompt: buildMemberBrief({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope }),
+  };
+}
+
+/**
+ * Top-level body headings that end a brief section (#3203). The acceptance-
+ * criteria heading is recognized by checkbox-scan.js's shared list, never a
+ * local pattern: that file is the one owner of the AC anchor (#2616).
+ */
+const SECTION_END = /^\*\*(?:Files to modify|Files|Testing considerations|Scope|In scope|Out of scope|Deployment Impact|Prior Art|Related[^*]*|Reviews|Version|Steps to Reproduce|Expected Behavior|Actual Behavior|Motivation|Description|Proposed (?:Fix|Solution)(?: \(Auto-Generated\))?|Doc judgment|External source):\*\*/i;
+const isAcHeading = (line) => require('./checkbox-scan.js').ACCEPTANCE_CRITERIA_HEADINGS.some((f) => f.pattern.test(line.toLowerCase()));
+
+/**
+ * Markers a Proposed Solution carries inside itself (#3219): review Step 2a-ii
+ * writes Approach, Files to modify, Implementation steps and Testing
+ * considerations in that order, so these never end the section. The Files
+ * block is skipped — it is the declared scope, rendered separately.
+ */
+const FILES_MARKER = /^\*\*(?:Files to modify|Files):\*\*/i;
+const SOLUTION_INNER = /^\*\*(?:Files to modify|Files|Testing considerations):\*\*/i;
+
+/**
+ * A heading naming a body section, at any level — it ends a bold-marker
+ * section (#3219). The acceptance-criteria heading is absent on purpose:
+ * `isAcHeading` ends a section there through checkbox-scan.js's list (#2616).
+ */
+const SECTION_HEADING = /^#{1,6}\s+(?:Proposed (?:Fix|Solution)|Description|Scope|Files Changed|Prior Art|Motivation|Steps to Reproduce|Expected Behavior|Actual Behavior)\b/i;
+const headingLevel = (line) => (/^(#{1,6})\s/.exec(line) || [])[1]?.length || 0;
+
+/**
+ * Whether `line` ends a section that began at `startLine` (#3219). A heading
+ * start ends at a heading of the same or higher level, so its own `###`
+ * sub-sections stay inside. A bold-marker start ends at a heading naming
+ * another body section at any level (`#### Proposed Solution` included), or
+ * at a heading as high as the body's own section level (`docLevel`).
+ */
+function endsSection(line, startLine, docLevel) {
+  const level = headingLevel(line);
+  if (!level) return false;
+  const startLevel = headingLevel(startLine);
+  if (startLevel) return level <= startLevel;
+  return SECTION_HEADING.test(line) || level <= docLevel;
+}
+
+function sectionAfter(lines, isStart, { inner = null } = {}) {
+  // Fence-aware (#3219): a heading or marker quoted inside a code fence neither
+  // starts nor ends a section — checkbox-scan.js owns the fence rule.
+  const fenced = require('./checkbox-scan.js').computeFenceMask(lines);
+  const start = lines.findIndex((l, i) => !fenced[i] && isStart(l));
+  if (start === -1) return '';
+  // The body's section level: its first heading before the start, else `##`.
+  const docLevel = lines.slice(0, start).map(headingLevel).find(Boolean) || 2;
+  const first = lines[start].replace(/^\*\*[^*]+:\*\*\s*/, '').replace(/^#+\s+[^\n]*$/, '');
+  const out = first.trim() ? [first.trim()] : [];
+  let inFiles = false;
+  let filesCollected = false;
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (fenced[i]) {
+      if (!inFiles) out.push(line);
+      continue;
+    }
+    if (inner && inner.test(line)) {
+      inFiles = FILES_MARKER.test(line);
+      filesCollected = false;
+      if (!inFiles) out.push(line);
+      continue;
+    }
+    if (inFiles && (/^\*\*/.test(line) || headingLevel(line))) {
+      // A bold line or heading ends the block (#3231), as in
+      // extractFilesToModifySection; the line itself falls through to the
+      // normal handling below (inner marker, section end, AC heading).
+      inFiles = false;
+    }
+    if (inFiles) {
+      // The Files block is one contiguous list or table, read as
+      // extractFilesToModifySection reads it (#3228): a blank line continues
+      // the block only while nothing is collected, and ends it after.
+      if (line.trim()) filesCollected = true;
+      else if (filesCollected) inFiles = false;
+      continue;
+    }
+    if (SECTION_END.test(line) || isAcHeading(line) || endsSection(line, lines[start], docLevel)) break;
+    out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * The parts of an issue body a member brief carries (#3203): the description
+ * and the Proposed Solution / Proposed Fix, sub-headings included. Each stops
+ * at the next top-level heading, so review metadata (`**Reviews:**`, Prior Art,
+ * Files Changed) and the `**Files to modify:**` block — rendered separately as
+ * the declared scope — never reach it.
+ *
+ * @param {string} body
+ * @returns {{description: string, proposedSolution: string}}
+ */
+function extractBriefSections(body) {
+  const lines = String(body || '').replace(/\r\n/g, '\n').split('\n');
+  return {
+    description: sectionAfter(lines, (l) => /^\*\*Description:\*\*/i.test(l)),
+    proposedSolution: sectionAfter(lines, (l) => /^\*\*Proposed (?:Fix|Solution)(?: \(Auto-Generated\))?:\*\*/i.test(l) || /^#{2,4}\s+Proposed (?:Fix|Solution)/i.test(l), { inner: SOLUTION_INNER }),
   };
 }
 
@@ -165,7 +293,12 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
   const stopped = new Set(Array.isArray(reviewStopped) ? reviewStopped : []);
   const failedCreation = new Map((Array.isArray(notStarted) ? notStarted : []).map((n) => [n.issue, n]));
   const steps = [];
-  let processed = 0;
+  // Members that reached in_review, in order; its length is the processed count.
+  const swept = [];
+  // Under --nonstop every halt after an earlier group's in_review moves names
+  // those members as unswept (#3202 merge-back; #3223 outcome, reconcile,
+  // post-merge) — a resumed run skips in_review members.
+  const unsweptFlags = () => (nonstop && swept.length ? ` ${swept.map((n) => `--unswept ${n}`).join(' ')}` : '');
 
   // The Review-State Gate runs for every member (#3139); a member it stops
   // gets a `gate-stop` step and NOTHING after it — no Pre-Work gate, no event
@@ -190,14 +323,16 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
   const finish = (n, group) => {
     // Inside a group Step 4f is the GROUP's, run once on the tracker after
     // reconciliation (#3139); a tail member keeps its own, as sequential /work.
+    // Under --nonstop neither exists: one run-level sweep follows the last
+    // member (#3202).
     for (const id of POST_WORK) {
-      if (id === '4f' && group) continue;
+      if (id === '4f' && (group || nonstop)) continue;
       step(id, n, { group });
     }
-    processed++;
+    swept.push(n);
     steps.push({
       kind: 'report', step: 'report', owner: 'parent', issue: n, ...(group ? { group } : {}),
-      text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${processed}/${total} processed)`,
+      text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${swept.length}/${total} processed)`,
     });
   };
 
@@ -223,9 +358,9 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
       const laterGroups = groups.slice(i + 1).flat();
       steps.push({
         kind: 'halt', step: 'halt', owner: 'parent', group, reason: 'worktree-creation-failed',
-        notStarted: failedHere, neverStarted: laterGroups, tailNotStarted: [...tail],
+        notStarted: failedHere, neverStarted: laterGroups, tailNotStarted: [...tail], unswept: [...swept],
         report: haltReport({
-          reason: 'worktree creation failed', processed, total,
+          reason: 'worktree creation failed', processed: swept.length, total, unswept: swept,
           failed: { issue: failedHere[0], worktreePath: failedCreation.get(failedHere[0]).path || null, branch: null, files: [] },
           merged: [], unmerged: [...planned.filter((n) => !failedCreation.has(n)), ...laterGroups], tailNotStarted: tail, worktreesKept: [],
         }),
@@ -236,7 +371,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     groupMembers.forEach((n, j) => {
       steps.push({
         kind: 'spawn', step: 'spawn', owner: 'parent', issue: n, group, slot: j + 1,
-        request: buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root }),
+        request: buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n) }),
       });
       step('3', n, { group, inGroup: true });
     });
@@ -250,7 +385,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     groupMembers.forEach((n, j) => {
       step('gate-tier1', n, {
         group,
-        instruction: `Run \`${GATE_CLI} tier1 --issue ${n} --branch <#${n}'s wt/* branch> --worktree <#${n}'s worktree path> --tracker-tip <tip recorded at group ${group} start>\` and save its stdout to .tmp-gate-${n}-tier1.json. Exit 1 is a Tier 1 failure: carry it to the outcome step, never merge past it.`,
+        instruction: `Run \`${GATE_CLI} tier1 --issue ${n} --branch <#${n}'s wt/* branch> --worktree <#${n}'s worktree path> --tracker-tip <tip recorded at group ${group} start> --out .tmp-gate-${n}-tier1.json\` — it writes the Tier 1 document itself (#3225); record the sha256 its envelope's out reports, and do not redirect stdout into that file. Exit 1 is a Tier 1 failure: carry it to the outcome step, never merge past it.`,
       });
       step('gate-tier2', n, {
         group,
@@ -260,18 +395,18 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
         ? { kind: 'review-skip', step: 'gate-tier3', owner: 'parent', issue: n, group, reason: 'no-review' }
         : {
           kind: 'review-spawn', step: 'gate-tier3', owner: 'parent', issue: n, group, slot: j + 1,
-          instruction: `Run \`${GATE_CLI} tier3-plan --issue ${n} --tracker-tip <tip recorded at group ${group} start> --branch <#${n}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise spawn a read-only Agent in slot ${j + 1} with tier3.request.prompt exactly — never the implementer's summary — and save its final message to .tmp-gate-${n}-tier3.txt.`,
+          instruction: `Run \`${GATE_CLI} tier3-plan --issue ${n} --tracker-tip <tip recorded at group ${group} start> --branch <#${n}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-${n}-tree-before.txt --clear .tmp-gate-${n}-tier3.json\` (it removes any earlier cycle's review first) and record the sha256 its envelope reports, then spawn the reviewer Agent in slot ${j + 1} with tier3.request.prompt exactly — never the implementer's summary. The reviewer writes its own review to .tmp-gate-${n}-tier3.json (#3204); do not copy or re-word its reply. Write no other file in the project root while the review runs: any change other than this member's own review and snapshot, or a running-group sibling's own gate files, fails Tier 3 (#3220).`,
         });
       // The outcome (#3141): merge with a findings comment, or exactly one
       // fix cycle back to the same implementer, or a halt.
       steps.push({
         kind: 'gate-outcome', step: 'gate-outcome', owner: 'parent', issue: n, group,
-        instruction: `Run \`${GATE_CLI} outcome --issue ${n} --worktree <#${n}'s worktree path> --branch <#${n}'s wt/* branch> --tier1 .tmp-gate-${n}-tier1.json --tier3 .tmp-gate-${n}-tier3.txt\` (\`--no-review\` in place of --tier3 when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — it runs decideOutcome on the tiers. action merge → post comment.body on #${n} and continue; send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; halt → print report: the --nonstop halt, worktree kept, #${n} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
+        instruction: `Run \`${GATE_CLI} outcome --issue ${n} --worktree <#${n}'s worktree path> --branch <#${n}'s wt/* branch> --tier1 .tmp-gate-${n}-tier1.json --tier1-sha <sha256 from #${n}'s tier1 --out envelope> --tier3 .tmp-gate-${n}-tier3.json --tree-before .tmp-gate-${n}-tree-before.txt --tree-before-sha <sha256 from #${n}'s tree-snapshot envelope>${groupMembers.filter((m) => m !== n).map((m) => ` --sibling ${m}`).join('')}${unsweptFlags()}\` (\`--no-review\` in place of --tier3, --tree-before and --tree-before-sha when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — it runs decideOutcome on the tiers. action merge → post comment.body on #${n} and continue; send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when the decision carries outsideContract (#3226), first report those paths and clear them — remove or restore what this run wrote; a path another session is editing is cleared by waiting for that session to settle it, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-${n}-tree-before.txt --clear .tmp-gate-${n}-tier3.json\` again, re-spawn the reviewer in slot ${j + 1} with the same tier3.request.prompt, then re-run this outcome with the new sha and \`--review-retries 1\` (a second one halts, attributed to the reviewer); halt → print report: the --nonstop halt, worktree kept, #${n} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
       });
     });
     steps.push({
       kind: 'merge-back', step: 'merge-back', owner: 'parent', group, order: [...groupMembers],
-      instruction: `On the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> ${groupMembers.map((n) => `--member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>`).join(' ')}\` — members merge --no-ff in that order (${groupMembers.map((n) => `#${n}`).join(', ')}), each onto the current tip. Exit 1 → print report: a residual conflict halts the run, nothing later merges, every worktree is kept.`,
+      instruction: `On the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> ${groupMembers.map((n) => `--member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>`).join(' ')}${unsweptFlags()}\` — members merge --no-ff in that order (${groupMembers.map((n) => `#${n}`).join(', ')}), each onto the current tip. Exit 1 → print report: a residual conflict halts the run, nothing later merges, every worktree is kept.`,
     });
     steps.push({
       kind: 'teardown', step: 'teardown', owner: 'parent', group, members: [...groupMembers],
@@ -299,7 +434,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     // because this is where the group becomes one tree again.
     steps.push({
       kind: 'reconcile', step: 'reconcile', owner: 'parent', group, members: [...groupMembers],
-      instruction: 'Run runRegeneration({cwd, changedPaths}) (regeneration-runner.js) with changedPaths = the union of every member\'s changed files; a failed generator or verification halts under the --nonstop contract. Carry its changedPaths into the deferred-suites union and the post-merge review range.',
+      instruction: `Run runRegeneration({cwd, changedPaths}) (regeneration-runner.js) with changedPaths = the union of every member's changed files; a failed generator or verification halts under the --nonstop contract${nonstop && swept.length ? `, and the halt report lists Not swept: ${list(swept)} (the end-of-run Step 4f never ran for them) — run the declared verification set over their changes before /done` : ''}. Carry its changedPaths into the deferred-suites union and the post-merge review range.`,
     });
     steps.push({
       kind: 'deferred-skills', step: 'deferred-skills', owner: 'parent', group,
@@ -310,9 +445,9 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     // member's diff named is reviewed here — before the group is reported.
     steps.push({
       kind: 'post-merge-pass', step: 'post-merge-pass', owner: 'parent', group, members: [...groupMembers],
-      instruction: `Run \`${GATE_CLI} group-tier1 --base <tip recorded at group ${group} start> ${groupMembers.map((n) => `--member ${n}`).join(' ')} --group ${group} [--epic <epic>] [--regenerated <path> for each path the reconcile step's runner rewrote]\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms, worktrees kept.`,
+      instruction: `Run \`${GATE_CLI} group-tier1 --base <tip recorded at group ${group} start> ${groupMembers.map((n) => `--member ${n}`).join(' ')} --group ${group}${unsweptFlags()} [--epic <epic>] [--regenerated <path> for each path the reconcile step's runner rewrote]\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms, worktrees kept.`,
     });
-    steps.push({ kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers] });
+    if (!nonstop) steps.push({ kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers] });
     for (const n of groupMembers) finish(n, group);
     if (!nonstop) steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'group', group });
   }
@@ -324,8 +459,14 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     if (!nonstop) steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'member', issue: n });
   }
 
+  // --nonstop: the run's only full sweep, over every processed member's
+  // changed files, after the last member and before the summary (#3202). A
+  // failure halts the run with every processed member left in_review.
+  if (nonstop && swept.length > 0) {
+    steps.push({ kind: 'step', step: '4f', owner: 'parent', scope: 'run', cwd: 'tracker', members: [...swept] });
+  }
   if (nonstop && total > 0) {
-    steps.push({ kind: 'summary', step: '6', owner: 'parent', processed, repeats: groups.length > 0 ? ['leftover-worktrees'] : [] });
+    steps.push({ kind: 'summary', step: '6', owner: 'parent', processed: swept.length, repeats: groups.length > 0 ? ['leftover-worktrees'] : [] });
   }
   return { steps, total };
 }
@@ -338,7 +479,14 @@ const list = (nums) => (nums.length ? nums.map((n) => `#${n}`).join(', ') : 'non
  * Same contract as the sequential halt — sub-issue, completed count, resume
  * instructions — with the worktrees added, because they are the state.
  */
-function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotStarted = [], processed = 0, total = 0, worktreesKept = [] } = {}) {
+function unsweptLine(unswept) {
+  // --nonstop sweeps once after the last member (#3202), so a halt leaves the
+  // processed members in_review and unswept; a resumed run skips them. One
+  // wording for every halt that can follow them (#3223).
+  return `  Not swept (the end-of-run Step 4f never ran): ${list(unswept)} — run the declared verification set over their changes before /done; a resumed run skips in_review members.`;
+}
+
+function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotStarted = [], processed = 0, total = 0, worktreesKept = [], unswept = [] } = {}) {
   const lines = [`Halted: ${reason}`];
   if (failed) {
     const where = failed.worktreePath ? ` — worktree kept: ${failed.worktreePath}${failed.branch ? ` (${failed.branch})` : ''}` : '';
@@ -355,6 +503,7 @@ function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotS
     lines.push('  Worktrees kept for inspection:');
     for (const w of worktreesKept) lines.push(`    - ${w.worktreePath}${w.branch ? ` (${w.branch})` : ''}`);
   }
+  if (unswept.length) lines.push(unsweptLine(unswept));
   lines.push(`  ${processed} of ${total} processed.`);
   lines.push(`  Resume: inspect with git worktree list, resolve in the kept worktree, then /work ${epic || '<epic>'} --nonstop --concurrent; nothing was merged past the halt.`);
   return lines.join('\n');
@@ -373,9 +522,11 @@ function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotS
  *
  * @param {{git: (args: string[]) => {status: number, stdout: string, stderr: string},
  *   tracker: string, epic?: number, members: Array<{issue: number, branch: string, worktreePath: string}>,
- *   order: number[], tail?: number[], processed?: number, total?: number}} input
+ *   order: number[], tail?: number[], processed?: number, total?: number, unswept?: number[]}} input
+ *   `unswept` names members a `--nonstop` run already moved to in_review with
+ *   no sweep yet (#3202); the halt report lists them.
  */
-function mergeBack({ git, tracker, epic, members = [], order = [], tail = [], processed = 0, total = 0 } = {}) {
+function mergeBack({ git, tracker, epic, members = [], order = [], tail = [], processed = 0, total = 0, unswept = [] } = {}) {
   const byIssue = new Map(members.map((m) => [m.issue, m]));
   const sequence = order.filter((n) => byIssue.has(n));
   const merged = [];
@@ -395,7 +546,7 @@ function mergeBack({ git, tracker, epic, members = [], order = [], tail = [], pr
       ok: false, tracker, merged, halted, unmerged, tailNotStarted: [...tail], worktreesKept: [...members],
       report: haltReport({
         epic, reason: 'residual merge conflict after reconciliation', failed: halted,
-        merged: merged.map((x) => x.issue), unmerged, tailNotStarted: tail, processed, total, worktreesKept: members,
+        merged: merged.map((x) => x.issue), unmerged, tailNotStarted: tail, processed, total, worktreesKept: members, unswept,
       }),
     };
   }
@@ -522,10 +673,12 @@ module.exports = {
   TEARDOWN_CLI,
   buildMemberBrief,
   buildSpawnRequest,
+  extractBriefSections,
   buildRun,
   mergeBack,
   createWorktrees,
   haltReport,
+  unsweptLine,
   expectedLedger,
   attributionOf,
   slotOf,

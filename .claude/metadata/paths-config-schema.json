@@ -18,10 +18,16 @@
       "description": "Path analysis categories",
       "items": {
         "type": "object",
-        "required": ["id", "name", "description"],
+        "required": ["id", "name", "shortName", "description"],
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
+          "shortName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12,
+            "description": "AskUserQuestion header for the category (the tool caps header at 12 characters)"
+          },
           "description": { "type": "string" }
         },
         "additionalProperties": false

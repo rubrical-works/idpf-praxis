@@ -255,6 +255,11 @@
                 "type": "boolean",
                 "description": "Per-suite sweep opt-out. Absent means included in the sweep."
               },
+              "sweepSelect": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional selector command for the Step 4f sweep (#3201). `{files}` expands to every changed file, shell-checked by test-runner.js. The command prints ONE JSON document: `mode` `selected` | `none` | `full`, `tests[]` (the test files to run), and optionally `total` (how many it chose from) and `reason`. On `selected` the sweep runs `scoped.command` with `{files}` = those tests and reports `selected N of M`; on `none` it runs nothing for this suite and reports `selected none` — never a pass. Absent, a non-zero exit, unparseable output, `mode: full`, or no `scoped.command` carrying `{files}` (the one placeholder that holds every selected test) all run `full` and name the fallback. The framework supplies no selector and no default: the project declares the command, as with every other suite command."
+              },
               "concurrency": {
                 "type": "string",
                 "enum": ["parallel", "exclusive"],

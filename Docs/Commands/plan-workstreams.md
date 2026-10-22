@@ -47,4 +47,4 @@ Use workstreams to split unrelated epics across people or sessions; use `--concu
 - Presents a proposed grouping table and requires user confirmation; HIGH-risk pairs cannot be split when the user adjusts the plan
 - On confirmation, creates workstream branches via `gh pmu branch start`, assigns epics, and writes `.workstreams.json` metadata
 - Outputs copy-pasteable `git worktree add` commands and a recommended merge order after branch creation
-- `--cancel` unwinds branches in reverse merge order, prompts for epic disposition (return to source, clear to backlog, or reassign), and reminds about stale git worktrees
+- `--cancel` unwinds branches in reverse merge order, prompts for epic disposition (return to source, clear to backlog, or reassign), and reminds about stale git worktrees — printing the unlink-first teardown command (`worktree-teardown.js`) for each, never a raw `git worktree remove`, which deletes through gitignored junctions

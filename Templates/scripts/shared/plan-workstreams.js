@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * @description Concurrent workstream planning — argument parsing, analysis, and execution. Handles deterministic operations for /plan-workstreams: argument validation, directory scanning, module boundary detection, conflict risk matrix computation, workstream grouping via union-find, and branch creation with .workstreams.json metadata.
  * @checksum sha256:placeholder
  *
@@ -12,6 +12,12 @@
 // Spawns bounded via lib/exec.js (#2469) — aliased to the original names
 // so call sites are unchanged.
 const { execTimed: execSync } = require('./lib/exec.js');
+
+/** The branch prefix when none is given (`--prefix`), and the cancel fallback (#3194). */
+const DEFAULT_PREFIX = 'workstream/';
+
+/** The unlink-first teardown the cancel reminder names instead of `git worktree remove` (#3194). */
+const TEARDOWN_CLI = 'node .claude/scripts/shared/lib/worktree-teardown.js';
 
 /**
  * Parse command arguments for /plan-workstreams.
@@ -27,7 +33,7 @@ function parseArgs(args) {
   const result = {
     epics: [],
     streams: 2,
-    prefix: 'workstream/',
+    prefix: DEFAULT_PREFIX,
     dryRun: false,
     force: false,
     mode: 'plan'
@@ -526,6 +532,7 @@ function buildWorkstreamsMetadata(plan, sourceBranch, sourceCommit) {
     created: new Date().toISOString(),
     sourceBranch,
     sourceCommit,
+    prefix: plan.options && plan.options.prefix ? plan.options.prefix : DEFAULT_PREFIX,
     streams,
     mergeOrder: plan.workstreams.map(ws => ws.branch)
   };
@@ -800,16 +807,44 @@ function checkSoloMode(configPath) {
 }
 
 /**
+ * The run's branch prefix for a cancel (#3194): the `prefix` recorded in
+ * `.workstreams.json`, else — for metadata written before the field — the
+ * common prefix of `streams[].branch` with the trailing index dropped, else
+ * the `parseArgs` default.
+ *
+ * @param {object|null} metadata - From loadWorkstreamsMetadata()
+ * @returns {string}
+ */
+function resolveWorkstreamPrefix(metadata) {
+  if (metadata && typeof metadata.prefix === 'string' && metadata.prefix.trim() !== '') return metadata.prefix;
+  const branches = metadata && Array.isArray(metadata.streams)
+    ? metadata.streams.map(st => st && st.branch).filter(b => typeof b === 'string' && b !== '')
+    : [];
+  if (branches.length === 0) return DEFAULT_PREFIX;
+  let common = branches[0];
+  for (const b of branches.slice(1)) {
+    let i = 0;
+    while (i < common.length && i < b.length && common[i] === b[i]) i++;
+    common = common.slice(0, i);
+  }
+  common = common.replace(/\d+$/, '');
+  return common !== '' ? common : DEFAULT_PREFIX;
+}
+
+/**
  * Format a worktree cleanup reminder after cancel.
  *
- * Checks worktree list against cancelled branches and generates
- * copy-pasteable removal commands for stale worktrees.
+ * Checks worktree list against cancelled branches and generates one
+ * copy-pasteable unlink-first teardown command per stale worktree — never
+ * `git worktree remove`, which deletes through gitignored junctions with or
+ * without --force (#3124, #3194).
  *
  * @param {string[]} cancelledBranches - Branch names that were deleted
  * @param {object[]} worktreeList - Parsed worktrees [{ path, branch }]
+ * @param {string} [prefix] - The run's branch prefix (resolveWorkstreamPrefix); default workstream/
  * @returns {string|null} Reminder text, or null if no stale worktrees
  */
-function formatWorktreeCleanupReminder(cancelledBranches, worktreeList) {
+function formatWorktreeCleanupReminder(cancelledBranches, worktreeList, prefix = DEFAULT_PREFIX) {
   if (!cancelledBranches || cancelledBranches.length === 0) return null;
   if (!worktreeList || worktreeList.length === 0) return null;
 
@@ -820,12 +855,12 @@ function formatWorktreeCleanupReminder(cancelledBranches, worktreeList) {
   lines.push('## Worktree Cleanup Reminder');
   lines.push('');
   lines.push(`Found ${stale.length} stale worktree${stale.length > 1 ? 's' : ''} referencing cancelled branches.`);
-  lines.push('Remove them manually with:');
+  lines.push('Remove them manually with the unlink-first teardown (it refuses a dirty worktree rather than deleting it):');
   lines.push('');
 
   for (const wt of stale) {
     const quotedPath = wt.path.includes(' ') ? `"${wt.path}"` : wt.path;
-    lines.push(`git worktree remove ${quotedPath}`);
+    lines.push(`${TEARDOWN_CLI} --root . --workstream-prefix ${prefix} --worktree ${quotedPath}`);
   }
 
   lines.push('');
@@ -1016,7 +1051,7 @@ module.exports = {
   buildWorkstreamsMetadata, generateExecutionCommands, formatWorktreeGuide,
   checkSoloMode, loadWorkstreamsMetadata, checkBranchCommits, buildCancelPlan,
   buildEpicDispositionCommands, buildBranchCleanupCommands,
-  formatWorktreeCleanupReminder,
+  formatWorktreeCleanupReminder, resolveWorkstreamPrefix,
   postMergeWorkstreamCheck, formatSiblingWarning,
   preDestroyWorkstreamCheck, postDestroyWorkstreamUpdate
 };

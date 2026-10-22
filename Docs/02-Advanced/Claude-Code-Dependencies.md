@@ -141,7 +141,7 @@ Until both ship, Phase 2 of the Concurrent-Work PRD (hook, link recreation, tear
 - Matcher patterns work — `Edit|Write` and `Bash` for `PreToolUse`, `Edit|Write` for `PostToolUse`, and `startup`/`clear`/`resume`/`compact` for `SessionStart`; `WorktreeCreate` accepts none and fires on every creation
 - `SessionStart` distinguishes its four matchers, so `compact` fires only after compaction
 - `WorktreeCreate` reads the worktree `name` from the hook's stdin and takes the **last non-empty stdout line** as the created worktree's absolute path; a non-zero exit fails the creation with no fallback to the default
-- `WorktreeRemove` reads `worktree_path` from stdin; exit 0 means the worktree counts as removed (nothing else is read), and a non-zero exit fails the removal while the directory exists, with no git fallback. It fires at session exit and `ExitWorktree`, **not** when a subagent finishes — Claude Code keeps a subagent's hook-made worktree and its branch
+- `WorktreeRemove` reads `worktree_path` from stdin; exit 0 means the worktree counts as removed (nothing else is read), and a non-zero exit fails the removal while the directory exists, with no git fallback. `worktree-remove-hook.js` uses two non-zero codes: exit 2 when it refused, kept or halted the removal (the hook doing its job), exit 1 only for an unexpected failure or unparseable input; its heartbeat is installed with okCodes `[0, 2]`, so only exit 1 counts toward the Hook Health row (#3190). It fires at session exit and `ExitWorktree`, **not** when a subagent finishes — Claude Code keeps a subagent's hook-made worktree and its branch
 - Hooks execute as `node <script>` with a configurable timeout
 - Hook output is treated as feedback to the assistant
 

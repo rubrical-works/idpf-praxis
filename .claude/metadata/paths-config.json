@@ -2,12 +2,12 @@
   "$schema": "./paths-config-schema.json",
   "version": "1.0",
   "categories": [
-    { "id": "nominal", "name": "Nominal Path", "description": "The expected successful flow — the happy path" },
-    { "id": "alternative", "name": "Alternative Paths", "description": "Valid but less common ways the feature could be used" },
-    { "id": "exception", "name": "Exception Paths", "description": "Error conditions the system should handle gracefully" },
-    { "id": "edge", "name": "Edge Cases", "description": "Boundary conditions — unusual but valid inputs" },
-    { "id": "corner", "name": "Corner Cases", "description": "Rare intersections where multiple edge cases combine" },
-    { "id": "negative", "name": "Negative Test Scenarios", "description": "Intentionally invalid inputs that should be rejected" }
+    { "id": "nominal", "name": "Nominal Path", "shortName": "Nominal", "description": "The expected successful flow — the happy path" },
+    { "id": "alternative", "name": "Alternative Paths", "shortName": "Alternative", "description": "Valid but less common ways the feature could be used" },
+    { "id": "exception", "name": "Exception Paths", "shortName": "Exception", "description": "Error conditions the system should handle gracefully" },
+    { "id": "edge", "name": "Edge Cases", "shortName": "Edge Cases", "description": "Boundary conditions — unusual but valid inputs" },
+    { "id": "corner", "name": "Corner Cases", "shortName": "Corner Cases", "description": "Rare intersections where multiple edge cases combine" },
+    { "id": "negative", "name": "Negative Test Scenarios", "shortName": "Negative", "description": "Intentionally invalid inputs that should be rejected" }
   ],
   "quickModeCategories": ["nominal", "alternative", "exception"],
   "fromCodeHint": "Tip: This is an enhancement. If there's existing code, try:\n  /paths #N --from-code src/feature/"

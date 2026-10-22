@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * merge-driver-config.js — Idempotent writer of the `merge.<name>.driver`
  * git config entry for json-merge-driver.js (#3119, PRD Concurrent-Work
  * Story 1.2)
@@ -81,40 +81,146 @@ function runGit(args, cwd) {
 }
 
 /** A local config value, null when unset; throws on any other git failure. */
-function readLocal(key, cwd) {
-  const r = runGit(['config', '--local', '--get', key], cwd);
+function readLocal(key, cwd, git = runGit) {
+  const r = git(['config', '--local', '--get', key], cwd);
   if (r.error) throw r.error;
   if (r.status === 0) return r.stdout;
   if (r.status === 1) return null;
   throw new Error(r.stderr || `git config --get ${key} exited ${r.status}`);
 }
 
-function writeLocal(key, value, cwd) {
-  const r = runGit(['config', '--local', key, value], cwd);
+function writeLocal(key, value, cwd, git = runGit) {
+  const r = git(['config', '--local', key, value], cwd);
   if (r.error) throw r.error;
   if (r.status !== 0) throw new Error(r.stderr || `git config ${key} exited ${r.status}`);
 }
 
 /**
+ * Config contention (#3200). Parallel WorktreeCreate hooks in a checkout where
+ * the drivers are not yet registered all read the keys as absent and all
+ * write. Git takes `config.lock` for each write, so every writer but one fails
+ * to lock; and on Windows a reader opening `config` while another git renames
+ * `config.lock` over it is refused with a sharing violation, which git reports
+ * as an unreadable config. Both are transient. The winner wrote the same
+ * value, so a loser that re-reads and finds it is done, and one that does not
+ * retries after a backoff.
+ */
+const CONTENTION_ERROR = /could not lock config file|unable to access '[^']*config': Permission denied|unknown error occurred while reading the configuration files/i;
+const RETRY_ATTEMPTS = 5;
+
+/**
+ * Jittered exponential backoff: 50ms doubling per attempt, capped at 400ms,
+ * each delay drawn from the upper half of its step and never under 50ms, so
+ * contending hooks spread out instead of retrying in lockstep.
+ */
+function backoffDelay(attempt, random = Math.random) {
+  const base = Math.min(400, 50 * 2 ** attempt);
+  return Math.max(50, Math.round(base / 2 + (base / 2) * random()));
+}
+
+/** Synchronous sleep: the helper and its callers are synchronous. */
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Run `step(attempt)` until it returns, retrying only contention failures.
+ * `step` throwing anything else, or contention outlasting every attempt,
+ * rethrows the git error.
+ */
+function withContentionRetry(step, retry = {}) {
+  const attempts = retry.attempts || RETRY_ATTEMPTS;
+  const sleep = retry.sleep || ((attempt) => sleepMs(backoffDelay(attempt)));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return step();
+    } catch (err) {
+      if (!CONTENTION_ERROR.test(err.message) || attempt + 1 >= attempts) throw err;
+      sleep(attempt);
+    }
+  }
+}
+
+/**
+ * One git call, retried while its stderr is config contention (#3234). Any
+ * git command reads .git/config, so `rev-parse` meets the same Windows sharing
+ * violation as a config read. Returns the runner's result as-is: the last
+ * attempt's when contention outlasts the budget, the first when the failure
+ * is anything else — a spawn error is never retried.
+ *
+ * @param {string[]} args
+ * @param {string} cwd
+ * @param {{attempts?: number, sleep?: function(number): void}} [retry]
+ * @param {function} [git] - runner returning {status, stdout, stderr, error}
+ * @returns {{status: number|null, stdout: string, stderr: string, error: Error|null}}
+ */
+function runGitContended(args, cwd, retry, git = runGit) {
+  let result;
+  try {
+    withContentionRetry(() => {
+      result = git(args, cwd);
+      if (!result.error && result.status !== 0 && CONTENTION_ERROR.test(result.stderr)) {
+        throw new Error(result.stderr);
+      }
+    }, retry);
+  } catch (_) { /* contention outlasted the budget: `result` is the last attempt */ }
+  return result;
+}
+
+/** readLocal, retried through config contention. */
+function readLocalContended(key, cwd, retry, git) {
+  return withContentionRetry(() => readLocal(key, cwd, git), retry);
+}
+
+/**
+ * writeLocal, tolerant of a concurrent writer. Returns true when this call
+ * wrote the value, false when another writer had already written it — a
+ * contended write re-reads and stops as soon as the value is there.
+ */
+function writeLocalContended(key, value, cwd, retry, git) {
+  let wrote = false;
+  withContentionRetry(() => {
+    try {
+      writeLocal(key, value, cwd, git);
+      wrote = true;
+    } catch (err) {
+      if (!CONTENTION_ERROR.test(err.message)) throw err;
+      let current;
+      try { current = readLocal(key, cwd, git); } catch (_) { throw err; }
+      if (current !== value) throw err;
+    }
+  }, retry);
+  return wrote;
+}
+
+/**
  * Ensure `merge.<name>.driver` (and `.name`) are set in the local git config.
  *
- * @param {{cwd?: string, name?: string, command?: string, description?: string}} [opts]
+ * Reads and writes that hit config contention from a concurrent writer are
+ * retried with backoff; a contended write counts as done once a re-read shows
+ * the requested value (#3200).
+ *
+ * @param {{cwd?: string, name?: string, command?: string, description?: string,
+ *   retry?: {attempts?: number, sleep?: function(number): void},
+ *   runGit?: function}} [opts] - `retry` tunes the contention loop (default 5
+ *   attempts, backoffDelay sleeps); `runGit` replaces the git runner (tests)
  * @returns {{ok: boolean, changed: boolean, name: string, driver: string,
  *   configPath: string|null, previous: {driver: string|null, name: string|null}|null,
  *   error: string|null}}
- *   `changed` is false when both values were already exactly as requested —
- *   nothing was written. `configPath` is the config file the entry lives in,
- *   as git reports the common dir (relative to `cwd` from a main checkout,
- *   absolute from a linked worktree).
+ *   `changed` is false when this call wrote nothing — both values were already
+ *   as requested, or a concurrent writer wrote them first. `configPath` is the
+ *   config file the entry lives in, as git reports the common dir (relative to
+ *   `cwd` from a main checkout, absolute from a linked worktree).
  */
 function ensureMergeDriver(opts = {}) {
   const cwd = opts.cwd || process.cwd();
   const name = opts.name || DRIVER_NAME;
   const command = opts.command || DEFAULT_COMMAND;
   const description = opts.description || DRIVER_DESCRIPTION;
+  const git = opts.runGit || runGit;
   const base = { name, driver: command, configPath: null, previous: null };
 
-  const common = runGit(['rev-parse', '--git-common-dir'], cwd);
+  const common = runGitContended(['rev-parse', '--git-common-dir'], cwd, opts.retry, git);
   if (common.error || common.status !== 0) {
     const reason = common.error ? common.error.message : common.stderr;
     return { ok: false, changed: false, ...base, error: `not a git repository: ${reason}` };
@@ -123,17 +229,15 @@ function ensureMergeDriver(opts = {}) {
 
   try {
     const previous = {
-      driver: readLocal(`merge.${name}.driver`, cwd),
-      name: readLocal(`merge.${name}.name`, cwd),
+      driver: readLocalContended(`merge.${name}.driver`, cwd, opts.retry, git),
+      name: readLocalContended(`merge.${name}.name`, cwd, opts.retry, git),
     };
     let changed = false;
     if (previous.driver !== command) {
-      writeLocal(`merge.${name}.driver`, command, cwd);
-      changed = true;
+      changed = writeLocalContended(`merge.${name}.driver`, command, cwd, opts.retry, git) || changed;
     }
     if (previous.name !== description) {
-      writeLocal(`merge.${name}.name`, description, cwd);
-      changed = true;
+      changed = writeLocalContended(`merge.${name}.name`, description, cwd, opts.retry, git) || changed;
     }
     return { ok: true, changed, ...base, configPath, previous, error: null };
   } catch (err) {
@@ -146,16 +250,17 @@ function ensureMergeDriver(opts = {}) {
  * derived artifacts (#3152). One call, so no caller can register half the
  * policy. `changed` is true when either entry was written.
  *
- * @param {{cwd?: string, command?: string}} [opts] - `command` overrides the
- *   json-merge command only, as ensureMergeDriver's does
+ * @param {{cwd?: string, command?: string, retry?: object}} [opts] - `command`
+ *   overrides the json-merge command only, as ensureMergeDriver's does;
+ *   `retry` is passed to both
  * @returns {{ok: boolean, changed: boolean, drivers: object[], error: string|null}}
  *   `drivers` holds each ensureMergeDriver envelope, json-merge first.
  */
 function ensureMergeDrivers(opts = {}) {
   const cwd = opts.cwd || process.cwd();
   const drivers = [
-    ensureMergeDriver({ cwd, command: opts.command }),
-    ensureMergeDriver({ cwd, name: DERIVED_DRIVER_NAME, command: DERIVED_COMMAND, description: DERIVED_DESCRIPTION }),
+    ensureMergeDriver({ cwd, command: opts.command, retry: opts.retry }),
+    ensureMergeDriver({ cwd, name: DERIVED_DRIVER_NAME, command: DERIVED_COMMAND, description: DERIVED_DESCRIPTION, retry: opts.retry }),
   ];
   const failed = drivers.find((d) => !d.ok);
   return {
@@ -254,6 +359,8 @@ module.exports = {
   DERIVED_DESCRIPTION,
   ensureMergeDriver,
   ensureMergeDrivers,
+  runGitContended,
+  backoffDelay,
   attributeLine,
   derivedAttributeLine,
   attributesStatus,

@@ -108,7 +108,7 @@
       "order": 18,
       "subject": "Step 4f: Full-Suite Regression Sweep",
       "condition": "always",
-      "description": "Scoped per-AC tests can miss cross-cutting regressions; the full sweep at the sub-issue boundary catches them before in_review. Runs once per sub-issue after Step 4c/4d/4e, before Step 5. Failure blocks the in_review move; commit a fix and re-run."
+      "description": "Scoped per-AC tests can miss cross-cutting regressions; the full sweep at the sub-issue boundary catches them before in_review. Runs once per sub-issue after Step 4c/4d/4e, before Step 5. Failure blocks the in_review move; commit a fix and re-run. Under --nonstop on an epic or branch tracker it runs once at the end of the run instead, over every processed sub-issue's changed files, after the last sub-issue and before Step 6a; sub-issues move to in_review on their scoped tests, and a failure halts the run with attribution while they stay in_review. Mark this task completed after that sweep."
     },
     {
       "order": 19,

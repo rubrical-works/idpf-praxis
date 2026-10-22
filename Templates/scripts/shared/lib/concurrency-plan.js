@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * concurrency-plan.js — Disjointness over declared scope, and the
  * `--concurrent` grouping plan (#3126, PRD Concurrent-Work Story 1.9)
  *
@@ -45,6 +45,68 @@ const DEFAULT_MAX_AGENTS = 3;
 const PROTECTED_PATHS_FILE = '.claude/metadata/scope-drift-protected-paths.json';
 
 const AGENTS_RE = /^[1-9]\d*$/;
+
+/** The hook script that makes a member's worktree branch from the caller's HEAD (#3122). */
+const WORKTREE_HOOK_SCRIPT = 'worktree-create-hook.js';
+// The script name as a whole path segment of a command token (#3232): preceded
+// by start, a path separator, whitespace or a quote; followed by end,
+// whitespace or a quote. A substring match let `old-worktree-create-hook.js`
+// count as registered.
+const WORKTREE_HOOK_COMMAND_PATTERN = /(^|[\\/\s"'])worktree-create-hook\.js(?=$|[\s"'])/;
+
+/** The tail cause, and the zero-group reason, when that hook is not registered (#3224). */
+const WORKTREE_HOOK_MISSING = 'worktree-hook-missing';
+const WORKTREE_HOOK_SETTINGS_UNREADABLE = 'WORKTREE_HOOK_SETTINGS_UNREADABLE';
+const WORKTREE_HOOK_MISSING_REASON = 'the WorktreeCreate hook is not registered — no Claude Code settings layer '
+  + '(.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) has a WorktreeCreate hook whose command names '
+  + `${WORKTREE_HOOK_SCRIPT}, so a member worktree would branch from the remote default branch instead of the tracker HEAD; `
+  + 'the run proceeds as sequential. Register it under hooks.WorktreeCreate in .claude/settings.json or .claude/settings.local.json.';
+
+/**
+ * Does one parsed settings object register the WorktreeCreate hook? True when
+ * any `hooks.WorktreeCreate[].hooks[]` command names WORKTREE_HOOK_SCRIPT as
+ * a whole path segment — the basename of a command token, not a substring.
+ *
+ * @param {*} settings
+ * @returns {boolean}
+ */
+function settingsRegisterWorktreeHook(settings) {
+  const matchers = settings && settings.hooks && settings.hooks.WorktreeCreate;
+  if (!Array.isArray(matchers)) return false;
+  return matchers.some((m) => m && Array.isArray(m.hooks) && m.hooks.some(
+    (h) => h && typeof h.command === 'string' && WORKTREE_HOOK_COMMAND_PATTERN.test(h.command)));
+}
+
+/**
+ * Resolve whether any Claude Code settings layer registers the WorktreeCreate
+ * hook (#3224). The reader is injected, so callers decide what "disk" is.
+ *
+ * @param {{layers: Array<{label: string, path: string}>, readFile: function(string): string}} input
+ * @returns {{registered: boolean, warnings: Array<{code: string, message: string}>}}
+ */
+function resolveWorktreeHook({ layers = [], readFile } = {}) {
+  const warnings = [];
+  let registered = false;
+  for (const layer of layers) {
+    let settings;
+    try {
+      settings = JSON.parse(readFile(layer.path));
+    } catch (err) {
+      // An absent layer is the normal case (most projects have no settings.json).
+      if (err && err.code === 'ENOENT') continue;
+      // Unreadable or malformed counts as absent, so the run fails toward
+      // sequential — never toward unguarded concurrency — and says which file.
+      warnings.push({
+        code: WORKTREE_HOOK_SETTINGS_UNREADABLE,
+        message: `${layer.label} settings ${layer.path} could not be read or parsed (${err && err.message ? err.message : String(err)}); `
+          + 'treated as not registering the WorktreeCreate hook.',
+      });
+      continue;
+    }
+    if (settingsRegisterWorktreeHook(settings)) registered = true;
+  }
+  return { registered, warnings };
+}
 
 /**
  * Validate a raw `--agents` value.
@@ -233,7 +295,7 @@ function chunk(list, size) {
  *   in input order. `noGroupReason` is set only when there is no group, and
  *   says why.
  */
-function buildPlan({ members = [], processingOrder = [], maxAgents, source, protectedPatterns, dependencies } = {}) {
+function buildPlan({ members = [], processingOrder = [], maxAgents, source, protectedPatterns, dependencies, worktreeHookRegistered } = {}) {
   const cap = maxAgents === undefined ? DEFAULT_MAX_AGENTS : maxAgents;
   const capSource = maxAgents === undefined ? 'default' : (source || 'flag');
 
@@ -257,6 +319,16 @@ function buildPlan({ members = [], processingOrder = [], maxAgents, source, prot
     .filter((c) => c.disposition === 'tail')
     .map((c) => ({ number: c.number, cause: c.cause, reason: c.reason }));
 
+  // #3224: without the WorktreeCreate hook a member's worktree would start
+  // from the remote default branch, so nothing may run concurrently. Only an
+  // explicit false triggers this; omitted means the caller did not resolve it.
+  if (worktreeHookRegistered === false && members.length > 0) {
+    const fallback = ordered.map((c) => (c.disposition === 'tail'
+      ? { number: c.number, cause: c.cause, reason: c.reason }
+      : { number: c.number, cause: WORKTREE_HOOK_MISSING, reason: WORKTREE_HOOK_MISSING_REASON }));
+    return { maxAgents: cap, source: capSource, groups: [], tail: fallback, members: ordered, noGroupReason: WORKTREE_HOOK_MISSING_REASON };
+  }
+
   let noGroupReason = null;
   if (members.length === 0) {
     noGroupReason = 'no active members — nothing to run concurrently';
@@ -275,4 +347,7 @@ module.exports = {
   declaredScopeOf,
   classifyMembers,
   buildPlan,
+  WORKTREE_HOOK_SCRIPT,
+  settingsRegisterWorktreeHook,
+  resolveWorktreeHook,
 };

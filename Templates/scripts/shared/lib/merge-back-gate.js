@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -232,8 +232,15 @@ function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, 
     return { tier: 3, skipped: true, reason: 'skill-absent', message: `Tier 3 skipped for #${issue}: the diff-review skill is not installed, so the gate ran Tiers 1–2 only.` };
   }
 
+  // The reviewer writes its own output file (#3204): with the parent as the
+  // only conduit, a transcription that drifted from the reviewer's words passed
+  // every check. The Agent tool has no parameter restricting writes to one
+  // path, so `writes` states the contract and `outcome`'s tree check against
+  // the pre-spawn snapshot enforces it.
+  const outputPath = `.tmp-gate-${issue}-tier3.json`;
+  const treeBeforePath = `.tmp-gate-${issue}-tree-before.txt`;
   const prompt = [
-    `You are a read-only code reviewer. Review ONLY the commit range ${range}.`,
+    `You are a code reviewer. Review ONLY the commit range ${range}.`,
     '',
     'Inputs:',
     `- Issue: #${issue}. Acceptance criteria:`,
@@ -244,22 +251,118 @@ function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, 
     '',
     "Not inputs: you have not been given the implementer's summary, and you must not",
     'ask for it or infer one from commit messages. Judge the diff against the',
-    'acceptance criteria and the charter only. Do not edit any file.',
+    'acceptance criteria and the charter only.',
     '',
     'Procedure: follow .claude/skills/diff-review/SKILL.md — read',
     '.claude/skills/diff-review/review-criteria.json from disk, count first (git diff --numstat',
     'with three dots, git log with two), read within the budget, evaluate every criterion,',
     'and derive the verdict from the verdict rule.',
     '',
-    'Output: your final message is ONE JSON document valid against',
-    '.claude/skills/diff-review/output-schema.json, and nothing else.',
+    `Output: Write your final JSON document to ${outputPath} in the current directory —`,
+    'ONE JSON document valid against .claude/skills/diff-review/output-schema.json, and',
+    `nothing else — then reply with only that path. ${outputPath} is the one file you may`,
+    'write. Do not create, edit or delete any other file: the gate compares the working tree',
+    'with a snapshot taken before you started and fails this review on any other change.',
   ].join('\n');
 
   return {
     tier: 3,
     skipped: false,
-    request: { description: `Review #${issue}`, readOnly: true, prompt },
+    outputPath,
+    treeBeforePath,
+    request: { description: `Review #${issue}`, writes: [outputPath], prompt },
   };
+}
+
+/** The path a `git status --porcelain` line names — the destination of a rename, unquoted. */
+function porcelainPath(line) {
+  const rest = line.slice(3);
+  const arrow = rest.indexOf(' -> ');
+  const p = arrow === -1 ? rest : rest.slice(arrow + 4);
+  return p.replace(/^"(.*)"$/, '$1');
+}
+
+/** A top-level `.tmp-gate-*` entry — the gate's own files, any member's. */
+const GATE_FILE = /^\.tmp-gate-[^/]+$/;
+
+/**
+ * The tree-snapshot status call, shared by `tree-snapshot` and `outcome`. The
+ * untracked-files mode is explicit (#3221): inherited, a project's
+ * status.showUntrackedFiles=no hides every new file from both snapshots.
+ */
+const TREE_STATUS_ARGS = ['status', '--porcelain', '--ignored', '--untracked-files=normal'];
+
+const sha256 = (text) => require('crypto').createHash('sha256').update(String(text)).digest('hex');
+
+/**
+ * Whether a reviewer kept to its write contract (#3204): compare
+ * `git status --porcelain --ignored` after the review with the snapshot taken
+ * before the spawn. A line present after and not before is a change; any
+ * whose path is not a top-level `.tmp-gate-*` file is outside the contract.
+ * `--ignored` is what lets a write to a gitignored path show at all.
+ *
+ * The exemption is per member, not every `.tmp-gate-*` path (#3220). This
+ * member may add only its own review file and its own snapshot. Reviewers in
+ * one group run at once and share the root, so each running-group sibling's
+ * own Tier 1, review and snapshot files — the parent writes the first and
+ * last during the window — are expected too. Any other gate file, another
+ * group's included, is outside the contract. Known blind spots, stated rather
+ * than hidden: a write inside an already-listed untracked or ignored
+ * directory, or to a file whose status line does not change, leaves no new
+ * line — `outcome --tree-before-sha` covers the snapshot itself; a
+ * sibling-shaped write is indistinguishable without per-spawn write
+ * restriction, and `parseReview`'s issue check catches one at the sibling's
+ * own outcome.
+ *
+ * @param {{before: string, after: string, issue?: number, outputPath?: string, siblings?: number[]}} input
+ * @returns {{ok: boolean, outsideContract: string[]}}
+ */
+function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-gate-${issue}-tier3.json`, siblings = [] } = {}) {
+  const lines = (s) => String(s).split(/\r?\n/).filter((l) => l.trim() !== '');
+  const prior = new Set(lines(before));
+  const allowed = new Set([outputPath, `.tmp-gate-${issue}-tree-before.txt`]);
+  for (const m of siblings) for (const f of ['tier1.json', 'tier3.json', 'tree-before.txt']) allowed.add(`.tmp-gate-${m}-${f}`);
+  const outsideContract = [...new Set(lines(after)
+    .filter((l) => !prior.has(l))
+    .map(porcelainPath)
+    .filter((p) => !allowed.has(p)))].sort();
+  return { ok: outsideContract.length === 0, outsideContract };
+}
+
+/**
+ * Tier 3 from the reviewer's own file (#3204). Checked in order: the snapshot
+ * still matches the sha256 tree-snapshot reported (`tier-3-snapshot-changed`,
+ * #3220), the file exists (`tier-3-missing`), it was not already listed in the
+ * snapshot (`tier-3-stale-output`), the tree shows no write outside the contract
+ * (`tier-3-wrote-outside-contract`, naming the paths), then the document
+ * itself through `parseReview`. Each failure fails Tier 3 the way an
+ * unreadable review does.
+ */
+function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, exists, text, treeBefore, treeBeforeIntact = true, treeAfter, siblings = [], schema, root } = {}) {
+  const fail = (error, message, extra = {}) => ({ tier: 3, skipped: false, ok: false, verdict: null, findings: [], error, errors: [message], ...extra });
+  // The snapshot is the trust anchor for every check below (#3220): changed
+  // after it was taken, it proves nothing, so nothing else is read.
+  if (!treeBeforeIntact) {
+    return fail('tier-3-snapshot-changed', `.tmp-gate-${issue}-tree-before.txt no longer matches the sha256 tree-snapshot reported, so the write-contract check has no baseline.`);
+  }
+  if (!exists) {
+    return fail('tier-3-missing', `The reviewer wrote no ${outputPath}, so there is no review to decide from.`);
+  }
+  // A file the pre-spawn snapshot already lists predates this reviewer — a
+  // fix-cycle or resumed re-run would otherwise decide from the previous
+  // cycle's review (code review H2). `tree-snapshot --clear` removes it first.
+  const priorLines = String(treeBefore || '').split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (priorLines.some((l) => porcelainPath(l) === outputPath)) {
+    return fail('tier-3-stale-output', `${outputPath} already existed before the reviewer started, so it may be an earlier cycle's review. Clear it with tree-snapshot --clear before the spawn.`);
+  }
+  const tree = checkReviewerTree({ before: treeBefore, after: treeAfter, issue, outputPath, siblings });
+  if (!tree.ok) {
+    return fail('tier-3-wrote-outside-contract',
+      `The working tree changed outside the reviewer's contract during the review: ${tree.outsideContract.join(', ')}. `
+      + 'Reviewers in a group share the root, so this fails Tier 3 for every member whose review window overlapped.',
+      { outsideContract: tree.outsideContract });
+  }
+  return parseReview(text, { issue, schema, root });
 }
 
 /**
@@ -320,9 +423,27 @@ function gatePassed(tier1, tier3) {
 function findingLines(tier1, tier3) {
   const lines = [];
   for (const f of (tier1 && tier1.failures) || []) lines.push(`- ❌ tier-1/${f.check} — ${f.message}`);
+  // A Tier 3 that produced no usable review says why (#3204), or the message
+  // the implementer gets — or the halt — names no reason at all.
+  if (tier3 && !tier3.skipped && tier3.ok === false) {
+    for (const e of tier3.errors || []) lines.push(`- ❌ tier-3/${tier3.error || 'unreadable'} — ${e}`);
+  }
   for (const f of (tier3 && tier3.findings) || []) lines.push(`- ${EMOJI[f.status] || f.status} ${f.criterion} ${at(f)} — ${f.evidence}`);
   return lines;
 }
+
+/** The orchestrator's unswept line (#3223), required lazily: that module requires this one's CLI. */
+const unsweptLines = (unswept) => (unswept && unswept.length ? [require('./concurrent-orchestration.js').unsweptLine(unswept)] : []);
+const unsweptOf = (opts) => (opts['--unswept'] || []).map(Number).filter(Number.isInteger);
+
+/**
+ * Tier 3 errors that describe the reviewer process rather than the member's
+ * code (#3222): `evaluateTier3`'s pre-parse failures. A document the reviewer
+ * wrote that fails to parse is still the review's own content, so it is not
+ * listed here.
+ */
+const REVIEWER_PROCESS_ERRORS = new Set(['tier-3-snapshot-changed', 'tier-3-missing', 'tier-3-stale-output', 'tier-3-wrote-outside-contract']);
+const isReviewerProcessFailure = (tier3) => !!(tier3 && !tier3.skipped && REVIEWER_PROCESS_ERRORS.has(tier3.error));
 
 /**
  * The structured comment the parent posts on the sub-issue when a member
@@ -350,14 +471,39 @@ function formatFindingsComment({ issue, tier1, tier3, fixCycles = 0 } = {}) {
  *     worktree intact, every tier to re-run once;
  *   fail, cycle used → `halt`: files and lines, worktree kept, never merged.
  * A resume after compaction counts the re-run as the one cycle.
+ *
+ * A reviewer-PROCESS failure with a passing Tier 1 (#3222) is not a finding
+ * in the member's code, so it never reaches the implementer: the first is
+ * `re-review` (the parent re-snapshots and re-spawns the reviewer in the same
+ * slot; the fix-cycle count is left as it was), the second (`reviewRetries`
+ * 1) is a `halt` attributed to the reviewer.
+ *
+ * `unswept` (#3223): members a --nonstop run already moved to in_review with
+ * no sweep yet; every halt here names them, as merge-back's does (#3202).
  */
-function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, resumedFromCompaction = false, epic } = {}) {
+function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries = 0, resumedFromCompaction = false, epic, unswept = [] } = {}) {
   const cycles = resumedFromCompaction ? Math.max(fixCycles, 1) : fixCycles;
   const issue = member.issue;
   if (gatePassed(tier1, tier3)) {
     return { action: 'merge', issue, fixCycles: cycles, comment: { issue, body: formatFindingsComment({ issue, tier1, tier3, fixCycles: cycles }) } };
   }
   const findings = findingLines(tier1, tier3);
+  if (tier1 && tier1.ok && isReviewerProcessFailure(tier3)) {
+    if (reviewRetries === 0) {
+      // The stray paths travel as data (#3226), so the parent can report and
+      // clear them before re-snapshotting — never absorb them into the baseline.
+      const stray = tier3.error === 'tier-3-wrote-outside-contract' && Array.isArray(tier3.outsideContract) ? { outsideContract: [...tier3.outsideContract] } : {};
+      return { action: 're-review', issue, fixCycles: cycles, reviewRetry: 1, error: tier3.error, findings, ...stray };
+    }
+    const report = [
+      `Halted: the Tier 3 reviewer for #${issue} failed twice (${tier3.error}) — a reviewer-process failure, not a finding in #${issue}'s code; the implementer's fix cycle was not spent on it.`,
+      ...findings.map((l) => `  ${l}`),
+      `  Worktree kept: ${member.worktreePath}${member.branch ? ` (${member.branch})` : ''} — never merged.`,
+      ...unsweptLines(unswept),
+      `  Resume: check what wrote outside the reviewer's contract (or why no review was written), then /work ${epic || '<epic>'} --nonstop --concurrent.`,
+    ].join('\n');
+    return { action: 'halt', issue, attributedTo: 'reviewer', worktreeKept: member.worktreePath, findings, report };
+  }
   if (cycles === 0) {
     const message = [
       `Merge-Back Review findings for #${issue} — fix cycle 1 of 1`,
@@ -371,6 +517,7 @@ function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, resumedFromCo
     '  Findings (file:line):',
     ...findings.map((l) => `  ${l}`),
     `  Worktree kept: ${member.worktreePath}${member.branch ? ` (${member.branch})` : ''} — never merged.`,
+    ...unsweptLines(unswept),
     `  Resume: fix in the kept worktree, then /work ${epic || '<epic>'} --nonstop --concurrent.`,
   ].join('\n');
   return { action: 'halt', issue, worktreeKept: member.worktreePath, findings, report };
@@ -525,7 +672,7 @@ function runGroupTier1({
  * tracker. A fail halts on the second-review-fail terms. `tier1` is
  * `runGroupTier1`'s result (#3158).
  */
-function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic } = {}) {
+function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic, unswept = [] } = {}) {
   const ok = tier1 && tier1.ok && (!tier2 || tier2.ok !== false);
   if (ok) return { action: 'report-group', group };
   const report = [
@@ -533,6 +680,7 @@ function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic } = {}
     ...findingLines(tier1, null).map((l) => `  ${l}`),
     ...(tier2 && tier2.ok === false && tier2.reason ? [`  Tier 2: ${tier2.reason}`] : []),
     ...(worktreesKept.length ? ['  Worktrees kept for inspection:', ...worktreesKept.map((w) => `    - ${w.worktreePath}${w.branch ? ` (${w.branch})` : ''}`)] : []),
+    ...unsweptLines(unswept),
     `  Resume: inspect the tracker, then /work ${epic || '<epic>'} --nonstop --concurrent.`,
   ].join('\n');
   return { action: 'halt', group, report };
@@ -719,15 +867,16 @@ function mayMerge({ tier1, tier3 } = {}) {
 
 const USAGE = [
   'Usage: node .claude/scripts/shared/lib/merge-back-gate.js <subcommand> [options]',
-  '  tier1       --issue N --branch B --worktree P --tracker-tip SHA [--body-file F]',
+  '  tier1       --issue N --branch B --worktree P --tracker-tip SHA [--body-file F] [--out F]',
   '  tier3-plan  --issue N --tracker-tip SHA --branch B [--body-file F] [--no-review]',
-  '  outcome     --issue N --worktree P [--branch B] --tier1 F [--tier3 F | --no-review] [--fix-cycles N] [--resumed] [--epic N]',
-  '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N]',
-  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N] [--regenerated P ...] [--group G]',
+  '  tree-snapshot --out F [--clear F ...]',
+  '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...]',
+  '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...]',
+  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N] [--regenerated P ...] [--group G] [--unswept N ...]',
   '  Common: --root DIR (default: the current directory). Bodies not given by --body-file are read with gh pmu view N --body-stdout.',
 ].join('\n');
 
-const REPEATABLE = new Set(['--member', '--regenerated', '--body-file']);
+const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling']);
 const BOOLEAN = new Set(['--no-review', '--resumed']);
 
 /** `<subcommand> --flag value ...` → `{sub, opts}`; repeatable flags collect arrays. */
@@ -792,11 +941,6 @@ function readJsonFile(root, file) {
 }
 
 /**
- * @param {string[]} argv
- * @param {{git?: Function, runSuite?: Function, readBody?: Function}} [seams]
- * @returns {{code: number, envelope: object}}
- */
-/**
  * Parse a merge-back `--member` value, N:BRANCH[:WORKTREE] (#3168). A git
  * branch name cannot contain ':', but a Windows absolute worktree path does
  * (E:/...), so split at most twice and rejoin the remainder as the path.
@@ -809,6 +953,11 @@ function parseMemberSpec(spec) {
   return { issue: Number(n), branch, worktreePath: worktreePath || null };
 }
 
+/**
+ * @param {string[]} argv
+ * @param {{git?: Function, runSuite?: Function, readBody?: Function}} [seams]
+ * @returns {{code: number, envelope: object}}
+ */
 function runCli(argv, seams = {}) {
   const { sub, opts, error } = parseCliArgs(argv);
   const fail = (message, code = 2) => ({ code, envelope: { ok: false, subcommand: sub || null, error: message, usage: USAGE } });
@@ -831,7 +980,14 @@ function runCli(argv, seams = {}) {
       suites: resolveSuites(root).suites, runSuite,
     });
     const tier2 = buildTier2({ issue, files: tier1.scope.touched, acceptanceCriteria: tier1.acceptanceCriteria.items });
-    return { code: tier1.ok ? 0 : 1, envelope: { ok: tier1.ok, subcommand: sub, tier1, tier2 } };
+    const doc = { ok: tier1.ok, subcommand: sub, tier1, tier2 };
+    if (!opts['--out']) return { code: tier1.ok ? 0 : 1, envelope: doc };
+    // --out writes the document itself and reports the sha256 of the bytes it
+    // wrote (#3225), as tree-snapshot does: the file sits in the root reviewers
+    // write to, so outcome --tier1-sha verifies it rather than trusting it.
+    const text = JSON.stringify(doc, null, 2);
+    require('fs').writeFileSync(path.resolve(root, opts['--out']), text);
+    return { code: tier1.ok ? 0 : 1, envelope: { ...doc, out: { path: opts['--out'], sha256: sha256(text) } } };
   }
 
   if (sub === 'tier3-plan') {
@@ -851,18 +1007,65 @@ function runCli(argv, seams = {}) {
   if (sub === 'outcome') {
     const miss = requireOpts(opts, ['--issue', '--worktree', '--tier1']);
     if (miss) return fail(miss);
+    if (!opts['--tier1-sha']) return fail('give --tier1-sha <the sha256 the tier1 --out envelope reported> with --tier1');
     if (!opts['--tier3'] && !opts['--no-review']) return fail('give --tier3 <reviewer output file> or --no-review');
+    if (opts['--tier3'] && !opts['--tree-before']) return fail('give --tree-before <the tree-snapshot taken before the reviewer spawned> with --tier3');
+    if (opts['--tier3'] && !opts['--tree-before-sha']) return fail('give --tree-before-sha <the sha256 the tree-snapshot envelope reported> with --tier3');
     const issue = num(opts['--issue']);
-    const t1doc = readJsonFile(root, opts['--tier1']);
+    const t1text = require('fs').readFileSync(path.resolve(root, opts['--tier1']), 'utf8');
+    if (sha256(t1text) !== String(opts['--tier1-sha']).toLowerCase()) {
+      // The Tier 1 document sits in the reviewer-writable root (#3225): an edit
+      // could turn a failing member into a merge, so a mismatch never merges.
+      const report = [
+        `Halted: ${opts['--tier1']} no longer matches the sha256 tier1 reported (tier-1-document-changed) — #${issue}'s Tier 1 result cannot be trusted, so it is never merged.`,
+        `  Worktree kept: ${opts['--worktree']}${opts['--branch'] ? ` (${opts['--branch']})` : ''}.`,
+        ...unsweptLines(unsweptOf(opts)),
+        '  Resume: find what rewrote the file, re-run tier1 --out for the member, then outcome with the new sha.',
+      ].join('\n');
+      return { code: 1, envelope: { ok: false, subcommand: sub, action: 'halt', issue, error: 'tier-1-document-changed', file: opts['--tier1'], worktreeKept: opts['--worktree'], report } };
+    }
+    const t1doc = JSON.parse(t1text);
     const tier1 = t1doc.tier1 || t1doc;
-    const tier3 = opts['--no-review']
-      ? planTier3({ issue, range: '', noReview: true })
-      : parseReview(require('fs').readFileSync(path.resolve(root, opts['--tier3']), 'utf8'), { issue, root });
+    let tier3;
+    if (opts['--no-review']) {
+      tier3 = planTier3({ issue, range: '', noReview: true });
+    } else {
+      const fs = require('fs');
+      const out = path.resolve(root, opts['--tier3']);
+      const exists = fs.existsSync(out);
+      const treeBefore = fs.readFileSync(path.resolve(root, opts['--tree-before']), 'utf8');
+      tier3 = evaluateTier3({
+        issue, outputPath: opts['--tier3'], exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
+        treeBefore, treeBeforeIntact: sha256(treeBefore) === String(opts['--tree-before-sha']).toLowerCase(),
+        treeAfter: git(TREE_STATUS_ARGS), root,
+        siblings: (opts['--sibling'] || []).map(Number).filter(Number.isInteger),
+      });
+    }
     const decision = decideOutcome({
       member: { issue, worktreePath: opts['--worktree'], branch: opts['--branch'] },
-      tier1, tier3, fixCycles: num(opts['--fix-cycles']) || 0, resumedFromCompaction: !!opts['--resumed'], epic: num(opts['--epic']),
+      tier1, tier3, fixCycles: num(opts['--fix-cycles']) || 0, reviewRetries: num(opts['--review-retries']) || 0, resumedFromCompaction: !!opts['--resumed'], epic: num(opts['--epic']), unswept: unsweptOf(opts),
     });
     return { code: 0, envelope: { ok: true, subcommand: sub, tier3, ...decision } };
+  }
+
+  if (sub === 'tree-snapshot') {
+    // Taken before the Tier 3 reviewer spawns (#3204); `outcome --tree-before`
+    // compares the tree after the review against it.
+    const miss = requireOpts(opts, ['--out']);
+    if (miss) return fail(miss);
+    // --clear removes an earlier cycle's review file before the snapshot, so
+    // the re-run's reviewer starts from an absent output (code review H2).
+    const clear = opts['--clear'] || [];
+    const bad = clear.filter((p) => !GATE_FILE.test(p));
+    if (bad.length) return fail(`--clear takes only top-level .tmp-gate-* files: ${bad.join(', ')}`);
+    const fs = require('fs');
+    const cleared = clear.filter((p) => fs.existsSync(path.resolve(root, p)));
+    for (const p of cleared) fs.unlinkSync(path.resolve(root, p));
+    const snapshot = git(TREE_STATUS_ARGS);
+    fs.writeFileSync(path.resolve(root, opts['--out']), snapshot);
+    // sha256 is what `outcome --tree-before-sha` verifies (#3220): the snapshot
+    // sits in the root the reviewer writes to, so its integrity is checked, not assumed.
+    return { code: 0, envelope: { ok: true, subcommand: sub, out: opts['--out'], cleared, sha256: sha256(snapshot), lines: snapshot.split(/\r?\n/).filter((l) => l.trim() !== '').length } };
   }
 
   if (sub === 'merge-back') {
@@ -878,7 +1081,10 @@ function runCli(argv, seams = {}) {
     };
     const current = gitStatus(['branch', '--show-current']).stdout.trim();
     if (current !== opts['--tracker']) return fail(`not on the tracker: current branch is ${current || '(detached)'}, expected ${opts['--tracker']}`, 1);
-    const result = mergeBack({ git: seams.gitStatus || gitStatus, tracker: opts['--tracker'], epic: num(opts['--epic']), members, order: members.map((m) => m.issue) });
+    // --unswept: members a --nonstop run already moved to in_review with no
+    // sweep yet (#3202); a residual-conflict halt names them.
+    const unswept = unsweptOf(opts);
+    const result = mergeBack({ git: seams.gitStatus || gitStatus, tracker: opts['--tracker'], epic: num(opts['--epic']), members, order: members.map((m) => m.issue), unswept });
     return { code: result.ok ? 0 : 1, envelope: { subcommand: sub, ...result } };
   }
 
@@ -894,7 +1100,7 @@ function runCli(argv, seams = {}) {
     });
     // Tier 2 is the parent's own read; this decides on Tier 1 and the parent
     // halts on its read independently, on the same terms.
-    const outcome = postMergeOutcome({ group: num(opts['--group']) || 1, tier1, epic: num(opts['--epic']) });
+    const outcome = postMergeOutcome({ group: num(opts['--group']) || 1, tier1, epic: num(opts['--epic']), unswept: unsweptOf(opts) });
     return { code: tier1.ok ? 0 : 1, envelope: { ok: tier1.ok, subcommand: sub, tier1, outcome } };
   }
 
@@ -921,6 +1127,8 @@ module.exports = {
   buildTier2,
   planTier3,
   parseReview,
+  checkReviewerTree,
+  evaluateTier3,
   diffReviewSkillPresent,
   mayMerge,
   decideOutcome,

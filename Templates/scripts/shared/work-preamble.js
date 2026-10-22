@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -20,11 +20,11 @@ const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js'
 // never an external package (#2418).
 const { REDIRECT_LABELS } = require('./lib/issue-type.js');
 // #3126: --agents validation at parse time, and the --concurrent grouping plan.
-const { parseAgentsValue, buildPlan } = require('./lib/concurrency-plan.js');
+const { parseAgentsValue, buildPlan, resolveWorktreeHook } = require('./lib/concurrency-plan.js');
 // #3128: processing order is a topological sort of the **Depends on:** graph.
 const { topoOrder } = require('./lib/topo-order.js');
 // #3129: the parent's step sequence and member spawn requests for --concurrent.
-const { buildRun, memberTasks } = require('./lib/concurrent-orchestration.js');
+const { buildRun, memberTasks, extractBriefSections } = require('./lib/concurrent-orchestration.js');
 
 // Every spawn here goes through the timed wrapper (#2469). These are /work's
 // Step 1 critical path — including the `gh pmu move --status in_progress` calls —
@@ -869,6 +869,22 @@ function loadTddChecklist() {
 }
 
 /**
+ * Resolve, from the Claude Code settings layers on disk, whether the
+ * WorktreeCreate hook (worktree-create-hook.js) is registered (#3224).
+ * Without it a member's worktree branches from the remote default branch.
+ * @param {{cwd?: string, homedir?: string}} [where]
+ * @returns {{registered: boolean, warnings: Array<{code: string, message: string}>}}
+ */
+function resolveWorktreeHookFromDisk({ cwd = process.cwd(), homedir = require('os').homedir() } = {}) {
+  const layers = [
+    { label: 'project', path: path.join(cwd, '.claude', 'settings.json') },
+    { label: 'project-local', path: path.join(cwd, '.claude', 'settings.local.json') },
+    { label: 'user', path: path.join(homedir, '.claude', 'settings.json') }
+  ];
+  return resolveWorktreeHook({ layers, readFile: (p) => fs.readFileSync(p, 'utf-8') });
+}
+
+/**
  * The concurrent run the parent executes (#3129): its step sequence, with a
  * worktree spawn request carrying each group member's brief, and one task per
  * member naming its group.
@@ -878,10 +894,18 @@ function loadTddChecklist() {
  */
 function buildConcurrentRun(plan, active, nonstop) {
   const members = {};
+  const scopeOf = (n) => {
+    const info = ((plan && plan.members) || []).find(m => m.number === n);
+    return info && Array.isArray(info.scope) ? info.scope : [];
+  };
   for (const s of active) {
+    // The brief carries the approach and declared scope the issue was reviewed
+    // with (#3203); the scope is the plan's own parse of `Files to modify:`.
     members[s.number] = {
       title: s.title,
-      acceptanceCriteria: extractAcceptanceCriteria(s.body || '').items.map(i => i.text)
+      acceptanceCriteria: extractAcceptanceCriteria(s.body || '').items.map(i => i.text),
+      ...extractBriefSections(s.body || ''),
+      declaredScope: scopeOf(s.number)
     };
   }
   const { steps, total } = buildRun({ plan, members, nonstop: !!nonstop, tddChecklist: loadTddChecklist(), root: process.cwd() });
@@ -1407,12 +1431,18 @@ async function runSingleIssue(issueNum, options) {
     // follows a transition. Members are the ACTIVE set: skipped sub-issues
     // are not worked, so they are not grouped.
     if (options && options.concurrent) {
+      // #3224: a member worktree starts from the tracker's HEAD only when the
+      // WorktreeCreate hook is registered; absent (or unreadable settings),
+      // the plan falls back to sequential. Injectable so tests read no disk.
+      const hook = (options.resolveWorktreeHook || resolveWorktreeHookFromDisk)();
+      if (hook && Array.isArray(hook.warnings)) warnings.push(...hook.warnings);
       context.concurrencyPlan = buildPlan({
         members: statusResult.active,
         processingOrder,
         maxAgents: options.maxAgents,
         source: options.maxAgents !== undefined ? (options.maxAgentsSource || 'flag') : 'default',
-        dependencies: context.dependencyGraph
+        dependencies: context.dependencyGraph,
+        worktreeHookRegistered: !!(hook && hook.registered)
       });
       context.concurrentRun = buildConcurrentRun(context.concurrencyPlan, statusResult.active, options.nonstop);
     }
@@ -1634,7 +1664,7 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason }, and concurrentRun { steps, total, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request with the member brief on each group member\'s spawn step, and one task per member naming its group.'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason } — zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request with the member brief on each group member\'s spawn step, and one task per member naming its group.'
     },
     gates: {
       name: 'gates',
@@ -1795,6 +1825,7 @@ module.exports = {
   buildEpicAutoTask,
   resolveStatusIssues,
   runBatch,
+  resolveWorktreeHookFromDisk,
   execSafe,
   main
 };

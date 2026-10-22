@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * @description The one rebase / fast-forward sequence /done Step 2, /work Step 1c
  *   and /sync-branch share (#3014). `rebaseOntoUpstream()` rebases onto @{u} and
  *   on conflict captures the unmerged paths, aborts and reports them;

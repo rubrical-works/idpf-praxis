@@ -1,5 +1,5 @@
 ---
-version: "v0.109.1"
+version: "v0.110.0"
 description: Plan concurrent workstreams for parallel epic development, using the IDPF framework.
 argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--profile [--min-pairs N]] [--cancel] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -192,11 +192,13 @@ Execute each command from generated list.
 
 1. **List worktrees:** `git worktree list --porcelain` parsed to `[{ path, branch }]`
 2. **Build cancelled branch list** from metadata streams
-3. **Format reminder:** `formatWorktreeCleanupReminder(cancelledBranches, worktreeList)`
+3. **Resolve prefix:** `resolveWorkstreamPrefix(metadata)` on the Cancel Step 1 metadata (Cancel Step 3 already removed `.workstreams.json`) — recorded `prefix`, else common prefix of `streams[].branch`, else `workstream/`
+4. **Format reminder:** `formatWorktreeCleanupReminder(cancelledBranches, worktreeList, prefix)`
    - Returns `null` if no stale worktrees → skip reminder
-   - Returns formatted text with `git worktree remove [path]` commands
+   - Returns one unlink-first teardown per stale worktree: `node .claude/scripts/shared/lib/worktree-teardown.js --root . --workstream-prefix <prefix> --worktree <path>`
    - Paths with spaces quoted for safe copy-paste
-4. **Present** to user — informational only, does not auto-remove
+   - Teardown unlinks every junction before removing and refuses a dirty worktree; a raw removal deletes through gitignored junctions with or without `--force` (#3124), so the reminder never prints it (#3194)
+5. **Present** to user — informational only, does not auto-remove
 
 ## Error Handling
 

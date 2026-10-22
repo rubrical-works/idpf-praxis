@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  *
  * Stale `.tmp-*` scratch-file sweep for the startup hook (#2771).
  *

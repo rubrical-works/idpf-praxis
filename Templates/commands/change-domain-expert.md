@@ -1,5 +1,5 @@
 ---
-version: "v0.109.1"
+version: "v0.110.0"
 description: Change this project's IDPF domain specialist.
 argument-hint: "[specialist-name] (optional) [--help]"
 copyright: "Rubrical Works (c) 2026"

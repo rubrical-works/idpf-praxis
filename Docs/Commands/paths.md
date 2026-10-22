@@ -24,7 +24,7 @@ Perform turn-based collaborative scenario path discovery on a proposal or enhanc
 
 ## Key Behaviors
 
-- Works through up to 6 scenario categories (Nominal, Alternative, Exception, Edge Cases, Corner Cases, Negative Test Scenarios) one at a time, presenting 2–5 AI-generated candidates per category for the user to confirm via multi-select
+- Works through up to 6 scenario categories (Nominal, Alternative, Exception, Edge Cases, Corner Cases, Negative Test Scenarios) one at a time, presenting AI-generated candidates per category for the user to confirm via multi-select — at most 3 per prompt plus "Skip this category", in further rounds of 3 when more remain (existing paths on a re-run count toward those slots)
 - Loads associated screen specs from `Mockups/*/Specs/` to generate more precise candidates (boundary values, required field violations, dependency chains)
 - Supports resuming a partial analysis if interrupted — detects `(Partial)` marker in the document
 - Results are appended or updated in the proposal file under `## Path Analysis`; if no proposal file exists, posts as an issue comment

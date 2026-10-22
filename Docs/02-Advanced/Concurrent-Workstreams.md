@@ -159,12 +159,13 @@ git checkout workstream/2
 /merge-branch
 ```
 
-Then clean up worktrees:
+Then clean up worktrees with the unlink-first teardown, which unlinks any junction inside a worktree before removing it and keeps a dirty one rather than deleting it:
 
 ```bash
-git worktree remove ../my-project-ws1
-git worktree remove ../my-project-ws2
+node .claude/scripts/shared/lib/worktree-teardown.js --root . --workstream-prefix workstream/ --worktree ../my-project-ws1 --worktree ../my-project-ws2
 ```
+
+Do not use `git worktree remove` here: it deletes through gitignored junctions with or without `--force`, and in a Praxis Hub Manager project that would empty the shared hub.
 
 ---
 

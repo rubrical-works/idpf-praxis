@@ -1,5 +1,5 @@
 ---
-version: "v0.109.1"
+version: "v0.110.0"
 description: Reset a bug, enhancement, PRD, proposal, or epic issue to a clean slate, using the IDPF framework.
 argument-hint: "#issue [--dry-run] [--help]"
 copyright: "Rubrical Works (c) 2026"

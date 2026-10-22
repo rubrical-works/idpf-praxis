@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.109.1
+ * @framework-script 0.110.0
  * worktree-remove-hook.js — WorktreeRemove hook (#3187)
  *
  * The counterpart of worktree-create-hook.js. Once a project installs a
@@ -25,8 +25,9 @@
  *   2. A framework path that no longer exists counts as removed: exit 0.
  *   3. worktree-teardown.js: unlink every link, verify each hub target,
  *      confirm none remain, then `git worktree remove` WITHOUT `--force`.
- *      Kept (dirty), halted (a link would not unlink) or refused → non-zero,
- *      worktree left in place and named.
+ *      Kept (dirty), halted (a link would not unlink) or refused → exit 2,
+ *      worktree left in place and named. Exit 1 is only the unexpected (a
+ *      thrown error, unparseable input), so the heartbeat counts it alone.
  *   4. Delete `wt/<name>` with `git branch -d`, which git refuses for an
  *      unmerged branch — so commits are never lost here. A refused delete is
  *      reported as kept; the directory is gone, so the exit is still 0.
@@ -46,6 +47,16 @@ const { resolveRoot, WORKTREE_PREFIX, BRANCH_PREFIX } = require('./worktree-crea
 
 /** Bound on each git call (#2469). */
 const GIT_TIMEOUT_MS = 60_000;
+
+/**
+ * Exit codes (#3190). Both non-zero codes fail the removal, as the contract
+ * requires while the directory exists; they differ only in what they say about
+ * the hook. 2 is the hook doing its job — refused, kept or halted — and the
+ * heartbeat counts it as healthy; 1 is reserved for the unexpected.
+ */
+const EXIT_REMOVED = 0;
+const EXIT_NOT_REMOVED = 2;
+const EXIT_UNEXPECTED = 1;
 
 function defaultExec(argv, { cwd }) {
   const r = spawnSync('git', argv, { cwd, encoding: 'utf8', timeout: GIT_TIMEOUT_MS });
@@ -96,11 +107,16 @@ function removeWorktree(opts = {}) {
   const env = opts.env || process.env;
   const execFn = typeof opts.execFn === 'function' ? opts.execFn : defaultExec;
   const out = {
-    ok: false, exitCode: 1, status: null, root: null, branch: null, branchDeleted: false,
+    ok: false, exitCode: EXIT_UNEXPECTED, status: null, root: null, branch: null, branchDeleted: false,
     teardown: null, commands: [], stderr: [],
   };
   const say = (line) => out.stderr.push(`worktree-remove: ${line}`);
-  const refuse = (reason) => { out.status = 'refused'; say(`${reason}; nothing was removed`); return out; };
+  const refuse = (reason) => {
+    out.status = 'refused';
+    out.exitCode = EXIT_NOT_REMOVED;
+    say(`${reason}; nothing was removed`);
+    return out;
+  };
 
   try {
     const rootInfo = resolveRoot({ cwd, env });
@@ -112,7 +128,7 @@ function removeWorktree(opts = {}) {
 
     if (!fs.existsSync(target.lexical)) {
       out.ok = true;
-      out.exitCode = 0;
+      out.exitCode = EXIT_REMOVED;
       out.status = 'absent';
       say(`${target.lexical} does not exist — counts as removed`);
       return out;
@@ -131,6 +147,7 @@ function removeWorktree(opts = {}) {
     out.branch = td.branch;
 
     if (td.status !== 'removed') {
+      out.exitCode = EXIT_NOT_REMOVED;
       say(`${td.status}: ${td.reason}`);
       return out;
     }
@@ -150,22 +167,29 @@ function removeWorktree(opts = {}) {
 
     if (fs.existsSync(target.lexical)) {
       out.status = 'kept';
+      out.exitCode = EXIT_NOT_REMOVED;
       say(`${target.lexical} still exists after git worktree remove`);
       return out;
     }
     out.ok = true;
-    out.exitCode = 0;
+    out.exitCode = EXIT_REMOVED;
     return out;
   } catch (err) {
+    out.exitCode = EXIT_UNEXPECTED;
     say(`unexpected failure: ${err.message}`);
     return out;
   }
 }
 
 // Heartbeat (#2917): only when run as the hook, never for the test process.
+// okCodes [0, EXIT_NOT_REMOVED] (#3190): a refused, kept or halted removal is
+// the hook doing its job, not a hook failure — the #2997 pattern.
 let heartbeat = { fail() {}, setCwd() {} };
 if (require.main === module) {
-  try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('worktree-remove-hook'); } catch (_) { /* reported by the load check */ }
+  try {
+    heartbeat = require('../scripts/shared/lib/hook-heartbeat.js')
+      .installHeartbeat('worktree-remove-hook', { okCodes: [EXIT_REMOVED, EXIT_NOT_REMOVED] });
+  } catch (_) { /* reported by the load check */ }
 }
 
 async function main() {
@@ -177,7 +201,7 @@ async function main() {
     data = JSON.parse(input);
   } catch (err) {
     process.stderr.write(`worktree-remove: hook input is not JSON: ${err.message}\n`);
-    process.exitCode = 1;
+    process.exitCode = EXIT_UNEXPECTED;
     return;
   }
   if (data && typeof data === 'object') heartbeat.setCwd(data.cwd);
