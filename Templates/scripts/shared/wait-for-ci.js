@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
@@ -237,6 +237,41 @@ function buildRunListCommand({ branch, commit, limit = 10 }) {
 }
 
 /**
+ * Build the `gh run view` command that re-checks a tracked run by id (#3241).
+ * Same fields as the listing, so the verdict code reads either shape.
+ * @param {number|string} runId
+ * @returns {string}
+ * @throws {Error} when the id is not a plain positive integer
+ */
+function buildRunViewCommand(runId) {
+    if (!/^[0-9]+$/.test(String(runId))) {
+        throw new Error(`Unsafe run id: ${String(runId).substring(0, 40)}`);
+    }
+    return `gh run view ${runId} --json databaseId,status,conclusion,name,headBranch,headSha`;
+}
+
+/**
+ * Whether the tracked run must be re-checked instead of trusting this poll's
+ * selection (#3241).
+ *
+ * The branch-filtered listing is not stable right after a run is created: a
+ * run the gate was already waiting on can drop out of it, leaving nothing,
+ * only non-executing runs, or only some other completed run (a cancelled one
+ * is still a candidate). None of those may decide the verdict while the
+ * tracked run's own state is unknown. A different run still in flight is a
+ * real newer target, so the gate follows it — the original in-flight rule.
+ *
+ * @param {object|null} target - this poll's selectRun() result
+ * @param {number|null} trackedRunId
+ * @returns {boolean}
+ */
+function needsTrackedRecheck(target, trackedRunId) {
+    if (trackedRunId === null) return false;
+    if (!target) return true;
+    return target.databaseId !== trackedRunId && target.status === 'completed';
+}
+
+/**
  * Whether a single run is in the requested scope. gh is asked to filter, but
  * the returned rows are re-checked so a gh version that ignores a flag cannot
  * silently reintroduce the original bug.
@@ -317,6 +352,40 @@ function selectRun(runs, filter) {
     return inFlight || candidates[0];
 }
 
+/**
+ * The verdict for one commit: every executed run on it, not the one run
+ * selectRun() keyed to (#3046).
+ *
+ * With every run complete, selectRun() returns the newest listed run, so a
+ * green Semgrep listed above a red Tests on the same SHA passed the gate. The
+ * group is the runs sharing `target`'s headSha — by default the newest
+ * candidate's — so an older commit on the branch never fails a newer one.
+ * Non-executing runs are excluded exactly as in selectRun() (#2627). Same
+ * aggregation as verify-dist-deploy.js (#2552).
+ *
+ * @param {Array<object>} runs
+ * @param {{branch: string|null, commit: string|null}} filter
+ * @param {object} [target] - the run being tracked; defaults to selectRun()
+ * @returns {{state: 'none'|'waiting'|'pass'|'fail', run: object|null, sha: string|null, failing: Array<object>}}
+ */
+function decideVerdict(runs, filter, target = selectRun(runs, filter)) {
+    if (!target) return { state: 'none', run: null, sha: null, failing: [] };
+    const group = (runs || []).filter(r =>
+        matchesFilter(r, filter) && !isNonExecuting(r) && r.headSha === target.headSha);
+    if (!group.some(r => r.databaseId === target.databaseId)) group.push(target);
+
+    const inFlight = group.find(r => r.status !== 'completed');
+    if (inFlight) return { state: 'waiting', run: inFlight, sha: target.headSha, failing: [] };
+
+    // A cancelled run is superseded when another run of the same workflow on
+    // this commit ran to a conclusion: that is the push/pull_request dedup
+    // (#2571) cancelling a duplicate on purpose, not a failure of the tree.
+    const superseded = (r) => r.conclusion === 'cancelled'
+        && group.some(o => o !== r && o.name === r.name && o.conclusion !== 'cancelled');
+    const failing = group.filter(r => r.conclusion !== 'success' && !superseded(r));
+    return { state: failing.length ? 'fail' : 'pass', run: target, sha: target.headSha, failing };
+}
+
 // --- Main ---
 
 /**
@@ -349,6 +418,7 @@ function schema() {
 
 async function run(argv = [], deps = {}) {
     const fetchRuns = deps.fetchRuns || defaultFetchRuns;
+    const fetchRun = deps.fetchRun || defaultFetchRun;
     const wait = deps.sleep || sleep;
 
     if (argv.includes('--schema')) {
@@ -399,6 +469,10 @@ async function run(argv = [], deps = {}) {
         const command = buildRunListCommand(filter);
         let consecutiveFailures = 0;
         let registrationWaited = 0;
+        // Held from the first successful selection on (#3241): once the gate
+        // is waiting on a run, that run's own state decides the verdict even
+        // if the branch listing later stops returning it.
+        let trackedRunId = null;
 
         while (true) {
             const elapsed = Date.now() - startTime;
@@ -406,8 +480,14 @@ async function run(argv = [], deps = {}) {
             // A timed-out or transiently-failing gh call must not fail the gate
             // outright — but it must not retry forever either (#2464).
             let runs;
+            let target;
             try {
                 runs = await fetchRuns(command);
+                target = selectRun(runs, filter);
+                if (needsTrackedRecheck(target, trackedRunId)) {
+                    const listed = (runs || []).find(r => r.databaseId === trackedRunId);
+                    target = listed || await fetchRun(trackedRunId);
+                }
                 consecutiveFailures = 0;
             } catch (fetchErr) {
                 consecutiveFailures++;
@@ -424,8 +504,12 @@ async function run(argv = [], deps = {}) {
                 continue;
             }
 
-            const target = selectRun(runs, filter);
+            if (target) {
+                trackedRunId = target.databaseId;
+            }
 
+            // Reached only while no run has ever been tracked: a tracked run
+            // is re-checked by id above, never sent down the registration path.
             if (!target) {
                 const scope = parsed.branch || parsed.commit
                     ? ` for ${parsed.commit ? `commit ${parsed.commit}` : `branch ${parsed.branch}`}`
@@ -472,7 +556,9 @@ async function run(argv = [], deps = {}) {
             }
 
             if (target.status === 'completed') {
-                if (target.conclusion === 'success') {
+                // The whole commit decides, not the run listed first (#3046).
+                const verdict = decideVerdict(runs, filter, target);
+                if (verdict.state === 'pass') {
                     console.log(JSON.stringify({
                         success: true,
                         message: 'CI workflow completed successfully',
@@ -480,26 +566,36 @@ async function run(argv = [], deps = {}) {
                     }));
                     return EXIT_CODES.SUCCESS;
                 }
-                console.log(JSON.stringify({
-                    success: false,
-                    message: `CI workflow failed: ${target.conclusion}`,
-                    data: {
-                        runId: target.databaseId,
-                        conclusion: target.conclusion,
-                        branch: target.headBranch,
-                        sha: target.headSha
-                    }
-                }));
-                return EXIT_CODES.FAILURE;
+                if (verdict.state === 'fail') {
+                    const failing = verdict.failing.map(f => ({ runId: f.databaseId, name: f.name, conclusion: f.conclusion }));
+                    console.log(JSON.stringify({
+                        success: false,
+                        message: `CI workflow failed: ${failing.map(f => `${f.name} (${f.conclusion})`).join(', ')}`,
+                        data: {
+                            runId: verdict.failing[0].databaseId,
+                            conclusion: verdict.failing[0].conclusion,
+                            branch: target.headBranch,
+                            sha: target.headSha,
+                            failing
+                        }
+                    }));
+                    return EXIT_CODES.FAILURE;
+                }
+                // 'waiting': a sibling on the same commit is still running —
+                // fall through to the timeout and poll path below.
             }
 
             // Check if we've exceeded current timeout
             if (elapsed >= timeout) {
                 // Check for running jobs before giving up — scoped to the runs
-                // that matched the filter, not everything gh returned.
-                const { hasRunning, runningJobs } = checkRunningJobs(
-                    runs.filter(r => matchesFilter(r, filter))
-                );
+                // that matched the filter, not everything gh returned. A tracked
+                // run re-checked by id is counted even when the listing dropped
+                // it, or the gate would time out on a run still executing (#3241).
+                const scoped = (runs || []).filter(r => matchesFilter(r, filter));
+                if (!scoped.some(r => r.databaseId === target.databaseId)) {
+                    scoped.push(target);
+                }
+                const { hasRunning, runningJobs } = checkRunningJobs(scoped);
                 const adaptive = getAdaptiveTimeout({
                     elapsed,
                     currentTimeout: timeout,
@@ -570,6 +666,19 @@ function defaultFetchRuns(command, deps = {}) {
     return JSON.parse(runsJson);
 }
 
+/**
+ * Default by-id boundary for the tracked run (#3241). Same per-call timeout as
+ * the listing, for the same reason.
+ * @param {number} runId
+ * @param {object} [deps] - `execSync` override for tests
+ * @returns {object}
+ */
+function defaultFetchRun(runId, deps = {}) {
+    const exec = deps.execSync || execSync;
+    const runJson = exec(buildRunViewCommand(runId), { encoding: 'utf8', timeout: GH_CALL_TIMEOUT });
+    return JSON.parse(runJson);
+}
+
 // --- Module Guard ---
 
 if (require.main === module) {
@@ -584,11 +693,15 @@ module.exports = {
     parseArgs,
     resolveCommit,
     buildRunListCommand,
+    buildRunViewCommand,
+    needsTrackedRecheck,
     selectRun,
+    decideVerdict,
     matchesFilter,
     isNonExecuting,
     NON_EXECUTING_CONCLUSIONS,
     defaultFetchRuns,
+    defaultFetchRun,
     checkRunningJobs,
     getAdaptiveTimeout,
     EXIT_CODES,

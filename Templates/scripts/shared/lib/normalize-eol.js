@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  *
  * Line-ending normalization for issue and comment bodies (#3064).
  *

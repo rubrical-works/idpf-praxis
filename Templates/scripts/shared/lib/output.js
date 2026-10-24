@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Consistent output formatting for JSON, tables, and human-readable messages. Exports outputJSON(), outputTable(), setQuiet(), isTTY(), and formatting helpers. Used by all preamble and CLI scripts for structured output.
  * @checksum sha256:placeholder
  *

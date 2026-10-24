@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
@@ -613,6 +613,23 @@ function compose({ event, issue, issues, peers, cwd, commits: supplied, force = 
 
   if (resolved === EVENTS.REVIEW_STARTED && force) {
     return suppressedResult({ event: name, issue: issueNumber, reason: FORCE_SUPPRESSION_REASON, warnings });
+  }
+
+  // #3273: the /work events apply the resolver here, as the branch events do —
+  // suppression no longer depends on the caller having resolved it first and
+  // kept the answer. A resolver failure resolves to enabled, as an absent key.
+  if (resolved === EVENTS.WORK_STARTED || resolved === EVENTS.WORK_COMPLETED) {
+    let state = null;
+    try {
+      const { readCrossSessionConfig } = require('./lib/cross-session-config.js');
+      state = readCrossSessionConfig(cwd || process.cwd(), env);
+    } catch { /* resolver unavailable: enabled */ }
+    if (state && !(state.groups && state.groups.work)) {
+      const cause = state.source === 'environment'
+        ? `IDPF_X_SESSION=${state.envOverride && state.envOverride.value} (this session only)`
+        : 'the work group is off in the cross-session configuration';
+      return suppressedResult({ event: name, issue: issueNumber, reason: `Nothing sent or recorded: ${cause}.`, warnings });
+    }
   }
 
   let commits = [];

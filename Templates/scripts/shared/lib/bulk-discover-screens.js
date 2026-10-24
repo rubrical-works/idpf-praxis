@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * Bulk-discover screens from project source for /catalog-screens --init.
  *
  * Scans Svelte/React/Vue source. Auto-detects kind from path patterns:
@@ -224,7 +224,15 @@ function disambiguateNames(fileToName, projectRoot) {
         renamed = candidates;
       }
     }
-    if (!renamed) renamed = group.map((_, i) => (i === 0 ? name : `${name}${i + 1}`));
+    if (!renamed) {
+      // Numeric last resort (#3179): skip any suffix already taken.
+      renamed = [name];
+      let n = 2;
+      for (let i = 1; i < group.length; i++) {
+        while (taken.has(`${name}${n}`)) n++;
+        renamed.push(`${name}${n++}`);
+      }
+    }
     group.forEach((f, i) => {
       fileToName.set(f, renamed[i]);
       taken.add(renamed[i]);

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * prior-art-marker.js
  *
  * Deterministic half of the review-time prior-art gate (#2517): classify the
@@ -419,14 +419,22 @@ function insertPriorArtSection(body, section) {
   const match = MARKER_LINE.exec(base);
 
   if (match) {
-    // Replace the existing marker line (complete or PARTIAL) in place,
-    // including any leading whitespace the anchor allowed.
+    // Replace the existing section (complete or PARTIAL) in place, including
+    // any leading whitespace the anchor allowed. The whole section goes, not
+    // only the marker line (#3059): a re-sweep that kept the old `| #N |`
+    // rows left them under the new section, read as this sweep's findings.
+    // Where it ends is excludedSectionTerminator's rule — the one
+    // stripExcludedSections applies — so removal and evidence matching agree.
     const index = match.index;
     const before = base.slice(0, index);
-    const after = base.slice(index);
-    const restOfLine = after.indexOf('\n');
-    const tail = restOfLine === -1 ? '' : after.slice(restOfLine);
-    return before + section + tail;
+    const lines = base.slice(index).split('\n');
+    const isTerminator = excludedSectionTerminator(lines[0].replace(/\r$/, ''));
+    let end = 1;
+    if (isTerminator) {
+      while (end < lines.length && !isTerminator(lines[end].replace(/\r$/, ''))) end++;
+    }
+    if (end >= lines.length) return `${before}${section}\n`;
+    return `${before}${section}\n\n${lines.slice(end).join('\n')}`;
   }
 
   // No marker yet — append, keeping it above any trailing Reviews line so the

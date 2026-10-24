@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * regeneration-runner.js — Post-merge regeneration of derived artifacts and
  * verification of recomputed values (#3120, PRD Concurrent-Work Story 1.3)
  *
@@ -194,7 +194,9 @@ function verifyRecomputed(entry, { cwd, execFn, timeout }) {
  *
  * @param {{cwd?: string, changedPaths?: string[], execFn?: Function, timeoutMs?: number}} [opts]
  *   `changedPaths` omitted → every string generator runs; given (even empty)
- *   → only entries one of its `paths` or `inputs` globs covers.
+ *   → only entries one of its `paths` or `inputs` globs covers. `skillsRan`
+ *   (set by regenerateAfterSkills, #3272) skips every skill entry instead of
+ *   deferring it.
  * @returns {{ok: boolean, declared: boolean, valid: boolean, errors: string[],
  *   executed: object[], deferred: object[], failed: object[], skipped: object[],
  *   changedPaths: string[], verifications: object[]}}
@@ -238,6 +240,10 @@ function runRegeneration(opts = {}) {
       continue;
     }
     const kind = regenerateKind(entry.regenerate);
+    if (kind === 'skill' && opts.skillsRan) {
+      result.skipped.push({ paths: entry.paths, reason: 'deferred skill already ran' });
+      continue;
+    }
     if (kind === 'skill') {
       result.deferred.push({
         paths: entry.paths,
@@ -289,9 +295,27 @@ function deferredSkillInvocations(result) {
   }));
 }
 
+/**
+ * The pass after the deferred skills ran (#3272). A skill's outputs can be
+ * another generator's inputs — fw-minimize-files rewrites
+ * `.claude/commands/**`, which the extension registry is built from — but
+ * the reconcile pass ran that generator before the skill existed. Running
+ * runRegeneration again over the skill's outputs would defer the skill
+ * again, since those outputs are its own globs; this pass skips every skill
+ * entry and runs each string generator the skill's rewrites trigger.
+ *
+ * @param {{cwd?: string, changedPaths: string[], execFn?: Function, timeoutMs?: number}} opts
+ *   `changedPaths` is what the skills rewrote.
+ * @returns {object} A runRegeneration result; `deferred` is always empty.
+ */
+function regenerateAfterSkills(opts = {}) {
+  return runRegeneration({ ...opts, changedPaths: Array.isArray(opts.changedPaths) ? opts.changedPaths : [], skillsRan: true });
+}
+
 module.exports = {
   DEFERRED_TO_SESSION,
   deferredSkillInvocations,
+  regenerateAfterSkills,
   DEFAULT_TIMEOUT_MS,
   runRegeneration,
   defaultExec,

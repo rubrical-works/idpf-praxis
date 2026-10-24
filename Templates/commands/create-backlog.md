@@ -1,5 +1,5 @@
 ---
-version: "v0.110.0"
+version: "v0.111.0"
 description: Create GitHub epics and stories from a PRD, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"

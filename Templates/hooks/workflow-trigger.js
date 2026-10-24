@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -317,7 +317,8 @@ process.stdin.on('end', () => {
             try {
                 // Query issue's Branch field via gh pmu view
                 const result = execSync(
-                    `gh pmu view ${issueNumber} --json`,
+                    // Explicit field list: gh pmu 1.7.0 rejects a bare --json (#3254)
+                    `gh pmu view ${issueNumber} --json=fieldValues,body,labels`,
                     { encoding: 'utf-8', timeout: 10000 }
                 );
 
@@ -433,7 +434,8 @@ process.stdin.on('end', () => {
                 try {
                 // Opportunistically query issues for AUTO-TASK
                 const result = execSync(
-                    `gh pmu list --status ${statusFilter} --json`,
+                    // Explicit field list: gh pmu 1.7.0 rejects a bare --json (#3254)
+                    `gh pmu list --status ${statusFilter} --json=number,title`,
                     { encoding: 'utf-8', timeout: 15000 }
                 );
 

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -239,7 +239,12 @@ function sweepStaleTempFiles(cwd, info) {
 // Parallel check execution with monotonic staged timeout ladder
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TIMEOUT_STAGES = [15000, 30000, 45000, 60000]; // monotonic milestones from start
+// Monotonic milestones from start. The last one is the hook's own kill, and it
+// must land well before the SessionStart harness timeout (60s in
+// framework-manifest.json hooksConfig): at 60s the two coincided, the harness
+// killed the hook first, and a hung check left no block and no timeout rows
+// (#3059). 40s leaves 20s to render and print the block.
+const TIMEOUT_STAGES = [10000, 20000, 30000, 40000];
 
 /** The teardown command a session should run instead of git worktree remove. */
 const TEARDOWN_COMMAND = 'node .claude/scripts/shared/lib/worktree-teardown.js --root . --worktree <path>';
@@ -280,7 +285,7 @@ function formatWorktreesRow(worktrees) {
  * Run all checks in parallel with monotonic staged timeout warnings.
  * - At each TIMEOUT_STAGES milestone, if checks are still pending, emit
  *   an ANSI-yellow warning to stderr naming each pending check.
- * - At the final stage (60s), kill remaining children and mark them
+ * - At the final stage (40s), kill remaining children and mark them
  *   as { status: 'error', error: 'timeout' }.
  *
  * Uses monotonic timestamps (Date.now()) so a check resolving between

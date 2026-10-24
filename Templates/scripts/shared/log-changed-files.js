@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Compute the Files Changed section for a /work issue by scanning commits that
  * reference the issue ("Refs #N"), classifying each file via lib/classify-changed-files.js,
  * and emitting a formatted markdown section to stdout. Empty output when no commits match
@@ -18,6 +18,7 @@ function parseArgs(argv) {
   const out = { issue: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--issue' && argv[i + 1]) out.issue = parseInt(argv[++i], 10);
+    else if (argv[i] === '--since-commit' && argv[i + 1]) out.sinceCommit = argv[++i];
   }
   if (!out.issue || Number.isNaN(out.issue)) {
     return { error: 'Missing or invalid --issue <number> argument.' };
@@ -25,14 +26,34 @@ function parseArgs(argv) {
   return out;
 }
 
-function readGitLog(issueNumber, execFn = execSync) {
+function readGitLog(issueNumber, execFn = execSync, base = null) {
   // Boundary-anchored (#2467): a bare `Refs #24` grep also matched #245, #2453
   // and every other longer number, polluting the "### Files Changed" section
   // that scope-drift-check then consumes as declared scope.
+  // Range-bounded (#3267): `base..HEAD` keeps a reopened issue's released
+  // commits out of this run's Files Changed.
+  const range = base ? ` ${base}..HEAD` : '';
   return execFn(
-    `git log --name-status --grep="${issueRefGrepPattern(issueNumber)}" --pretty=format:""`,
+    `git log --name-status --grep="${issueRefGrepPattern(issueNumber)}" --pretty=format:""${range}`,
     { encoding: 'utf8' }
   );
+}
+
+/**
+ * Where this run's commits start (#3267): --since-commit when given, else the
+ * branch's merge-base with the default branch (lib/branch-diff.js, the same
+ * resolution announce.js uses since #2888). Null when neither resolves —
+ * the caller then reads all history and says so on stderr.
+ */
+function resolveBase(sinceCommit) {
+  if (sinceCommit) return sinceCommit;
+  try {
+    const { resolveBranchBase } = require('./lib/branch-diff.js');
+    const r = resolveBranchBase();
+    return r.ok ? r.sha : null;
+  } catch (_e) {
+    return null;
+  }
 }
 
 /**
@@ -51,8 +72,8 @@ function dedupeNameStatus(raw) {
   return [...byPath.entries()].map(([p, s]) => `${s}\t${p}`).join('\n');
 }
 
-function run(issueNumber, execFn = execSync) {
-  const raw = readGitLog(issueNumber, execFn);
+function run(issueNumber, execFn = execSync, base = null) {
+  const raw = readGitLog(issueNumber, execFn, base);
   if (!raw || !raw.trim()) return '';
   return formatFilesChanged(dedupeNameStatus(raw));
 }
@@ -64,7 +85,11 @@ function main() {
     process.exit(2);
   }
   try {
-    const out = run(args.issue);
+    const base = resolveBase(args.sinceCommit);
+    if (!base) {
+      process.stderr.write('Warning: no base branch resolved; Files Changed covers every Refs commit in history, not only this branch (#3267).\n');
+    }
+    const out = run(args.issue, execSync, base);
     if (out) process.stdout.write(out + '\n');
     process.exit(0);
   } catch (e) {
@@ -75,4 +100,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { parseArgs, readGitLog, dedupeNameStatus, run };
+module.exports = { parseArgs, readGitLog, resolveBase, dedupeNameStatus, run };

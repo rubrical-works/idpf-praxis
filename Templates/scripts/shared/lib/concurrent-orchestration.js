@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -35,7 +35,12 @@
  * call it cannot make, and the Story 1.22 qa-required live run checks that
  * the session passes the request through unchanged.
  *
- * Pure over its inputs: no gh, no git, no disk.
+ * Under `--nonstop` the parent follows `nextSteps` instead — the rolling
+ * schedule (#3274): a member starts when a slot frees, not when its group
+ * drains. Default mode keeps the fixed groups and their per-group STOP.
+ *
+ * Pure over its inputs: no gh, no git, no disk — except the `next-steps`
+ * CLI at the bottom, which reads and writes the rolling run's state file.
  */
 
 /** Steps the parent owns, by the ids rule 08 uses. */
@@ -50,11 +55,14 @@ const PARENT_STEPS = Object.freeze([
 const MEMBER_STEPS = Object.freeze(['3']);
 
 const PRE_WORK = ['review-state-gate', 'pre-work-status-gate', 'event-1'];
-const POST_WORK = ['4', '4a', '4b', '4c', '4d', '4e', '4f', '5', 'event-2'];
+// Rule 08's order (#3261): Step 4c after 4d/4e, so their commits are logged
+// and gated in the same pass.
+const POST_WORK = ['4', '4a', '4b', '4d', '4e', '4c', '4f', '5', 'event-2'];
 
 /** The entry points the gate and teardown steps name (#3158). */
 const GATE_CLI = 'node .claude/scripts/shared/lib/merge-back-gate.js';
 const TEARDOWN_CLI = 'node .claude/scripts/shared/lib/worktree-teardown.js';
+const ORCH_CLI = 'node .claude/scripts/shared/lib/concurrent-orchestration.js';
 
 /**
  * Parent step kinds that carry no `instruction`, each with the reason (#3158).
@@ -74,6 +82,35 @@ const STEP_INSTRUCTION_EXEMPT = Object.freeze({
   stop: 'Rule 08 Step 6 defines the STOP sequence: prune, report, event 2, STOP.',
   summary: 'Rule 08 Steps 6 and 6a define the nonstop summary; `repeats` names what it repeats.',
 });
+
+/**
+ * The per-member gate instructions, emitted once per run (#3280). A step
+ * carrying `template` and `params` is read through instructionOf(); repeating
+ * this text for every member made it half the preamble envelope. `{{n}}` is
+ * the member; `{{tip}}` the tracker tip its range starts at (the group's, or
+ * under the rolling schedule its own worktree's — #3274); `{{siblings}}` and
+ * `{{unswept}}` are pre-rendered flag lists.
+ */
+const MEMBER_TEMPLATES = Object.freeze({
+  'gate-tier1': `Run \`${GATE_CLI} tier1 --issue {{n}} --branch <#{{n}}'s wt/* branch> --worktree <#{{n}}'s worktree path> --tracker-tip {{tip}} --out .tmp-gate-{{n}}-tier1.json\` — it writes the Tier 1 document itself (#3225); record the sha256 its envelope's out reports, and do not redirect stdout into that file. Exit 1 is a Tier 1 failure: carry it to the outcome step, never merge past it.`,
+  'gate-tier2': 'Read every file in .tmp-gate-{{n}}-tier1.json tier2.files, file by file, against #{{n}}\'s acceptance criteria, as tier2.instruction says. Record the read as pass or fail with the file and line of anything no AC asks for; the direct-work exemption never applies.',
+  'gate-tier3': `Run \`${GATE_CLI} tier3-plan --issue {{n}} --tracker-tip {{tip}} --branch <#{{n}}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` (it removes any earlier cycle's review first) and record the sha256 its envelope reports, then spawn the reviewer Agent in slot {{slot}} with tier3.request.prompt exactly — never the implementer's summary. The reviewer writes its own review to .tmp-gate-{{n}}-tier3.json (#3204); do not copy or re-word its reply. Write no other file in the project root while the review runs: any change other than this member's own review and snapshot, or a running-group sibling's own gate files, fails Tier 3 (#3220).`,
+  'gate-outcome': `Run \`${GATE_CLI} outcome --issue {{n}} --worktree <#{{n}}'s worktree path> --branch <#{{n}}'s wt/* branch> --tier1 .tmp-gate-{{n}}-tier1.json --tier1-sha <sha256 from #{{n}}'s tier1 --out envelope> --tier3 .tmp-gate-{{n}}-tier3.json --tree-before .tmp-gate-{{n}}-tree-before.txt --tree-before-sha <sha256 from #{{n}}'s tree-snapshot envelope>{{siblings}}{{unswept}}\` (\`--no-review\` in place of --tier3, --tree-before and --tree-before-sha when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — it runs decideOutcome on the tiers. action merge → post comment.body on #{{n}} and continue; send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when the decision carries outsideContract (#3226), first report those paths and clear them — remove or restore what this run wrote; a path another session is editing is cleared by waiting for that session to settle it, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` again, re-spawn the reviewer in slot {{slot}} with the same tier3.request.prompt, then re-run this outcome with the new sha and \`--review-retries 1\` (a second one halts, attributed to the reviewer); halt → print report: the --nonstop halt, worktree kept, #{{n}} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
+});
+
+/**
+ * A step's instruction: its own `instruction`, or its template rendered with
+ * its params (#3280). An unknown template renders to '' — never a guess.
+ */
+function instructionOf(step, templates = MEMBER_TEMPLATES) {
+  if (!step) return '';
+  if (typeof step.instruction === 'string') return step.instruction;
+  if (!step.template) return '';
+  const text = templates && templates[step.template];
+  if (typeof text !== 'string') return '';
+  const params = step.params || {};
+  return text.replace(/\{\{(\w+)\}\}/g, (_, k) => (params[k] === undefined || params[k] === null ? '' : String(params[k])));
+}
 
 const titleOf = (members, n) => (members[n] && members[n].title) || `#${n}`;
 const acsOf = (members, n) => (members[n] && Array.isArray(members[n].acceptanceCriteria) ? members[n].acceptanceCriteria : []);
@@ -112,7 +149,9 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
   lines.push('### Declared scope');
   if (declaredScope.length > 0) {
     lines.push(...declaredScope.map((p) => `- \`${p}\``));
-    lines.push('Change only these paths; the parent\'s merge-back gate checks scope drift against them.');
+    // #3272: a path outside this list is reported, not refused — except one
+    // another member of the group also changed, which halts its merge-back.
+    lines.push('Change only these paths. A path outside them is reported in the merge comment; if another member of your group also changes it, the merge-back halts.');
   } else {
     lines.push('No declared scope (`Files to modify:`) was found in the issue body — keep the change to the files the acceptance criteria need.');
   }
@@ -158,16 +197,50 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
 }
 
 /**
+ * Where a member's brief is written (#3280): `.tmp-brief-<N>.md` at the
+ * project root, absolute, because the member reads it from its worktree.
+ * The `.tmp-` prefix puts it under the startup stale-scratch sweep.
+ */
+function briefPathOf(root, issue) {
+  return `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/.tmp-brief-${issue}.md`;
+}
+
+/**
  * The Agent request the parent issues for one member.
  *
- * @returns {{description: string, isolation: 'worktree', prompt: string}}
+ * With `briefPath` the prompt only points at the brief file (#3280): the
+ * member reads it itself, so the parent never copies or re-words the brief
+ * and the preamble envelope never carries it. Without one — no root to place
+ * a file under — the brief is inline, as before.
+ *
+ * @returns {{description: string, isolation: 'worktree', prompt: string, briefPath?: string}}
  */
-function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope } = {}) {
-  return {
-    description: `Work #${issue}: ${title || `#${issue}`}`,
-    isolation: 'worktree',
-    prompt: buildMemberBrief({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope }),
-  };
+function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope, briefPath } = {}) {
+  const base = { description: `Work #${issue}: ${title || `#${issue}`}`, isolation: 'worktree' };
+  if (briefPath) {
+    return {
+      ...base,
+      prompt: `You are implementing #${issue} in this worktree. Read your full brief first, from ${briefPath} by that absolute path, `
+        + 'and follow it exactly: it carries the acceptance criteria, the declared scope, the TDD cycle, the commit contract and what the parent owns.',
+      briefPath,
+    };
+  }
+  return { ...base, prompt: buildMemberBrief({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope }) };
+}
+
+/**
+ * Every group member's brief, for the preamble to write (#3280). `buildRun`
+ * stays pure; the caller owns the disk.
+ *
+ * @returns {Array<{issue: number, path: string, text: string}>}
+ */
+function memberBriefs({ plan = {}, members = {}, tddChecklist = null, root } = {}) {
+  const groups = Array.isArray(plan.groups) ? plan.groups : [];
+  return groups.flat().map((n) => ({
+    issue: n,
+    path: briefPathOf(root, n),
+    text: buildMemberBrief({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n) }),
+  }));
 }
 
 /**
@@ -277,22 +350,32 @@ function extractBriefSections(body) {
  *
  * @param {{plan?: {groups?: number[][], tail?: Array<{number: number}>},
  *   members?: Object<number, {title?: string, acceptanceCriteria?: string[]}>,
- *   nonstop?: boolean, tddChecklist?: object|null, noReview?: boolean, root?: string|null}} [input]
+ *   nonstop?: boolean, tddChecklist?: object|null, noReview?: boolean, root?: string|null,
+ *   inlineBriefs?: boolean}} [input]
  *   `noReview` (`--no-review`) replaces each Tier 3 reviewer spawn with a
  *   reported skip; Tiers 1–2 still run. `root` is the parent checkout, passed
- *   into each member's brief so skill paths resolve outside the worktree (#3162).
- * @returns {{steps: object[], total: number}}
+ *   into each member's brief so skill paths resolve outside the worktree (#3162);
+ *   with a root each spawn request points at the member's brief file instead
+ *   of carrying it (#3280), unless `inlineBriefs` says the files could not be
+ *   written. `reviewStopped` and `notStarted` are the run-time decisions the
+ *   `replan` CLI records; `stateFile` names that run-state file, so each
+ *   review gate and spawn says how to re-plan after its decision (#3269).
+ * @returns {{steps: object[], total: number, templates: Object<string, string>}}
  *   Each step has `kind` and `owner`; per-issue steps carry `issue` and,
  *   inside a group, `group` (1-based). Implementer and reviewer spawns carry
  *   the member's `slot` (1-based within its group).
  */
-function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = null, noReview = false, reviewStopped = [], notStarted = [], root = null } = {}) {
+function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = null, noReview = false, reviewStopped = [], notStarted = [], root = null, inlineBriefs = false, stateFile = null, ledgerFile = null } = {}) {
   const groups = Array.isArray(plan.groups) ? plan.groups : [];
   const tail = (Array.isArray(plan.tail) ? plan.tail : []).map((t) => t.number);
-  const total = groups.reduce((sum, g) => sum + g.length, 0) + tail.length;
+  // #3264: members a resumed run found already merged on the tracker.
+  const finishOnly = Array.isArray(plan.finishOnly) ? plan.finishOnly : [];
+  const total = groups.reduce((sum, g) => sum + g.length, 0) + tail.length + finishOnly.length;
   const stopped = new Set(Array.isArray(reviewStopped) ? reviewStopped : []);
   const failedCreation = new Map((Array.isArray(notStarted) ? notStarted : []).map((n) => [n.issue, n]));
   const steps = [];
+  // The per-member gate templates ride with any run that has a group (#3280).
+  const runTemplates = () => (groups.length > 0 ? { ...MEMBER_TEMPLATES } : {});
   // Members that reached in_review, in order; its length is the processed count.
   const swept = [];
   // Under --nonstop every halt after an earlier group's in_review moves names
@@ -304,8 +387,15 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
   // gets a `gate-stop` step and NOTHING after it — no Pre-Work gate, no event
   // 1, no spawn — so the ledger never holds an opener for work that never
   // began. Returns the members that proceed.
+  // Both decisions are made at run time, after this plan was built (#3269):
+  // with a run-state file each names the re-plan that drops the member's
+  // later steps, and the parent continues from the steps it prints.
+  const replan = (flag) => `\`${ORCH_CLI} replan --state ${stateFile} ${flag}\``;
   const reviewGate = (list, group) => list.filter((n) => {
-    step('review-state-gate', n, { group });
+    step('review-state-gate', n, {
+      group,
+      ...(stateFile ? { instruction: `If this gate stops #${n}, run ${replan(`--stopped ${n}`)} and continue from #${n}'s gate-stop step in the steps it prints.` } : {}),
+    });
     if (!stopped.has(n)) return true;
     steps.push({ kind: 'gate-stop', step: 'gate-stop', owner: 'parent', issue: n, ...(group ? { group } : {}), reason: 'review-state-gate' });
     return false;
@@ -319,22 +409,37 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     // the root as sequential /work and defers nothing.
     ...(id === '3' ? { suiteScope: extra.inGroup ? 'worktree-parallel' : 'root' } : {}),
     ...(extra.instruction ? { instruction: extra.instruction } : {}),
+    ...(extra.template ? { template: extra.template, params: extra.params } : {}),
   });
-  const finish = (n, group) => {
+  // A member's post-work steps, split at the sweep (#3262): `part` 'pre' is
+  // 4–4c (4d/4e commit, so they must precede the group's post-merge pass and
+  // its 4f — #3284), 'post' is Step 5 onward; no part emits both, for the tail.
+  const SWEEP_AT = POST_WORK.indexOf('4f');
+  const finish = (n, group, part) => {
     // Inside a group Step 4f is the GROUP's, run once on the tracker after
     // reconciliation (#3139); a tail member keeps its own, as sequential /work.
     // Under --nonstop neither exists: one run-level sweep follows the last
     // member (#3202).
-    for (const id of POST_WORK) {
+    const ids = part === 'pre' ? POST_WORK.slice(0, SWEEP_AT) : part === 'post' ? POST_WORK.slice(SWEEP_AT) : POST_WORK;
+    for (const id of ids) {
       if (id === '4f' && (group || nonstop)) continue;
       step(id, n, { group });
     }
+    if (part === 'pre') return;
     swept.push(n);
     steps.push({
       kind: 'report', step: 'report', owner: 'parent', issue: n, ...(group ? { group } : {}),
       text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${swept.length}/${total} processed)`,
     });
   };
+
+  // Finished before any group (#3264): no spawn, no gate, no merge-back —
+  // their commits are on the tracker; only their remaining steps run.
+  for (const n of finishOnly) {
+    steps.push(resumeFinish(n));
+    finish(n);
+    if (!nonstop) steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'member', issue: n });
+  }
 
   for (let i = 0; i < groups.length; i++) {
     const planned = groups[i];
@@ -365,13 +470,15 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
           merged: [], unmerged: [...planned.filter((n) => !failedCreation.has(n)), ...laterGroups], tailNotStarted: tail, worktreesKept: [],
         }),
       });
-      return { steps, total };
+      return { steps, total, templates: runTemplates() };
     }
     for (const n of groupMembers) for (const id of PRE_WORK.slice(1)) step(id, n, { group });
     groupMembers.forEach((n, j) => {
       steps.push({
         kind: 'spawn', step: 'spawn', owner: 'parent', issue: n, group, slot: j + 1,
-        request: buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n) }),
+        request: buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n), ...(root && !inlineBriefs ? { briefPath: briefPathOf(root, n) } : {}) }),
+        ...(stateFile ? { onFailure: `If #${n}'s worktree cannot be created, run ${replan(`--not-started ${n}[=<half-made worktree path>]`)} and continue from #${n}'s not-started step in the steps it prints.` } : {}),
+        ...(ledgerFile ? { onSpawned: spawnRecord(ledgerFile, n) } : {}),
       });
       step('3', n, { group, inGroup: true });
     });
@@ -382,31 +489,28 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     // Every gate step names its merge-back-gate.js subcommand (#3158); the
     // per-member files are .tmp-gate-<n>-* so the steps hand results on and
     // the startup sweep reclaims them.
+    // The per-member text is a run-level template (#3280): each step carries
+    // its template id and params, rendered by instructionOf().
     groupMembers.forEach((n, j) => {
-      step('gate-tier1', n, {
-        group,
-        instruction: `Run \`${GATE_CLI} tier1 --issue ${n} --branch <#${n}'s wt/* branch> --worktree <#${n}'s worktree path> --tracker-tip <tip recorded at group ${group} start> --out .tmp-gate-${n}-tier1.json\` — it writes the Tier 1 document itself (#3225); record the sha256 its envelope's out reports, and do not redirect stdout into that file. Exit 1 is a Tier 1 failure: carry it to the outcome step, never merge past it.`,
-      });
-      step('gate-tier2', n, {
-        group,
-        instruction: `Read every file in .tmp-gate-${n}-tier1.json tier2.files, file by file, against #${n}'s acceptance criteria, as tier2.instruction says. Record the read as pass or fail with the file and line of anything no AC asks for; the direct-work exemption never applies.`,
-      });
+      step('gate-tier1', n, { group, template: 'gate-tier1', params: { n, tip: `<tip recorded at group ${group} start>` } });
+      step('gate-tier2', n, { group, template: 'gate-tier2', params: { n } });
       steps.push(noReview
         ? { kind: 'review-skip', step: 'gate-tier3', owner: 'parent', issue: n, group, reason: 'no-review' }
         : {
           kind: 'review-spawn', step: 'gate-tier3', owner: 'parent', issue: n, group, slot: j + 1,
-          instruction: `Run \`${GATE_CLI} tier3-plan --issue ${n} --tracker-tip <tip recorded at group ${group} start> --branch <#${n}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-${n}-tree-before.txt --clear .tmp-gate-${n}-tier3.json\` (it removes any earlier cycle's review first) and record the sha256 its envelope reports, then spawn the reviewer Agent in slot ${j + 1} with tier3.request.prompt exactly — never the implementer's summary. The reviewer writes its own review to .tmp-gate-${n}-tier3.json (#3204); do not copy or re-word its reply. Write no other file in the project root while the review runs: any change other than this member's own review and snapshot, or a running-group sibling's own gate files, fails Tier 3 (#3220).`,
+          template: 'gate-tier3', params: { n, tip: `<tip recorded at group ${group} start>`, slot: j + 1 },
         });
       // The outcome (#3141): merge with a findings comment, or exactly one
       // fix cycle back to the same implementer, or a halt.
       steps.push({
         kind: 'gate-outcome', step: 'gate-outcome', owner: 'parent', issue: n, group,
-        instruction: `Run \`${GATE_CLI} outcome --issue ${n} --worktree <#${n}'s worktree path> --branch <#${n}'s wt/* branch> --tier1 .tmp-gate-${n}-tier1.json --tier1-sha <sha256 from #${n}'s tier1 --out envelope> --tier3 .tmp-gate-${n}-tier3.json --tree-before .tmp-gate-${n}-tree-before.txt --tree-before-sha <sha256 from #${n}'s tree-snapshot envelope>${groupMembers.filter((m) => m !== n).map((m) => ` --sibling ${m}`).join('')}${unsweptFlags()}\` (\`--no-review\` in place of --tier3, --tree-before and --tree-before-sha when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — it runs decideOutcome on the tiers. action merge → post comment.body on #${n} and continue; send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when the decision carries outsideContract (#3226), first report those paths and clear them — remove or restore what this run wrote; a path another session is editing is cleared by waiting for that session to settle it, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-${n}-tree-before.txt --clear .tmp-gate-${n}-tier3.json\` again, re-spawn the reviewer in slot ${j + 1} with the same tier3.request.prompt, then re-run this outcome with the new sha and \`--review-retries 1\` (a second one halts, attributed to the reviewer); halt → print report: the --nonstop halt, worktree kept, #${n} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
+        template: 'gate-outcome',
+        params: { n, slot: j + 1, siblings: groupMembers.filter((m) => m !== n).map((m) => ` --sibling ${m}`).join(''), unswept: unsweptFlags() },
       });
     });
     steps.push({
       kind: 'merge-back', step: 'merge-back', owner: 'parent', group, order: [...groupMembers],
-      instruction: `On the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> ${groupMembers.map((n) => `--member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>`).join(' ')}${unsweptFlags()}\` — members merge --no-ff in that order (${groupMembers.map((n) => `#${n}`).join(', ')}), each onto the current tip. Exit 1 → print report: a residual conflict halts the run, nothing later merges, every worktree is kept.`,
+      instruction: `On the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> ${groupMembers.map((n) => `--member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>`).join(' ')}${unsweptFlags()}\` — members merge --no-ff in that order (${groupMembers.map((n) => `#${n}`).join(', ')}), each onto the current tip. Exit 1 → print report: a residual conflict, or members sharing a path outside their declared scope (check undeclared-overlap, before any merge — #3272), halts the run, nothing later merges, every worktree is kept.`,
     });
     steps.push({
       kind: 'teardown', step: 'teardown', owner: 'parent', group, members: [...groupMembers],
@@ -421,11 +525,6 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
       kind: 'leftover-check', step: 'leftover-check', owner: 'parent', group,
       instruction: 'Run leftoverWorktrees({root}) (test-runner.js). Report each .tmp-wt-* path as possibly collected by the project\'s suites and continue; under --nonstop repeat the report in the final summary.',
     });
-    steps.push({
-      kind: 'deferred-suites', step: 'deferred-suites', owner: 'parent', group, serial: true,
-      members: [...groupMembers], scope: 'group-union', deferredReasons: ['exclusive', 'cannot-narrow'],
-      instruction: 'Run deferredInvocations({suites, changedFiles, cannotNarrow}) (test-runner.js) with changedFiles = the union of every member\'s changed files plus the regenerated paths from merge-back, and cannotNarrow = every suiteId a member\'s Tier 1 deferredSuites lists with reason cannot-narrow (#3159 — this step is the only place those run). Run each returned run once, serially, on the tracker branch: the exclusive suites, then the cannot-narrow ones. Name manualOnly, invalid, unmatchedExclusive, unmatchedCannotNarrow and every warning.',
-    });
     // Reconciliation (#3139): after merge-back the parent regenerates the
     // declared derived artifacts over the group's changed paths, invokes
     // every generator the runner had to defer to the session, and only then
@@ -438,17 +537,32 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     });
     steps.push({
       kind: 'deferred-skills', step: 'deferred-skills', owner: 'parent', group,
-      instruction: 'For every deferred-to-session entry the runner returned (deferredSkillInvocations in regeneration-runner.js), invoke that generator through the Skill tool in the parent before the group continues — a script cannot run a Skill-invoked generator.',
+      instruction: 'For every deferred-to-session entry the runner returned (deferredSkillInvocations in regeneration-runner.js), invoke that generator through the Skill tool in the parent before the group continues — a script cannot run a Skill-invoked generator. Then run regenerateAfterSkills({cwd, changedPaths}) over the paths they rewrote (#3272): it rebuilds what reads them, e.g. the extension registry, without deferring the skill again. Carry both sets of paths forward.',
     });
+    steps.push(regeneratedCommit({ group }));
+    // After reconciliation (#3272): the exclusive suites test the reconciled
+    // tree, not one side's copy of a derived artifact.
+    steps.push({
+      kind: 'deferred-suites', step: 'deferred-suites', owner: 'parent', group, serial: true,
+      members: [...groupMembers], scope: 'group-union', deferredReasons: ['exclusive', 'cannot-narrow'],
+      instruction: 'Run deferredInvocations({suites, changedFiles, cannotNarrow}) (test-runner.js) with changedFiles = the union of every member\'s changed files plus the regenerated paths from the reconcile and deferred-skills steps, and cannotNarrow = every suiteId a member\'s Tier 1 deferredSuites lists with reason cannot-narrow (#3159 — this step is the only place those run). Run each returned run once, serially, on the tracker branch: the exclusive suites, then the cannot-narrow ones. Name manualOnly, invalid, unmatchedExclusive, unmatchedCannotNarrow and every warning.',
+    });
+    // Every member's 4–4c first (#3262, #3284): their 4d/4e commits land on
+    // the tracker before the post-merge pass, so the pass reviews them and the
+    // group 4f (default mode) sweeps them. Step 5 onward follows both.
+    for (const n of groupMembers) finish(n, group, 'pre');
     // Post-merge pass (#3141): Tiers 1–2 once more, in the parent, over the
-    // members' diffs ∪ the runner's regenerated paths — a regenerated file no
-    // member's diff named is reviewed here — before the group is reported.
+    // members' diffs ∪ the runner's regenerated paths ∪ the members' 4d/4e
+    // commits — a regenerated file no member's diff named is reviewed here —
+    // before the group is reported.
     steps.push({
       kind: 'post-merge-pass', step: 'post-merge-pass', owner: 'parent', group, members: [...groupMembers],
-      instruction: `Run \`${GATE_CLI} group-tier1 --base <tip recorded at group ${group} start> ${groupMembers.map((n) => `--member ${n}`).join(' ')} --group ${group}${unsweptFlags()} [--epic <epic>] [--regenerated <path> for each path the reconcile step's runner rewrote]\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms, worktrees kept.`,
+      instruction: `Run \`${GATE_CLI} group-tier1 --base <tip recorded at group ${group} start> ${groupMembers.map((n) => `--member ${n}`).join(' ')} --group ${group}${unsweptFlags()} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those.`,
     });
-    if (!nonstop) steps.push({ kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers] });
-    for (const n of groupMembers) finish(n, group);
+    if (!nonstop) {
+      steps.push({ kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers] });
+    }
+    for (const n of groupMembers) finish(n, group, 'post');
     if (!nonstop) steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'group', group });
   }
 
@@ -468,10 +582,243 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
   if (nonstop && total > 0) {
     steps.push({ kind: 'summary', step: '6', owner: 'parent', processed: swept.length, repeats: groups.length > 0 ? ['leftover-worktrees'] : [] });
   }
-  return { steps, total };
+  return { steps, total, templates: runTemplates() };
+}
+
+/**
+ * The --nonstop rolling schedule (#3274): which steps run next, given what
+ * has happened so far. Fixed groups wait for their slowest member and the
+ * whole gate tail before the next group starts; here a member starts as soon
+ * as a slot frees and every member it depends on has merged back.
+ *
+ * The parent calls this after each recorded event and executes what it
+ * returns. Run state (the parent records `merged` and `passed`; the rest is
+ * carried over from the previous call's `state`):
+ *   layers, dependsOn  — the plan's layer queues and in-plan dependencies;
+ *   maxAgents          — slots; a member holds its slot from spawn until its
+ *                        merge-back (its reviewer and fix cycle reuse it);
+ *   started, slotOf    — members whose start sequence was emitted, and slots;
+ *   merged             — members whose merge-back the parent recorded;
+ *   batched, batches   — merged members already handed a post-merge batch;
+ *   passed             — members whose batch the parent finished (in_review);
+ *   stopped, notStarted — started members the Review-State Gate stopped, or
+ *                        whose worktree could not be created ({issue, path,
+ *                        error}); either halts the run (#3269);
+ *   stateFile          — where the CLI keeps this state; named in the stop
+ *                        and failed-creation instructions;
+ *   ended              — the end-of-run steps (or a halt) were emitted.
+ * A batch is every merged member not yet batched: teardown, reconcile and
+ * the post-merge pass over that batch's own range, then each member's Steps
+ * 4–5. The exclusive and cannot-narrow suites wait for the run's end, after
+ * the last teardown, because a running member's worktree always exists
+ * mid-run (#3132). Pure: the input is never mutated.
+ *
+ * @returns {{start: number[], batch: {id: number, members: number[]}|null,
+ *   steps: object[], done: boolean, state: object}}
+ */
+function nextSteps(runState = {}) {
+  const {
+    layers = [], dependsOn = {}, maxAgents = 3, members = {}, tddChecklist = null, root = null, noReview = false,
+    merged = [], passed: recordedPassed = [],
+  } = runState;
+  let passed = recordedPassed;
+  const started = [...(runState.started || [])];
+  const batched = [...(runState.batched || [])];
+  const slotOf = { ...(runState.slotOf || {}) };
+  let batches = runState.batches || 0;
+  const order = layers.flat();
+  const total = order.length;
+  const mergedSet = new Set(merged);
+  const steps = [];
+  const unswept = passed.length ? ` ${passed.map((n) => `--unswept ${n}`).join(' ')}` : '';
+
+  if (runState.ended) return { start: [], batch: null, steps, done: true, state: { ...runState } };
+
+  // A started member the Review-State Gate stopped, or whose worktree could
+  // not be created (#3269), halts the run under the --nonstop contract: none
+  // of its later steps runs, nothing new starts, every worktree is kept.
+  const stoppedSet = new Set(runState.stopped || []);
+  const failedCreation = new Map((runState.notStarted || []).map((f) => [f.issue, f]));
+  const halting = started.find((n) => !mergedSet.has(n) && (stoppedSet.has(n) || failedCreation.has(n)));
+  if (halting !== undefined) {
+    const failed = failedCreation.get(halting);
+    const neverStarted = order.filter((n) => !started.includes(n));
+    const cause = failed ? `worktree creation failed for #${halting}` : `#${halting} stopped by the review-state-gate`;
+    steps.push({
+      kind: 'halt', step: 'halt', owner: 'parent', issue: halting, reason: failed ? 'worktree-creation-failed' : 'review-state-gate',
+      neverStarted, tailNotStarted: [...(runState.tail || [])], unswept: [...passed],
+      report: haltReport({
+        reason: `${cause}; never started: ${list(neverStarted)}`, processed: passed.length, total, unswept: passed,
+        failed: { issue: halting, worktreePath: (failed && failed.path) || null, branch: null, files: [] },
+        merged: [...merged], unmerged: started.filter((n) => !mergedSet.has(n) && n !== halting),
+        tailNotStarted: runState.tail || [], worktreesKept: [],
+      }),
+    });
+    return { start: [], batch: null, steps, done: true, state: { ...runState, ended: true, halted: true } };
+  }
+
+  // #3264: a resumed run's already-merged members are finished first, once —
+  // never started, never spawned — and count as passed from then on.
+  const finishing = !runState.resumeFinished && Array.isArray(runState.finishOnly) ? runState.finishOnly : [];
+  for (const n of finishing) {
+    steps.push(resumeFinish(n));
+    for (const sid of POST_WORK) if (sid !== '4f') steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n });
+    steps.push({ kind: 'report', step: 'report', owner: 'parent', issue: n, text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (finished on resume)` });
+  }
+  if (finishing.length) passed = [...passed, ...finishing];
+
+  // A batch: every merged member not yet handed one, in merge order.
+  let batch = null;
+  const fresh = merged.filter((n) => !batched.includes(n));
+  if (fresh.length > 0) {
+    batches += 1;
+    batch = { id: batches, members: fresh };
+    batched.push(...fresh);
+    for (const n of fresh) delete slotOf[n];
+    const id = batches;
+    // Members an earlier batch already passed: inside this range, never this batch's to attribute.
+    const priorFlags = (runState.batched || []).map((n) => ` --prior ${n}`).join('');
+    steps.push({
+      kind: 'teardown', step: 'teardown', owner: 'parent', batch: id, members: [...fresh],
+      instruction: `Tear down batch ${id}'s worktrees with \`${TEARDOWN_CLI} --root <project-root> ${fresh.map((n) => `--worktree <#${n}'s worktree path>`).join(' ')}\` — never \`git worktree remove\` or rm -rf, which delete through the worktree's links. Each result names its branch: once a result is removed, delete that merged branch with \`git branch -d <branch>\` (it refuses an unmerged branch — leave that one and report it). A kept, halted or refused result is reported by path and its worktree left as it is.`,
+    });
+    steps.push({
+      kind: 'leftover-check', step: 'leftover-check', owner: 'parent', batch: id,
+      instruction: 'Run leftoverWorktrees({root}) (test-runner.js). Report each .tmp-wt-* path as possibly collected by the project\'s suites and continue — under the rolling schedule the running members\' worktrees are expected here; repeat the report in the final summary.',
+    });
+    steps.push({
+      kind: 'reconcile', step: 'reconcile', owner: 'parent', batch: id, members: [...fresh],
+      instruction: `Run runRegeneration({cwd, changedPaths}) (regeneration-runner.js) with changedPaths = the union of batch ${id}'s members' changed files; a failed generator or verification halts under the --nonstop contract${passed.length ? `, and the halt report lists Not swept: ${list(passed)} (the end-of-run Step 4f never ran for them) — run the declared verification set over their changes before /done` : ''}. Carry its changedPaths into the post-merge review range and the end-of-run deferred suites.`,
+    });
+    steps.push({
+      kind: 'deferred-skills', step: 'deferred-skills', owner: 'parent', batch: id,
+      instruction: 'For every deferred-to-session entry the runner returned (deferredSkillInvocations in regeneration-runner.js), invoke that generator through the Skill tool in the parent before the batch continues — a script cannot run a Skill-invoked generator. Then run regenerateAfterSkills({cwd, changedPaths}) over the paths they rewrote (#3272): it rebuilds what reads them, e.g. the extension registry, without deferring the skill again. Carry both sets of paths forward.',
+    });
+    steps.push(regeneratedCommit({ batch: id }));
+    // #3284: each member's 4–4c before the pass, so its 4d/4e commits are in
+    // the range the pass reviews; Step 5 onward and the report follow it.
+    const PRE = POST_WORK.slice(0, POST_WORK.indexOf('4f'));
+    const POST = POST_WORK.slice(POST_WORK.indexOf('4f') + 1);
+    for (const n of fresh) for (const sid of PRE) steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n, batch: id });
+    steps.push({
+      kind: 'post-merge-pass', step: 'post-merge-pass', owner: 'parent', batch: id, members: [...fresh],
+      instruction: `Run \`${GATE_CLI} batch-range ${fresh.map((n) => `--member ${n}`).join(' ')} --head <batch ${id}'s last commit: its last merge-back, or the regenerated-commit commit after it>\` with \`--base-of <N>=<tip>\` for every member started so far, in the order the tips were recorded; its base is the earliest worktree-creation tip among ${list(fresh)}. Then run \`${GATE_CLI} group-tier1 --base <earliest worktree-creation tip among ${list(fresh)}> --head <batch ${id}'s last commit> ${fresh.map((n) => `--member ${n}`).join(' ')} --group ${id}${priorFlags}${unswept} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 over this batch's own range: a later commit is outside it, and an earlier batch's members (--prior) are skipped, never failed. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those. Record batch ${id}'s members as passed once their reports below are printed.`,
+    });
+    fresh.forEach((n, i) => {
+      for (const sid of POST) steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n, batch: id });
+      steps.push({
+        kind: 'report', step: 'report', owner: 'parent', issue: n, batch: id,
+        text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${passed.length + i + 1}/${total} processed)`,
+      });
+    });
+  }
+
+  // Start members while a slot is free and their dependencies have merged.
+  const running = started.filter((n) => !mergedSet.has(n));
+  const start = [];
+  const used = new Set(running.map((n) => slotOf[n]));
+  for (const n of order) {
+    if (running.length + start.length >= maxAgents) break;
+    if (started.includes(n)) continue;
+    if (!(dependsOn[n] || []).every((d) => mergedSet.has(d))) continue;
+    let slot = 1;
+    while (used.has(slot)) slot += 1;
+    used.add(slot);
+    slotOf[n] = slot;
+    start.push(n);
+  }
+  for (const n of start) {
+    started.push(n);
+    const slot = slotOf[n];
+    const tip = `<tip recorded when #${n}'s worktree was created>`;
+    const report = (flag) => `\`${ORCH_CLI} next-steps --state ${runState.stateFile} ${flag}\``;
+    for (const sid of PRE_WORK) {
+      steps.push({
+        kind: 'step', step: sid, owner: 'parent', issue: n,
+        ...(sid === 'review-state-gate' && runState.stateFile ? { instruction: `If this gate stops #${n}, run ${report(`--stopped ${n}`)} — it halts the run — and execute the steps it prints.` } : {}),
+      });
+    }
+    steps.push({
+      kind: 'spawn', step: 'spawn', owner: 'parent', issue: n, slot,
+      request: buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n), ...(root && !runState.inlineBriefs ? { briefPath: briefPathOf(root, n) } : {}) }),
+      ...(runState.ledgerFile ? { onSpawned: spawnRecord(runState.ledgerFile, n) } : {}),
+      ...(runState.stateFile ? { onFailure: `If #${n}'s worktree cannot be created, run ${report(`--not-started ${n}[=<half-made worktree path>]`)} — it halts the run — and execute the steps it prints.` } : {}),
+    });
+    steps.push({ kind: 'step', step: '3', owner: 'member', issue: n, suiteScope: 'worktree-parallel' });
+    steps.push({ kind: 'step', step: 'gate-tier1', owner: 'parent', issue: n, template: 'gate-tier1', params: { n, tip } });
+    steps.push({ kind: 'step', step: 'gate-tier2', owner: 'parent', issue: n, template: 'gate-tier2', params: { n } });
+    steps.push(noReview
+      ? { kind: 'review-skip', step: 'gate-tier3', owner: 'parent', issue: n, reason: 'no-review' }
+      : { kind: 'review-spawn', step: 'gate-tier3', owner: 'parent', issue: n, slot, template: 'gate-tier3', params: { n, tip, slot } });
+    steps.push({
+      kind: 'gate-outcome', step: 'gate-outcome', owner: 'parent', issue: n, template: 'gate-outcome',
+      params: { n, slot, siblings: ' --sibling <each other member running when the snapshot was taken>', unswept },
+    });
+    steps.push({
+      kind: 'merge-back', step: 'merge-back', owner: 'parent', issue: n, order: [n],
+      instruction: `When #${n}'s outcome is merge: on the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> --member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>${unswept}\` onto the current tip. Exit 1 → print report: a residual conflict halts the run, nothing later merges, every worktree is kept. Otherwise record #${n} as merged and call nextSteps again — its slot is free.`,
+    });
+  }
+
+  // The run ends once every member has passed its batch: the sequential tail,
+  // worked in the root as standard /work, then the end-of-run steps.
+  let ended = false;
+  const tail = Array.isArray(runState.tail) ? runState.tail : [];
+  const done = total + tail.length > 0 && order.every((n) => passed.includes(n));
+  if (done && !batch && start.length === 0) {
+    ended = true;
+    tail.forEach((n, i) => {
+      for (const sid of PRE_WORK) steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n });
+      steps.push({ kind: 'step', step: '3', owner: 'parent', issue: n, suiteScope: 'root' });
+      for (const sid of POST_WORK) if (sid !== '4f') steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n });
+      steps.push({
+        kind: 'report', step: 'report', owner: 'parent', issue: n,
+        text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${passed.length + i + 1}/${total + tail.length} processed)`,
+      });
+    });
+    steps.push({
+      kind: 'deferred-suites', step: 'deferred-suites', owner: 'parent', serial: true,
+      members: [...order], scope: 'run-union', deferredReasons: ['exclusive', 'cannot-narrow'],
+      instruction: 'Now that no member worktree exists, run deferredInvocations({suites, changedFiles, cannotNarrow}) (test-runner.js) with changedFiles = the union of every member\'s changed files plus every reconcile step\'s regenerated paths, and cannotNarrow = every suiteId a member\'s Tier 1 deferredSuites lists with reason cannot-narrow (#3159). Run each returned run once, serially, on the tracker branch: the exclusive suites, then the cannot-narrow ones. Name manualOnly, invalid, unmatchedExclusive, unmatchedCannotNarrow and every warning.',
+    });
+    steps.push({ kind: 'step', step: '4f', owner: 'parent', scope: 'run', cwd: 'tracker', members: [...passed, ...tail] });
+    steps.push({ kind: 'summary', step: '6', owner: 'parent', processed: passed.length + tail.length, repeats: ['leftover-worktrees'] });
+  }
+
+  return {
+    start, batch, steps, done: ended,
+    state: { ...runState, started, slotOf, batched, batches, passed, ...(finishing.length ? { resumeFinished: true } : {}), ...(ended ? { ended: true } : {}) },
+  };
 }
 
 const list = (nums) => (nums.length ? nums.map((n) => `#${n}`).join(', ') : 'none');
+
+/** A resumed run's already-merged member (#3264): finished, never re-spawned. */
+function resumeFinish(n) {
+  return {
+    kind: 'resume-finish', step: 'resume-finish', owner: 'parent', issue: n,
+    instruction: `#${n}'s commits are already merged on the tracker (a resumed run), so it is not spawned again: run its remaining steps below over the commits already there.`,
+  };
+}
+
+/**
+ * The commit that lands a group's or batch's generated outputs (#3272).
+ * Uncommitted they failed group-tier1's uncommitted check; committed under a
+ * member they failed its scope; a branch tracker has no epic. So they are
+ * committed once, naming the run's root issue — the epic, or the branch
+ * tracker's own issue — and passed to group-tier1 as --epic <root> with each
+ * path as --regenerated, which accepts exactly that commit.
+ *
+ * @param {{group?: number, batch?: number}} where
+ * @returns {object} A parent step
+ */
+function regeneratedCommit(where) {
+  const label = where.group !== undefined ? `group ${where.group}` : `batch ${where.batch}`;
+  return {
+    kind: 'regenerated-commit', step: 'regenerated-commit', owner: 'parent', ...where,
+    instruction: `Commit the paths the reconcile, deferred-skills and regenerateAfterSkills steps rewrote, and only those, as \`Refs #<root> — regenerate derived artifacts (${label})\`; <root> is the epic, or the branch tracker's own issue. Nothing rewritten → no commit.`,
+  };
+}
 
 /**
  * The `--nonstop` halt report for a concurrent run (#3140): what failed,
@@ -492,8 +839,14 @@ function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotS
     const where = failed.worktreePath ? ` — worktree kept: ${failed.worktreePath}${failed.branch ? ` (${failed.branch})` : ''}` : '';
     lines.push(`  Failed member: #${failed.issue}${where}`);
     if (failed.files && failed.files.length) {
-      lines.push('  Conflicting files:');
+      lines.push(failed.refused ? '  Local changes in the way:' : '  Conflicting files:');
       for (const f of failed.files) lines.push(`    - ${f}`);
+    }
+    // git's own account, verbatim (#3263): the only record of what it saw.
+    const stderr = String(failed.stderr || '').trim();
+    if (stderr) {
+      lines.push('  git said:');
+      for (const l of stderr.split('\n')) lines.push(`    ${l.trimEnd()}`);
     }
   }
   lines.push(`  Merged before the halt: ${list(merged)}`);
@@ -538,14 +891,25 @@ function mergeBack({ git, tracker, epic, members = [], order = [], tail = [], pr
       merged.push({ issue: m.issue, branch: m.branch, ontoTip, tip: git(['rev-parse', 'HEAD']).stdout.trim() });
       continue;
     }
-    const files = git(['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-    git(['merge', '--abort']);
-    const halted = { issue: m.issue, branch: m.branch, worktreePath: m.worktreePath, ontoTip, files, stderr: r.stderr || '' };
+    const conflicted = git(['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+    // #3263: no conflicted path means git refused to start the merge — local
+    // changes at the root (often another session's) it would overwrite. It
+    // names them in stderr as tab-indented lines; nothing to abort.
+    const refused = conflicted.length === 0;
+    const files = refused
+      ? (r.stderr || '').split('\n').filter((l) => /^\t/.test(l)).map((l) => l.trim()).filter(Boolean)
+      : conflicted;
+    if (!refused) git(['merge', '--abort']);
+    const halted = { issue: m.issue, branch: m.branch, worktreePath: m.worktreePath, ontoTip, files, stderr: r.stderr || '', ...(refused ? { refused: true } : {}) };
     const unmerged = sequence.slice(i + 1);
     return {
       ok: false, tracker, merged, halted, unmerged, tailNotStarted: [...tail], worktreesKept: [...members],
       report: haltReport({
-        epic, reason: 'residual merge conflict after reconciliation', failed: halted,
+        epic,
+        reason: refused
+          ? 'merge refused — local changes at the root would be overwritten (uncommitted or staged, possibly another session\'s); nothing was merged for this member'
+          : 'residual merge conflict after reconciliation',
+        failed: halted,
         merged: merged.map((x) => x.issue), unmerged, tailNotStarted: tail, processed, total, worktreesKept: members, unswept,
       }),
     };
@@ -644,11 +1008,24 @@ function fixCycleSlot(run, issue) {
  *
  * @returns {Array<{subject: string, description: string}>}
  */
-function memberTasks({ plan = {}, members = {} } = {}) {
+function memberTasks({ plan = {}, members = {}, rolling = false } = {}) {
   const groups = Array.isArray(plan.groups) ? plan.groups : [];
   const tail = Array.isArray(plan.tail) ? plan.tail : [];
   const tasks = [];
-  groups.forEach((g, i) => {
+  // Under the rolling schedule (#3274) there are no groups to name; a member
+  // is placed by its dependency layer.
+  const layers = rolling && Array.isArray(plan.layers) ? plan.layers : null;
+  if (layers) {
+    layers.forEach((l, i) => {
+      for (const n of l) {
+        tasks.push({
+          subject: `Sub-issue #${n}: ${titleOf(members, n)} (layer ${i + 1})`,
+          description: `Rolling member of layer ${i + 1} — starts in its own worktree when a slot frees and every member it depends on has merged back; the parent owns its gates, merge-back and status moves.`,
+        });
+      }
+    });
+  }
+  (layers ? [] : groups).forEach((g, i) => {
     for (const n of g) {
       tasks.push({
         subject: `Sub-issue #${n}: ${titleOf(members, n)} (group ${i + 1})`,
@@ -671,10 +1048,15 @@ module.exports = {
   STEP_INSTRUCTION_EXEMPT,
   GATE_CLI,
   TEARDOWN_CLI,
+  MEMBER_TEMPLATES,
+  instructionOf,
   buildMemberBrief,
   buildSpawnRequest,
+  briefPathOf,
+  memberBriefs,
   extractBriefSections,
   buildRun,
+  nextSteps,
   mergeBack,
   createWorktrees,
   haltReport,
@@ -684,4 +1066,135 @@ module.exports = {
   slotOf,
   fixCycleSlot,
   memberTasks,
+  runNextStepsCli,
+  runReplanCli,
+  recordSpawn,
+  runRecordSpawnCli,
 };
+
+/**
+ * The run ledger (#3264): which worktree and branch each spawned member got.
+ * Branches are harness-named (`wt/<agent-name>`, no issue number), so after
+ * a halt or compaction nothing else maps a kept worktree back to its member.
+ * Pure upsert by issue.
+ *
+ * @param {{members?: Array<{issue: number, branch: string, worktreePath: string}>}} ledger
+ * @param {{issue: number, branch: string, worktreePath: string}} entry
+ * @returns {{members: object[]}}
+ */
+function recordSpawn(ledger, entry) {
+  const members = ((ledger && ledger.members) || []).filter((m) => m.issue !== entry.issue);
+  const at = ((ledger && ledger.members) || []).findIndex((m) => m.issue === entry.issue);
+  const next = { issue: entry.issue, branch: entry.branch, worktreePath: entry.worktreePath };
+  if (at === -1) members.push(next); else members.splice(at, 0, next);
+  return { ...(ledger || {}), members };
+}
+
+/** The command a spawn step names for the parent to run once the spawn returns. */
+function spawnRecord(ledgerFile, n) {
+  return `Once #${n}'s spawn returns, run \`${ORCH_CLI} record-spawn --ledger ${ledgerFile} --issue ${n} --branch <its wt/* branch> --worktree <its worktree path>\`.`;
+}
+
+/** `record-spawn --ledger F --issue N --branch B --worktree P` (#3264). */
+function runRecordSpawnCli(argv) {
+  const fs = require('fs');
+  const opts = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (['--ledger', '--issue', '--branch', '--worktree'].includes(a)) opts[a] = argv[++i];
+    else if (a !== 'record-spawn') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
+  }
+  const missing = ['--ledger', '--issue', '--branch', '--worktree'].filter((k) => !opts[k]);
+  if (missing.length) return { code: 1, envelope: { ok: false, error: `missing ${missing.join(', ')}` } };
+  let ledger = { members: [] };
+  if (fs.existsSync(opts['--ledger'])) {
+    try { ledger = JSON.parse(fs.readFileSync(opts['--ledger'], 'utf8')); } catch (e) {
+      return { code: 1, envelope: { ok: false, error: `cannot read run ledger ${opts['--ledger']}: ${e.message}` } };
+    }
+  }
+  const next = recordSpawn(ledger, { issue: Number(opts['--issue']), branch: opts['--branch'], worktreePath: opts['--worktree'] });
+  fs.writeFileSync(opts['--ledger'], JSON.stringify(next, null, 2));
+  return { code: 0, envelope: { ok: true, ledger: opts['--ledger'], members: next.members } };
+}
+
+// `--not-started N[=<half-made worktree path>]` (#3269).
+function parseNotStarted(v) {
+  const [num, ...rest] = String(v || '').split('=');
+  return { issue: Number(num), path: rest.length ? rest.join('=') : null, error: null };
+}
+const addNums = (list, more) => [...(list || []), ...more.filter((n) => Number.isInteger(n) && !(list || []).includes(n))];
+const addNotStarted = (list, more) => [...(list || []), ...more.filter((f) => Number.isInteger(f.issue) && !(list || []).some((x) => x.issue === f.issue))];
+
+/**
+ * `next-steps` CLI (#3274) — the parent's handle on nextSteps between events.
+ *   node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state F
+ *     [--merged N ...] [--passed N ...] [--stopped N ...] [--not-started N[=<path>] ...]
+ * Reads the run state the preamble wrote, adds the merges, passes, gate stops
+ * and failed worktree creations (#3269) the parent records, prints {ok, start, batch, steps, done, templates} and
+ * writes the new state back. With replan below, the only disk access in this
+ * module; nextSteps and buildRun themselves stay pure.
+ */
+function runNextStepsCli(argv) {
+  const fs = require('fs');
+  const opts = { merged: [], passed: [], stopped: [], notStarted: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--state') opts.state = argv[++i];
+    else if (a === '--merged') opts.merged.push(Number(argv[++i]));
+    else if (a === '--passed') opts.passed.push(Number(argv[++i]));
+    else if (a === '--stopped') opts.stopped.push(Number(argv[++i]));
+    else if (a === '--not-started') opts.notStarted.push(parseNotStarted(argv[++i]));
+    else if (a !== 'next-steps') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
+  }
+  if (!opts.state) return { code: 1, envelope: { ok: false, error: '--state <file> is required' } };
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(opts.state, 'utf8'));
+  } catch (e) {
+    return { code: 1, envelope: { ok: false, error: `cannot read run state ${opts.state}: ${e.message}` } };
+  }
+  const recorded = {
+    merged: addNums(state.merged, opts.merged), passed: addNums(state.passed, opts.passed),
+    stopped: addNums(state.stopped, opts.stopped), notStarted: addNotStarted(state.notStarted, opts.notStarted),
+  };
+  const r = nextSteps({ ...state, ...recorded });
+  fs.writeFileSync(opts.state, JSON.stringify({ ...r.state, ...recorded }, null, 2));
+  return { code: 0, envelope: { ok: true, start: r.start, batch: r.batch, steps: r.steps, done: r.done, templates: { ...MEMBER_TEMPLATES } } };
+}
+
+/**
+ * `replan --state F [--stopped N]... [--not-started N[=<path>]]...` (#3269):
+ * the default-mode counterpart of next-steps. The preamble writes the run's
+ * inputs to F; each run-time decision is recorded there and buildRun runs
+ * again, so the plan the parent follows drops every later step of a member
+ * the Review-State Gate stopped or whose worktree could not be created.
+ */
+function runReplanCli(argv) {
+  const fs = require('fs');
+  const opts = { stopped: [], notStarted: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--state') opts.state = argv[++i];
+    else if (a === '--stopped') opts.stopped.push(Number(argv[++i]));
+    else if (a === '--not-started') opts.notStarted.push(parseNotStarted(argv[++i]));
+    else if (a !== 'replan') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
+  }
+  if (!opts.state) return { code: 1, envelope: { ok: false, error: '--state <file> is required' } };
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(opts.state, 'utf8'));
+  } catch (e) {
+    return { code: 1, envelope: { ok: false, error: `cannot read run state ${opts.state}: ${e.message}` } };
+  }
+  const next = { ...state, reviewStopped: addNums(state.reviewStopped, opts.stopped), notStarted: addNotStarted(state.notStarted, opts.notStarted) };
+  fs.writeFileSync(opts.state, JSON.stringify(next, null, 2));
+  const { steps, total, templates } = buildRun({ ...next, stateFile: opts.state });
+  return { code: 0, envelope: { ok: true, steps, total, templates } };
+}
+
+if (require.main === module) {
+  const argv = process.argv.slice(2);
+  const result = argv[0] === 'replan' ? runReplanCli(argv) : argv[0] === 'record-spawn' ? runRecordSpawnCli(argv) : runNextStepsCli(argv);
+  process.stdout.write(JSON.stringify(result.envelope, null, 2) + '\n');
+  process.exitCode = result.code;
+}

@@ -39,6 +39,16 @@
           "items": { "type": "string" }
         }
       },
+      "removalPatterns": {
+        "type": "object",
+        "description": "How ci-remove recognizes this feature's own job steps (#3045). Each entry is a case-insensitive regex tested against that one step field, never the serialized step — matching the whole step on a bare detection word deleted unrelated steps. A step feature without this field has no removable location, and ci-remove reports a failure rather than a removal.",
+        "properties": {
+          "uses": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "run": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      },
       "template": {
         "type": "object",
         "description": "YAML templates for feature configuration",

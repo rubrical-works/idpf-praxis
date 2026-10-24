@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Analyze interdependence between multiple issues.
  * Detects overlap, ordering dependencies, conflicts, and shared criteria
  * using config-driven evaluation dimensions.
@@ -61,6 +61,17 @@ function loadConfig() {
 }
 
 /**
+ * A dotted version, with or without a leading `v` and a `-`/`+` suffix
+ * (`0.110.0`, `v1.2.3-beta.1`) — never a file reference (#3256). Checked
+ * without a nested-quantifier regex, which the security lint rejects.
+ */
+function isVersionLike(token) {
+  const core = token.replace(/^v/, '').split(/[-+]/)[0];
+  const parts = core.split('.');
+  return parts.length >= 2 && parts.every((p) => /^\d+$/.test(p));
+}
+
+/**
  * Extract meaningful tokens from issue text for comparison.
  * Extracts file paths, component names, and significant words.
  */
@@ -68,10 +79,14 @@ function extractTokens(text) {
   if (!text) return { files: [], words: [], acs: [] };
   const lower = text.toLowerCase();
 
-  // Extract file-like references (word.ext or path/word)
-  const filePattern = /[\w./-]+\.\w{1,4}/g;
+  // Extract file-like references (word.ext or path/word). The extension must
+  // start with a letter, and a version-shaped token is dropped outright
+  // (#3256): `0.110.0` and `v0.110.0` matched `\.\w{1,4}`, so every pair of
+  // bugs filed on one release "shared a file" and add/remove keywords anywhere
+  // escalated them to severity-error conflicts.
+  const filePattern = /[\w./-]+\.[a-z]\w{0,3}/g;
   const files = [...new Set((lower.match(filePattern) || []).filter(f =>
-    !f.startsWith('e.g') && !f.startsWith('i.e') && f.length > 3
+    !f.startsWith('e.g') && !f.startsWith('i.e') && f.length > 3 && !isVersionLike(f)
   ))];
 
   // Extract significant words (5+ chars, not common English)

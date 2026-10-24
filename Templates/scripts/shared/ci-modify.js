@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Modify a workflow YAML file safely, preserving comments and structure. Supports adding top-level keys, inserting steps into jobs, and merging configuration blocks. Used by ci-add.js and ci-remove.js for non-destructive YAML edits.
  * @checksum sha256:placeholder
  *
@@ -86,8 +86,68 @@ function addTopLevelKey(doc, key, yamlContent) {
     value = contents;
   }
 
-  // Set the key on the document
-  doc.set(key, value ? value.toJSON() : yaml.parse(yamlContent));
+  const incoming = value ? value.toJSON() : yaml.parse(yamlContent);
+  const existing = doc.get(key);
+  if (existing === undefined || !isPlainObject(incoming)) {
+    doc.set(key, incoming);
+    return;
+  }
+
+  // Merge into the existing value (#3045): replacing it dropped every key the
+  // new content did not repeat — adding a tag trigger deleted push/pull_request.
+  // A scalar or list `on:` is the event-name shorthand, so it becomes a mapping
+  // of those events before the merge.
+  const current = toMergeable(yaml.isNode(existing) ? existing.toJSON() : existing);
+  doc.set(key, deepMerge(current, key === 'on' ? keepBranchCoverage(current, incoming) : incoming));
+}
+
+/** Ref filters that restrict an event to tags without saying anything about branches. */
+const TAG_ONLY_FILTERS = new Set(['tags', 'tags-ignore']);
+
+/**
+ * Keep branch coverage when a tag filter lands on a catch-all event (#3289).
+ *
+ * A null event (`on: push`, `on: [push]`, `push:`) runs for every ref. GitHub
+ * runs an event that defines only `tags`/`tags-ignore` for tag pushes alone,
+ * so merging `{tags: [...]}` into it silently stopped CI on branch pushes.
+ * The incoming value gains `branches: ['**']`, keeping every branch. An event
+ * that already filters branches is left to the plain merge.
+ *
+ * @param {object} current - Existing `on:` mapping (shorthand already expanded)
+ * @param {object} incoming - `on:` mapping being added
+ * @returns {object} incoming, with `branches: ['**']` on each narrowed event
+ */
+function keepBranchCoverage(current, incoming) {
+  const out = { ...incoming };
+  for (const [event, value] of Object.entries(incoming)) {
+    const catchAll = Object.prototype.hasOwnProperty.call(current, event) && current[event] === null;
+    const keys = isPlainObject(value) ? Object.keys(value) : [];
+    if (catchAll && keys.length > 0 && keys.every((k) => TAG_ONLY_FILTERS.has(k))) {
+      out[event] = { branches: ['**'], ...value };
+    }
+  }
+  return out;
+}
+
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function toMergeable(v) {
+  if (isPlainObject(v)) return v;
+  if (typeof v === 'string') return { [v]: null };
+  if (Array.isArray(v) && v.every((e) => typeof e === 'string')) {
+    return Object.fromEntries(v.map((e) => [e, null]));
+  }
+  return {};
+}
+
+function deepMerge(base, add) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(add)) {
+    out[k] = isPlainObject(out[k]) && isPlainObject(v) ? deepMerge(out[k], v) : v;
+  }
+  return out;
 }
 
 /**

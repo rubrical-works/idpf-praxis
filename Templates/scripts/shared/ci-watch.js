@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
@@ -394,11 +394,18 @@ function formatOutput(result) {
  * `mapExitCode('unknown')` falls through to 1, so an unsubstantiated verdict
  * never reaches the caller as exit 0.
  *
+ * `superseded` (#3242) lists cancelled runs dropped by
+ * dropSupersededCancellations; the key is present only when non-empty, so
+ * output for a run set with no superseded run is unchanged.
+ *
  * @param {Array<Object>} results - Array of run result objects
+ * @param {Array<Object>} [superseded] - Superseded cancelled runs, each with `supersededBy`
  * @returns {string} JSON string with overall conclusion
  */
-function formatMultiOutput(results) {
-  return JSON.stringify({ overall: overallConclusion(results), workflows: results }, null, 2);
+function formatMultiOutput(results, superseded = []) {
+  const out = { overall: overallConclusion(results), workflows: results };
+  if (Array.isArray(superseded) && superseded.length > 0) out.superseded = superseded;
+  return JSON.stringify(out, null, 2);
 }
 
 /**
@@ -448,6 +455,55 @@ function overallConclusion(results) {
     if (classes.includes(c)) return c;
   }
   return 'success';
+}
+
+/**
+ * Conclusions that prove a run of a workflow executed to a verdict (#3242):
+ * success, neutral, or any failing conclusion. `cancelled` and `skipped` are
+ * deliberately absent — neither ran the workflow, so neither can stand in for
+ * a cancelled sibling.
+ */
+const SUPERSEDING_CONCLUSIONS = Object.freeze(['success', 'neutral', ...FAILING_CONCLUSIONS]);
+
+/**
+ * Drop cancelled runs superseded by a sibling run of the same workflow (#3242).
+ *
+ * A branch push and a PR opened on it start `push` and `pull_request` runs of
+ * the same workflows on one SHA, and a concurrency group cancels the earlier
+ * ones. Without this step the cancelled run outranks the sibling that executed
+ * (failure > cancelled > ... > success), so a green PR run reads as cancelled.
+ *
+ * Per workflow name: when any run executed to a verdict (SUPERSEDING_CONCLUSIONS),
+ * that workflow's cancelled runs move to `superseded`, each naming the sibling
+ * that replaced it. Only cancelled runs are ever dropped — a failed run always
+ * stays — and a workflow whose runs were all cancelled or skipped keeps its
+ * cancelled runs, so it still decides `overall`.
+ *
+ * @param {Array<Object>} results - Run result objects carrying `name` and `conclusion`
+ * @returns {{ kept: Array<Object>, superseded: Array<Object> }}
+ */
+function dropSupersededCancellations(results) {
+  if (!Array.isArray(results)) return { kept: [], superseded: [] };
+  const executed = new Map();
+  for (const r of results) {
+    if (r && SUPERSEDING_CONCLUSIONS.includes(r.conclusion) && !executed.has(r.name)) {
+      executed.set(r.name, r);
+    }
+  }
+  const kept = [];
+  const superseded = [];
+  for (const r of results) {
+    const sibling = r && r.conclusion === 'cancelled' ? executed.get(r.name) : undefined;
+    if (sibling) {
+      superseded.push({
+        ...r,
+        supersededBy: { runId: sibling.runId, name: sibling.name, event: sibling.event, conclusion: sibling.conclusion }
+      });
+    } else {
+      kept.push(r);
+    }
+  }
+  return { kept, superseded };
 }
 
 // --- Polling Logic ---
@@ -519,6 +575,10 @@ function collectResults(run, runGh = defaultRunGh) {
     url: run.url
   };
 
+  // The triggering event (push, pull_request, …) comes from `run list`, not
+  // `run view`; carried so a superseded run can name its sibling (#3242).
+  if (run.event) result.event = run.event;
+
   if (run.createdAt && run.updatedAt) {
     result.duration = computeDuration(run.createdAt, run.updatedAt);
   }
@@ -576,7 +636,8 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
     for (const runId of tracked.keys()) {
       if (collected.has(runId)) continue;
       const completed = await waitForCompletion(runId, { poll, timeout, runGh });
-      collected.set(runId, collectResults(completed, runGh));
+      const listed = tracked.get(runId);
+      collected.set(runId, collectResults({ event: listed && listed.event, ...completed }, runGh));
     }
 
     // Past the deadline every tracked run is already resolved (waitForCompletion
@@ -595,7 +656,10 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
     if (!discovered) break;
   }
 
-  const results = [...collected.values()];
+  // A cancelled run whose workflow has a sibling that executed on this SHA
+  // does not decide the verdict (#3242); it is reported under `superseded`.
+  const { kept: results, superseded } = dropSupersededCancellations([...collected.values()]);
+  const supersededField = superseded.length > 0 ? { superseded } : {};
 
   // Single run: its own fields plus overall/workflows (#2892). The exit code
   // follows `overall`, so one classification decides it on every path —
@@ -603,15 +667,15 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
   if (results.length === 1) {
     const overall = overallConclusion(results);
     return {
-      output: formatOutput({ ...results[0], overall, workflows: results }),
+      output: formatOutput({ ...results[0], overall, workflows: results, ...supersededField }),
       exitCode: mapExitCode(overall)
     };
   }
 
-  const multiOutput = JSON.parse(formatMultiOutput(results));
+  const overall = overallConclusion(results);
   return {
-    output: formatMultiOutput(results),
-    exitCode: mapExitCode(multiOutput.overall)
+    output: formatMultiOutput(results, superseded),
+    exitCode: mapExitCode(overall)
   };
 }
 
@@ -656,6 +720,8 @@ module.exports = {
   formatMultiOutput,
   classifyConclusion,
   overallConclusion,
+  dropSupersededCancellations,
+  SUPERSEDING_CONCLUSIONS,
   NON_FAILING_CONCLUSIONS,
   FAILING_CONCLUSIONS,
   findRuns,

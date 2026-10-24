@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * topo-order.js — Processing order as a topological sort of the
  * `**Depends on:**` graph (#3128, PRD Concurrent-Work Story 1.11)
  *

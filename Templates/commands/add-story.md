@@ -1,5 +1,5 @@
 ---
-version: "v0.110.0"
+version: "v0.111.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
 argument-hint: "[epic-number] (e.g., 42 or #42) [--help]"
 copyright: "Rubrical Works (c) 2026"

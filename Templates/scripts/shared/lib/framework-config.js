@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -310,14 +310,35 @@ function _resetCache() {
  * @returns {string} One of `VERIFICATION_MODES`
  */
 function resolveVerificationMode(cwd = process.cwd()) {
+  return resolveVerificationModeDetail(cwd).mode;
+}
+
+/**
+ * resolveVerificationMode, with what it set aside (#3266). The mode resolves
+ * exactly as before — unrecognized or unreadable is the strict default — but
+ * the value it ignored, or the read error, is returned so /work Step 2a can
+ * report it instead of dropping it silently. A clean resolution is `{ mode }`.
+ *
+ * @param {string} [cwd]
+ * @returns {{ mode: string, ignored?: *, warning?: string }}
+ */
+function resolveVerificationModeDetail(cwd = process.cwd()) {
   let config;
   try {
     config = read(cwd);
-  } catch {
-    return DEFAULT_VERIFICATION_MODE;
+  } catch (err) {
+    if (!fs.existsSync(path.join(cwd, CONFIG_FILENAME))) return { mode: DEFAULT_VERIFICATION_MODE };
+    return { mode: DEFAULT_VERIFICATION_MODE, warning: `verificationMode resolved to ${DEFAULT_VERIFICATION_MODE}: ${err.message}` };
   }
   const declared = config && config.verificationMode;
-  return VERIFICATION_MODES.includes(declared) ? declared : DEFAULT_VERIFICATION_MODE;
+  if (declared === undefined || VERIFICATION_MODES.includes(declared)) {
+    return { mode: declared === undefined ? DEFAULT_VERIFICATION_MODE : declared };
+  }
+  return {
+    mode: DEFAULT_VERIFICATION_MODE,
+    ignored: declared,
+    warning: `verificationMode ${JSON.stringify(declared)} is not one of ${VERIFICATION_MODES.join(', ')}; resolved to ${DEFAULT_VERIFICATION_MODE} (strict).`,
+  };
 }
 
 /**
@@ -513,6 +534,7 @@ function normalizeSuite(suite) {
 module.exports = {
   read,
   resolveVerificationMode,
+  resolveVerificationModeDetail,
   resolveVerificationCommands,
   resolveTmpCleanup,
   resolveReviewExpansion,

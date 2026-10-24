@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Analyze commits referencing an issue to detect hallucinated or incomplete work. Examines diffs for comment-only changes, EOF-only appends, and suspect patterns (e.g., TODO placeholders, empty function bodies). Parallelizes per-commit and per-file git operations for performance. Used by /done verification phase.
  * @checksum sha256:placeholder
  *
@@ -266,10 +266,28 @@ async function findAttributedCommitsForIssue(issueNumber) {
 }
 
 /**
- * Get the stat output for a commit (file changes summary)
+ * Parse one `git show --numstat` line: "<ins>\t<del>\t<path>".
+ * A binary file reports "-\t-\t<path>" and is counted as 0/0.
+ * Returns { file, insertions, deletions } or null.
+ */
+function parseNumstatLine(line) {
+    if (typeof line !== 'string') return null;
+    const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+    if (!match) return null;
+    return {
+        file: match[3].trim(),
+        insertions: match[1] === '-' ? 0 : parseInt(match[1], 10),
+        deletions: match[2] === '-' ? 0 : parseInt(match[2], 10)
+    };
+}
+
+/**
+ * Get the per-file change counts for a commit. --numstat, not --stat
+ * (#3059): --stat abbreviates a long path to `.../lib/x.js`, so the per-file
+ * diff for that name came back empty and comment-only detection never fired.
  */
 async function getCommitStat(hash) {
-    return execSafe(`git show --stat --format="" ${hash}`);
+    return execSafe(`git show --numstat --format="" ${hash}`);
 }
 
 /**
@@ -301,7 +319,7 @@ async function analyzeCommit(hash) {
 
     if (statOutput) {
         const statLines = statOutput.split('\n');
-        const parsedFiles = statLines.map(parseStatLine).filter(Boolean);
+        const parsedFiles = statLines.map(parseNumstatLine).filter(Boolean);
 
         // Parallelize per-file diff retrieval
         const diffResults = await Promise.all(
@@ -457,6 +475,7 @@ module.exports = {
     isCommentLine,
     isWhitespaceLine,
     parseStatLine,
+    parseNumstatLine,
     classifyDiffLines,
     findCommitsForIssue,
     findAttributedCommitsForIssue,

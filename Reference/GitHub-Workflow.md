@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.110.0
+**Version:** v0.111.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions.
 ## Project Configuration
@@ -40,11 +40,11 @@ GitHub automatically closes issues when `Fixes/Closes/Resolves #XXX` commits mer
 **The prohibition is scoped to those three commands.** `gh pmu create` remains the prescribed form for a standalone QA issue (§ QA-Issue Creation Ownership) and for the board operations the preference covers. The same literal is correct there and wrong here because the clauses answer different questions.
 Three axes meet here and satisfying one says nothing about the others. **Which board is reached** — § QA-Issue Creation Ownership, including its `--target` companion-filing exception. **Which CLI form is used** — `gh pmu` versus the bare `gh issue` creation form. **Which command does the filing** — this clause, slash command versus raw invocation.
 **Routing Conventions:** the hook appends each route's notes (triggers, review, flag pass-through) to its `[INVOKE:]` context, from `trigger-patterns.json` `routingNotes`. Trigger and review paths never discard a flag.
-**QA-Issue Creation Ownership:** `/work` Step 4a owns the **automatic** path — files QA sub-issues from unverifiable ACs via `gh pmu sub create` with `qa-required`. This governs **every other** path: QA raised during `/done`, during review, or whenever a session decides a manual check is needed.
+**QA-Issue Creation Ownership:** `/work` Step 4a owns the **automatic** path — files QA sub-issues from unverifiable ACs via `gh pmu sub create` with `qa-required`. This governs **every other** path: QA raised in `/done`, in review, or any time a manual check is needed.
 | Situation | Command |
-|-----------|---------|
-| Belongs to a parent issue | `gh pmu sub create <parent> --label qa-required -F $QA_BODY_FILE` |
-| Stands alone | `gh pmu create --label qa-required -F $QA_BODY_FILE --status backlog` |
+|---|---|
+| Belongs to a parent issue | `gh pmu sub create --parent <parent> --title "<title>" --label qa-required -F $QA_BODY_FILE` |
+| Stands alone | `gh pmu create --title "<title>" --label qa-required -F $QA_BODY_FILE --status backlog` |
 `$QA_BODY_FILE` is a **creation** path (no issue number yet): generate once per invocation, `.tmp-qa-body-{random}.md`, per `05-windows-shell.md` § Naming the temp file.
 **Always `gh pmu`, never the bare `gh issue` creation form.** The bare form files an issue that never reaches the project board — invisible to `gh pmu sub list`, epic closure, `/done` sub-issue checks and the `/work` Step 4b QA force-exception. An off-board QA issue satisfies nothing and blocks nothing; it reads as done. Silent and occasional, which is why it survives — nobody notices until an epic will not close.
 **The one exception: a `--target` companion filing.** `/bug --target <owner/name>` and `/enhancement --target <owner/name>` file into a **companion** repository, and there the bare `gh issue` creation form is **correct** — the local board is precisely what must not be touched. `gh pmu create -R` takes the *repository* from `-R` but the *project* from the local `.gh-pmu.json`, with no override, so it files into the companion and adds the issue to **this** repo's board (observed 2026-09-04: px-manager#1155 landed on Project-Varia). **Membership is redirected, not abandoned** — `.claude/scripts/shared/file-companion-issue.js` adds it to the *companion's* board explicitly, resolving field and option ids from that board and reporting anything unresolvable as unset rather than guessing. Both commands delegate; neither re-derives the sequence.

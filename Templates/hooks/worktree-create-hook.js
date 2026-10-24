@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * worktree-create-hook.js — WorktreeCreate hook (#3122, PRD Concurrent-Work
  * Story 1.5)
  *
@@ -26,7 +26,9 @@
  *      staged by `git add -A` as an embedded-repository gitlink (mode 160000)
  *      with only a warning, and four release commands stage with `git add -A`.
  *      If the line cannot be written or confirmed, stop here — no worktree.
- *   4. `git worktree add <root>/.tmp-wt-<name> -b wt/<name> <tip>`.
+ *   4. `git worktree add <root>/.tmp-wt-<name> -b wt/<name> <tip>`. A refusal
+ *      because a sibling hook's `.git/worktrees/<name>/` is mid-creation is
+ *      retried with backoff (#3236); any other add failure fails at once.
  *   5. Recreate hub links inside the worktree (Story 1.6's helper, when
  *      installed; the self-hosted layout has none to recreate), then register
  *      the merge driver's git config entry (Story 1.2's helper) — both before
@@ -54,7 +56,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { runGitContended } = require('../scripts/shared/lib/merge-driver-config.js');
+const { runGitContended, withContentionRetry } = require('../scripts/shared/lib/merge-driver-config.js');
 
 /** The line kept in `.git/info/exclude`; the trailing slash matches directories only. */
 const EXCLUDE_LINE = '.tmp-wt-*/';
@@ -67,6 +69,20 @@ const BRANCH_PREFIX = 'wt/';
 
 /** A name is one path segment: alphanumeric start, then letters, digits, `.`, `_`, `-`. */
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * A `git worktree add` refused because a SIBLING hook's admin entry is
+ * mid-creation (#3236). `add` enumerates existing worktrees before creating
+ * anything of its own, and a concurrent hook's `.git/worktrees/<name>/`
+ * exists before its `commondir` is written. Derived from the recorded stderr
+ * (git 2.53.0.windows.1):
+ *   fatal: failed to read .git/worktrees/-tmp-wt-c1/commondir: No error
+ * The `<name>` is one path segment; the trailing reason is left open, since
+ * ": No error" is Windows rendering errno 0 and other platforms word it
+ * differently. Distinct from CONTENTION_ERROR (the `.git/config` sharing
+ * violation, #3234), which this stderr does not match.
+ */
+const SIBLING_ADMIN_READ_ERROR = /fatal: failed to read \.git\/worktrees\/[^/\\\s]+\/commondir(?::|$)/m;
 
 /** Bound on each git call (#2469): milliseconds of work, a guard against a hung git. */
 const GIT_TIMEOUT_MS = 60_000;
@@ -120,23 +136,100 @@ function commonDirOf(dir, opts = {}) {
   return { ok: true, commonDir: path.resolve(dir, r.stdout) };
 }
 
+const samePath = (a, b) => {
+  const norm = (p) => path.resolve(p).replace(/\\/g, '/');
+  return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
+};
+
+/**
+ * What a refused `git worktree add` left behind of its OWN (#3236): the
+ * `wt/<name>` branch, and any `.git/worktrees/` entry that is this
+ * worktree's. Git names the entry after the path's basename with a leading
+ * `.` made `-` (`-tmp-wt-<name>`), suffixing digits on a collision, and
+ * records the worktree path in the entry's `gitdir`. So an entry is ours when
+ * its name is the unsuffixed form, or its `gitdir` names this worktree — never
+ * by a digit-suffix pattern, which would claim a sibling's half-made
+ * `-tmp-wt-<name>1` (no `gitdir` yet), the very state this retry exists for.
+ * A check that cannot be answered is reported as a leftover: a retry is
+ * allowed only on a positive confirmation that nothing was left.
+ *
+ * @returns {string[]} what was found, empty when the retry is safe
+ */
+function addLeftovers({ wtPath, branch, name, commonDir, root }, opts = {}) {
+  const found = [];
+  const ref = runGitContended(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], root, opts.retry, opts.runGit || runGit);
+  if (ref.error || (ref.status !== 0 && ref.status !== 1)) found.push(`branch ${branch} could not be checked: ${gitFailure(ref)}`);
+  else if (ref.status === 0) found.push(`branch ${branch}`);
+
+  const adminRoot = path.join(commonDir, 'worktrees');
+  let entries = [];
+  try {
+    entries = fs.readdirSync(adminRoot);
+  } catch (err) {
+    if (err.code !== 'ENOENT') found.push(`${adminRoot} could not be read: ${err.message}`);
+  }
+  const base = `${WORKTREE_PREFIX}${name}`;
+  const names = new Set([base, base.replace(/^\./, '-')]);
+  const gitdir = path.join(wtPath, '.git');
+  for (const entry of entries) {
+    let ours = names.has(entry);
+    if (!ours) {
+      try {
+        ours = samePath(fs.readFileSync(path.join(adminRoot, entry, 'gitdir'), 'utf8').trim(), gitdir);
+      } catch (_) { /* no gitdir: a sibling's entry mid-creation, or not a worktree entry */ }
+    }
+    if (ours) found.push(`.git/worktrees/${entry}`);
+  }
+  return found;
+}
+
+/**
+ * `git worktree add`, retried while it is refused by a sibling hook's admin
+ * entry mid-creation (#3236), with withContentionRetry's backoff and budget
+ * and SIBLING_ADMIN_READ_ERROR as the matcher. Before each retry the failed
+ * attempt is confirmed to have left nothing of its own (addLeftovers); if it
+ * left anything, or the check cannot be answered, no retry — the refusal is
+ * returned as it would have been before #3236, with `leftovers` naming why.
+ * Any other failure, and a spawn error, is returned at once.
+ *
+ * @returns {{result: object, attempts: number, leftovers: string[]}}
+ *   `result` is the last attempt's runner result
+ */
+function addWorktree({ wtPath, branch, tip, root, name, commonDir }, opts = {}) {
+  const git = opts.runGit || runGit;
+  let result;
+  let attempts = 0;
+  let leftovers = [];
+  try {
+    withContentionRetry(() => {
+      attempts++;
+      result = git(['worktree', 'add', wtPath, '-b', branch, tip], root);
+      if (result.error || result.status === 0 || !SIBLING_ADMIN_READ_ERROR.test(result.stderr)) return;
+      leftovers = addLeftovers({ wtPath, branch, name, commonDir, root }, opts);
+      if (leftovers.length > 0) return;
+      throw new Error(result.stderr);
+    }, opts.retry, SIBLING_ADMIN_READ_ERROR);
+  } catch (_) { /* refusal outlasted the budget: `result` is the last attempt */ }
+  return { result, attempts, leftovers };
+}
+
 /**
  * The project root: CLAUDE_PROJECT_DIR when set — the caller's cwd may be
  * another worktree — else the main checkout, resolved through the common
  * git directory so a worktree cwd still lands on the root.
  */
-function resolveRoot({ cwd, env }) {
+function resolveRoot({ cwd, env }, opts = {}) {
   const declared = env && typeof env.CLAUDE_PROJECT_DIR === 'string' ? env.CLAUDE_PROJECT_DIR.trim() : '';
   if (declared !== '') {
     const root = path.resolve(declared);
     let isDir = false;
     try { isDir = fs.statSync(root).isDirectory(); } catch { isDir = false; }
     if (!isDir) return { ok: false, error: `CLAUDE_PROJECT_DIR is not a directory: ${root}` };
-    const common = commonDirOf(root);
+    const common = commonDirOf(root, opts);
     if (!common.ok) return { ok: false, error: `CLAUDE_PROJECT_DIR ${root}: ${common.error}` };
     return { ok: true, root, commonDir: common.commonDir, source: 'CLAUDE_PROJECT_DIR' };
   }
-  const common = commonDirOf(cwd);
+  const common = commonDirOf(cwd, opts);
   if (!common.ok) return { ok: false, error: `${cwd}: ${common.error}` };
   if (path.basename(common.commonDir) !== '.git') {
     return { ok: false, error: `cannot derive a project root from git dir ${common.commonDir}; set CLAUDE_PROJECT_DIR` };
@@ -211,7 +304,10 @@ function defaultDriverStep({ cwd }) {
  * in, and it reports rather than printing or exiting, so the whole decision
  * can be asserted in-process and the CLI below only relays it.
  *
- * @param {{name: *, cwd?: string, env?: object, linkStep?: Function, driverStep?: Function}} opts
+ * @param {{name: *, cwd?: string, env?: object, linkStep?: Function, driverStep?: Function,
+ *   runGit?: function, retry?: {attempts?: number, sleep?: function(number): void}}} opts
+ *   `runGit` replaces the git runner for every git call the hook makes itself
+ *   (not the link or driver steps); `retry` tunes the contention loops (tests)
  * @returns {{ok: boolean, exitCode: number, path: string|null, halfMade: string|null,
  *   branch: string|null, tip: string|null, root: string|null, stage: string|null,
  *   stdout: string[], stderr: string[]}}
@@ -224,6 +320,8 @@ function createWorktree(opts = {}) {
   const env = opts.env || process.env;
   const linkStep = typeof opts.linkStep === 'function' ? opts.linkStep : defaultLinkStep;
   const driverStep = typeof opts.driverStep === 'function' ? opts.driverStep : defaultDriverStep;
+  const git = typeof opts.runGit === 'function' ? opts.runGit : runGit;
+  const gitOpts = { runGit: git, retry: opts.retry };
 
   const out = {
     ok: false, exitCode: 1, path: null, halfMade: null, branch: null, tip: null, root: null,
@@ -241,11 +339,13 @@ function createWorktree(opts = {}) {
         + `(no '/', '\\', '..' or absolute path; ${SAFE_NAME}); nothing was created`);
     }
 
-    const rootInfo = resolveRoot({ cwd, env });
+    const rootInfo = resolveRoot({ cwd, env }, gitOpts);
     if (!rootInfo.ok) return fail('root', rootInfo.error);
     out.root = rootInfo.root;
 
-    const head = runGit(['rev-parse', 'HEAD'], cwd);
+    // Reads .git/config like commonDirOf's lookup, so it retries the same
+    // contention a concurrent hook's config.lock rename causes (#3237).
+    const head = runGitContended(['rev-parse', 'HEAD'], cwd, opts.retry, git);
     if (head.error || head.status !== 0) return fail('tip', `cannot read the caller's branch tip in ${cwd}: ${gitFailure(head)}`);
     out.tip = head.stdout;
 
@@ -259,9 +359,15 @@ function createWorktree(opts = {}) {
     }
     out.stderr.push(`worktree-create: ${exclude.written ? 'added' : 'found'} ${EXCLUDE_LINE} in ${exclude.file}`);
 
-    const add = runGit(['worktree', 'add', wtPath, '-b', branch, out.tip], rootInfo.root);
+    const { result: add, attempts, leftovers } = addWorktree(
+      { wtPath, branch, tip: out.tip, root: rootInfo.root, name, commonDir: rootInfo.commonDir }, gitOpts,
+    );
+    if (attempts > 1) {
+      out.stderr.push(`worktree-create: git worktree add retried ${attempts - 1} time(s) — a sibling worktree's admin entry was mid-creation`);
+    }
     if (add.error || add.status !== 0) {
-      return fail('add', `git worktree add failed for ${wtPath} (branch ${branch} at ${out.tip.slice(0, 8)}): ${gitFailure(add)}`);
+      const why = leftovers.length > 0 ? ` — not retried: the failed attempt left ${leftovers.join(', ')}` : '';
+      return fail('add', `git worktree add failed for ${wtPath} (branch ${branch} at ${out.tip.slice(0, 8)}): ${gitFailure(add)}${why}`);
     }
     out.halfMade = wtPath;
     out.stderr.push(`worktree-create: created ${wtPath} on ${branch} at ${out.tip.slice(0, 8)} (root from ${rootInfo.source})`);
@@ -356,6 +462,7 @@ module.exports = {
   WORKTREE_PREFIX,
   BRANCH_PREFIX,
   SAFE_NAME,
+  SIBLING_ADMIN_READ_ERROR,
   isSafeName,
   ensureExclude,
   resolveRoot,

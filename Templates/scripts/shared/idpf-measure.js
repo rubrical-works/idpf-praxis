@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * idpf-measure.js
  *
  * CLI for `/idpf-measure` (#2794). Binds the three helpers together:
@@ -120,13 +120,19 @@ function run(argv, opts) {
       );
     }
 
-    const w = wiring.wire(root);
+    let w;
+    try {
+      w = wiring.wire(root);
+    } catch (e) {
+      // An unparseable settings.local.json is refused, not overwritten (#3059).
+      return fail('SETTINGS_UNPARSEABLE', e.message);
+    }
     const m = marker.writeMarker(root, { spawnMs, env });
 
     // The wiring backup rides in the marker so --stop can restore verbatim
     // rather than re-serializing, which is byte-for-byte only by luck.
     const stored = Object.assign({}, m, {
-      settings: { created: w.created, previousRaw: w.previousRaw },
+      settings: { created: w.created, previousRaw: w.previousRaw, wiredRaw: w.wiredRaw },
     });
     fs.writeFileSync(marker.markerPath(root), JSON.stringify(stored, null, 2) + '\n');
 

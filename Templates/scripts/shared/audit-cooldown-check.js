@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  *
  * Cooldown-aware npm audit gate (#2537; deployed to user projects by #3016).
  *
@@ -12,14 +12,22 @@
  * is simply to wait for the patch to age. Because the audit step runs under
  * `bash -e` ahead of the test steps, that also masks every test result.
  *
- * Decision, per advisory with a candidate fix:
+ * Decision, rows checked top to bottom:
  *
  *   | candidate fix        | age vs cooldown | verdict          | exit |
  *   |----------------------|-----------------|------------------|------|
  *   | none                 | —               | fail-unfixable   | 1    |
+ *   | any advisory unpaired | —              | fail-unfixable   | 1    |
  *   | some, all too new    | < min-release-age | defer-cooldown | 0    |
  *   | some, any aged out   | >= min-release-age | fail-actionable | 1  |
  *   | some, age unknown    | —               | fail-actionable  | 1    |
+ *
+ * An advisory is *unpaired* when no candidate fix could be derived for it —
+ * `fixAvailable: false`, a range with no upper bound, a failed `npm view`, or
+ * no published release above the range (#3047). It fails the run whatever the
+ * other advisories' states, and the message names it with its reason. Before
+ * #3047 such advisories were dropped silently, so one deferrable fix elsewhere
+ * turned the whole run into `defer-cooldown`.
  *
  * Deferral requires *every* candidate fix to be inside the window. A mixed set
  * fails: the aged-out one is actionable today and must not hide behind the
@@ -63,6 +71,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // and Node's CVE-2024-27980 hardening makes spawnSync refuse to exec .cmd
 // without a shell (EINVAL). Linux CI does not need it; Windows dev does.
 const NPM = 'npm';
+
+// Why `candidateFixes` could not pair a high advisory with a fix (#3047).
+// Every one of these fails the run: none is something a cooldown resolves.
+const UNPAIRED_REASONS = {
+  'no-fix-available': 'no fix available (npm reports fixAvailable: false)',
+  'no-range-bound': 'no upper bound in the vulnerable range, so no version clears it',
+  'lookup-failed': 'registry lookup failed (npm view returned nothing usable)',
+  'no-eligible-version': 'no published release clears the vulnerable range'
+};
 
 /**
  * Read `min-release-age` out of an .npmrc body.
@@ -190,11 +207,13 @@ function pickCandidate(versions, bound) {
  * @param {object} input
  * @param {number} input.highCount High/critical advisories found.
  * @param {Array<{name:string,from:string,to:string,publishedAt:?string}>} input.fixes
+ * @param {Array<{name:string,reason:string}>} [input.unpaired] High advisories
+ *   `candidateFixes` could not pair with a fix, each with an `UNPAIRED_REASONS` key.
  * @param {number} input.minReleaseAge Cooldown in days.
  * @param {string|Date} input.now Reference time.
  * @returns {{verdict:string, exitCode:number, message:string}}
  */
-function classifyAudit({ highCount, fixes = [], minReleaseAge = 0, now }) {
+function classifyAudit({ highCount, fixes = [], unpaired = [], minReleaseAge = 0, now }) {
   if (!highCount) {
     return {
       verdict: 'pass',
@@ -203,20 +222,32 @@ function classifyAudit({ highCount, fixes = [], minReleaseAge = 0, now }) {
     };
   }
 
-  if (!fixes.length) {
-    return {
-      verdict: 'fail-unfixable',
-      exitCode: 1,
-      message:
-        `npm audit: ${highCount} high-severity advisory(ies) with no candidate fix. ` +
-        'This needs a dependency change or an explicit override — it will not age out.'
-    };
-  }
-
   const describe = (f) => {
     const age = ageInDays(f.publishedAt, now);
     return { ...f, age, when: clearsAt(f.publishedAt, minReleaseAge) };
   };
+
+  // Checked before the cooldown branch (#3047): an advisory with nothing to
+  // wait for must not be deferred because some other advisory is.
+  if (unpaired.length || !fixes.length) {
+    const lines = unpaired.map(
+      (u) => `  - ${u.name}: ${UNPAIRED_REASONS[u.reason] || u.reason}`
+    );
+    const paired = fixes.map(describe).map(
+      (f) => `  - ${f.name} ${f.from} => ${f.to}` + (f.when ? ` (resolvable from ${f.when})` : '')
+    );
+    return {
+      verdict: 'fail-unfixable',
+      exitCode: 1,
+      message:
+        `npm audit: ${highCount} high-severity advisory(ies); ` +
+        `${unpaired.length || highCount} with no candidate fix. ` +
+        'This needs a dependency change or an explicit override — it will not age out.' +
+        (lines.length ? '\n' + lines.join('\n') : '') +
+        (paired.length ? '\nAdvisories with a candidate fix (also unresolved):\n' + paired.join('\n') : '')
+    };
+  }
+
   const described = fixes.map(describe);
 
   // Blocked only when the cooldown is active AND the version is younger than it.
@@ -310,32 +341,52 @@ function countHigh(auditJson) {
  * failed `fail-unfixable` for exactly that reason while passing locally on
  * npm 11.12.0. Advisory ranges and publish dates are the same on every npm.
  *
+ * Every high advisory lands in exactly one of the two lists (#3047): a fix in
+ * `fixes`, or a `{name, reason}` in `unpaired` naming why none was derived.
+ * Dropping one instead let a deferrable fix elsewhere hide it.
+ *
  * @param {object} auditJson Parsed `npm audit --json`.
  * @param {string} root Project root — where `node_modules` lives and npm runs.
- * @returns {Array<{name,from,to,publishedAt}>}
+ * @param {object} [opts]
+ * @param {Function} [opts.lookup] `(args, cwd) => object|null`; defaults to `npmJson`.
+ * @returns {{fixes: Array<{name,from,to,publishedAt}>, unpaired: Array<{name,reason}>}}
  */
-function candidateFixes(auditJson, root) {
+function candidateFixes(auditJson, root, { lookup = npmJson } = {}) {
   const vulns = (auditJson && auditJson.vulnerabilities) || {};
-  const out = [];
+  const fixes = [];
+  const unpaired = [];
   for (const [name, v] of Object.entries(vulns)) {
     if (!v || (v.severity !== 'high' && v.severity !== 'critical')) continue;
-    if (v.fixAvailable === false) continue;
+    if (v.fixAvailable === false) {
+      unpaired.push({ name, reason: 'no-fix-available' });
+      continue;
+    }
 
     const bound = parseUpperBound(v.range);
-    const meta = npmJson(['view', name, 'versions', 'time', '--json'], root) || {};
-    const versions = meta.versions || [];
+    if (!bound) {
+      unpaired.push({ name, reason: 'no-range-bound' });
+      continue;
+    }
+    const meta = lookup(['view', name, 'versions', 'time', '--json'], root);
+    if (!meta || !Array.isArray(meta.versions) || !meta.versions.length) {
+      unpaired.push({ name, reason: 'lookup-failed' });
+      continue;
+    }
     const times = meta.time || {};
-    const to = pickCandidate(versions, bound);
-    if (!to) continue;
+    const to = pickCandidate(meta.versions, bound);
+    if (!to) {
+      unpaired.push({ name, reason: 'no-eligible-version' });
+      continue;
+    }
 
-    out.push({
+    fixes.push({
       name,
       from: (v.nodes && v.nodes.length ? installedVersionOf(name, root) : null) || 'installed',
       to,
       publishedAt: times[to] || null
     });
   }
-  return out;
+  return { fixes, unpaired };
 }
 
 /**
@@ -415,14 +466,16 @@ function main() {
   }
 
   const highCount = countHigh(audit);
-  const fixes = highCount ? candidateFixes(audit, root) : [];
+  const { fixes, unpaired } = highCount
+    ? candidateFixes(audit, root)
+    : { fixes: [], unpaired: [] };
 
   const result = classifyAudit({
-    highCount, fixes, minReleaseAge, now: new Date()
+    highCount, fixes, unpaired, minReleaseAge, now: new Date()
   });
 
   if (process.argv.includes('--json')) {
-    console.log(JSON.stringify({ ...result, highCount, minReleaseAge, fixes }, null, 2));
+    console.log(JSON.stringify({ ...result, highCount, minReleaseAge, fixes, unpaired }, null, 2));
   } else {
     (result.exitCode === 0 ? console.log : console.error)(result.message);
   }
@@ -432,7 +485,8 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  classifyAudit, parseMinReleaseAge, clearsAt, ageInDays, countHigh,
+  classifyAudit, candidateFixes, UNPAIRED_REASONS,
+  parseMinReleaseAge, clearsAt, ageInDays, countHigh,
   compareVersions, parseUpperBound, pickCandidate,
   resolveProjectRoot, readMinReleaseAge, installedVersionOf
 };

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -99,10 +99,17 @@ function firstToken(command) {
   return s.split(/\s+/)[0];
 }
 
-/** Files from `changedFiles` that any of the suite's `match[]` patterns cover. */
+/**
+ * Files from `changedFiles` that any of the suite's `match[]` patterns cover
+ * and none of its `exclude[]` patterns do (#3258). A broad match such as
+ * `tests/**\/*.test.js` can overlap another suite's files; `exclude` keeps a
+ * suite from being handed a file it does not run, so a runner configured to
+ * skip it never reports "no tests found" as a failure.
+ */
 function filesForSuite(suite, changedFiles) {
   const patterns = Array.isArray(suite.match) ? suite.match : [];
-  return changedFiles.filter((f) => patterns.some((p) => globMatch(f, p)));
+  const excluded = Array.isArray(suite.exclude) ? suite.exclude : [];
+  return changedFiles.filter((f) => patterns.some((p) => globMatch(f, p)) && !excluded.some((p) => globMatch(f, p)));
 }
 
 /** A suite the gate never invokes at any scope. */
@@ -256,8 +263,11 @@ function expandPlaceholders(template, files) {
  * Resolve a project's declaration into a normalized suite list.
  *
  * @param {string} [cwd] - Project root
- * @returns {{suites: object[], source: 'testing'|'verificationCommands'|'testCommand'|'none',
- *            sweepScope: string}}
+ * @returns {{suites: object[], source: 'testing'|'verificationCommands'|'testCommand'|'none'|'unreadable',
+ *            sweepScope: string, error?: string}}
+ *   `unreadable` (#3266): framework-config.json exists but cannot be parsed.
+ *   It is never `none` — "nothing declared" is reported only for a valid
+ *   file that declares nothing — and `error` carries the parse error.
  */
 function resolveSuites(cwd = process.cwd()) {
   // Function-scoped, deliberately: framework-config.js requires THIS module
@@ -265,14 +275,19 @@ function resolveSuites(cwd = process.cwd()) {
   // either direction would be a load-time cycle leaving one module
   // half-initialized for the other.
   const { read, normalizeSuite } = require('./framework-config.js');
+  const fs = require('fs');
+  const path = require('path');
 
   const NONE = { suites: [], source: 'none', sweepScope: 'all' };
 
   let config;
   try {
     config = read(cwd);
-  } catch {
-    return NONE;
+  } catch (err) {
+    // An absent file is a project that declares nothing; a present one that
+    // will not parse is a broken declaration, and must block, not pass.
+    if (!fs.existsSync(path.join(cwd, 'framework-config.json'))) return NONE;
+    return { suites: [], source: 'unreadable', sweepScope: 'all', error: err.message };
   }
   if (!config) return NONE;
 
@@ -330,6 +345,7 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
   const runs = [];
   const warnings = [];
   const notRun = [];
+  const scopedSkipped = [];
   const matchedAny = new Set();
   // Inside a member's worktree only parallel suites run (#3132). Exclusive
   // suites are returned as the deferred set the parent runs after merge-back
@@ -360,7 +376,13 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
       mode = DEFAULT_SCOPING_MODE;
     }
 
-    if (mode === DEFAULT_SCOPING_MODE && scoped.onScoped === 'skip') continue;
+    if (mode === DEFAULT_SCOPING_MODE && scoped.onScoped === 'skip') {
+      // #3273: matched, and skipped by its own declaration — named, so it is
+      // distinguishable from a suite nothing matched. Not `notRun`, which
+      // records failures to run that the merge-back gate treats as such.
+      scopedSkipped.push({ suiteId: suite.id, reason: 'onScoped: skip — this suite runs only in the full sweep' });
+      continue;
+    }
 
     let command;
     let narrowed = false;
@@ -398,6 +420,7 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
     deferred,
     invalid,
     notRun,
+    scopedSkipped,
     manualOnly,
     warnings,
   };
@@ -587,7 +610,18 @@ function resolveSelection(suite, result, changedFiles) {
  *   is not the code's. Suites whose phases, `cwd` and selection match share
  *   one run carrying every id (#3025); `collapsed` names each merge.
  */
-function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], selections = {} } = {}) {
+function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], selections = {}, source, error } = {}) {
+  // #3266: a resolution that could not read the config blocks the sweep. Run
+  // nothing, and say why — never the "nothing declared" report, which blamed
+  // the declaration for a parse error and let in_review proceed unverified.
+  if (source === 'unreadable') {
+    return {
+      runs: [], collapsed: [], manualOnly: [], skipped: [], selectedNone: [], warnings: [],
+      blocksReview: true,
+      verdict: 'config unreadable',
+      message: `framework-config.json could not be read, so no verification suite ran: ${error || 'unknown error'}. Fix the file and re-run the sweep; in_review is blocked until then.`,
+    };
+  }
   const runs = [];
   const manualOnly = [];
   const skipped = [];
@@ -607,7 +641,9 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], 
 
     let selection = resolveSelection(suite, (selections || {})[suite.id], changedFiles);
     if (selection.mode === 'none') {
-      selectedNone.push({ suiteId: suite.id, report: selection.report, reason: selection.reason });
+      // #3273: it ran nothing, so it is never a pass — named as such in the
+      // entry and in `notPassed`, which the Step 4f report reads.
+      selectedNone.push({ suiteId: suite.id, report: selection.report, reason: selection.reason, verdict: 'selected none — ran nothing, not a pass' });
       continue;
     }
     let command = suite.full;
@@ -640,7 +676,7 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], 
 
   const merged = collapseRuns(runs, (run) => [run.phases.map((p) => [p.phase, p.command]), run.selection.report]);
 
-  return { runs: merged.runs, collapsed: merged.collapsed, manualOnly, skipped, selectedNone, warnings: [] };
+  return { runs: merged.runs, collapsed: merged.collapsed, manualOnly, skipped, selectedNone, notPassed: selectedNone.map((s) => s.suiteId), warnings: [] };
 }
 
 /**

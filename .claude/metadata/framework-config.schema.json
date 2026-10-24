@@ -211,6 +211,15 @@
                 },
                 "description": "Glob patterns naming the files this suite covers. REQUIRED for a `gate` suite (the default), optional for `manual-only`."
               },
+              "exclude": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Glob patterns removed from `match` (#3258): a changed file matching any of them is never handed to this suite, at scoped or deferred time. Use it where a broad `match` overlaps another suite's files — a runner configured to skip a file reports 'no tests found' as a failure when it is scoped to that file alone. Optional; absent excludes nothing."
+              },
               "full": {
                 "type": "string",
                 "minLength": 1,

@@ -1,5 +1,5 @@
 ---
-version: "v0.110.0"
+version: "v0.111.0"
 description: Plan concurrent workstreams for parallel epic development, using the IDPF framework.
 argument-hint: "<epic-numbers> [--streams N] [--dry-run] [--prefix <prefix>] [--profile [--min-pairs N]] [--cancel] [--help]"
 copyright: "Rubrical Works (c) 2026"

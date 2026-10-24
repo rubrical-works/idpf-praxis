@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs four audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
@@ -39,6 +39,10 @@ function parseArgs(argv) {
   const out = { issue: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--issue' && argv[i + 1]) out.issue = parseInt(argv[++i], 10);
+    // #3271: the sub-issues this run processed; omitted → every child, as before.
+    else if (argv[i] === '--processed' && argv[i + 1]) {
+      out.processed = argv[++i].split(',').map((s) => parseInt(s.replace(/^#/, '').trim(), 10)).filter(Number.isInteger);
+    }
   }
   if (!out.issue || Number.isNaN(out.issue)) {
     return { error: 'Missing or invalid --issue <number> argument.' };
@@ -196,7 +200,31 @@ function auditCommitDensityPerSubIssue(details, countFn) {
  * there would get the whole audit ignored — which costs more than the gap it
  * reports. No ledger file at all means the question was never asked.
  */
-function auditAnnouncementPairing(subIssueNumbers, ledgerFn, reconcileFn) {
+/**
+ * Audit (6) — per-sub-issue gate decisions (#3271). Step 3 records each
+ * Review-State Gate decision in the ledger (record-only `gate-decision`);
+ * Step 5 overwrites status, so without the record a skipped gate left no
+ * trace. Names each processed sub-issue with no recorded decision. WARNING
+ * only, like (1), (4) and (5).
+ */
+function auditGateDecisions(subIssueNumbers, entries) {
+  const decided = new Set();
+  for (const e of entries || []) {
+    if (e && e.event === 'gate-decision' && e.gate === 'review-state' && Array.isArray(e.issues)) {
+      for (const n of e.issues) decided.add(n);
+    }
+  }
+  const missing = subIssueNumbers.filter((n) => !decided.has(n));
+  return {
+    status: missing.length ? 'warn' : 'pass',
+    missing,
+    message: missing.length
+      ? `No Review-State Gate decision recorded for ${missing.map((n) => `#${n}`).join(', ')} — the per-sub-issue gate may not have run. Warning only — does not block.`
+      : 'Every processed sub-issue has a recorded Review-State Gate decision.',
+  };
+}
+
+function auditAnnouncementPairing(subIssueNumbers, ledgerFn, reconcileFn, workEnabled = false) {
   if (typeof ledgerFn !== 'function') {
     return { status: 'skip', message: 'Announcement pairing not audited — no ledger reader supplied.' };
   }
@@ -221,7 +249,7 @@ function auditAnnouncementPairing(subIssueNumbers, ledgerFn, reconcileFn) {
     };
   }
 
-  const result = reconcileFn({ entries: read.entries, issues: subIssueNumbers });
+  const result = reconcileFn({ entries: read.entries, issues: subIssueNumbers, workEnabled });
   return {
     status: result.ok ? 'pass' : 'warn',
     missingOpener: result.missingOpener,
@@ -276,8 +304,12 @@ function auditDocJudgment(details) {
   };
 }
 
-function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn }) {
-  const subIssues = listFn(issueNumber);
+function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn, processed, workEnabled = false }) {
+  // #3271: audit what this run processed. Every child included closed ones and
+  // skipped qa-required members the run never touched, so audits (2) and (5)
+  // flagged work nobody was asked to do. Omitted → every child, as before.
+  const scope = Array.isArray(processed) ? new Set(processed) : null;
+  const subIssues = listFn(issueNumber).filter((s) => !scope || scope.has(s.number || s.num));
   if (!subIssues.length) {
     return {
       ok: true,
@@ -310,12 +342,23 @@ function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn })
   };
 
   const acCheckbox = auditAcCheckbox(details);
+  // Read once, shared by (4) and (6); a throwing reader is (4)'s skip, as before.
+  let ledgerRead = null;
+  const cachedLedgerFn = typeof ledgerFn === 'function'
+    ? () => (ledgerRead = ledgerRead || ledgerFn())
+    : undefined;
   const announcementPairing = auditAnnouncementPairing(
     details.map((d) => d.number),
-    ledgerFn,
-    reconcileFn || reconcileLedger
+    cachedLedgerFn,
+    reconcileFn || reconcileLedger,
+    workEnabled
   );
   const docJudgment = auditDocJudgment(details);
+  // Only a caller that names its processed set records gate decisions (#3271);
+  // an older caller's ledger holds none, so (6) is skipped rather than warning on all.
+  const gateDecisions = scope && ledgerRead && ledgerRead.exists !== false
+    ? auditGateDecisions(details.map((d) => d.number), ledgerRead.entries)
+    : { status: 'skip', missing: [], message: 'Gate decisions not audited — no ledger in this working directory.' };
 
   const warnings = [];
   const blocks = [];
@@ -329,12 +372,13 @@ function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn })
     for (const c of announcementPairing.caveats || []) warnings.push(c);
   }
   if (docJudgment.status === 'warn') warnings.push(docJudgment.message);
+  if (gateDecisions.status === 'warn') warnings.push(gateDecisions.message);
   if (acCheckbox.status === 'fail') blocks.push(acCheckbox.message);
 
   return {
     ok: blocks.length === 0,
     issueNumber,
-    audits: { commitDensity, acCheckbox, announcementPairing, docJudgment },
+    audits: { commitDensity, acCheckbox, announcementPairing, docJudgment, gateDecisions },
     warnings,
     blocks
   };
@@ -347,12 +391,22 @@ function main() {
     process.exit(2);
   }
   try {
+    // groups.work decides whether a processed child with no events is a
+    // finding (#3271): off means nothing was meant to be recorded.
+    let workEnabled = true;
+    try {
+      const { readCrossSessionConfig } = require('./lib/cross-session-config.js');
+      const resolved = readCrossSessionConfig(process.cwd());
+      workEnabled = !!(resolved && resolved.groups && resolved.groups.work);
+    } catch (_e) { /* unreadable config: keep the strict default */ }
     const result = audit({
       issueNumber: args.issue,
       listFn: (n) => listSubIssues(n),
       fetchFn: (n) => fetchIssue(n),
       countFn: (n) => countCommitsForIssue(n),
-      ledgerFn: () => readLedger({ cwd: process.cwd() })
+      ledgerFn: () => readLedger({ cwd: process.cwd(), includeRecordOnly: true }),
+      processed: args.processed,
+      workEnabled
     });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
@@ -374,6 +428,7 @@ module.exports = {
   auditAcCheckbox,
   auditAnnouncementPairing,
   auditDocJudgment,
+  auditGateDecisions,
   hasDocJudgment,
   audit,
   fetchIssue,

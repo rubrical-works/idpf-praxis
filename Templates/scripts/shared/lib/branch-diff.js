@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Branch diff helpers. Exports BASE_REF_CANDIDATES, resolveBranchBase(), changedFilesSinceBase() and classifyFindingRange() and reviewRecordFreshness() — the one definition of "what this branch changed" shared by /code-review --diff and announce.js.
  * @checksum sha256:placeholder
  *

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -101,6 +101,14 @@ const PUSH_EVENTS = Object.freeze([
   'push-rejected',
 ]);
 
+/**
+ * /work gate bookkeeping (#3271), record-only like the review events. A
+ * `work-invocation` marks where one /work run on a root began for a session; a
+ * `gate-decision` records a per-sub-issue Review-State or Pre-Work Status
+ * decision. Neither is announced and neither enters the pairing.
+ */
+const GATE_EVENTS = Object.freeze(['work-invocation', 'gate-decision']);
+
 const RECORD_ONLY_EVENTS = Object.freeze([
   'review-started',
   'review-passed',
@@ -108,6 +116,7 @@ const RECORD_ONLY_EVENTS = Object.freeze([
   'review-resolved',
   ...BRANCH_OPERATION_EVENTS,
   ...PUSH_EVENTS,
+  ...GATE_EVENTS,
 ]);
 
 const DISPATCH_STATES = Object.freeze(['pending', 'sent', 'failed', 'skipped']);
@@ -229,6 +238,12 @@ function record(entry, options = {}) {
     };
     if (recordOnly) row.recordOnly = true;
     if (branch) row.branch = branch;
+    // #3271: the gate bookkeeping fields, only on the events that carry them.
+    if (GATE_EVENTS.includes(event)) {
+      if (Number.isInteger(entry.root)) row.root = entry.root;
+      if (typeof entry.gate === 'string') row.gate = entry.gate;
+      if (typeof entry.decision === 'string') row.decision = entry.decision;
+    }
 
     fs.appendFileSync(ledgerPath(options.cwd || process.cwd()), `${JSON.stringify(row)}\n`, 'utf8');
     return { ok: true, id: row.id, entry: row };
@@ -383,7 +398,37 @@ function updateReceipt(id, details = {}, options = {}) {
  * Never throws — the caller is `nonstop-audit.js`, whose other two audits must
  * still render if this one cannot.
  */
-function reconcile({ entries, issues } = {}) {
+/**
+ * Mark the start of one /work invocation on `root` for this session (#3271).
+ * Gate decisions recorded after it belong to this invocation.
+ */
+function recordInvocation({ root }, options = {}) {
+  return record({ event: 'work-invocation', issues: [root], root, dispatch: 'skipped' }, options);
+}
+
+/** Record one per-sub-issue gate decision for the current invocation (#3271). */
+function recordGateDecision({ issue, gate, decision, root }, options = {}) {
+  return record({ event: 'gate-decision', issues: [issue], root, gate, decision, dispatch: 'skipped' }, options);
+}
+
+/**
+ * This invocation's recorded decision for `gate` on `issue`, or null (#3271).
+ * "This invocation" is everything this session recorded for `root` after its
+ * latest `work-invocation` — so a decision survives compaction (the run does
+ * not record a new start), and a fresh /work run asks again.
+ */
+function findGateDecision({ entries, issue, gate, root, sessionPid }) {
+  const mine = (Array.isArray(entries) ? entries : [])
+    .filter((e) => e && e.root === root && e.sessionPid === sessionPid);
+  let start = -1;
+  mine.forEach((e, i) => { if (e.event === 'work-invocation') start = i; });
+  if (start === -1) return null;
+  const hits = mine.slice(start + 1)
+    .filter((e) => e.event === 'gate-decision' && e.gate === gate && Array.isArray(e.issues) && e.issues.includes(issue));
+  return hits.length ? hits[hits.length - 1] : null;
+}
+
+function reconcile({ entries, issues, workEnabled = false } = {}) {
   const list = (Array.isArray(entries) ? entries : [])
     .filter((e) => e && TRACKED_EVENTS.includes(e.event));
   const wanted = normalizeIssues(issues);
@@ -436,8 +481,15 @@ function reconcile({ entries, issues } = {}) {
   if (undispatched.length > 0) {
     problems.push(`${undispatched.length} announcement(s) composed but not dispatched`);
   }
+  // #3271: with groups.work on, every processed child composes both events —
+  // a `skipped` record when no peer listens. Neither recorded is the
+  // doubly-missing case, which read like groups.work:false and passed.
+  const unrecordedIsFinding = workEnabled === true && unrecorded.length > 0;
+  if (unrecordedIsFinding) {
+    problems.push(`no work-started or work-completed recorded for ${unrecorded.map((n) => `#${n}`).join(', ')} although groups.work is on`);
+  }
 
-  const ok = missingOpener.length === 0 && missingCloser.length === 0 && undispatched.length === 0;
+  const ok = missingOpener.length === 0 && missingCloser.length === 0 && undispatched.length === 0 && !unrecordedIsFinding;
 
   return {
     ok,
@@ -472,4 +524,41 @@ module.exports = {
   updateReceipt,
   RECEIPT_STATES,
   reconcile,
+  GATE_EVENTS,
+  recordInvocation,
+  recordGateDecision,
+  findGateDecision,
 };
+
+/**
+ * CLI for the /work gate bookkeeping (#3271). The session pid is CLAUDE_PID,
+ * the source announce.js uses, so entries match across one session.
+ *   invocation --root R                       mark the start of a /work run
+ *   gate --issue N --gate G --root R --decision D   record a decision
+ *   gate --issue N --gate G --root R          look one up: {"decision": ...|null}
+ */
+function cli(argv, env = process.env, cwd = process.cwd()) {
+  const [cmd, ...rest] = argv;
+  const opt = {};
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i].startsWith('--')) opt[rest[i].slice(2)] = rest[i + 1];
+  }
+  const options = { cwd, sessionPid: normalizeSessionPid(env.CLAUDE_PID) };
+  const root = Number(opt.root);
+  if (!Number.isInteger(root) || root <= 0) return { ok: false, error: '--root <issue> is required' };
+  if (cmd === 'invocation') return recordInvocation({ root }, options);
+  if (cmd === 'gate') {
+    const issue = Number(opt.issue);
+    if (!Number.isInteger(issue) || !opt.gate) return { ok: false, error: '--issue <N> and --gate <name> are required' };
+    if (opt.decision) return recordGateDecision({ issue, gate: opt.gate, decision: opt.decision, root }, options);
+    const found = findGateDecision({ entries: readLedger({ cwd, includeRecordOnly: true }).entries, issue, gate: opt.gate, root, sessionPid: options.sessionPid });
+    return { ok: true, decision: found ? found.decision : null };
+  }
+  return { ok: false, error: `unknown command ${JSON.stringify(cmd)}; expected invocation or gate` };
+}
+
+if (require.main === module) {
+  const result = cli(process.argv.slice(2));
+  process.stdout.write(JSON.stringify(result) + '\n');
+  process.exit(result.ok ? 0 : 1);
+}

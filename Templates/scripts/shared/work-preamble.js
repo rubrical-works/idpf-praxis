@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -20,11 +20,66 @@ const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js'
 // never an external package (#2418).
 const { REDIRECT_LABELS } = require('./lib/issue-type.js');
 // #3126: --agents validation at parse time, and the --concurrent grouping plan.
-const { parseAgentsValue, buildPlan, resolveWorktreeHook } = require('./lib/concurrency-plan.js');
+const { parseAgentsValue, buildPlan, resolveWorktreeHook, classifyResume, parseWorktreeList, matchKeptWorktrees } = require('./lib/concurrency-plan.js');
+const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 // #3128: processing order is a topological sort of the **Depends on:** graph.
 const { topoOrder } = require('./lib/topo-order.js');
 // #3129: the parent's step sequence and member spawn requests for --concurrent.
-const { buildRun, memberTasks, extractBriefSections } = require('./lib/concurrent-orchestration.js');
+const { buildRun, nextSteps, memberTasks, memberBriefs, extractBriefSections, MEMBER_TEMPLATES } = require('./lib/concurrent-orchestration.js');
+// #3259: the status move waits on the Review-State Gate's decision, computed
+// from the same classifier and aggregator the gate itself uses.
+const { classifyReviewState } = require('./review-state.js');
+const { evaluateBranchReviewGate } = require('./lib/branch-review-gate.js');
+
+/**
+ * The Step 3 gate's action matrix. Loaded by require, not fs, so it resolves
+ * beside this script wherever the hub links it. Unreadable → null, and the
+ * decision below fails open to today's behavior (move), naming the reason.
+ */
+function loadGateActions() {
+  try {
+    return require('../../metadata/review-state-gate-actions.json');
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Would the review gate stop before the first AC is worked (#3259)? When it
+ * would, the preamble must not move the issue, its PRD tracker or the tree's
+ * root to in_progress: accepting the gate's offer leaves everything as found,
+ * and a decline is moved by the Step 3 Pre-Work Status Gate as usual.
+ *
+ * - standard issue: the Step 3 matrix, shape `single`;
+ * - epic, or branch tracker under --nonstop: the Step 2b-ii tree gate over
+ *   the epic (classified) or the tracker (dropped) plus its active members;
+ * - branch tracker without --nonstop: no up-front gate, so no deferral.
+ *
+ * @returns {{ defer: boolean, state?: string, action?: string, reason?: string }}
+ */
+function decideStartMove({ type, issue, active = [], skipped = [], nonstop = false }) {
+  if (type === 'epic' || (type === 'branch' && nonstop)) {
+    const members = [
+      { number: issue.number, state: classifyReviewState(issue).state, boardStatus: null, isTracker: type === 'branch' },
+      ...active.map((s) => ({ number: s.number, state: classifyReviewState(s).state, boardStatus: s.status || null })),
+    ];
+    const verdict = evaluateBranchReviewGate({ members, skipped, setShape: 'tree' });
+    if (!verdict.gate) return { defer: false };
+    return {
+      defer: true,
+      action: 'stop',
+      reason: `the Step 2b-ii tree gate will stop on ${[...(verdict.neverReviewed || []), ...(verdict.findingsPending || [])].map((n) => `#${n}`).join(', ')}`,
+    };
+  }
+  if (type === 'branch') return { defer: false };
+
+  const matrix = loadGateActions();
+  const { state } = classifyReviewState(issue);
+  const entry = matrix && matrix.actions && matrix.actions[state] && matrix.actions[state].single;
+  if (!entry) return { defer: false };
+  if (entry.action !== 'stop' && entry.action !== 'halt') return { defer: false };
+  return { defer: true, state, action: entry.action, reason: `the Step 3 Review-State Gate will ${entry.action} on a ${state} issue` };
+}
 
 // Every spawn here goes through the timed wrapper (#2469). These are /work's
 // Step 1 critical path — including the `gh pmu move --status in_progress` calls —
@@ -152,6 +207,8 @@ function parseArgs(args) {
   // transition this script issues — a decision the rule cannot make after the
   // envelope is already built.
   const hasNonstop = args.includes('--nonstop');
+  // #3265: an issue already In review or Done is refused unless --reopen.
+  const hasReopen = args.includes('--reopen');
 
   // #3126. --concurrent and --agents N are parsed HERE, before the first round
   // trip, so an invalid cap fails with nothing moved and no worktree created.
@@ -178,6 +235,15 @@ function parseArgs(args) {
       });
     }
   }
+  // #3269. --no-review skips the Merge-Back Review Gate's Tier 3; like
+  // --agents it only means something under --concurrent.
+  const hasNoReview = args.includes('--no-review');
+  if (hasNoReview && !hasConcurrent) {
+    parseWarnings.push({
+      code: 'NO_REVIEW_IGNORED',
+      message: '--no-review has no effect without --concurrent; ignored.'
+    });
+  }
 
   // The modifier flags attach identically to every mode. One place, so a
   // flag added later cannot be carried by two modes and dropped by the third
@@ -186,7 +252,9 @@ function parseArgs(args) {
     if (hasAssign) result.assign = true;
     if (hasWait) result.wait = true;
     if (hasNonstop) result.nonstop = true;
+    if (hasReopen) result.reopen = true;
     if (hasConcurrent) result.concurrent = true;
+    if (hasConcurrent && hasNoReview) result.noReview = true;
     if (maxAgents !== undefined) {
       result.maxAgents = maxAgents;
       result.maxAgentsSource = 'flag';
@@ -511,11 +579,11 @@ async function loadSubIssues(issueNum) {
     'SUB_ISSUE_LOAD_FAILED',
     `Failed to load sub-issues for #${issueNum}`
   );
+  // #3265: an enumeration that failed is an error, not an empty tree. As a
+  // warning it let the run continue with zero members and move the tracker —
+  // for an epic, on to in_review with nothing worked.
   if (result.error) {
-    return {
-      subIssues: [],
-      warning: { code: 'SUB_ISSUE_LOAD_FAILED', message: result.error.message }
-    };
+    return { subIssues: [], error: { code: 'SUB_ISSUE_LOAD_FAILED', message: result.error.message } };
   }
   const children = (result.data.children || []).map(c => ({
     number: c.number,
@@ -590,11 +658,11 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
             const { stdout } = await execFileAsync('gh', ['pmu', 'view', String(sub.number), '--json=status,body,labels'], EXEC_OPTS);
             const data = JSON.parse(stdout.trim());
             return { sub, status: data.status, body: data.body, labels: data.labels };
-          } catch (_e) {
-            // Fail-open: an unreadable sub-issue stays in the work list. Body and
-            // labels normalize below, so a fetch failure degrades the ordering
-            // signal rather than dropping the sub-issue.
-            return { sub, status: null, body: null, labels: null };
+          } catch (e) {
+            // #3265: an unreadable sub-issue is its own bucket, never active.
+            // Its status is unknown — it may be In review, or carry
+            // qa-required — so working it could reopen finished work.
+            return { sub, unreadable: true, reason: e && e.message ? e.message : String(e) };
           }
         })
       ),
@@ -604,7 +672,12 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
     clearTimeout(timeoutHandle);
   }
 
-  for (const { sub, status, body, labels } of statusResults) {
+  const unreadable = [];
+  for (const { sub, status, body, labels, unreadable: failed, reason } of statusResults) {
+    if (failed) {
+      unreadable.push({ number: sub.number, reason });
+      continue;
+    }
     // A qa-required child is a gate on the PARENT's closure, not implementation
     // work in sequence with its siblings (#2824). It is skipped with a pointer
     // whatever its board status — never redirected mid-loop, because a Skill
@@ -625,7 +698,7 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
       });
     }
   }
-  return { skipped, active };
+  return { skipped, active, unreadable };
 }
 
 /**
@@ -635,31 +708,83 @@ async function checkSubIssueStatuses(subIssues, timeoutMs = 30000) {
  * @returns {number[]} Ordered issue numbers
  */
 function parseProcessingOrder(body, subIssueNums) {
-  if (!body) return [...subIssueNums].sort((a, b) => a - b);
+  return parseProcessingOrderDetail(body, subIssueNums).order;
+}
+
+const PO_BOLD = /^\s*\*\*Processing Order:\*\*\s*(.*)$/;
+const PO_HEADING = /^\s*#{1,6}\s+Processing Order:?\s*$/;
+const PO_ITEM = /^\s*(?:\d+[.)]|[-*+])\s+/;
+
+/**
+ * Locate a Processing Order section in normalized body lines (#3270). One
+ * definition for the reader and the writer, so a section the parser reads is
+ * exactly the section applyProcessingOrder replaces. Recognized: the bold
+ * header with items below or inline after it, and a markdown heading. Items
+ * are list lines; blank lines between items do not end the section — the
+ * first non-blank, non-item line, or any heading, does.
+ *
+ * @param {string[]} lines
+ * @returns {{start: number, end: number, inline: string, items: string[]}|null}
+ */
+function findProcessingOrderSection(lines) {
+  const start = lines.findIndex((l) => PO_BOLD.test(l) || PO_HEADING.test(l));
+  if (start === -1) return null;
+  const bold = PO_BOLD.exec(lines[start]);
+  const inline = bold ? bold[1].trim() : '';
+  const items = [];
+  let end = start + 1;
+  let i = start + 1;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === '') { i++; continue; }
+    if (!PO_ITEM.test(line) || /^\s*#{1,6}\s/.test(line)) break;
+    items.push(line);
+    i++;
+    end = i;
+  }
+  return { start, end, inline, items };
+}
+
+/**
+ * parseProcessingOrder with what it set aside (#3270). Each item contributes
+ * its FIRST `#N`; further references in the same item (`#12 (after #13
+ * lands)`) and references to issues that are not members are ignored and
+ * named in `warnings`, never dropped silently. Members the section does not
+ * mention are appended in ascending order, as before.
+ *
+ * @returns {{order: number[], warnings: string[], found: boolean}}
+ */
+function parseProcessingOrderDetail(body, subIssueNums) {
+  const ascending = [...subIssueNums].sort((a, b) => a - b);
+  if (!body) return { order: ascending, warnings: [], found: false };
 
   // A CRLF body would let the section read on past its blank line (#3064).
-  const orderMatch = normalizeEol(body).match(/\*\*Processing Order:\*\*\s*\n([\s\S]*?)(?:\n\n|\n##|$)/);
-  if (!orderMatch) return [...subIssueNums].sort((a, b) => a - b);
+  const section = findProcessingOrderSection(normalizeEol(body).split('\n'));
+  if (!section) return { order: ascending, warnings: [], found: false };
 
-  const orderSection = orderMatch[1];
-  const orderedNums = [];
-  const issueRefRegex = /#(\d+)/g;
-  let match;
-  while ((match = issueRefRegex.exec(orderSection)) !== null) {
-    const num = parseInt(match[1], 10);
-    if (subIssueNums.includes(num) && !orderedNums.includes(num)) {
-      orderedNums.push(num);
+  const entries = section.inline
+    ? section.inline.split(',').map((s) => s.trim()).filter(Boolean)
+    : section.items;
+  const order = [];
+  const warnings = [];
+  for (const entry of entries) {
+    const refs = [...entry.matchAll(/#(\d+)/g)].map((m) => parseInt(m[1], 10));
+    if (refs.length === 0) continue;
+    const [first, ...rest] = refs;
+    if (rest.length > 0) {
+      warnings.push(`Processing Order item "${entry.trim()}": only #${first} is read; ${rest.map((n) => `#${n}`).join(', ')} ignored`);
     }
+    if (!subIssueNums.includes(first)) {
+      warnings.push(`Processing Order names #${first}, which is not a sub-issue of this tracker; ignored`);
+      continue;
+    }
+    if (!order.includes(first)) order.push(first);
   }
 
-  // Append any sub-issues not mentioned in the order
-  for (const num of [...subIssueNums].sort((a, b) => a - b)) {
-    if (!orderedNums.includes(num)) {
-      orderedNums.push(num);
-    }
+  for (const num of ascending) {
+    if (!order.includes(num)) order.push(num);
   }
-
-  return orderedNums;
+  return { order, warnings, found: true };
 }
 
 /**
@@ -699,22 +824,45 @@ function applyProcessingOrder(body, order) {
   const text = typeof body === 'string' ? normalizeEol(body) : '';
   const lines = text.split('\n');
 
-  const headerIdx = lines.findIndex(l => l.trim() === '**Processing Order:**');
-  if (headerIdx === -1) {
+  // The same locator the parser uses (#3270), so the inline form, a
+  // `## Processing Order` heading and a blank-line list are all replaced in
+  // place — matching only the bare bold header appended a second section.
+  const found = findProcessingOrderSection(lines);
+  if (!found) {
     const sep = text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
     return text + sep + section;
   }
 
-  // The section ends where parseProcessingOrder stops reading: the first blank
-  // line or `##` heading after the header. Keeping the two definitions aligned
-  // is what makes the round-trip hold.
-  let end = headerIdx + 1;
-  while (end < lines.length && lines[end].trim() !== '' && !lines[end].startsWith('##')) {
-    end++;
-  }
-
   const replacement = section.replace(/\n$/, '').split('\n');
-  return [...lines.slice(0, headerIdx), ...replacement, ...lines.slice(end)].join('\n');
+  return [...lines.slice(0, found.start), ...replacement, ...lines.slice(found.end)].join('\n');
+}
+
+/**
+ * The durable not-swept record a sequential `--nonstop` halt leaves on its
+ * tracker (#3270), as an HTML comment line so it renders invisibly. Empty
+ * list → the clearing marker. A halt report alone is a report, not a store.
+ * @param {number[]} nums
+ * @returns {string}
+ */
+function buildUnsweptMarker(nums) {
+  const sorted = [...new Set(nums)].sort((a, b) => a - b);
+  return `<!-- unswept: ${sorted.length ? sorted.map((n) => `#${n}`).join(', ') : 'none'} -->`;
+}
+
+/**
+ * The latest unswept marker among a tracker's comments (#3270); [] when the
+ * newest marker is the clearing one or there is none. Ordered by createdAt.
+ * @param {Array<{body: string, createdAt?: string}>} comments
+ * @returns {number[]}
+ */
+function parseLatestUnswept(comments) {
+  const marked = (comments || [])
+    .filter((c) => c && typeof c.body === 'string' && /<!-- unswept: [^>]*-->/.test(c.body))
+    .sort((a, b) => Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+  if (marked.length === 0) return [];
+  const m = /<!-- unswept: ([^>]*?) -->/.exec(marked[marked.length - 1].body);
+  if (!m || m[1].trim() === 'none') return [];
+  return [...m[1].matchAll(/#(\d+)/g)].map((x) => parseInt(x[1], 10));
 }
 
 /**
@@ -885,14 +1033,75 @@ function resolveWorktreeHookFromDisk({ cwd = process.cwd(), homedir = require('o
 }
 
 /**
+ * Per member, the `Refs #N` commits reachable from the tracker (HEAD) and
+ * those on its first-parent line (#3264), for classifyResume. A git failure
+ * reads as no commits: the member is planned as before, never skipped.
+ *
+ * @param {number[]} numbers
+ * @returns {Promise<Object<number, {all: string[], firstParent: string[]}>>}
+ */
+async function readResumeLogsFromGit(numbers) {
+  const shas = async (args) => {
+    try {
+      const { stdout } = await execFileAsync('git', args, { cwd: process.cwd() });
+      return String(stdout || '').split('\n').map((l) => l.trim()).filter((l) => /^[0-9a-f]{7,40}$/.test(l));
+    } catch (_e) {
+      return [];
+    }
+  };
+  const logs = {};
+  for (const n of numbers) {
+    const grep = `--grep=${issueRefGrepPattern(n, { keywords: ['Refs'] })}`;
+    logs[n] = { all: await shas(['log', '--format=%H', grep, 'HEAD']), firstParent: await shas(['log', '--first-parent', '--format=%H', grep, 'HEAD']) };
+  }
+  return logs;
+}
+
+/**
+ * The worktrees git knows and this tracker's run ledger (#3264), for
+ * matchKeptWorktrees. Either read failing reads as none: a missing ledger
+ * lists every wt/* worktree unmatched rather than skipping them.
+ *
+ * @param {number} tracker
+ * @returns {Promise<{worktrees: object[], ledger: object|null}>}
+ */
+async function readResumeWorktreesFromDisk(tracker) {
+  let worktrees = [];
+  try {
+    const { stdout } = await execFileAsync('git', ['worktree', 'list', '--porcelain'], { cwd: process.cwd() });
+    worktrees = parseWorktreeList(stdout);
+  } catch (_e) { /* no worktrees readable */ }
+  let ledger = null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(process.cwd(), `.tmp-concurrent-${tracker}.json`), 'utf8'));
+    if (parsed && Array.isArray(parsed.members)) ledger = parsed;
+  } catch (_e) { /* no ledger */ }
+  return { worktrees, ledger };
+}
+
+/**
  * The concurrent run the parent executes (#3129): its step sequence, with a
  * worktree spawn request carrying each group member's brief, and one task per
  * member naming its group.
+ *
+ * Each member's brief is written to `.tmp-brief-<N>.md` at the root and the
+ * spawn request names that file (#3280), so the envelope never carries the
+ * brief. Written on every preamble run, so a resumed run rewrites a file the
+ * startup sweep removed. A failed write inlines every brief and warns.
+ *
+ * Under `--nonstop` with at least one group the run is the rolling schedule
+ * (#3274, `schedule: 'rolling'`): the steps are nextSteps' first output, and
+ * the run state — layers, dependencies, cap, members — is written to
+ * `.tmp-rolling-<tracker>.json` for the `next-steps` CLI. Default mode keeps
+ * the fixed groups (`schedule: 'groups'`) and their per-group STOP.
  * @param {object} plan - buildPlan result
  * @param {Array<{number: number, title?: string, body?: string}>} active
  * @param {boolean} nonstop
+ * @param {{writeBrief?: function(string, string): void, warnings?: object[], tracker?: number, noReview?: boolean}} [io] -
+ *   writeBrief (also writes the rolling state file) injectable for tests; a
+ *   failed write is pushed onto `warnings`; `noReview` (`--no-review`, #3269) turns every Tier 3 spawn into a review-skip
  */
-function buildConcurrentRun(plan, active, nonstop) {
+function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => fs.writeFileSync(p, text), warnings = [], tracker, noReview = false } = {}) {
   const members = {};
   const scopeOf = (n) => {
     const info = ((plan && plan.members) || []).find(m => m.number === n);
@@ -908,8 +1117,48 @@ function buildConcurrentRun(plan, active, nonstop) {
       declaredScope: scopeOf(s.number)
     };
   }
-  const { steps, total } = buildRun({ plan, members, nonstop: !!nonstop, tddChecklist: loadTddChecklist(), root: process.cwd() });
-  return { steps, total, tasks: memberTasks({ plan, members }) };
+  const tddChecklist = loadTddChecklist();
+  let inlineBriefs = false;
+  for (const brief of memberBriefs({ plan, members, tddChecklist, root: process.cwd() })) {
+    try {
+      writeBrief(brief.path, brief.text);
+    } catch (err) {
+      inlineBriefs = true;
+      warnings.push({ code: 'BRIEF_WRITE_FAILED', message: `Could not write ${brief.path} (${err && err.message ? err.message : String(err)}); every member brief is inline in its spawn request instead.` });
+    }
+  }
+  const rootDir = process.cwd().replace(/\\/g, '/').replace(/\/+$/, '');
+  // The run ledger (#3264): record-spawn creates it on the first spawn; a
+  // resumed run reads it to map kept worktrees back to their members.
+  const ledgerFile = `${rootDir}/.tmp-concurrent-${tracker}.json`;
+  if (nonstop && Array.isArray(plan.groups) && plan.groups.length > 0) {
+    const stateFile = `${rootDir}/.tmp-rolling-${tracker}.json`;
+    const first = nextSteps({
+      layers: plan.layers || [], dependsOn: plan.dependsOn || {}, maxAgents: plan.maxAgents, members, tddChecklist,
+      root: process.cwd(), inlineBriefs, noReview, tail: (plan.tail || []).map(t => t.number), stateFile, ledgerFile, finishOnly: plan.finishOnly || [],
+    });
+    try {
+      writeBrief(stateFile, JSON.stringify(first.state, null, 2));
+    } catch (err) {
+      warnings.push({ code: 'RUN_STATE_WRITE_FAILED', message: `Could not write ${stateFile} (${err && err.message ? err.message : String(err)}); the rolling schedule cannot advance past its first steps — re-run the preamble.` });
+    }
+    const total = (plan.layers || []).flat().length + (plan.tail || []).length;
+    return { schedule: 'rolling', start: first.start, steps: first.steps, total, stateFile, ledgerFile, templates: { ...MEMBER_TEMPLATES }, tasks: memberTasks({ plan, members, rolling: true }) };
+  }
+  // The run's inputs, for the replan CLI (#3269): the Review-State Gate and
+  // worktree creation decide after this plan is built, and a re-plan drops a
+  // stopped or never-started member's later steps. A failed write leaves the
+  // steps without re-plan instructions rather than naming a missing file.
+  const inputs = { plan, members, nonstop: !!nonstop, tddChecklist, root: process.cwd(), inlineBriefs, noReview, ledgerFile };
+  let stateFile = `${rootDir}/.tmp-run-${tracker}.json`;
+  try {
+    writeBrief(stateFile, JSON.stringify(inputs, null, 2));
+  } catch (err) {
+    warnings.push({ code: 'RUN_STATE_WRITE_FAILED', message: `Could not write ${stateFile} (${err && err.message ? err.message : String(err)}); a member the Review-State Gate stops, or whose worktree cannot be created, cannot be re-planned — re-run the preamble.` });
+    stateFile = null;
+  }
+  const { steps, total, templates } = buildRun({ ...inputs, stateFile });
+  return { schedule: 'groups', steps, total, templates, ...(stateFile ? { stateFile } : {}), ledgerFile, tasks: memberTasks({ plan, members }) };
 }
 
 /**
@@ -1054,8 +1303,17 @@ function readFrameworkConfig() {
       framework: config.processFramework || null,
       frameworkPath: config.frameworkPath || null
     };
-  } catch (_e) {
-    return { framework: null, frameworkPath: null };
+  } catch (e) {
+    // #3266: a corrupt config left frameworkPath null with no word, so Step 2
+    // loaded nothing and nobody was told why. Same nulls, now with a warning.
+    return {
+      framework: null,
+      frameworkPath: null,
+      warning: {
+        code: 'FRAMEWORK_CONFIG_UNREADABLE',
+        message: `framework-config.json could not be parsed (${e && e.message ? e.message : e}); framework and frameworkPath are unset for this run.`
+      }
+    };
   }
 }
 
@@ -1079,6 +1337,24 @@ async function getCurrentBranch() {
  * @param {object|null} [workstreams] - Parsed .workstreams.json (optional)
  * @returns {Promise<{ assignable: boolean, alreadyAssigned?: boolean, error?: { code: string, message: string } }>}
  */
+/**
+ * Parsed `.workstreams.json` for the WORKSTREAM_CONFLICT check, or null when
+ * absent or unparseable. Shared by the single and batch paths (#3260): the
+ * batch path called checkAssignability without it, so the check never ran.
+ * @returns {object|null}
+ */
+function loadWorkstreams() {
+  try {
+    const wsPath = path.join(process.cwd(), '.workstreams.json');
+    if (fs.existsSync(wsPath)) {
+      return JSON.parse(fs.readFileSync(wsPath, 'utf-8'));
+    }
+  } catch (_e) {
+    // No workstreams file or parse error — proceed without conflict check
+  }
+  return null;
+}
+
 async function checkAssignability(issueNum, targetBranch, workstreams) {
   // Check current branch assignment
   const branchResult = await gatherBranchData(issueNum);
@@ -1227,18 +1503,7 @@ async function runSingleIssue(issueNum, options) {
       return buildErrorEnvelope([{ code: 'NO_CURRENT_BRANCH', message: 'Could not determine current git branch.' }]);
     }
 
-    // Load workstreams metadata for conflict check
-    let workstreams = null;
-    try {
-      const wsPath = path.join(process.cwd(), '.workstreams.json');
-      if (fs.existsSync(wsPath)) {
-        workstreams = JSON.parse(fs.readFileSync(wsPath, 'utf-8'));
-      }
-    } catch (_e) {
-      // No workstreams file or parse error — proceed without conflict check
-    }
-
-    const assignCheck = await checkAssignability(issueNum, currentBranch, workstreams);
+    const assignCheck = await checkAssignability(issueNum, currentBranch, loadWorkstreams());
     if (!assignCheck.assignable) {
       return buildErrorEnvelope([assignCheck.error]);
     }
@@ -1253,6 +1518,14 @@ async function runSingleIssue(issueNum, options) {
     }
   }
 
+  // #3273: once --assign has moved the issue, every later error envelope says
+  // so — buildErrorEnvelope alone reported gates:{} and hid the mutation.
+  const failAfterAssign = (errors) => {
+    const envelope = buildErrorEnvelope(errors);
+    if (assignGate) envelope.gates = { assigned: true };
+    return envelope;
+  };
+
   // 2. Parallel: gather all data (single consolidated call) + resolve tracker
   //    These are independent — tracker resolution only needs the current branch.
   const [dataResult, tracker] = await Promise.all([
@@ -1263,7 +1536,7 @@ async function runSingleIssue(issueNum, options) {
   roundTrips++; // resolveTracker
 
   if (dataResult.error) {
-    return buildErrorEnvelope([dataResult.error]);
+    return failAfterAssign([dataResult.error]);
   }
 
   if (tracker === null) {
@@ -1273,6 +1546,7 @@ async function runSingleIssue(issueNum, options) {
   // 3. Detect type + read framework config (both sync, no I/O)
   const type = detectIssueType(dataResult.issue);
   const frameworkConfig = readFrameworkConfig();
+  if (frameworkConfig.warning) warnings.push(frameworkConfig.warning);
 
   // 4. Type-specific data gathering.
   //
@@ -1283,8 +1557,9 @@ async function runSingleIssue(issueNum, options) {
   // the run starts mutating state, not after.
   //
   // Two consequences of the reorder, both deliberate:
-  //   - a failure to load sub-issues now returns before the tracker is moved to
-  //     in_progress, rather than leaving it moved with nothing derived;
+  //   - a failure to load sub-issues returns SUB_ISSUE_LOAD_FAILED before the
+  //     tracker is moved to in_progress, rather than leaving it moved with
+  //     nothing derived (true since #3265; it was a warning before);
   //   - `moveToInProgress` still reads `dataResult.branch.status` captured in
   //     step 2, so the reorder cannot stale the prior-status comparison that
   //     makes `movedToInProgress` report a real transition (#2483).
@@ -1324,12 +1599,28 @@ async function runSingleIssue(issueNum, options) {
     return envelope;
   }
 
+  // 4b. #3265: an issue already In review or Done is finished work. Moving it
+  //     back to in_progress silently reopened it; now /work refuses, naming
+  //     the status, unless --reopen asks for exactly that.
+  const priorStatus = dataResult.branch && dataResult.branch.status;
+  const priorNorm = normalizeStatus(priorStatus);
+  const finished = priorNorm === 'inreview' || priorNorm === 'done';
+  if (finished && !(options && options.reopen)) {
+    return failAfterAssign([{
+      code: priorNorm === 'done' ? 'ALREADY_DONE' : 'ALREADY_IN_REVIEW',
+      message: `Issue #${issueNum} is already ${priorStatus}; /work made no status move. Re-run with --reopen to move it back to in_progress and work it again.`
+    }]);
+  }
+
+  // The tree's active members, held for the #3259 start-move decision below.
+  let treeActive = [];
+  let treeSkipped = [];
   if (type === 'epic' || type === 'branch') {
     // Epic/Branch flow: load sub-issues, check statuses (parallelized), determine order
     roundTrips++;
     const subResult = await loadSubIssues(issueNum);
-    if (subResult.warning) {
-      warnings.push(subResult.warning);
+    if (subResult.error) {
+      return failAfterAssign([subResult.error]);
     }
     context.subIssues = subResult.subIssues;
 
@@ -1347,6 +1638,27 @@ async function runSingleIssue(issueNum, options) {
     roundTrips += subResult.subIssues.filter(s => s.state !== 'CLOSED').length;
     const statusResult = await checkSubIssueStatuses(subResult.subIssues);
     context.skipped = statusResult.skipped;
+    treeActive = statusResult.active;
+    treeSkipped = statusResult.skipped;
+    // #3265: a child whose status could not be read is reported, never worked.
+    // Under --nonstop nobody would see the warning, so the run halts instead.
+    if (statusResult.unreadable.length > 0) {
+      const named = statusResult.unreadable.map((u) => `#${u.number} (${u.reason})`).join('; ');
+      const unreadableIssue = {
+        code: 'SUB_ISSUE_STATUS_UNREADABLE',
+        message: `Board status could not be read for ${named}; ${statusResult.unreadable.length === 1 ? 'it is' : 'they are'} not worked by this run. Re-run once gh pmu view succeeds.`
+      };
+      if (options && options.nonstop) return failAfterAssign([unreadableIssue]);
+      warnings.push(unreadableIssue);
+      context.unreadable = statusResult.unreadable.map((u) => u.number);
+      // The processing loop skips what context.skipped names. Dependency
+      // ordering still reads statusResult.skipped, so an unreadable member is
+      // never mistaken for a satisfied dependency.
+      context.skipped = [
+        ...context.skipped,
+        ...statusResult.unreadable.map((u) => ({ number: u.number, status: null, reason: 'status-unreadable' }))
+      ];
+    }
 
     // Surface the bodies fetched above on context.subIssues (#2622, AC1).
     // context.subIssues stays the FULL list — active plus skipped — because two
@@ -1357,7 +1669,10 @@ async function runSingleIssue(issueNum, options) {
 
     // Epics and branch trackers both read **Processing Order:** from their own body,
     // falling back to ascending numeric order when the section is absent (#2544).
-    const declaredOrder = parseProcessingOrder(dataResult.issue.body, subNums);
+    const orderDetail = parseProcessingOrderDetail(dataResult.issue.body, subNums);
+    const declaredOrder = orderDetail.order;
+    // #3270: an entry the parser set aside is reported, never replaced silently.
+    for (const message of orderDetail.warnings) warnings.push({ code: 'PROCESSING_ORDER_PARTIAL', message });
 
     // #3128: the order actually worked is a topological sort of the
     // **Depends on:** graph, the declared order breaking ties. A cycle has no
@@ -1365,7 +1680,7 @@ async function runSingleIssue(issueNum, options) {
     // and nothing has been created or moved when the run stops.
     const dependencies = orderByDependencies(statusResult.active, statusResult.skipped, declaredOrder);
     if (!dependencies.ok) {
-      return buildErrorEnvelope([{
+      return failAfterAssign([{
         code: 'DEPENDENCY_CYCLE',
         message: dependencies.graph.message,
         cycle: dependencies.graph.cycle
@@ -1373,6 +1688,28 @@ async function runSingleIssue(issueNum, options) {
     }
     const processingOrder = dependencies.order;
     context.processingOrder = processingOrder;
+    // #3270: what a run — or a resume after compaction — works next, in the
+    // dependency order. context.subIssues keeps `gh pmu sub list` order, so
+    // resuming from it could start a child before its **Depends on:** sibling.
+    const skippedSet = new Set((context.skipped || []).map((s) => s.number));
+    context.resumeOrder = processingOrder.filter((n) => !skippedSet.has(n));
+
+    // #3270: a sequential --nonstop halt leaves an `unswept` marker on the
+    // tracker; a resumed --nonstop run must sweep those members' changes too.
+    if (options && options.nonstop) {
+      roundTrips++;
+      const commentsResult = await execJSON(
+        'gh', ['issue', 'view', String(issueNum), '--json=comments'],
+        'TRACKER_COMMENTS_FAILED',
+        `Failed to read comments on #${issueNum}`
+      );
+      if (commentsResult.error) {
+        warnings.push({ code: 'UNSWEPT_UNKNOWN', message: `${commentsResult.error.message}; an earlier halt's not-swept members cannot be recovered this run.` });
+      } else {
+        const unswept = parseLatestUnswept(commentsResult.data && commentsResult.data.comments);
+        if (unswept.length > 0) context.unswept = unswept;
+      }
+    }
     context.declaredOrder = declaredOrder;
     context.dependencyGraph = {
       edges: dependencies.graph.edges,
@@ -1395,7 +1732,7 @@ async function runSingleIssue(issueNum, options) {
         + blockedBy.map(([n, qa]) => `#${n} → ${qa.map(q => `#${q}`).join(', ')}`).join('; ')
         + '. Close the QA issue (/qa #N) or remove the dependency.';
       if (options && options.nonstop) {
-        return buildErrorEnvelope([{ code: 'DEPENDS_ON_QA_REQUIRED', message }]);
+        return failAfterAssign([{ code: 'DEPENDS_ON_QA_REQUIRED', message }]);
       }
       warnings.push({ code: 'DEPENDS_ON_QA_REQUIRED', message });
     }
@@ -1436,7 +1773,21 @@ async function runSingleIssue(issueNum, options) {
       // the plan falls back to sequential. Injectable so tests read no disk.
       const hook = (options.resolveWorktreeHook || resolveWorktreeHookFromDisk)();
       if (hook && Array.isArray(hook.warnings)) warnings.push(...hook.warnings);
+      // #3264: a resumed run's members already merged on the tracker are
+      // finished, not re-spawned. Injectable so tests run no git.
+      const numbers = statusResult.active.map((s) => s.number);
+      const logs = await (options.readResumeLogs || readResumeLogsFromGit)(numbers);
+      const { merged } = classifyResume({ members: numbers, logs });
+      const found = await (options.readResumeWorktrees || readResumeWorktreesFromDisk)(issueNum);
+      const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees, ledger: found.ledger, members: numbers.filter((n) => !merged.includes(n)) });
+      for (const k of worktreeMatch.kept) {
+        warnings.push({ code: 'KEPT_WORKTREE', message: `#${k.issue} has a worktree kept from an earlier run at ${k.worktreePath} (${k.branch}); it is held, not re-spawned, since it may hold fixes. Check it, then merge it with \`node .claude/scripts/shared/lib/merge-back-gate.js merge-back --tracker <tracker branch> --member ${k.issue}:${k.branch}:${k.worktreePath}\`, or tear it down with worktree-teardown.js, and re-run.` });
+      }
+      for (const u of worktreeMatch.unmatched) {
+        warnings.push({ code: 'UNMATCHED_WORKTREE', message: `Worktree ${u.worktreePath} (${u.branch}) is not in ${worktreeMatch.ledgerFound ? 'the run ledger' : 'any run ledger — none was found'}; it may hold a member's work from an earlier run. Inspect it before tearing it down.` });
+      }
       context.concurrencyPlan = buildPlan({
+        resume: { merged, kept: worktreeMatch.kept },
         members: statusResult.active,
         processingOrder,
         maxAgents: options.maxAgents,
@@ -1444,7 +1795,12 @@ async function runSingleIssue(issueNum, options) {
         dependencies: context.dependencyGraph,
         worktreeHookRegistered: !!(hook && hook.registered)
       });
-      context.concurrentRun = buildConcurrentRun(context.concurrencyPlan, statusResult.active, options.nonstop);
+      context.concurrentRun = buildConcurrentRun(context.concurrencyPlan, statusResult.active, options.nonstop, {
+        ...(options.writeBrief ? { writeBrief: options.writeBrief } : {}),
+        warnings,
+        tracker: issueNum,
+        noReview: !!options.noReview
+      });
     }
 
     // Branch tracker with all sub-issues complete: suggest next step
@@ -1471,6 +1827,32 @@ async function runSingleIssue(issueNum, options) {
     if (acWarning) warnings.push(acWarning);
   }
 
+  // 5a. #3259: when the review gate will stop, nothing moves. Accepting the
+  //     gate's offer then leaves the issue, its PRD tracker and the tree's
+  //     root exactly as found; a decline is moved by the Step 3 Pre-Work
+  //     Status Gate, which also moves `moveDeferred.prdTracker` when set.
+  const prdTrackerNum = parsePrdTracker(dataResult.issue.body);
+  const startMove = decideStartMove({
+    type, issue: dataResult.issue, active: treeActive, skipped: treeSkipped, nonstop: !!(options && options.nonstop)
+  });
+  if (startMove.defer) {
+    const priorStatus = dataResult.branch && dataResult.branch.status;
+    const envelope = buildSuccessEnvelope(context, {
+      assigned: assignGate,
+      movedToInProgress: false,
+      alreadyInProgress: normalizeStatus(priorStatus) === 'inprogress',
+      prdTrackerMoved: false,
+      moveDeferred: {
+        ...(startMove.state ? { state: startMove.state } : {}),
+        action: startMove.action,
+        reason: startMove.reason,
+        prdTracker: prdTrackerNum || null
+      }
+    }, autoTask, warnings);
+    envelope.roundTrips = roundTrips;
+    return envelope;
+  }
+
   // 5. Ensure in_progress. Prior status comes from gatherAllData in step 2 — no
   //    extra round trip — so movedToInProgress reports a real transition (#2483).
   //    Runs AFTER the ordering derivation above; see the note on step 4.
@@ -1480,14 +1862,15 @@ async function runSingleIssue(issueNum, options) {
     assigned: assignGate,
     movedToInProgress: moveResult.moved,
     alreadyInProgress: moveResult.alreadyInProgress,
-    prdTrackerMoved: false
+    prdTrackerMoved: false,
+    // #3265: --reopen names the status it reopened, so the move is reported.
+    ...(finished && moveResult.moved ? { reopenedFrom: priorStatus } : {})
   };
   if (moveResult.error) {
-    return buildErrorEnvelope([moveResult.error]);
+    return failAfterAssign([moveResult.error]);
   }
 
   // 6. PRD tracker auto-move
-  const prdTrackerNum = parsePrdTracker(dataResult.issue.body);
   if (prdTrackerNum) {
     roundTrips++;
     const prdResult = await movePrdTracker(prdTrackerNum);
@@ -1541,6 +1924,23 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
     return { ok: false, issueNum, errors: [issueResult.error], warnings: [], roundTrips };
   }
 
+  // #3260: an epic or branch tracker is not expanded inside a batch — its
+  // sub-issue loading, ordering and tree gate belong to the single-issue path.
+  // Refused with a named error before any mutation, never worked as a story.
+  const memberType = detectIssueType(issueResult.issue);
+  if (memberType === 'epic' || (memberType === 'branch' && !assignRequested)) {
+    return {
+      ok: false,
+      issueNum,
+      errors: [{
+        code: 'TREE_IN_BATCH',
+        message: `Issue #${issueNum} is ${memberType === 'epic' ? 'an epic' : 'a branch tracker'}; a batch does not expand it. Run it on its own: /work #${issueNum}`
+      }],
+      warnings: [],
+      roundTrips
+    };
+  }
+
   // --assign: check assignability and perform assignment
   if (assignRequested) {
     // Branch trackers are not assignable (#2403) — reject before any mutation.
@@ -1563,7 +1963,7 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
       return { ok: false, issueNum, errors: [{ code: 'NO_CURRENT_BRANCH', message: 'Could not determine current git branch.' }], warnings: [], roundTrips };
     }
 
-    const assignCheck = await checkAssignability(issueNum, currentBranch);
+    const assignCheck = await checkAssignability(issueNum, currentBranch, loadWorkstreams());
     if (!assignCheck.assignable) {
       return { ok: false, issueNum, errors: [assignCheck.error], warnings: [], roundTrips };
     }
@@ -1581,26 +1981,39 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
   roundTrips++;
   const branchResult = await gatherBranchData(issueNum);
   if (branchResult.error) {
-    return { ok: false, issueNum, errors: [branchResult.error], warnings: [], roundTrips };
+    // #3273: an assignment that already happened is reported, not hidden.
+    return { ok: false, issueNum, errors: [branchResult.error], warnings: [], roundTrips, ...(assignGate ? { gates: { assigned: true } } : {}) };
   }
 
   const type = detectIssueType(issueResult.issue);
-  const autoTask = parseAcceptanceCriteria(issueResult.issue.body);
-  // #2614: same reporting on the batch path — a vacuous pass is no more visible
-  // in a batch than alone, and a batch offers less opportunity to notice it.
-  const acWarning = buildAcSectionWarning(autoTask, issueNum);
-  if (acWarning) warnings.push(acWarning);
-
   const context = {
     issue: issueResult.issue,
     branch: branchResult.branch,
     type,
     tracker: shared.tracker,
     framework: shared.framework,
-    frameworkPath: shared.frameworkPath
+    frameworkPath: shared.frameworkPath,
+    ...(options && options.wait ? { wait: true } : {})
   };
-
   const gates = { assigned: assignGate, movedToInProgress: false, alreadyInProgress: false, prdTrackerMoved: false };
+
+  // #3260: the same redirect the single-issue path applies (#2784), at the
+  // same point — after the branch check, before any AC is loaded. A test-plan
+  // or qa-required member's checkboxes are not this run's work. The batch is
+  // not handed off mid-run: the caller works the other members and reports
+  // this one with its command at the end.
+  const redirect = detectRedirect(issueResult.issue);
+  if (redirect) {
+    context.redirect = redirect.command;
+    context.redirectLabel = redirect.label;
+    return { ok: true, issueNum, context, gates, autoTask: { items: [] }, errors: [], warnings, roundTrips };
+  }
+
+  const autoTask = parseAcceptanceCriteria(issueResult.issue.body);
+  // #2614: same reporting on the batch path — a vacuous pass is no more visible
+  // in a batch than alone, and a batch offers less opportunity to notice it.
+  const acWarning = buildAcSectionWarning(autoTask, issueNum);
+  if (acWarning) warnings.push(acWarning);
 
   return {
     ok: true,
@@ -1636,11 +2049,28 @@ async function runBatch(issueNums, options) {
     results.push(await runSingleIssueWithShared(num, shared, options));
   }
 
+  // #3260: flags that only an epic or branch tracker uses are reported once,
+  // never dropped silently. Members are never trees on this path (TREE_IN_BATCH).
+  const warnings = [];
+  if (frameworkConfig.warning) warnings.push(frameworkConfig.warning);   // #3266
+  if (options && options.concurrent) {
+    warnings.push({ code: 'CONCURRENT_IGNORED', message: '--concurrent applies to an epic or branch tracker; ignored for a selection of issues.' });
+  }
+  if (options && options.nonstop) {
+    warnings.push({ code: 'NONSTOP_IGNORED', message: '--nonstop applies to an epic or branch tracker; ignored for a selection of issues.' });
+  }
+
+  // A batch in which every member failed is a failed batch (#3260); one that
+  // has any member to work is ok, with per-member errors in results[].
+  const allFailed = results.length > 0 && results.every((r) => !r.ok);
   return {
-    ok: true,
+    ok: !allFailed,
     version: SCHEMA_VERSION,
     results,
-    warnings: [],
+    errors: allFailed
+      ? [{ code: 'ALL_MEMBERS_FAILED', message: `Every member of the selection failed: ${results.map((r) => `#${r.issueNum}`).join(', ')}.` }]
+      : [],
+    warnings,
     roundTrips: results.reduce((sum, r) => sum + (r.roundTrips || 0), 0) + (issueNums.length > 0 ? 1 : 0)
   };
 }
@@ -1664,7 +2094,7 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason } — zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request with the member brief on each group member\'s spawn step, and one task per member naming its group.'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason } — zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review (with --concurrent) turns every Tier 3 reviewer spawn into a review-skip step; without --concurrent it is reported as NO_REVIEW_IGNORED. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE.'
     },
     gates: {
       name: 'gates',
@@ -1711,8 +2141,10 @@ function buildOptions(parsed) {
   if (parsed.assign) options.assign = true;
   if (parsed.wait) options.wait = true;
   if (parsed.nonstop) options.nonstop = true;
+  if (parsed.reopen) options.reopen = true;   // #3265
   // #3126
   if (parsed.concurrent) options.concurrent = true;
+  if (parsed.noReview) options.noReview = true;   // #3269
   if (parsed.maxAgents !== undefined) {
     options.maxAgents = parsed.maxAgents;
     options.maxAgentsSource = parsed.maxAgentsSource || 'flag';
@@ -1759,7 +2191,7 @@ async function main() {
   if (parsed.mode === 'batch') {
     const result = await runBatch(parsed.issues, options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
-    process.exit(0);
+    process.exit(result.ok ? 0 : 1);
     return;
   }
 
@@ -1773,7 +2205,7 @@ async function main() {
     }
     const result = await runBatch(statusResult.issues, options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
-    process.exit(0);
+    process.exit(result.ok ? 0 : 1);
     return;
   }
 }
@@ -1819,6 +2251,9 @@ module.exports = {
   buildAcSectionWarning,
   buildOptions,
   parseProcessingOrder,
+  parseProcessingOrderDetail,
+  buildUnsweptMarker,
+  parseLatestUnswept,
   deriveProposedOrder,
   buildProcessingOrderSection,
   applyProcessingOrder,

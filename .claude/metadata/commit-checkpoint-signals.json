@@ -12,7 +12,7 @@
     "blocking": false,
     "onDecline": "proceed with work unchanged; do not re-prompt for the same accumulation without further delta",
     "trigger": {
-      "measurement": "git diff --numstat HEAD (working tree against the last commit)",
+      "measurement": "git diff --numstat HEAD -- <this run's paths: the declared scope plus the paths this run edited> (#3273 — never the whole tree, so a peer session's uncommitted edit does not count)",
       "combinator": "any",
       "thresholds": [
         {

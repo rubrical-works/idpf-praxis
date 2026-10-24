@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Transfer an issue between branches or remove it from branch assignment. Validates source and target branches, updates gh pmu branch field, and reports the transfer. Used by /transfer-issue command.
  * @checksum sha256:placeholder
  *
@@ -23,9 +23,9 @@ function exec(cmd) {
     }
 }
 
-function getIssueDetails(issueNumber) {
+function getIssueDetails(issueNumber, execFn = exec) {
     try {
-        const result = exec(`gh pmu view ${issueNumber} --json=fieldValues`);
+        const result = execFn(`gh pmu view ${issueNumber} --json=fieldValues`);
         if (result) {
             return JSON.parse(result);
         }
@@ -35,11 +35,11 @@ function getIssueDetails(issueNumber) {
     return null;
 }
 
-function getOpenBranches() {
+function getOpenBranches(execFn = exec) {
     try {
         // Note: gh pmu branch list has no JSON support, parse text output
         // Format: "VERSION      CODENAME        TRACKER    STATUS"
-        const result = exec('gh pmu branch list');
+        const result = execFn('gh pmu branch list');
         if (result) {
             const lines = result.split('\n').slice(2); // Skip header rows
             const branches = [];
@@ -62,80 +62,118 @@ function getOpenBranches() {
     return [];
 }
 
-function main() {
-    const args = process.argv.slice(2);
+/**
+ * Parse the command's arguments. /transfer-issue passes "$ARGUMENTS" as ONE
+ * string, so a single argument is split on whitespace exactly as
+ * assign-branch.js does (#3059); before, it was never split and every
+ * invocation printed usage.
+ * @param {string[]} argv
+ * @returns {{issueNumber: number|null, newBranch: string|null, removeFromBranch: boolean}}
+ */
+function parseArgs(argv) {
+    let args = argv;
+    if (args.length === 1 && /\s/.test(args[0])) {
+        args = args[0].split(/\s+/).filter(a => a.trim());
+    }
+    const issueArg = args.find(a => /^#?\d+$/.test(a));
+    const branchAt = args.indexOf('--branch');
+    return {
+        issueNumber: issueArg ? validateIssueNumber(issueArg.replace('#', '')) : null,
+        newBranch: branchAt >= 0 && args[branchAt + 1] ? args[branchAt + 1] : null,
+        removeFromBranch: args.includes('--remove-branch')
+    };
+}
 
-    // Parse arguments
-    const issueArg = args.find(a => a.match(/^#?\d+$/));
-    const issueNumber = issueArg ? validateIssueNumber(issueArg.replace('#', '')) : null;
+/**
+ * The branch name to move to. A name that already carries a prefix
+ * (`idpf/0.109.0`, `patch/0.1.1`) is used as given — prefixing `release/`
+ * onto it named a branch that does not exist (#3059). Only a bare name
+ * (`v1.2.0`) gets the historical `release/` prefix.
+ * @param {string} name
+ * @returns {string}
+ */
+function resolveBranchName(name) {
+    return name.includes('/') ? name : `release/${name}`;
+}
 
-    const newBranch = args.find((a, i) => args[i - 1] === '--branch');
-    const removeFromBranch = args.includes('--remove-branch');
+/**
+ * @param {string[]} argv
+ * @param {{exec?: function(string): (string|null), log?: function(string): void}} [deps]
+ */
+function run(argv, deps = {}) {
+    const execFn = deps.exec || exec;
+    const log = deps.log || console.log;
+    const { issueNumber, newBranch, removeFromBranch } = parseArgs(argv);
 
-    console.log('=== Transfer Issue ===\n');
+    log('=== Transfer Issue ===\n');
 
     if (!issueNumber) {
-        console.log('Usage: /transfer-issue #123 [options]');
-        console.log('\nOptions:');
-        console.log('  --branch <name>     Transfer to different branch');
-        console.log('  --remove-branch     Remove from current branch (back to backlog)');
+        log('Usage: /transfer-issue #123 [options]');
+        log('\nOptions:');
+        log('  --branch <name>     Transfer to different branch');
+        log('  --remove-branch     Remove from current branch (back to backlog)');
         return;
     }
 
     // Get current issue details
-    const issue = getIssueDetails(issueNumber);
+    const issue = getIssueDetails(issueNumber, execFn);
     if (!issue) {
-        console.log(`Issue #${issueNumber} not found or error fetching.`);
+        log(`Issue #${issueNumber} not found or error fetching.`);
         return;
     }
 
-    const currentBranch = issue.fieldValues?.Branch || '(none)';
+    // `gh pmu view --json=fieldValues` carries the title as fieldValues.Title;
+    // there is no top-level `title` (#3059).
+    const fields = issue.fieldValues || {};
+    const currentBranch = fields.Branch || '(none)';
 
-    console.log(`Issue #${issueNumber}: ${issue.title}`);
-    console.log(`Current branch: ${currentBranch}`);
-    console.log('');
+    log(`Issue #${issueNumber}: ${fields.Title || '(untitled)'}`);
+    log(`Current branch: ${currentBranch}`);
+    log('');
 
     // Handle actions
     if (removeFromBranch) {
-        console.log('Removing from branch...');
+        log('Removing from branch...');
         // gh pmu may not support removing branch field directly
         // This would need to be implemented in gh pmu
-        console.log('Note: Use gh pmu move to update branch assignment.');
-        console.log('Example: gh pmu move ' + issueNumber + ' --branch ""');
+        log('Note: Use gh pmu move to update branch assignment.');
+        log('Example: gh pmu move ' + issueNumber + ' --branch ""');
         return;
     }
 
     if (newBranch) {
-        console.log(`Transferring to branch: ${newBranch}...`);
+        log(`Transferring to branch: ${newBranch}...`);
         validateBranchName(newBranch);
-        const branchName = newBranch.startsWith('release/') || newBranch.startsWith('patch/')
-            ? newBranch
-            : `release/${newBranch}`;
-        const result = exec(`gh pmu move ${issueNumber} --branch ${branchName}`);
+        const branchName = resolveBranchName(newBranch);
+        const result = execFn(`gh pmu move ${issueNumber} --branch ${branchName}`);
         if (result !== null) {
-            console.log(`✓ Issue #${issueNumber} transferred to ${branchName}`);
+            log(`✓ Issue #${issueNumber} transferred to ${branchName}`);
         } else {
-            console.log('Note: Branch transfer may require gh pmu --branch support.');
-            console.log(`Manual: gh pmu move ${issueNumber} --branch "${branchName}"`);
+            log('Note: Branch transfer may require gh pmu --branch support.');
+            log(`Manual: gh pmu move ${issueNumber} --branch "${branchName}"`);
         }
         return;
     }
 
     // No action specified - show transfer options
-    console.log('--- Transfer Options ---');
-    const branches = getOpenBranches();
+    log('--- Transfer Options ---');
+    const branches = getOpenBranches(execFn);
     if (branches.length > 0) {
-        console.log('\nAvailable branches:');
+        log('\nAvailable branches:');
         branches.forEach(b => {
             const name = b.name || b.version || b;
             const marker = currentBranch === name ? ' ← current' : '';
-            console.log(`  - ${name}${marker}`);
+            log(`  - ${name}${marker}`);
         });
     }
 
-    console.log('\nTo transfer:');
-    console.log(`  /transfer-issue #${issueNumber} --branch release/vX.Y.Z`);
-    console.log(`  /transfer-issue #${issueNumber} --remove-branch`);
+    log('\nTo transfer:');
+    log(`  /transfer-issue #${issueNumber} --branch <branch>`);
+    log(`  /transfer-issue #${issueNumber} --remove-branch`);
+}
+
+function main() {
+    run(process.argv.slice(2));
 }
 
 // #2615: guarded so requiring this module does not perform or print
@@ -146,5 +184,8 @@ if (require.main === module) {
 
 module.exports = {
     getIssueDetails,
-    getOpenBranches
+    getOpenBranches,
+    parseArgs,
+    resolveBranchName,
+    run
 };

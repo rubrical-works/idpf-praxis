@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Check branch sync status with upstream. Detects behind, ahead,
  *   diverged, and no-upstream states, and reports the post-fetch upstream tip.
  *   On diverged, derives the analysis a person needs to pick a recovery path
@@ -378,7 +378,15 @@ function detectBranchSync() {
       execSync('git rev-list --left-right --count HEAD...@{upstream}', EXEC_OPTS)
     );
   } catch {
-    return noUpstream;
+    // #3273: a configured upstream that no longer resolves — typically the
+    // branch was deleted on the remote — is not "no upstream". Reporting it as
+    // configuration hid the deletion from every consumer.
+    let configured = '';
+    try {
+      // Shell-free, as fetchUpstream (#3042): the branch name reaches git as one argv element.
+      configured = String(execFileTimed('git', ['config', `branch.${branch}.merge`], EXEC_OPTS) || '').trim();
+    } catch { /* not configured */ }
+    return configured ? { ...base, status: 'upstream-gone', ahead: 0, behind: 0 } : noUpstream;
   }
   if (!parsed) return noUpstream;
 

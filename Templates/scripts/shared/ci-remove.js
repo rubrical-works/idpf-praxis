@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Remove CI features from GitHub Actions workflow files. Locates feature configuration across workflow YAML files and cleanly removes associated sections (top-level keys, job steps, triggers). Part of the /ci remove subcommand.
  * @checksum sha256:placeholder
  *
@@ -91,30 +91,47 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
     };
   }
 
-  try {
-    // Create backup before modification
-    createBackup(found.file);
+  const feature = registry[featureId];
+  const topLevelKey = FEATURE_TOP_LEVEL_KEYS[featureId];
+  // Detection runs regexes over the whole file, so a feature can be detected
+  // where removal has no way to reach (#3045): report that, never "Removed".
+  if (!topLevelKey && !feature.removalPatterns) {
+    return {
+      success: false,
+      message: `Feature "${featureId}" is detected in ${path.basename(found.file)} but cannot be removed automatically — it is not a top-level key or a job step. Remove it by hand.`,
+      file: found.file,
+      feature: featureId
+    };
+  }
 
+  try {
     // Read and parse with comment preservation
     const original = fs.readFileSync(found.file, 'utf8');
     const doc = yaml.parseDocument(original);
 
-    // Determine removal strategy based on feature type
-    const topLevelKey = FEATURE_TOP_LEVEL_KEYS[featureId];
-
+    let removed;
     if (topLevelKey) {
-      // Remove the top-level key
+      removed = doc.has(topLevelKey);
       doc.delete(topLevelKey);
     } else {
-      // For step-based features, remove matching steps from jobs
-      removeFeatureSteps(doc, registry[featureId]);
+      removed = removeFeatureSteps(doc, feature) > 0;
+    }
+
+    if (!removed) {
+      return {
+        success: false,
+        message: `Feature "${featureId}" is detected in ${path.basename(found.file)} but no ${topLevelKey ? `top-level "${topLevelKey}" key` : 'job step matches its removalPatterns'}; nothing was removed and the file is unchanged.`,
+        file: found.file,
+        feature: featureId
+      };
     }
 
     // Serialize and validate
     const output = doc.toString();
     validateYaml(output);
 
-    // Write
+    // Back up only once a change is certain, then write
+    createBackup(found.file);
     fs.writeFileSync(found.file, output);
 
     return {
@@ -132,35 +149,46 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
 }
 
 /**
- * Remove steps matching a feature's detection patterns from all jobs.
+ * Does a step belong to the feature? Each removalPatterns entry is tested
+ * against its own step field only — `uses` against `step.uses`, `run` against
+ * `step.run` (#3045). Matching detection patterns against the serialized step
+ * deleted `run: npm run test:coverage` along with the coverage upload.
+ * @param {Object} step - A parsed job step
+ * @param {{uses?: string[], run?: string[]}} removalPatterns
+ * @returns {boolean}
+ */
+function stepMatches(step, removalPatterns) {
+  return ['uses', 'run'].some((field) => {
+    const value = step && typeof step[field] === 'string' ? step[field] : null;
+    if (value === null) return false;
+    return (removalPatterns[field] || []).some((pattern) => {
+      try { return new RegExp(pattern, 'i').test(value); } catch (_e) { return false; }
+    });
+  });
+}
+
+/**
+ * Remove a feature's own steps from every job.
  * @param {yaml.Document} doc - The parsed YAML document
- * @param {Object} feature - Feature definition with detectionPatterns
+ * @param {Object} feature - Feature definition with removalPatterns
+ * @returns {number} How many steps were removed
  */
 function removeFeatureSteps(doc, feature) {
   const parsed = doc.toJSON();
-  if (!parsed || !parsed.jobs) return;
+  if (!parsed || !parsed.jobs) return 0;
 
+  let removed = 0;
   for (const jobName of Object.keys(parsed.jobs)) {
-    const steps = parsed.jobs[jobName].steps;
+    const steps = parsed.jobs[jobName] && parsed.jobs[jobName].steps;
     if (!Array.isArray(steps)) continue;
 
-    const filteredSteps = steps.filter(step => {
-      const stepStr = JSON.stringify(step);
-      for (const pattern of feature.detectionPatterns.yaml) {
-        try {
-          const regex = new RegExp(pattern, 'i');
-          if (regex.test(stepStr)) return false; // Remove this step
-        } catch (_e) {
-          // If pattern is not a valid regex for step matching, skip
-        }
-      }
-      return true; // Keep this step
-    });
-
+    const filteredSteps = steps.filter((step) => !stepMatches(step, feature.removalPatterns));
     if (filteredSteps.length !== steps.length) {
+      removed += steps.length - filteredSteps.length;
       doc.setIn(['jobs', jobName, 'steps'], filteredSteps);
     }
   }
+  return removed;
 }
 
 // CLI entry point

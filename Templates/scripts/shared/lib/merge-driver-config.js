@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * merge-driver-config.js — Idempotent writer of the `merge.<name>.driver`
  * git config entry for json-merge-driver.js (#3119, PRD Concurrent-Work
  * Story 1.2)
@@ -124,18 +124,24 @@ function sleepMs(ms) {
 }
 
 /**
- * Run `step(attempt)` until it returns, retrying only contention failures.
- * `step` throwing anything else, or contention outlasting every attempt,
- * rethrows the git error.
+ * Run `step(attempt)` until it returns, retrying only failures whose message
+ * `matcher` matches — config contention unless a caller names another
+ * transient (#3236: the WorktreeCreate hook's sibling-admin-entry read).
+ * `step` throwing anything else, or a match outlasting every attempt,
+ * rethrows the error.
+ *
+ * @param {function(): *} step
+ * @param {{attempts?: number, sleep?: function(number): void}} [retry]
+ * @param {RegExp} [matcher] - which failures are transient; CONTENTION_ERROR by default
  */
-function withContentionRetry(step, retry = {}) {
+function withContentionRetry(step, retry = {}, matcher = CONTENTION_ERROR) {
   const attempts = retry.attempts || RETRY_ATTEMPTS;
   const sleep = retry.sleep || ((attempt) => sleepMs(backoffDelay(attempt)));
   for (let attempt = 0; ; attempt++) {
     try {
       return step();
     } catch (err) {
-      if (!CONTENTION_ERROR.test(err.message) || attempt + 1 >= attempts) throw err;
+      if (!matcher.test(err.message) || attempt + 1 >= attempts) throw err;
       sleep(attempt);
     }
   }
@@ -360,6 +366,8 @@ module.exports = {
   ensureMergeDriver,
   ensureMergeDrivers,
   runGitContended,
+  withContentionRetry,
+  CONTENTION_ERROR,
   backoffDelay,
   attributeLine,
   derivedAttributeLine,

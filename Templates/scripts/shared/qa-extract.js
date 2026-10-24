@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -44,9 +44,10 @@
  */
 
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
-const { scanCheckboxes } = require('./lib/checkbox-scan.js');
+const { extractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
 
 const CONFIG_PATH = path.join(__dirname, 'lib', 'qa-config.json');
 const GATE_MARKERS_PATH = path.join(__dirname, '..', '..', 'metadata', 'ac-gate-markers.json');
@@ -84,7 +85,10 @@ function extractUncheckedAcs(body) {
   // GITHUB — a fenced `- [ ]` here did not inflate a number, it filed a real QA
   // sub-issue for a line that was never a criterion, leaving a durable artifact
   // someone has to find and close.
-  return scanCheckboxes(body)
+  // #3048: and only the Acceptance Criteria section is read. A keyword-matching
+  // box under Definition of Done or Testing considerations is not a criterion;
+  // a body with no such section has no criteria to extract.
+  return extractAcceptanceCriteria(body).items
     .filter((box) => !box.checked)
     .map((box) => box.text);
 }
@@ -352,12 +356,26 @@ const DEFAULT_FIXTURES_TEMPLATE = '\n\n### Fixtures\n{fixtures}';
  * sub-issues themselves.
  */
 function loadFillFile(filePath, readFn = (p) => fs.readFileSync(p, 'utf8')) {
+  // #3048: a fill file that cannot be used is named in `warnings`, never
+  // dropped — every AC otherwise falls back to derived steps while the run
+  // reports success, the silent rejection #2976 ruled out for fill fields.
+  const unusable = (reason) => ({ fill: null, warning: `fill file ${filePath} could not be used: ${reason}; every AC falls back to derived steps` });
+  let raw;
   try {
-    const parsed = JSON.parse(readFn(filePath));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-  } catch (_e) {
-    return null;
+    raw = readFn(filePath);
+  } catch (e) {
+    return unusable(e && e.code === 'ENOENT' ? 'not found (ENOENT)' : `unreadable (${e && e.message ? e.message : e})`);
   }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return unusable(`not valid JSON (${e.message})`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return unusable('JSON is not an object keyed by AC text');
+  }
+  return { fill: parsed, warning: null };
 }
 
 function fetchIssue(issueNumber, execFn = execSync) {
@@ -437,6 +455,16 @@ async function placeSubIssue({ subIssueNumber, parentBranch, assignFn = defaultA
 // argument so the shell is never a trust boundary — backticks/$()/quotes in
 // the title are inert data, not code (#2456). Do NOT reintroduce a shell
 // string here.
+/**
+ * The parent's sub-issues as `{number, title, state}` (#3268), for the retry
+ * dedupe in extract(). `gh pmu sub list --json` is a bare boolean flag here.
+ */
+function listSubIssues(parentIssue, execFileFn = execFileSync) {
+  const raw = execFileFn('gh', ['pmu', 'sub', 'list', String(parentIssue), '--json'], { encoding: 'utf8' });
+  const data = JSON.parse(raw);
+  return (data.children || []).map((c) => ({ number: c.number, title: c.title, state: c.state }));
+}
+
 function createSubIssue(parentIssue, title, bodyPath, execFileFn = execFileSync) {
   const args = ['pmu', 'sub', 'create', '--parent', String(parentIssue), '--title', title, '--label', 'qa-required', '-F', bodyPath];
   const raw = execFileFn('gh', args, { encoding: 'utf8' });
@@ -467,7 +495,7 @@ function buildAnnotation(format, acText, subIssueNumber) {
     .replace('{subIssueNumber}', String(subIssueNumber));
 }
 
-async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null, gateMarkers = loadGateMarkers() }) {
+async function extract({ issueNumber, config, fetchFn, createFn, existingFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null, fillWarning = null, gateMarkers = loadGateMarkers() }) {
   // placeFn is injected, never defaulted to the live implementation. Every
   // other dependency here follows that rule and main() supplies all of them;
   // a live default would let any caller that forgot the stub reach `gh`
@@ -485,7 +513,18 @@ async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeT
   const skipped = [];
   const alreadyGated = [];
   const errors = [];
-  const warnings = [];
+  const warnings = fillWarning ? [fillWarning] : [];
+
+  // The parent's existing QA sub-issues (#3268). Injected like every other
+  // dependency; a failed read is a warning and dedupe is skipped for the run.
+  let existing = [];
+  if (typeof existingFn === 'function') {
+    try {
+      existing = existingFn(issueNumber) || [];
+    } catch (e) {
+      warnings.push(`existing QA sub-issues of #${issueNumber} could not be read (${e.message}); a retry may file duplicates`);
+    }
+  }
 
   for (const acText of acs) {
     // An AC that already points at its gate is not extracted again (#3161):
@@ -500,6 +539,15 @@ async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeT
     const keyword = findMatchingKeyword(acText, config.keywords);
     if (!keyword) {
       skipped.push(acText);
+      continue;
+    }
+    // #3268: this script files sub-issues but never annotates the parent, so a
+    // retry before annotation (compaction, a partial failure) filed every AC
+    // again. An open QA sub-issue already titled for this AC is reused: its
+    // annotation is returned for the caller to apply, and nothing is created.
+    const prior = existing.find((s) => s && s.title === `QA: ${acText}` && String(s.state || 'OPEN').toUpperCase() === 'OPEN');
+    if (prior) {
+      matched.push({ acText, keyword, subIssueNumber: prior.number, annotation: buildAnnotation(config.annotationFormat, acText, prior.number), existing: true });
       continue;
     }
     if (dryRun) {
@@ -522,7 +570,10 @@ async function extract({ issueNumber, config, fetchFn, createFn, placeFn, writeT
       if (fixtures) {
         bodyText += renderBody(config.fixturesTemplate || DEFAULT_FIXTURES_TEMPLATE, { fixtures });
       }
-      const tmpPath = `.tmp-qa-body-${issueNumber}.md`;
+      // A creation path: no sub-issue number exists yet, so a random suffix
+      // (rule 05), never the parent's number — two sessions extracting one
+      // issue shared the fixed name (#3268).
+      const tmpPath = `.tmp-qa-body-${crypto.randomBytes(4).toString('hex')}.md`;
       writeTemp(tmpPath, bodyText);
       try {
         const subIssueNumber = createFn(issueNumber, `QA: ${acText}`, tmpPath);
@@ -554,16 +605,19 @@ async function main() {
   }
   try {
     const config = loadConfig();
+    const loaded = args.fill ? loadFillFile(args.fill) : { fill: null, warning: null };
     const result = await extract({
       issueNumber: args.issue,
       config,
       fetchFn: (n) => fetchIssue(n),
       createFn: (p, t, b) => createSubIssue(p, t, b),
+      existingFn: (p) => listSubIssues(p),
       placeFn: (a) => placeSubIssue(a),
       writeTemp: (p, c) => fs.writeFileSync(p, c),
       unlinkTemp: (p) => { try { fs.unlinkSync(p); } catch { /* best-effort */ } },
       dryRun: args.dryRun,
-      fill: args.fill ? loadFillFile(args.fill) : null
+      fill: loaded.fill,
+      fillWarning: loaded.warning
     });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
@@ -598,6 +652,7 @@ module.exports = {
   deriveFill,
   resolveFill,
   loadFillFile,
+  listSubIssues,
   QA_PLACEHOLDER,
   DEFAULT_FIXTURES_TEMPLATE
 };

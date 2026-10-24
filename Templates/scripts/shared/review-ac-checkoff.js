@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
- * @description Check off acceptance criteria on review issues based on findings status, skipping tracker-shaped review types whose checklists are lifecycle gates. Exports checkOffACs(). Used by /review-prd and /review-test-plan for post-review AC updates with optional status transition.
+ * @framework-script 0.111.0
+ * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(). Used by /review-prd and /review-test-plan.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -14,7 +14,8 @@
  *   node review-ac-checkoff.js --issue $ISSUE --findings .tmp-$ISSUE-findings.json [--move-status in_review] [--type prd]
  *
  * --type defaults to the findings JSON's own `type` field; pass it only to
- * override. prd/proposal/test-plan suppress positional check-off (#2594).
+ * override. Only prd/proposal/test-plan are served; positional check-off was
+ * suppressed for them (#2594) and is removed for every type (#3059).
  *
  * Output: JSON { ok, checkedOff, total, moved, skipped, skipReason?, error? }
  */
@@ -145,26 +146,40 @@ function applyMoveStatus(issue, moveStatus) {
 }
 
 /**
- * Check off ACs on an issue based on findings pass/fail status.
+ * Apply a tracker-shaped review's checklist update.
  *
- * Positional check-off is applied only to issue-shaped review types. For
- * tracker-shaped types (prd/proposal/test-plan) the positional pass is skipped
- * (#2594) and, since #2694, the single lifecycle gate this review owns is
- * checked by label when `recommendation` starts with "Ready for". Gates owned
- * by other commands — "Ready for backlog creation", "Test plan approved" — are
- * never touched. Any requested status move still happens.
+ * Only tracker-shaped types (prd/proposal/test-plan) are served. The
+ * positional pass was skipped for them (#2594) and is removed outright
+ * (#3059); since #2694 the single lifecycle gate this review owns is checked
+ * by label when `recommendation` starts with "Ready for". Gates owned by other
+ * commands — "Ready for backlog creation", "Test plan approved" — are never
+ * touched. Any requested status move still happens.
  *
  * @param {number} issue - Issue number
  * @param {Array} findings - Array of { status: 'pass'|'warn'|'fail'|'skip' } objects
+ *   (kept for call-shape compatibility; no longer read)
  * @param {string|null} moveStatus - Optional status to move issue to after check-off
- * @param {string|null} [type] - Review type from the findings JSON. Omitted or
- *   unrecognized values fall open to check-off, preserving pre-#2594 behavior.
+ * @param {string|null} [type] - Review type from the findings JSON. Anything but
+ *   an exact tracker type returns ok:false with an error and touches nothing (#3059).
  * @param {string|null} [recommendation] - Review recommendation from the findings
  *   JSON. Omitted means no lifecycle-gate write, so callers predating #2694 do
  *   not begin writing gates by omission.
  * @returns {{ ok: boolean, checkedOff: number, total: number, moved: boolean, skipped: boolean, skipReason?: string, lifecycleGateChecked?: string|null, error?: string }}
  */
 function checkOffACs(issue, findings, moveStatus, type, recommendation) {
+  // #3059: only tracker-shaped types are served. The positional path that any
+  // other type used to reach is removed — its only callers are /review-prd and
+  // /review-test-plan, and a missing or miscased `type` fell through to it and
+  // could tick "Ready for backlog creation" on a PRD tracker. Refused before
+  // the body is read, so nothing is written and nothing moves.
+  if (!isTrackerType(type)) {
+    return {
+      ok: false, checkedOff: 0, total: 0, moved: false, skipped: false,
+      error: `Unrecognized review type ${JSON.stringify(type === undefined ? null : type)}: review-ac-checkoff serves only `
+        + `${[...TRACKER_REVIEW_TYPES].join(', ')} (exact, lower-case). Nothing was checked off or moved.`,
+    };
+  }
+
   let body;
   try {
     body = execFileSync('gh', ['pmu', 'view', String(issue), '--body-stdout'], EXEC_OPTS).trim();
@@ -176,59 +191,30 @@ function checkOffACs(issue, findings, moveStatus, type, recommendation) {
   // unchanged); the scanner reports which of them are real checkboxes. Both
   // split on the same newline count, so `box.line` indexes `lines` directly.
   const lines = body.split('\n');
-  const skip = isTrackerType(type);
-  let checkedOff = 0;
-  let total = 0;
-  let findingIndex = 0;
+  // Fence-aware count (#2600): a quoted `- [ ]` is not a checkbox. Reported as
+  // `total`, the checklist this review declined to touch positionally.
+  const total = scanCheckboxes(body).length;
 
-  // #2600: previously two inline regexes with no fence tracking. Check-off is
-  // positional — findingIndex advances per matched line — so a single fenced
-  // match early in a body shifted every later criterion onto the wrong
-  // finding's verdict, and could rewrite quoted evidence to `- [x]`.
-  for (const box of scanCheckboxes(body)) {
-    total++;
-    if (!box.checked && !skip && findingIndex < findings.length
-        && findings[findingIndex].status === 'pass') {
-      lines[box.line] = lines[box.line].replace('- [ ] ', '- [x] ');
-      checkedOff++;
+  // Positional check-off is suppressed (#2594) and, since #3059, removed. What
+  // #2694 added is that the ONE box this review owns may be written — by label,
+  // not by position — when the recommendation is clean.
+  const gateLine = findLifecycleGateLine(body, type, recommendation);
+  let lifecycleGateChecked = null;
+  if (gateLine !== -1) {
+    lines[gateLine] = lines[gateLine].replace('- [ ] ', '- [x] ');
+    const write = writeBody(issue, lines);
+    if (!write.ok) {
+      return { ok: false, checkedOff: 0, total, moved: false, skipped: true, lifecycleGateChecked: null, error: write.error };
     }
-    findingIndex++;
+    lifecycleGateChecked = LIFECYCLE_GATES[type];
   }
-
-  if (skip) {
-    // Positional check-off stays suppressed (#2594). What changed in #2694 is
-    // that the ONE box this review owns may now be written — by label, not by
-    // position — when the recommendation is clean.
-    const gateLine = findLifecycleGateLine(body, type, recommendation);
-    let lifecycleGateChecked = null;
-    if (gateLine !== -1) {
-      lines[gateLine] = lines[gateLine].replace('- [ ] ', '- [x] ');
-      const write = writeBody(issue, lines);
-      if (!write.ok) {
-        return { ok: false, checkedOff: 0, total, moved: false, skipped: true, lifecycleGateChecked: null, error: write.error };
-      }
-      lifecycleGateChecked = LIFECYCLE_GATES[type];
-    }
-    // Otherwise no write at all — not even a no-op edit, which would churn the
-    // issue's updated-at and read as a review having touched the lifecycle gates.
-    const { moved, error } = applyMoveStatus(issue, moveStatus);
-    const skipReason = `Review type "${type}" is tracker-shaped; its checklist is a lifecycle gate, not the reviewed AC list. Check-off skipped.`;
-    return error
-      ? { ok: true, checkedOff: 0, total, moved, skipped: true, skipReason, lifecycleGateChecked, error: `AC check-off skipped but ${error}` }
-      : { ok: true, checkedOff: 0, total, moved, skipped: true, skipReason, lifecycleGateChecked };
-  }
-
-  const write = writeBody(issue, lines);
-  if (!write.ok) {
-    return { ok: false, checkedOff, total, moved: false, skipped: false, error: write.error };
-  }
-
+  // Otherwise no write at all — not even a no-op edit, which would churn the
+  // issue's updated-at and read as a review having touched the lifecycle gates.
   const { moved, error } = applyMoveStatus(issue, moveStatus);
-  if (error) {
-    return { ok: true, checkedOff, total, moved: false, skipped: false, error: `AC check-off succeeded but ${error}` };
-  }
-
-  return { ok: true, checkedOff, total, moved, skipped: false };
+  const skipReason = `Review type "${type}" is tracker-shaped; its checklist is a lifecycle gate, not the reviewed AC list. Check-off skipped.`;
+  return error
+    ? { ok: true, checkedOff: 0, total, moved, skipped: true, skipReason, lifecycleGateChecked, error: `AC check-off skipped but ${error}` }
+    : { ok: true, checkedOff: 0, total, moved, skipped: true, skipReason, lifecycleGateChecked };
 }
 
 // ─── Approval-gate check-off for test plans (#2712) ───

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -256,14 +256,36 @@ function matchesAny(filePath, patterns) {
 const OVERRIDE_REGEX = /^\s*Scope-Override:\s*(.+)$/m;
 
 function findOverride({ commitMessage = '', comments = [] }) {
+  return resolveOverride({ commitMessage, comments }).override;
+}
+
+/**
+ * findOverride, bounded to this run (#3267). A comment override written
+ * before `since` (the run's base commit time) belongs to an earlier run:
+ * honoring it disarmed the protected-path halt for the issue forever. It is
+ * returned in `stale` so the report can say it was ignored. A comment with no
+ * `createdAt` cannot be placed and is honored as before. The commit-message
+ * override needs no time check: its commit is read from the bounded range.
+ *
+ * @returns {{ override: {source: string, reason: string}|null, stale: Array<{reason: string, createdAt: string}> }}
+ */
+function resolveOverride({ commitMessage = '', comments = [], since = null }) {
+  const stale = [];
   const fromCommit = OVERRIDE_REGEX.exec(commitMessage || '');
-  if (fromCommit) return { source: 'commit', reason: fromCommit[1].trim() };
+  if (fromCommit) return { override: { source: 'commit', reason: fromCommit[1].trim() }, stale };
+  const sinceMs = since ? Date.parse(since) : NaN;
   for (const c of comments) {
     if (!c || !c.body) continue;
     const m = OVERRIDE_REGEX.exec(c.body);
-    if (m) return { source: 'comment', reason: m[1].trim() };
+    if (!m) continue;
+    const at = c.createdAt ? Date.parse(c.createdAt) : NaN;
+    if (Number.isFinite(sinceMs) && Number.isFinite(at) && at < sinceMs) {
+      stale.push({ reason: m[1].trim(), createdAt: c.createdAt });
+      continue;
+    }
+    return { override: { source: 'comment', reason: m[1].trim() }, stale };
   }
-  return null;
+  return { override: null, stale };
 }
 
 // ─── Drift Check ───
@@ -364,14 +386,26 @@ function checkDrift({ touched, declaredScope, scopeSource, authoredScope, protec
 
 // ─── Loaders ───
 
+/**
+ * The always-protected path list. Fails CLOSED (#3266): a missing, unparseable
+ * or path-less file throws PROTECTED_PATHS_UNREADABLE. Returning [] made the
+ * gate advisory and exit 0 — and the file sits under `.claude/metadata/**`, so
+ * the edit that broke it removed the guard that would have caught it. Absence
+ * must never widen a gate (the registrarExemption rule beside it).
+ */
 function loadProtectedPaths(metadataPath = DEFAULT_METADATA_PATH) {
+  const fail = (reason) => Object.assign(
+    new Error(`Protected-paths file ${metadataPath} is unreadable (${reason}); the scope-drift gate cannot run without it.`),
+    { code: 'PROTECTED_PATHS_UNREADABLE' }
+  );
+  let data;
   try {
-    const raw = fs.readFileSync(metadataPath, 'utf-8');
-    const data = JSON.parse(raw);
-    return Array.isArray(data.paths) ? data.paths : [];
-  } catch (_e) {
-    return [];
+    data = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+  } catch (e) {
+    throw fail(e && e.code === 'ENOENT' ? 'not found' : e.message);
   }
+  if (!data || !Array.isArray(data.paths)) throw fail('no "paths" array');
+  return data.paths;
 }
 
 /**
@@ -396,17 +430,39 @@ function loadRegistrarExemption(metadataPath = DEFAULT_METADATA_PATH) {
 
 // ─── Git / GitHub Reads (only used by main()) ───
 
-function readGitLogForIssue(issueNumber, sinceCommit) {
-  const args = sinceCommit
-    ? ['log', '--name-status', `${sinceCommit}..HEAD`, '--pretty=format:']
-    : ['log', '--name-status', `--grep=${issueRefGrepPattern(issueNumber)}`, '--pretty=format:'];
-  return execFileSync('git', args, { encoding: 'utf-8' });
+/**
+ * git log arguments for this issue's commits. `sinceCommit` keeps its
+ * original meaning (every commit since it). Otherwise the issue's Refs
+ * commits are bounded to `base..HEAD` (#3267) — the branch's merge-base with
+ * the default branch, as announce.js resolves it — so a reopened issue's
+ * released commits are not read as this run's. No base → all history.
+ */
+function gitLogArgs(issueNumber, { sinceCommit = null, base = null } = {}) {
+  if (sinceCommit) return ['log', '--name-status', `${sinceCommit}..HEAD`, '--pretty=format:'];
+  return ['log', '--name-status', `--grep=${issueRefGrepPattern(issueNumber)}`, '--pretty=format:', ...(base ? [`${base}..HEAD`] : [])];
 }
 
-function readLatestCommitMessage(issueNumber) {
+/** The run base (#3267): merge-base sha and its commit time, or nulls. */
+function resolveRunBase() {
+  try {
+    const { resolveBranchBase } = require('./lib/branch-diff.js');
+    const r = resolveBranchBase();
+    if (!r.ok) return { base: null, baseTime: null };
+    const baseTime = execFileSync('git', ['show', '-s', '--format=%cI', r.sha], { encoding: 'utf-8' }).trim();
+    return { base: r.sha, baseTime: baseTime || null };
+  } catch (_e) {
+    return { base: null, baseTime: null };
+  }
+}
+
+function readGitLogForIssue(issueNumber, sinceCommit, base = null) {
+  return execFileSync('git', gitLogArgs(issueNumber, { sinceCommit, base }), { encoding: 'utf-8' });
+}
+
+function readLatestCommitMessage(issueNumber, base = null) {
   try {
     return execFileSync('git', [
-      'log', '-1', `--grep=${issueRefGrepPattern(issueNumber)}`, '--format=%B'
+      'log', '-1', `--grep=${issueRefGrepPattern(issueNumber)}`, '--format=%B', ...(base ? [`${base}..HEAD`] : [])
     ], { encoding: 'utf-8' }).trim();
   } catch (_e) {
     return '';
@@ -441,7 +497,7 @@ function readIssueComments(issueNumber) {
  * Compute the gate envelope from injected fixtures (no git/gh I/O).
  * Use for testing and as the core pipeline that main() wraps.
  */
-function run({ issue, body, gitLog, latestCommitMessage, comments, protectedPaths, sinceCommit, registrarExemption }) {
+function run({ issue, body, gitLog, latestCommitMessage, comments, protectedPaths, sinceCommit, registrarExemption, overrideSince }) {
   const touched = parseTouchedFromGitLog(gitLog || '');
   const {
     paths: declaredScope,
@@ -449,7 +505,9 @@ function run({ issue, body, gitLog, latestCommitMessage, comments, protectedPath
     source: scopeSource,
     warnings
   } = parseDeclaredScope(body || '');
-  const override = findOverride({ commitMessage: latestCommitMessage || '', comments: comments || [] });
+  const { override, stale: staleOverrides } = resolveOverride({
+    commitMessage: latestCommitMessage || '', comments: comments || [], since: overrideSince || null
+  });
   const drift = checkDrift({
     touched,
     declaredScope,
@@ -473,6 +531,7 @@ function run({ issue, body, gitLog, latestCommitMessage, comments, protectedPath
     scopeSource,
     violations: drift.violations,
     override: drift.override,
+    ...(staleOverrides.length ? { staleOverrides } : {}),
     registrarExemptionApplied: drift.registrarExemptionApplied,
     exemptedPaths: drift.exemptedPaths,
     warnings: warnings || []
@@ -524,6 +583,9 @@ function formatReport(envelope) {
   if (envelope.override) {
     lines.push(`  Override (${envelope.override.source}): ${envelope.override.reason}`);
   }
+  for (const s of envelope.staleOverrides || []) {
+    lines.push(`  Ignored stale Scope-Override (comment of ${s.createdAt}, before this run's base): ${s.reason}`);
+  }
   // An exemption that says nothing is indistinguishable from a guard that
   // passed on the merits — the failure shape this whole issue is about.
   if (envelope.registrarExemptionApplied && envelope.exemptedPaths &&
@@ -559,15 +621,31 @@ function main() {
     return;
   }
 
+  // #3267: commits and overrides are bounded to this branch's run.
+  const runBase = resolveRunBase();
+
+  let protectedPaths;
+  try {
+    protectedPaths = loadProtectedPaths();
+  } catch (e) {
+    // #3266: fail closed with a named error, never an advisory pass.
+    const envelope = { ok: false, issue: args.issue, error: { code: e.code || 'PROTECTED_PATHS_UNREADABLE', message: e.message } };
+    process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
+    process.stderr.write(`\nScope-drift gate: HALT — ${e.message}\n`);
+    process.exit(1);
+    return;
+  }
+
   const envelope = run({
     issue: args.issue,
     body: readIssueBody(args.issue),
-    gitLog: readGitLogForIssue(args.issue, args.sinceCommit),
-    latestCommitMessage: readLatestCommitMessage(args.issue),
+    gitLog: readGitLogForIssue(args.issue, args.sinceCommit, runBase.base),
+    latestCommitMessage: readLatestCommitMessage(args.issue, runBase.base),
     comments: readIssueComments(args.issue),
-    protectedPaths: loadProtectedPaths(),
+    protectedPaths,
     registrarExemption: loadRegistrarExemption(),
-    sinceCommit: args.sinceCommit
+    sinceCommit: args.sinceCommit,
+    overrideSince: runBase.baseTime
   });
 
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
@@ -582,6 +660,8 @@ module.exports = {
   parseDeclaredScope,
   matchesAny,
   findOverride,
+  resolveOverride,
+  gitLogArgs,
   checkDrift,
   isRegistrarRun,
   loadProtectedPaths,

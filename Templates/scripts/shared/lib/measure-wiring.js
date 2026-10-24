@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * measure-wiring.js
  *
  * Self-wiring for `/idpf-measure` (#2794): registers the PostToolUse tap on
@@ -128,6 +128,15 @@ function wire(root) {
     return { created: false, previousRaw: null, alreadyWired: true };
   }
 
+  // Refuse a file that does not parse (#3059): parseSettings reads it as {},
+  // so writing the tap would replace the user's settings with the tap alone.
+  if (!created && !isSettingsObject(previousRaw)) {
+    throw new Error(
+      `${SETTINGS_RELPATH} is not a valid JSON object, so the measurement tap was not wired `
+      + '(wiring it would overwrite the file). Fix the file and run --start again.'
+    );
+  }
+
   const settings = parseSettings(previousRaw);
   settings.hooks = settings.hooks || {};
   const groups = (settings.hooks[TAP_EVENT] = settings.hooks[TAP_EVENT] || []);
@@ -141,29 +150,46 @@ function wire(root) {
     groups.push({ matcher: TAP_MATCHER, hooks: [entry] });
   }
 
+  const wiredRaw = JSON.stringify(settings, null, 2) + '\n';
   fs.mkdirSync(path.dirname(settingsPath(root)), { recursive: true });
-  fs.writeFileSync(settingsPath(root), JSON.stringify(settings, null, 2) + '\n');
+  fs.writeFileSync(settingsPath(root), wiredRaw);
 
-  return { created, previousRaw, alreadyWired: false };
+  return { created, previousRaw, wiredRaw, alreadyWired: false };
+}
+
+function isSettingsObject(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed);
+  } catch (_) {
+    return false;
+  }
 }
 
 /**
  * Remove the tap.
  *
- * Three paths, in order of fidelity:
- *   created           -> delete the file; leaving an empty shell would be a
- *                        file the project never had.
- *   previousRaw known -> write it back verbatim: byte-for-byte by construction.
- *   neither           -> surgical removal of our own entry only. Used when
- *                        `--start` crashed before recording a backup. Empty
- *                        groups are dropped so no orphan matcher is left
- *                        behind, but co-tenants in the same group survive.
+ * The snapshot paths apply only while the file is exactly what `wire` wrote
+ * (`wiredRaw`). Anything saved into it during the window — a permission
+ * approved mid-session — would be discarded by a delete or a verbatim restore
+ * (#3059), so a changed file always takes the surgical path:
+ *   unchanged, created  -> delete the file; leaving an empty shell would be a
+ *                          file the project never had.
+ *   unchanged, existing -> write previousRaw back: byte-for-byte by construction.
+ *   otherwise           -> surgical removal of our own entry only. Empty
+ *                          groups are dropped so no orphan matcher is left
+ *                          behind, but co-tenants in the same group survive. A
+ *                          file `wire` created that holds nothing else after
+ *                          the removal is deleted, as above.
+ * A marker from before #3059 carries no `wiredRaw` and takes the surgical path.
  */
 function unwire(root, opts) {
   const o = opts || {};
   const target = settingsPath(root);
+  const raw = readRaw(root);
+  const unchanged = typeof o.wiredRaw === 'string' && raw === o.wiredRaw;
 
-  if (o.created === true) {
+  if (unchanged && o.created === true) {
     try {
       fs.unlinkSync(target);
     } catch (_) {
@@ -172,7 +198,7 @@ function unwire(root, opts) {
     return { restored: 'deleted' };
   }
 
-  if (typeof o.previousRaw === 'string') {
+  if (unchanged && typeof o.previousRaw === 'string') {
     try {
       fs.writeFileSync(target, o.previousRaw);
       return { restored: 'verbatim' };
@@ -181,7 +207,6 @@ function unwire(root, opts) {
     }
   }
 
-  const raw = readRaw(root);
   if (raw === null) return { restored: 'absent' };
 
   const settings = parseSettings(raw);
@@ -192,6 +217,16 @@ function unwire(root, opts) {
   if (settings.hooks) {
     settings.hooks[TAP_EVENT] = groups.filter((g) => Array.isArray(g.hooks) && g.hooks.length > 0);
     if (settings.hooks[TAP_EVENT].length === 0) delete settings.hooks[TAP_EVENT];
+    if (o.created === true && Object.keys(settings.hooks).length === 0) delete settings.hooks;
+  }
+
+  if (o.created === true && Object.keys(settings).length === 0) {
+    try {
+      fs.unlinkSync(target);
+    } catch (_) {
+      // Already gone.
+    }
+    return { restored: 'deleted' };
   }
 
   try {

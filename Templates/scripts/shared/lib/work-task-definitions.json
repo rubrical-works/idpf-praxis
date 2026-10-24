@@ -88,27 +88,27 @@
     },
     {
       "order": 15,
-      "subject": "Step 4c: Log Changed Files to Issue Body",
-      "condition": "always",
-      "description": "Issue body becomes a permanent record of what shipped. Useful for post-release audits."
-    },
-    {
-      "order": 16,
       "subject": "Step 4d: Minimize Touched Command Specs",
       "condition": "dev-repo AND any commit in this sub-issue touched CommandsSrc/",
       "description": "CommandsSrc/ edits require LLM-driven minimization to regenerate Stage 1 + Stage 2 outputs. Generative task — must invoke /fw-minimize-files via Skill tool, not a script call. Synced source + outputs is the contract the deploy pipeline depends on."
     },
     {
-      "order": 17,
+      "order": 16,
       "subject": "Step 4e: Register Added Helpers",
       "condition": "dev-repo AND any commit in this sub-issue added a new .js under .claude/scripts/shared/[lib/]",
       "description": "Helper registration is off-band from helper creation — framework-manifest.json deploymentFiles.scripts.[shared|lib].files + constants.js INSTALLED_FILES_MANIFEST.scripts[Lib].files + @framework-script JSDoc tag all require parallel updates or CI (deployment-parity.test.js, manifest-validation.test.js) fails. Detection: git diff --name-status filtered by 'A' + path prefix .claude/scripts/shared/."
     },
     {
+      "order": 17,
+      "subject": "Step 4c: Log Changed Files to Issue Body",
+      "condition": "always",
+      "description": "Issue body becomes a permanent record of what shipped. Useful for post-release audits. Runs after Steps 4d/4e, so their commits are logged and gated in the same pass (#3261); re-run it after a Step 4f fix commit, before Step 5."
+    },
+    {
       "order": 18,
       "subject": "Step 4f: Full-Suite Regression Sweep",
       "condition": "always",
-      "description": "Scoped per-AC tests can miss cross-cutting regressions; the full sweep at the sub-issue boundary catches them before in_review. Runs once per sub-issue after Step 4c/4d/4e, before Step 5. Failure blocks the in_review move; commit a fix and re-run. Under --nonstop on an epic or branch tracker it runs once at the end of the run instead, over every processed sub-issue's changed files, after the last sub-issue and before Step 6a; sub-issues move to in_review on their scoped tests, and a failure halts the run with attribution while they stay in_review. Mark this task completed after that sweep."
+      "description": "Scoped per-AC tests can miss cross-cutting regressions; the full sweep at the sub-issue boundary catches them before in_review. Runs once per sub-issue after Step 4c (which follows 4d/4e), before Step 5. Failure blocks the in_review move; commit a fix, re-run, and once it passes re-run Step 4c before Step 5 (#3261). Under --nonstop on an epic or branch tracker it runs once at the end of the run instead, over every processed sub-issue's changed files, after the last sub-issue and before Step 6a; sub-issues move to in_review on their scoped tests, and a failure halts the run with attribution while they stay in_review. Mark this task completed after that sweep."
     },
     {
       "order": 19,
@@ -126,7 +126,7 @@
       "order": 21,
       "subject": "Step 6a: Post-Nonstop Audit",
       "condition": "--nonstop",
-      "description": "Three audits before the epic moves to in_review: commit density (warning, script), AC checkbox (blocking, script), test coverage (advisory, skill-delegated — invoke tdd-refactor-coverage-audit per sub-issue). Coverage audit is non-blocking and degrades gracefully when the skill is absent. Body lives in {frameworkPath}/Reference/work-execution-conditional.md, loaded at Step 1d."
+      "description": "Six audits before the epic moves to in_review, over the processed set (--processed): commit density (warning), AC checkbox (blocking), test coverage (advisory, skill-delegated — invoke tdd-refactor-coverage-audit per sub-issue; degrades gracefully when the skill is absent), announcement pairing (warning; with groups.work on, a processed child with no events is a finding), doc judgment (warning) and Review-State Gate decisions (warning). An end-of-run Step 4f sweep failure blocks beside the AC checkbox audit (#3271). Body lives in {frameworkPath}/Reference/work-execution-conditional.md, loaded at Step 1d."
     }
   ]
 }

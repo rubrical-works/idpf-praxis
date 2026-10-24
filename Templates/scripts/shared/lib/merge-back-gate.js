@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.110.0
+ * @framework-script 0.111.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -85,6 +85,26 @@ function notRunFailure(scoped) {
 }
 
 /**
+ * Where a member's branch left the tracker (#3263): the merge base of the
+ * tracker's current HEAD and the branch. The worktree hook branches from
+ * HEAD at spawn, so a commit another session made between the recorded
+ * group tip and the spawn is shared history here, never the member's. Falls
+ * back to the recorded tip when git cannot answer.
+ *
+ * @param {{git: Function, trackerTip: string, branch: string}} input
+ * @returns {string}
+ */
+function memberBase({ git, trackerTip, branch }) {
+  try {
+    const out = git(['merge-base', 'HEAD', branch]);
+    const sha = String(out && out.stdout !== undefined ? out.stdout : out || '').trim();
+    return /^[0-9a-f]{7,40}$/.test(sha) ? sha : trackerTip;
+  } catch (_e) {
+    return trackerTip;
+  }
+}
+
+/**
  * Tier 1 — mechanical checks over one member's branch.
  *
  * @param {{issue: number, body: string, trackerTip: string, branch: string,
@@ -102,7 +122,7 @@ function runTier1({
   issue, body, trackerTip, branch, worktreePath, git,
   suites = [], runSuite, protectedPaths, registrarExemption,
 }) {
-  const range = `${trackerTip}..${branch}`;
+  const range = `${memberBase({ git, trackerTip, branch })}..${branch}`;
   const failures = [];
 
   const ref = refPattern(issue);
@@ -115,7 +135,7 @@ function runTier1({
     failures.push({ check: 'attribution', message: `Commit(s) without Refs #${issue}: ${unattributed.join(', ')}.` });
   }
 
-  const uncommitted = parsePorcelain(git(['status', '--porcelain'], { cwd: worktreePath }));
+  const uncommitted = parsePorcelain(git(['status', '--porcelain'], { cwd: worktreePath })).filter((p) => !isHostWritten(p));
   if (uncommitted.length > 0) {
     failures.push({ check: 'uncommitted', message: `Uncommitted work in ${worktreePath}: ${uncommitted.join(', ')}.` });
   }
@@ -176,6 +196,7 @@ function runTier1({
     tier: 1,
     ok: failures.length === 0,
     failures,
+    range,
     commits,
     uncommitted,
     scope: { ok: scope.ok, mode: scope.mode, violations: scope.violations, declaredScope: scope.declaredScope, touched: scope.touched },
@@ -282,6 +303,16 @@ function porcelainPath(line) {
   return p.replace(/^"(.*)"$/, '$1');
 }
 
+/**
+ * Paths the host writes on its own (#3263): Claude Code rewrites
+ * `.claude/settings.local.json` — git-tracked in some projects — when a
+ * permission is granted with "always allow". A change there during a run is
+ * neither a member's nor a reviewer's, and restoring it would revert the
+ * user's grant, so it is reported apart and never halts or fails a tier.
+ */
+const HOST_WRITTEN_PATHS = Object.freeze(['.claude/settings.local.json']);
+const isHostWritten = (p) => HOST_WRITTEN_PATHS.includes(String(p).replace(/\\/g, '/'));
+
 /** A top-level `.tmp-gate-*` entry — the gate's own files, any member's. */
 const GATE_FILE = /^\.tmp-gate-[^/]+$/;
 
@@ -314,19 +345,32 @@ const sha256 = (text) => require('crypto').createHash('sha256').update(String(te
  * restriction, and `parseReview`'s issue check catches one at the sibling's
  * own outcome.
  *
- * @param {{before: string, after: string, issue?: number, outputPath?: string, siblings?: number[]}} input
- * @returns {{ok: boolean, outsideContract: string[]}}
+ * @param {{before: string, after: string, issue?: number, outputPath?: string, siblings?: number[], runPaths?: string[]}} input
+ *   `runPaths` (#3263): the running members' declared scope. Given, only a
+ *   change inside it is outside the contract; any other change is listed as
+ *   `external` (another session's) and does not fail. Host-written paths
+ *   (HOST_WRITTEN_PATHS) are listed as `hostWritten` either way.
+ * @returns {{ok: boolean, outsideContract: string[], hostWritten?: string[], external?: string[]}}
  */
-function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-gate-${issue}-tier3.json`, siblings = [] } = {}) {
+function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-gate-${issue}-tier3.json`, siblings = [], runPaths } = {}) {
   const lines = (s) => String(s).split(/\r?\n/).filter((l) => l.trim() !== '');
   const prior = new Set(lines(before));
   const allowed = new Set([outputPath, `.tmp-gate-${issue}-tree-before.txt`]);
   for (const m of siblings) for (const f of ['tier1.json', 'tier3.json', 'tree-before.txt']) allowed.add(`.tmp-gate-${m}-${f}`);
-  const outsideContract = [...new Set(lines(after)
-    .filter((l) => !prior.has(l))
-    .map(porcelainPath)
-    .filter((p) => !allowed.has(p)))].sort();
-  return { ok: outsideContract.length === 0, outsideContract };
+  const changed = [...new Set(lines(after).filter((l) => !prior.has(l)).map(porcelainPath).filter((p) => !allowed.has(p)))].sort();
+  // #3263: a path the host itself writes (a permission grant) is not the
+  // reviewer's. With the run's paths given, a change outside them is another
+  // session's — reported as external; only a change inside them fails, which
+  // is where a stray reviewer write would do harm. No run paths: strict.
+  const hostWritten = changed.filter(isHostWritten);
+  const rest = changed.filter((p) => !isHostWritten(p));
+  const scoped = Array.isArray(runPaths);
+  // A new untracked or ignored directory is listed as `dir/`; it is inside
+  // the run when any run path lies under it.
+  const inRun = (p) => (p.endsWith('/') ? runPaths.some((r) => String(r).startsWith(p)) : scopeDrift.matchesAny(p, runPaths));
+  const outsideContract = scoped ? rest.filter(inRun) : rest;
+  const external = scoped ? rest.filter((p) => !inRun(p)) : [];
+  return { ok: outsideContract.length === 0, outsideContract, ...(hostWritten.length ? { hostWritten } : {}), ...(external.length ? { external } : {}) };
 }
 
 /**
@@ -338,7 +382,7 @@ function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-
  * itself through `parseReview`. Each failure fails Tier 3 the way an
  * unreadable review does.
  */
-function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, exists, text, treeBefore, treeBeforeIntact = true, treeAfter, siblings = [], schema, root } = {}) {
+function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, exists, text, treeBefore, treeBeforeIntact = true, treeAfter, siblings = [], runPaths, schema, root } = {}) {
   const fail = (error, message, extra = {}) => ({ tier: 3, skipped: false, ok: false, verdict: null, findings: [], error, errors: [message], ...extra });
   // The snapshot is the trust anchor for every check below (#3220): changed
   // after it was taken, it proves nothing, so nothing else is read.
@@ -355,14 +399,16 @@ function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, ex
   if (priorLines.some((l) => porcelainPath(l) === outputPath)) {
     return fail('tier-3-stale-output', `${outputPath} already existed before the reviewer started, so it may be an earlier cycle's review. Clear it with tree-snapshot --clear before the spawn.`);
   }
-  const tree = checkReviewerTree({ before: treeBefore, after: treeAfter, issue, outputPath, siblings });
+  const tree = checkReviewerTree({ before: treeBefore, after: treeAfter, issue, outputPath, siblings, runPaths });
   if (!tree.ok) {
     return fail('tier-3-wrote-outside-contract',
       `The working tree changed outside the reviewer's contract during the review: ${tree.outsideContract.join(', ')}. `
       + 'Reviewers in a group share the root, so this fails Tier 3 for every member whose review window overlapped.',
       { outsideContract: tree.outsideContract });
   }
-  return parseReview(text, { issue, schema, root });
+  const review = parseReview(text, { issue, schema, root });
+  // Reported, never failed (#3263).
+  return { ...review, ...(tree.external ? { external: tree.external } : {}), ...(tree.hostWritten ? { hostWritten: tree.hostWritten } : {}) };
 }
 
 /**
@@ -461,6 +507,9 @@ function formatFindingsComment({ issue, tier1, tier3, fixCycles = 0 } = {}) {
   }
   const findings = findingLines(tier1, tier3);
   if (findings.length) lines.push('', '### Findings', ...findings);
+  // Advisory per issue (#2520), but recorded (#3272): nothing else says a member strayed.
+  const outside = ((tier1 && tier1.scope && tier1.scope.violations) || []).filter((v) => v.reason === 'outside-declared-scope');
+  if (outside.length) lines.push('', '### Outside declared scope (advisory)', ...outside.map((v) => `- \`${v.path || v.file}\``));
   return lines.join('\n');
 }
 
@@ -562,6 +611,38 @@ function parseCommitsWithParents(raw) {
 }
 
 /**
+ * Paths two or more group members changed outside their declared scope
+ * (#3272). Per issue, `outside-declared-scope` stays advisory (#2520); two
+ * members sharing an undeclared path is a group fact that one member's
+ * check cannot see, and it is what turns into a merge conflict or a silent
+ * overwrite. Pure.
+ *
+ * @param {Array<{issue: number, body: string, changed: string[]}>} members
+ * @returns {{ok: boolean, overlaps: Array<{path: string, members: number[]}>}}
+ */
+function undeclaredOverlap(members = []) {
+  const byPath = new Map();
+  for (const m of members) {
+    const declared = scopeDrift.parseDeclaredScope(m.body || '').paths;
+    for (const p of new Set(m.changed || [])) {
+      if (scopeDrift.matchesAny(p, declared)) continue;
+      if (!byPath.has(p)) byPath.set(p, []);
+      byPath.get(p).push(m.issue);
+    }
+  }
+  const overlaps = [...byPath]
+    .filter(([, issues]) => issues.length > 1)
+    .map(([p, issues]) => ({ path: p, members: issues }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  return { ok: overlaps.length === 0, overlaps };
+}
+
+/** The halt text for an undeclared overlap, naming every member involved. */
+function overlapMessage(overlaps) {
+  return `Group members changed the same file outside their declared scope: ${overlaps.map((o) => `${o.path} (${o.members.map((n) => `#${n}`).join(', ')})`).join('; ')}. Declare the path in one member's Files to modify, or run those members in separate groups.`;
+}
+
+/**
  * Tier 1 for the group's post-merge pass, on the tracker (#3158).
  *
  * The per-member Tier 1 cannot stand in for it over `<base>..<head>`: merge-
@@ -569,19 +650,26 @@ function parseCommitsWithParents(raw) {
  * every one would fail attribution. Here a merge commit is SKIPPED and listed
  * — mergeBack aborts any merge git cannot complete, so a merge it made carries
  * no authored content of its own — and every other commit must name a member
- * (or, for the reconcile step's regeneration commits, the epic). Scope is
- * checked per member over that member's own commits; an epic-only commit may
- * touch only the runner's regenerated paths. Suites run at the root over the
+ * (or, for the regenerated-commit step's commit, the root issue — the epic,
+ * or the branch tracker's own issue: `epic` carries either, #3272). Scope is
+ * checked per member over that member's own commits; a root-only commit may
+ * touch only the regenerated paths. Suites run at the root over the
  * union of touched files, parallel suites only: the group's exclusive suites
  * are the deferred-suites step's, already run before this pass.
  *
  * @param {{base: string, head?: string, members: Array<{issue: number, body: string}>,
  *   epic?: number, regenerated?: string[], cwd: string, git: Function,
- *   suites?: object[], runSuite?: Function, protectedPaths?: object[], registrarExemption?: object}} input
+ *   suites?: object[], runSuite?: Function, protectedPaths?: object[], registrarExemption?: object,
+ *   prior?: number[]}} input
+ *   `prior` (#3274): run members merged in an EARLIER rolling batch. A batch's
+ *   range starts at its members' earliest worktree tip, which can predate an
+ *   earlier batch's merge; those members' commits are listed in
+ *   `priorSkipped`, never attributed here and never failed — that batch's own
+ *   pass already covered them.
  */
 function runGroupTier1({
   base, head = 'HEAD', members = [], epic, regenerated = [], cwd, git,
-  suites = [], runSuite, protectedPaths, registrarExemption,
+  suites = [], runSuite, protectedPaths, registrarExemption, prior = [], own = [],
 }) {
   const range = `${base}..${head}`;
   const failures = [];
@@ -592,15 +680,54 @@ function runGroupTier1({
     return epic !== undefined && refPattern(epic).test(message) ? epic : null;
   };
 
-  const all = parseCommitsWithParents(git(['log', '--format=%H%x1f%P%x1f%B%x1e', range]));
-  const mergesSkipped = all.filter((c) => c.parents.length > 1).map((c) => c.sha);
-  const commits = all.filter((c) => c.parents.length <= 1).map((c) => ({ sha: c.sha, issue: owner(c.message) }));
+  // Classified by structure, never by message (#3263). The tracker's first-
+  // parent line holds the merge-backs, the parent's own commits (--own, e.g.
+  // the regenerated-commit) and anything another session committed there,
+  // which is external: reported, never failed. A member's commits are its
+  // merge-back's second-parent side; only those are attributed by message.
+  const LOG = '--format=%H%x1f%P%x1f%B%x1e';
+  const line = parseCommitsWithParents(git(['log', '--first-parent', LOG, range]));
+  const mergeBacks = line.filter((c) => c.parents.length > 1);
+  // #3284: an --own entry is `<sha>` (the parent's root-issue commit, e.g. the
+  // regenerated-output commit) or `<sha>=<member>` (a commit Steps 4d/4e made
+  // on the tracker FOR that member after its merge-back). The second is
+  // credited to the member, so its scope-drift — the registrar exemption
+  // included — reads it; credited to the root it was checked against the
+  // regenerated paths only, and as a bare unnamed sha it was external.
+  const ownMember = new Map();
+  const ownShas = own.map((entry) => {
+    const [sha, member] = String(entry).split('=');
+    if (member !== undefined && /^\d+$/.test(member)) ownMember.set(sha, Number(member));
+    return sha;
+  });
+  const ownSet = new Set(ownShas);
+  const external = line.filter((c) => c.parents.length <= 1 && !ownSet.has(c.sha)).map((c) => c.sha);
+  const memberSide = [];
+  const mergesSkipped = mergeBacks.map((c) => c.sha);
+  for (const m of mergeBacks) {
+    for (const c of parseCommitsWithParents(git(['log', LOG, `${m.parents[0]}..${m.parents[1]}`]))) {
+      if (c.parents.length > 1) { if (!mergesSkipped.includes(c.sha)) mergesSkipped.push(c.sha); continue; }
+      if (!memberSide.some((x) => x.sha === c.sha)) memberSide.push(c);
+    }
+  }
+  const priorOf = (message) => prior.find((n) => !issues.includes(n) && refPattern(n).test(message));
+  const priorSkipped = memberSide.filter((c) => owner(c.message) === null && priorOf(c.message) !== undefined).map((c) => c.sha);
+  const ownCommits = line.filter((c) => c.parents.length <= 1 && ownSet.has(c.sha)).map((c) => ({
+    sha: c.sha,
+    issue: ownMember.has(c.sha) ? ownMember.get(c.sha) : (epic === undefined ? 'root' : epic),
+  }));
+  const commits = [
+    ...memberSide.filter((c) => !priorSkipped.includes(c.sha)).map((c) => ({ sha: c.sha, issue: owner(c.message) })),
+    ...ownCommits,
+  ];
   const unattributed = commits.filter((c) => c.issue === null).map((c) => c.sha);
   if (unattributed.length > 0) {
-    failures.push({ check: 'attribution', message: `Commit(s) on the tracker naming no group member${epic !== undefined ? ` or epic #${epic}` : ''}: ${unattributed.join(', ')}.` });
+    failures.push({ check: 'attribution', message: `Commit(s) on the tracker naming no group member${epic !== undefined ? ` or root issue #${epic}` : ''}: ${unattributed.join(', ')}.` });
   }
 
-  const uncommitted = parsePorcelain(git(['status', '--porcelain'], { cwd }));
+  const dirty = parsePorcelain(git(['status', '--porcelain'], { cwd }));
+  const hostWritten = dirty.filter(isHostWritten);
+  const uncommitted = dirty.filter((p) => !isHostWritten(p));
   if (uncommitted.length > 0) {
     failures.push({ check: 'uncommitted', message: `Uncommitted work on the tracker: ${uncommitted.join(', ')}.` });
   }
@@ -623,15 +750,20 @@ function runGroupTier1({
       failures.push({ check: 'scope-drift', message: `Scope-drift halt for #${m.issue}: ${scope.violations.map((v) => v.path || v.file || JSON.stringify(v)).join(', ')}.` });
     }
   }
+  // #3272: members that merged cleanly can still share an undeclared path.
+  const overlap = undeclaredOverlap(members.map((m) => ({ issue: m.issue, body: m.body, changed: perMember[m.issue].touched })));
+  if (!overlap.ok) failures.push({ check: 'undeclared-overlap', message: overlapMessage(overlap.overlaps), overlaps: overlap.overlaps });
 
-  if (epic !== undefined && !issues.includes(epic)) {
-    const epicShas = commits.filter((c) => c.issue === epic).map((c) => c.sha);
-    const epicPaths = parseNameStatus(nameStatusOf(epicShas)).map((r) => r.path);
-    epicPaths.forEach((p) => touched.add(p));
+  // The root issue's commits and the parent's own (--own) may touch only the
+  // regenerated paths.
+  const rootShas = commits.filter((c) => c.issue === 'root' || (epic !== undefined && !issues.includes(epic) && c.issue === epic)).map((c) => c.sha);
+  if (rootShas.length) {
+    const rootPaths = parseNameStatus(nameStatusOf(rootShas)).map((r) => r.path);
+    rootPaths.forEach((p) => touched.add(p));
     const allowed = new Set(regenerated);
-    const outside = [...new Set(epicPaths.filter((p) => !allowed.has(p)))];
+    const outside = [...new Set(rootPaths.filter((p) => !allowed.has(p)))];
     if (outside.length > 0) {
-      failures.push({ check: 'regenerated', message: `Commit(s) naming only epic #${epic} touch paths the regeneration runner did not report: ${outside.join(', ')}.` });
+      failures.push({ check: 'regenerated', message: `Commit(s) naming only root issue #${epic === undefined ? '<root>' : epic} touch paths no regeneration step reported: ${outside.join(', ')}.` });
     }
   }
 
@@ -659,6 +791,9 @@ function runGroupTier1({
     range,
     commits,
     mergesSkipped,
+    priorSkipped,
+    external,
+    hostWritten,
     uncommitted,
     perMember,
     touched: [...touched],
@@ -668,18 +803,43 @@ function runGroupTier1({
 }
 
 /**
+ * A rolling batch's post-merge range (#3274): from the earliest worktree tip
+ * among the batch's members to the batch's last commit. `bases` is every
+ * member's tip in the order it was recorded at worktree creation — on one
+ * tracker branch the first recorded is the ancestor of the rest. A member
+ * with no recorded tip is refused, never guessed.
+ *
+ * @param {{members: number[], bases: Array<{issue: number, tip: string}>, head: string}} input
+ * @returns {{ok: boolean, base: string|null, head: string|null, error: string|null}}
+ */
+function batchRange({ members = [], bases = [], head } = {}) {
+  const missing = members.filter((n) => !bases.some((b) => b.issue === n && b.tip));
+  if (missing.length > 0) {
+    return { ok: false, base: null, head: null, error: `No recorded worktree tip for ${missing.map((n) => `#${n}`).join(', ')}.` };
+  }
+  if (!head) return { ok: false, base: null, head: null, error: 'No --head: name the batch\'s last commit.' };
+  const first = bases.find((b) => members.includes(b.issue));
+  return { ok: true, base: first.tip, head, error: null };
+}
+
+/**
  * The group's post-merge pass verdict: Tiers 1–2 over `postMergeSet` on the
  * tracker. A fail halts on the second-review-fail terms. `tier1` is
  * `runGroupTier1`'s result (#3158).
  */
 function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic, unswept = [] } = {}) {
   const ok = tier1 && tier1.ok && (!tier2 || tier2.ok !== false);
-  if (ok) return { action: 'report-group', group };
+  // Another session's commits on the tracker are reported, never failed (#3263).
+  const external = (tier1 && tier1.external) || [];
+  if (ok) return { action: 'report-group', group, ...(external.length ? { external } : {}) };
   const report = [
     `Halted: post-merge pass failed for group ${group} on the tracker.`,
     ...findingLines(tier1, null).map((l) => `  ${l}`),
     ...(tier2 && tier2.ok === false && tier2.reason ? [`  Tier 2: ${tier2.reason}`] : []),
-    ...(worktreesKept.length ? ['  Worktrees kept for inspection:', ...worktreesKept.map((w) => `    - ${w.worktreePath}${w.branch ? ` (${w.branch})` : ''}`)] : []),
+    // This pass runs after teardown (#3264): only what teardown kept is still there.
+    ...(worktreesKept.length
+      ? ['  Worktrees kept for inspection:', ...worktreesKept.map((w) => `    - ${w.worktreePath}${w.branch ? ` (${w.branch})` : ''}`)]
+      : ['  Worktrees: none kept — teardown removed the group\'s worktrees before this pass; the merged commits are on the tracker.']),
     ...unsweptLines(unswept),
     `  Resume: inspect the tracker, then /work ${epic || '<epic>'} --nonstop --concurrent.`,
   ].join('\n');
@@ -701,7 +861,7 @@ function evaluateMember({
     git, suites, runSuite, protectedPaths, registrarExemption,
   });
   const acs = acceptanceCriteria || tier1.acceptanceCriteria.items;
-  const plan = planTier3({ issue: member.issue, acceptanceCriteria: acs, filesToModify, range: `${trackerTip}..${member.branch}`, charterPath, noReview, skillPresent });
+  const plan = planTier3({ issue: member.issue, acceptanceCriteria: acs, filesToModify, range: `${memberBase({ git, trackerTip, branch: member.branch })}..${member.branch}`, charterPath, noReview, skillPresent });
   let tier3 = plan;
   if (!plan.skipped) {
     let text;
@@ -871,12 +1031,13 @@ const USAGE = [
   '  tier3-plan  --issue N --tracker-tip SHA --branch B [--body-file F] [--no-review]',
   '  tree-snapshot --out F [--clear F ...]',
   '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...]',
-  '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...]',
-  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N] [--regenerated P ...] [--group G] [--unswept N ...]',
+  '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...] [--body-file N=F ...] — with two or more members, fails before merging when they share a path outside their declared scope',
+  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...]',
+  '  batch-range --member N ... --base-of N=SHA ... --head H',
   '  Common: --root DIR (default: the current directory). Bodies not given by --body-file are read with gh pmu view N --body-stdout.',
 ].join('\n');
 
-const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling']);
+const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own']);
 const BOOLEAN = new Set(['--no-review', '--resumed']);
 
 /** `<subcommand> --flag value ...` → `{sub, opts}`; repeatable flags collect arrays. */
@@ -998,7 +1159,7 @@ function runCli(argv, seams = {}) {
     const filesToModify = scopeDrift.parseDeclaredScope(body).paths;
     const tier3 = planTier3({
       issue, acceptanceCriteria: extractAcceptanceCriteria(body).items.map((i) => i.text), filesToModify,
-      range: `${opts['--tracker-tip']}..${opts['--branch']}`, noReview: !!opts['--no-review'],
+      range: `${memberBase({ git, trackerTip: opts['--tracker-tip'], branch: opts['--branch'] })}..${opts['--branch']}`, noReview: !!opts['--no-review'],
       skillPresent: diffReviewSkillPresent(root),
     });
     return { code: 0, envelope: { ok: true, subcommand: sub, tier3 } };
@@ -1034,11 +1195,25 @@ function runCli(argv, seams = {}) {
       const out = path.resolve(root, opts['--tier3']);
       const exists = fs.existsSync(out);
       const treeBefore = fs.readFileSync(path.resolve(root, opts['--tree-before']), 'utf8');
+      const siblings = (opts['--sibling'] || []).map(Number).filter(Number.isInteger);
+      // The run's paths (#3263): the declared scope each running member's
+      // Tier 1 document recorded. A tree change outside them during the review
+      // is another session's — reported, never failed. None readable: strict.
+      const scopeOf = (doc) => ((doc && (doc.tier1 || doc).scope) || {}).declaredScope;
+      const runPaths = [];
+      let scopesRead = Array.isArray(scopeOf(t1doc)) ? 1 : 0;
+      if (scopesRead) runPaths.push(...scopeOf(t1doc));
+      for (const m of siblings) {
+        try {
+          const d = scopeOf(JSON.parse(fs.readFileSync(path.resolve(root, `.tmp-gate-${m}-tier1.json`), 'utf8')));
+          if (Array.isArray(d)) { runPaths.push(...d); scopesRead += 1; }
+        } catch (_e) { /* that sibling's scope stays unknown */ }
+      }
       tier3 = evaluateTier3({
         issue, outputPath: opts['--tier3'], exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
         treeBefore, treeBeforeIntact: sha256(treeBefore) === String(opts['--tree-before-sha']).toLowerCase(),
-        treeAfter: git(TREE_STATUS_ARGS), root,
-        siblings: (opts['--sibling'] || []).map(Number).filter(Number.isInteger),
+        treeAfter: git(TREE_STATUS_ARGS), root, siblings,
+        ...(scopesRead === 1 + siblings.length ? { runPaths } : {}),
       });
     }
     const decision = decideOutcome({
@@ -1084,6 +1259,19 @@ function runCli(argv, seams = {}) {
     // --unswept: members a --nonstop run already moved to in_review with no
     // sweep yet (#3202); a residual-conflict halt names them.
     const unswept = unsweptOf(opts);
+    // #3272: before any merge, so a shared undeclared file is named as such
+    // rather than surfacing as a residual conflict after reconciliation.
+    if (members.length > 1) {
+      const files = bodyFileMap(opts['--body-file']);
+      const overlap = undeclaredOverlap(members.map((m) => ({
+        issue: m.issue,
+        body: bodyOf(m.issue, files),
+        changed: gitStatus(['diff', '--name-only', `HEAD...${m.branch}`]).stdout.split('\n').map((l) => l.trim()).filter(Boolean),
+      })));
+      if (!overlap.ok) {
+        return { code: 1, envelope: { ok: false, subcommand: sub, check: 'undeclared-overlap', overlaps: overlap.overlaps, merged: [], worktreesKept: members, report: `Halted before merge-back: ${overlapMessage(overlap.overlaps)} Nothing was merged; every worktree is kept.` } };
+      }
+    }
     const result = mergeBack({ git: seams.gitStatus || gitStatus, tracker: opts['--tracker'], epic: num(opts['--epic']), members, order: members.map((m) => m.issue), unswept });
     return { code: result.ok ? 0 : 1, envelope: { subcommand: sub, ...result } };
   }
@@ -1097,11 +1285,25 @@ function runCli(argv, seams = {}) {
     const tier1 = runGroupTier1({
       base: opts['--base'], head: opts['--head'] || 'HEAD', members, epic: num(opts['--epic']),
       regenerated: opts['--regenerated'] || [], cwd: root, git, suites: resolveSuites(root).suites, runSuite,
+      prior: (opts['--prior'] || []).map(Number).filter(Number.isInteger),
+      own: opts['--own'] || [],
     });
     // Tier 2 is the parent's own read; this decides on Tier 1 and the parent
     // halts on its read independently, on the same terms.
-    const outcome = postMergeOutcome({ group: num(opts['--group']) || 1, tier1, epic: num(opts['--epic']), unswept: unsweptOf(opts) });
+    const worktreesKept = (opts['--kept-worktree'] || []).map((p) => ({ worktreePath: p }));
+    const outcome = postMergeOutcome({ group: num(opts['--group']) || 1, tier1, epic: num(opts['--epic']), unswept: unsweptOf(opts), worktreesKept });
     return { code: tier1.ok ? 0 : 1, envelope: { ok: tier1.ok, subcommand: sub, tier1, outcome } };
+  }
+
+  if (sub === 'batch-range') {
+    const miss = requireOpts(opts, ['--member', '--head']);
+    if (miss) return fail(miss);
+    const bases = (opts['--base-of'] || []).map((spec) => {
+      const i = spec.indexOf('=');
+      return { issue: Number(spec.slice(0, i)), tip: spec.slice(i + 1) };
+    });
+    const range = batchRange({ members: opts['--member'].map(Number), bases, head: opts['--head'] });
+    return { code: range.ok ? 0 : 1, envelope: { subcommand: sub, ...range } };
   }
 
   return fail(`unknown subcommand: ${sub}`);
@@ -1120,14 +1322,17 @@ if (require.main === module) {
 
 module.exports = {
   runCli,
+  undeclaredOverlap,
   parseCliArgs,
   parseMemberSpec,
   notRunFailure,
   runTier1,
+  memberBase,
   buildTier2,
   planTier3,
   parseReview,
   checkReviewerTree,
+  HOST_WRITTEN_PATHS,
   evaluateTier3,
   diffReviewSkillPresent,
   mayMerge,
@@ -1136,6 +1341,7 @@ module.exports = {
   resumeFixCycle,
   postMergeSet,
   runGroupTier1,
+  batchRange,
   postMergeOutcome,
   evaluateMember,
   MANIFEST_FILENAME,
