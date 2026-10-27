@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -214,6 +214,16 @@ function gatherSessionInfo(cwd) {
  * @param {{tmpCleanup?: boolean}} info - Session info carrying the resolved opt-out
  * @returns {{removed: string[], failed: Array<{name: string, error: string}>, oldestAgeMs?: number, signals: object}|null}
  */
+function removeRetiredFiles(cwd) {
+  // #3420: domain-entities.json is retired. Derived from CHARTER.md, so deleting
+  // it loses nothing. Never throws: a failed removal degrades to no row.
+  try {
+    return require('../scripts/shared/charter-entities.js').removeRetiredEntitiesFile(cwd);
+  } catch {
+    return null;
+  }
+}
+
 function sweepStaleTempFiles(cwd, info) {
   try {
     // Disabled emits no row at all — not an "opted out" row. The suppression is
@@ -630,6 +640,18 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       }
       // clean / none → omit, matching dependency's healthy.
     }
+    if (r.name === 'charter-health') {
+      // #3423. Row carried verbatim from the helper's formatRows — the wording
+      // has one home. Clean → no row; undetermined → the helper's own row.
+      const row = r.parsed?.data?.rows?.health;
+      if (row) {
+        lines.push(`- Charter Health: ${w(row)}`);
+      } else if (!r.parsed?.data && r.error === 'timeout') {
+        lines.push(`- Charter Health: ${e('⚠️ check timed out')}`);
+      } else if (!r.parsed?.data && r.status === 'error') {
+        lines.push(`- Charter Health: ${e(`⚠️ check failed to run (${r.error || `exit ${r.exitCode}`})`)}`);
+      }
+    }
   }
 
   // Discovery disabled by config (#2702). The peers check is never registered
@@ -680,6 +702,12 @@ function renderBlock(info, checkResults, opts = { color: true }) {
     }
   }
 
+  // Retired file removed (#3420). Read off `info` like Trash: absent or
+  // nothing removed renders no row.
+  if (info.retiredEntities && info.retiredEntities.removed) {
+    lines.push(`- ${w('Retired file removed: domain-entities.json — commit the deletion')}`);
+  }
+
   // Leftover framework worktrees (#3187). Read off `info` like Trash: an absent
   // field renders nothing, so hand-made info objects in tests are unaffected.
   const worktreesRow = formatWorktreesRow(info.worktrees);
@@ -717,7 +745,7 @@ function renderBlock(info, checkResults, opts = { color: true }) {
 
   // Check failures (other than the checks rendered inline above, which already
   // emit their own timeout/error lines — listing one here too double-reports it)
-  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers', 'gh-auth', 'hook-health', 'testing-drift']);
+  const INLINE_RENDERED = new Set(['config-integrity', 'branch-sync', 'dependency', 'task-tools', 'peers', 'gh-auth', 'hook-health', 'testing-drift', 'charter-health']);
   const failedOther = checkResults.filter((r) =>
     r.status === 'error' && !INLINE_RENDERED.has(r.name)
   );
@@ -889,6 +917,24 @@ function renderDivergenceAnalysis(sync) {
   ].join('\n');
 }
 
+/**
+ * The question each offer asks, verbatim (#3440). The hook owns the decision
+ * sentence and the model composes only the context above it — the split
+ * /bluf makes between its preamble and its compose step — so an offer can
+ * never trip ask-question-shape-hook.js with a question the model wrote.
+ * Constant on purpose: the branch, count and command go in the context.
+ */
+const OFFER_QUESTIONS = Object.freeze({
+  branchSync: 'Fast-forward this branch to its upstream now?',
+  dependencies: 'Reinstall dependencies from the lockfile now?',
+  taskTools: 'Set the local task-tools override now?',
+});
+
+/** The sentence appended to every offer instruction. */
+function askVerbatim(info, question) {
+  return ` Ask with exactly this question: "${question}" — print the context above it as markdown (\`${info.frameworkPath || '.'}/Reference/AskUserQuestion-Shape.md § Templates\`, Offer).`;
+}
+
 function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) {
   // The block must be visible to the user. Claude Code does not auto-surface
   // hook stderr in the UI, so we instruct Claude to echo the block verbatim
@@ -923,19 +969,21 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
   // could not (e.g. a Current Focus naming a version the working branch has
   // moved past). Listed first so the summary lands right after the block.
   //
-  // #2637: the observation half existed; the handoff to the repair path did
-  // not. `/charter --refresh` runs verifyEntityCounts() and offers consent-gated
-  // correction, so a reported-and-dropped mismatch — or one resolved by a hand
-  // edit that bypasses that consent flow — was the only available outcome.
-  //
-  // Conditional on an actual observation, deliberately. An unconditional
-  // "run /charter --refresh" would print on every clean startup and train the
-  // reader to ignore it, the same reason the Review-State Gate never prompts
-  // on `reviewed-clean` (#2577). Recommend, never mutate: `06-runtime-triggers`
-  // *offer, don't force*, and /charter's own "never auto-modify the charter
-  // without user consent" contract.
+  // #3423 (supersedes #2930): the summary is ALL this instruction asks for.
+  // #2637 had added "note any mismatch you observe between the charter and
+  // current repository state … recommend /charter --refresh". On an active
+  // project that judgment is effectively unconditional, so it fired nearly every
+  // session and trained the reader to ignore it — the #2577 habituation rule
+  // this comment used to cite against an unconditional prompt. Its one remedy
+  // also repaired counts only, so most of what it flagged could not be fixed by
+  // the command it named. The observation is now a named, reported call:
+  // charter-health-check.js (registered in buildChecks beside testing-drift)
+  // verifies counts with charter-entities.js and shape with charter-shape.js,
+  // and emits a Charter Health row only on a finding. The stale-version signal
+  // is excluded there for the same habituation reason. Recommend, never mutate:
+  // the row names /charter --refresh and nothing is changed for the user.
   if (info.charterStatus === 'Active') {
-    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus. Note any mismatch you observe between the charter and current repository state. If you observe a mismatch, recommend that the user run `/charter --refresh`, which re-verifies entity counts and offers consent-gated repair — recommend only, never make the change yourself.');
+    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus.');
   }
 
   // #2503: the specialist is INJECTED, not pointed at. The former
@@ -1001,7 +1049,7 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
         ? ' (measured against a cached remote-tracking ref — the upstream fetch failed, so the real count may be higher)'
         : '';
       instructions.push(
-        `Branch \`${sync.branch}\` is ${sync.behind} commit(s) behind its upstream${staleNote}. Offer to update from the remote: ask the user, and on acceptance run \`git pull --ff-only\` and report the result. Declining leaves the working tree untouched. If the pull fails, report the git error verbatim and continue the session — do not retry, and do not fall back to a non-fast-forward merge.`
+        `Branch \`${sync.branch}\` is ${sync.behind} commit(s) behind its upstream${staleNote}. Offer to update from the remote: ask the user, and on acceptance run \`git pull --ff-only\` and report the result. Declining leaves the working tree untouched. If the pull fails, report the git error verbatim and continue the session — do not retry, and do not fall back to a non-fast-forward merge.${askVerbatim(info, OFFER_QUESTIONS.branchSync)}`
       );
     }
   } else if (sync && sync.status === 'diverged') {
@@ -1072,7 +1120,7 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
     // error at the first acceptance criterion and reads it as a broken test
     // rather than as dependencies that were never installed.
     instructions.push(
-      `Dependencies are not fully installed — ${detail}. Offer to run \`${command}\`: ask the user, and on acceptance run it and report the result. Declining leaves the tree untouched; note that test-running gates (\`/work\` Step 3 scoped runs and Step 4f's full sweep) will fail until it is installed. Do not run \`npm ci\` without asking.`
+      `Dependencies are not fully installed — ${detail}. Offer to run \`${command}\`: ask the user, and on acceptance run it and report the result. Declining leaves the tree untouched; note that test-running gates (\`/work\` Step 3 scoped runs and Step 4f's full sweep) will fail until it is installed. Do not run \`npm ci\` without asking.${askVerbatim(info, OFFER_QUESTIONS.dependencies)}`
     );
   }
 
@@ -1113,7 +1161,7 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
         : 'Nothing local pins the task tools on, so `/work` step tracking may be degrading to an inline checklist and the TaskList-based compaction-recovery guarantee may not be holding';
 
       instructions.push(
-        `${stake}. Offer to set the override: ask via \`AskUserQuestion\` with enabling recommended and leaving it off as the alternative, and on acceptance run \`node .claude/scripts/shared/task-tools-check.js --enable\` and report the result. Say plainly that the change takes effect on relaunch and does not repair the current session. Declining writes no file and records nothing durable — the offer recurs next session. Do not run the enable command without asking.`
+        `${stake}. Offer to set the override: ask via \`AskUserQuestion\` with enabling recommended and leaving it off as the alternative, and on acceptance run \`node .claude/scripts/shared/task-tools-check.js --enable\` and report the result. Say plainly that the change takes effect on relaunch and does not repair the current session. Declining writes no file and records nothing durable — the offer recurs next session. Do not run the enable command without asking.${askVerbatim(info, OFFER_QUESTIONS.taskTools)}`
       );
     }
   }
@@ -1237,13 +1285,21 @@ function buildChecks(info) {
   // never writes; its row names /charter --refresh and nothing else.
   if (info.charterStatus === 'Active') {
     checks.push({ name: 'testing-drift', script: '.claude/scripts/shared/testing-drift-check.js' });
+    // #3423: same gate, same reason — counts and shape are measured against
+    // the charter. Read-only; its row names /charter --refresh and nothing else.
+    checks.push({ name: 'charter-health', script: '.claude/scripts/shared/charter-health-check.js' });
   }
   return checks;
 }
 
 async function main() {
   const cwd = process.cwd();
+  // #3420: before gatherSessionInfo reads `git status --porcelain`, so the
+  // Branch row reports the deletion as dirty. After the checks (where the
+  // stale-scratch sweep runs) the block would say clean over an unstaged delete.
+  const retiredEntities = removeRetiredFiles(cwd);
   const info = gatherSessionInfo(cwd);
+  info.retiredEntities = retiredEntities;
 
   const checks = buildChecks(info);
 
@@ -1286,6 +1342,7 @@ module.exports = {
   runChecksParallel,
   buildChecks,
   sweepStaleTempFiles,
+  removeRetiredFiles,
   gatherLeftoverWorktrees,
   formatWorktreesRow,
   renderBlock,
@@ -1295,6 +1352,7 @@ module.exports = {
   HOOK_CONTEXT_LIMIT,
   CONTEXT_BUDGET,
   renderDivergenceAnalysis,
+  OFFER_QUESTIONS,
   quoteSubject,
   SUBJECT_MAX_CHARS,
   safeExec,

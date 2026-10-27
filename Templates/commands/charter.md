@@ -1,7 +1,7 @@
 ---
-version: "v0.112.0"
+version: "v0.113.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
-argument-hint: "[--update [--register-proj|--deregister-proj|--list-proj]|--refresh|--validate|--create-domain-entities|--testing [--dry-run [--check]] [--sweep-e2e on|off] [--sweep-scope all|touched]] [--help]"
+argument-hint: "[--update [--register-proj|--deregister-proj|--list-proj]|--refresh [--dry-run]|--testing [--dry-run [--check]] [--sweep-e2e on|off] [--sweep-scope all|touched]] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -12,26 +12,23 @@ Context-aware. Shows summary if exists, starts creation if missing.
 |----------|-------------|
 | *(none)* | Show summary, or start creation when there is no charter |
 | `--update` | Update specific sections; takes `--register-proj`, `--deregister-proj` or `--list-proj` |
-| `--refresh` | Re-extract from code, merge |
-| `--validate` | Check current work against scope |
-| `--create-domain-entities` | Regenerate `domain-entities.json` |
+| `--refresh` | Re-extract from code, merge, verify counts, reshape. Takes `--dry-run` |
 | `--testing` | Harness selection per language and role; takes `--dry-run [--check]`, `--sweep-e2e on\|off` and `--sweep-scope all\|touched` |
 | `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
 
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js charter`, report its output, and STOP.
 
-**Retired forms:** `update`, `refresh` and `validate` typed bare are no longer accepted — reject them with a message naming `--update`, `--refresh` or `--validate`, and do nothing else. A sub-flag keeps its place: `update --register-proj` is now `--update --register-proj`.
+**Retired forms:** `update` and `refresh` typed bare are no longer accepted — reject them with a message naming `--update` or `--refresh`, and do nothing else. A sub-flag keeps its place: `update --register-proj` is now `--update --register-proj`.
 ## Usage
 | Command | Description |
 |---------|-------------|
 | `/charter` | Show summary or start creation |
 | `/charter --update` | Update specific sections |
-| `/charter --refresh` | Re-extract from code, merge |
-| `/charter --validate` | Check current work against scope |
+| `/charter --refresh` | Re-extract from code, merge, verify counts, reshape |
+| `/charter --refresh --dry-run` | Run every `--refresh` analysis step, shape step included; write nothing |
 | `/charter --update --register-proj` | Register a companion repository or board |
 | `/charter --update --deregister-proj` | Remove a companion registration by `owner/name` |
 | `/charter --update --list-proj` | List registered companions with capability flags |
-| `/charter --create-domain-entities` | Regenerate `domain-entities.json` |
 | `/charter --testing` | Harness selection per language and role → `testing.suites[]` |
 | `/charter --testing --sweep-e2e on` · `--sweep-e2e off` | Set whether every `e2e` suite joins the `/work` Step 4f sweep, without re-running selection |
 | `/charter --testing --sweep-scope all` · `--sweep-scope touched` | Set whether the `/work` Step 4f sweep runs every gate suite or only those whose files changed |
@@ -49,6 +46,13 @@ fwconfig.write(process.cwd(), config); // throws on validation failure
 If `fwconfig.write` throws, surface error and stop — do NOT retry with raw file I/O.
 ## Project `.npmrc` Offer (#3016)
 **Trigger:** stack includes JavaScript or TypeScript (a `testing.suites[]` entry for either, or `package.json` on disk) and no `.npmrc` at the project root. **Offer** to copy `{frameworkPath}/Templates/project/.npmrc` there — the `min-release-age` cooldown and `ignore-scripts` block the framework adopted for itself (#2481). Write **only on acceptance**; on decline change nothing and do not re-ask in the run. An existing `.npmrc` is **never overwritten** — report it, name the two keys for a hand merge, move on. Rule 06: offer, never force. This offer is the only path a project gets the file — Praxis Hub Manager does not write it and a hub upgrade does not install it (`Templates/project/.npmrc` is a project file). The startup Supply Chain row (#3313) names the gap in a project chartered before the offer and points here via `/charter --refresh`.
+## Retired File Removal (#3420)
+**Every mode, first, before anything else runs:** delete a retired `domain-entities.json` at the project root — mandatory, not an offer, no prompt.
+```javascript
+const { removeRetiredEntitiesFile } = require('.claude/scripts/shared/charter-entities.js');
+const { removed, path } = removeRetiredEntitiesFile(process.cwd());
+```
+`removed: true` → report `Retired file removed: domain-entities.json — commit the deletion` (an unstaged change the user commits). `removed: false` → say nothing. Derived from CHARTER.md and read by nothing, so deleting it loses nothing; the startup hook makes the same call, this one catches a file that reappears. A link is removed itself, never followed.
 ## Template Detection
 **One rule (#2893):** `.claude/scripts/shared/lib/charter-template.js`, shared with the startup hook and `Reference/Charter-Enforcement.md`. NEVER copy its pattern into this spec — three restated copies drifted until none matched the Praxis Hub Manager bootstrap charter, which then read as complete.
 `node .claude/scripts/shared/lib/charter-template.js CHARTER.md` → `{"exists", "template", "placeholders": [...]}`; report the `placeholders` when routing to Step 3.
@@ -58,7 +62,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 1. `test -f CHARTER.md`
 2. If exists, check placeholders via the shared rule: `node .claude/scripts/shared/lib/charter-template.js CHARTER.md`
    - **TEMPLATE (`template: true`):** → Step 3
-   - **COMPLETE (`template: false`):** Display summary (name, vision, focus, tech stack). Mention `/charter --update` and `/charter --validate`.
+   - **COMPLETE (`template: false`):** Display summary (name, vision, focus, tech stack). Mention `/charter --update` and `/charter --refresh`.
 3. **No charter OR template:** Charter mandatory. Has code → extraction; empty → inception. Proceed directly (no skip).
 ### Extraction Mode
 1. Verify `.claude/skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**
@@ -66,7 +70,7 @@ ANY placeholder (`{Capitalized Words}`, `{lowercase-kebab}`, `{{UPPER_SNAKE}}`, 
 3. Present findings, ask user to confirm/adjust
 4. Generate CHARTER.md and Inception/ artifacts
 4a. Offer the project `.npmrc` per **Project `.npmrc` Offer** (#3016) — the manifest is on disk, so the trigger is observed, not declared.
-3a. **Companion pre-fill:** propose candidates from disk, never open-ended — `git remote -v`; `.gh-pmu.json` `repositories[]`; existing `external: true` entities in `domain-entities.json` (read from the `resolveEntitiesWriteTarget()` path). Confirm with `searchable`/`fileIssues` defaulting false; register via `registerCompanion`. Asking open-ended here would assert something no file was read for — the failure the artifact-voice rule below governs.
+3a. **Companion pre-fill:** propose candidates from disk, never open-ended — `git remote -v`; `.gh-pmu.json` `repositories[]`; the CHARTER.md Companion Repositories table is the source of truth for what is registered. Confirm with `searchable`/`fileIssues` defaulting false, ask each companion's **direction** (see Companion Projects); register via `registerCompanion`. Asking open-ended here would assert something no file was read for — the failure the artifact-voice rule below governs.
 **Artifact voice — extraction:** artifacts here are **observations**. "detected" / "found via `<file>`" claims are permitted *because a file was read*; each must be traceable to the file supporting it.
 **Step 2a — Verification commands from the manifest script block.** Read the script declarations here, in this spec:
 | Source | What to read |
@@ -214,6 +218,7 @@ Max 1-2 to avoid overwhelm.
 **No signal → ask nothing** — not a softened or optional version. Silence is the specified behavior.
 **On a signal, ask:** *"Are there companion repositories or project boards this project works alongside — worth searching for context, or filing issues against?"* Record via `registerCompanion`, never by hand-writing the table.
 `searchable` and `fileIssues` are asked separately and default **false**. Searchable-but-not-filable is the common case; nothing becomes filable by omission.
+**Direction is asked alongside them (#3422):** `upstream` (this project consumes it), `downstream` (it consumes this project) or `bidirectional` (both), passed as `entry.direction`. A skipped answer leaves the cell **empty** — never write a default; empty reads as `bidirectional` and `/charter --refresh` asks again. The prior-art sweep uses it (`prior-art-sweep.json` `companionRepos.directionTreatment`): upstream hit = evidence, downstream hit = impact.
 #### Dynamic Follow-Up
 - Analyze baselines for gaps/ambiguities
 - Simple: 0-1; Complex: 2-4; skip questions answered indirectly
@@ -223,13 +228,6 @@ Max 1-2 to avoid overwhelm.
 | Simple (CLI, utility) | 4 essential only |
 | Medium (web app, API) | 4-6 |
 | Complex (multi-service) | 6-8 |
-#### Schema-Driven Domain Questions
-```javascript
-const { generateQuestions } = require('.claude/scripts/shared/lib/schema-driven-questions.js');
-const schemaQuestions = generateQuestions(answersCollectedSoFar);
-```
-Use `AskUserQuestion` with each question's `header`/`question` fields. Answers feed `domain-entities.json` (Step 7). Schema not found / no questions → skip silently.
-**During `/charter --update`:** Read `currentDomainEntities` from the `resolveEntitiesWriteTarget()` path — where the write lands — and use `generateUpdateQuestions(currentDomainEntities)` — only missing/empty fields; existing values preserved.
 #### Review Mode (always)
 **ASK USER (single-select):**
 ```
@@ -270,30 +268,18 @@ What review mode should be used for this project?
 | Active domains? | framework-config.json → activeDomains |
 **Process:**
 1. Create lifecycle dirs: `mkdir -p Inception Construction/Test-Plans Construction/Design-Decisions Construction/Tech-Debt Construction/Reports/Daily-Logs Construction/Reports/Stats Transition`
-2. Generate CHARTER.md (Vision, Tech Stack, In Scope, Status: Draft). **Required (#2379):** title exactly `# Project Charter: {name}`; include `## Key Entities` table `| Entity | Count | Location |` with ≥1 row (use `TBD` for unknown Count). Wrong title or missing section → generator returns structured `{error, hint}` / `{warning, entities:{}}`.
+2. Generate CHARTER.md (Vision, Tech Stack, In Scope, Status: Draft). **Required (#2379):** title exactly `# Project Charter: {name}`; include `## Key Entities` table `| Entity | Count | Location |` with ≥1 row (use `TBD` for unknown Count). Missing section → `/charter --refresh` count verification has nothing to check.
 3. Generate Inception/ artifacts (Charter-Details, Tech-Stack, Scope-Boundaries, Constraints, Architecture, Test-Strategy, Milestones) — **in intent voice per the Artifact voice rule at the head of Inception Mode.** `Tech-Stack.md` is sourced from the Q3 answer alone.
 4. Construction/ structure with .gitkeep and README.md
 5. Transition/ artifacts (Deployment-Guide, Runbook, User-Documentation)
-   - Offer the project `.npmrc` per **Project `.npmrc` Offer** (#3016), before the step 8 commit; at inception the trigger is the Q3 answer or a selected suite, never a filesystem read.
+   - Offer the project `.npmrc` per **Project `.npmrc` Offer** (#3016), before the step 7 commit; at inception the trigger is the Q3 answer or a selected suite, never a filesystem read.
 6. Use "TBD" where unanswered. **Separately**, use `TBD` for detail no answer supplied that cannot be observed because nothing is installed yet (see Artifact voice). Skipped question and unobservable detail are distinct cases.
-7. Generate `domain-entities.json` beside `CHARTER.md` at project root, to the path **domain-entities.json Write Target** (below) resolves:
-   ```javascript
-   const { generateFromCharter, resolveEntitiesWriteTarget } = require('.claude/scripts/shared/generate-domain-entities.js');
-   const charter = fs.readFileSync('CHARTER.md', 'utf8');
-   const entities = generateFromCharter(charter, version);
-   const target = resolveEntitiesWriteTarget(process.cwd()); // throws ENTITIES_TARGET_OUTSIDE_PROJECT — report it, do not write
-   // Validate against .claude/metadata/domain-entities-schema.json before writing to `target`
-   // If validation fails, warn and skip (non-blocking)
-   ```
-8. Commit: "Initialize project charter and lifecycle structure"
-9. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
+7. Commit: "Initialize project charter and lifecycle structure"
 **Note:** Dirs created after questions to avoid orphans if user abandons.
 ### /charter --update
 1. Read CHARTER.md and Inception/Charter-Details.md
 2. Ask what to update (Vision, Current Focus, Tech Stack, Scope, Milestones, Deployment Target)
 3. Apply, sync CHARTER.md if vision changes, update Last Updated
-3a. Regenerate `domain-entities.json` via `generateFromCharter()`. **Destination:** beside `CHARTER.md` at project root — from `resolveEntitiesWriteTarget()` per **domain-entities.json Write Target**, never a composed path. Validate before writing. If missing, generate (migration). Include `"$schema"` first property → `.claude/metadata/domain-entities-schema.json`. **#2379:** if helper returns `{error, hint}` or top-level `warning`, surface both and do not write a partial file. **This step does not verify counts against disk** — `verifyEntityCounts()` is called by `/charter --refresh` 5a and `/charter --create-domain-entities` Step 2b, which own the mismatch-versus-unverifiable contract (#2597).
-3b. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
 4. If Tech Stack modified: trigger skill/recipe suggestions (NEW only). Detect new default skills not in `projectSkills` (from `skill-keywords.json` `defaultSkills`) — copy from `{frameworkPath}/.claude/skills/`, add additively.
 4b. If Deployment Target changed: remove old deployment skill, copy new from `{frameworkPath}/.claude/skills/<skill-name>/`. Update `deploymentTarget` and `projectSkills`. No prior target → fresh install.
 5. **Companion management (`--register-proj`, `--deregister-proj`, `--list-proj`):** delegate to `.claude/scripts/shared/lib/companion-projects.js`. Read `CHARTER.md`, call the helper, write returned content back — the helper never writes; the caller persists.
@@ -302,16 +288,37 @@ What review mode should be used for this project?
 | `--register-proj` | `registerCompanion(content, entry)` | `action: "added"`/`"updated"`; duplicate `repo` **updates in place** |
 | `--deregister-proj` | `deregisterCompanion(content, repo)` | `action: "removed"`, or `ok:false` + `"not-found"` |
 | `--list-proj` | `formatCompanionList(listCompanions(content))` | Prints registry; explicit empty-registry line when none |
+**`--register-proj` asks for direction (#3422)** — `upstream`, `downstream` or `bidirectional` — when registering a companion and when updating one, passed as `entry.direction`; re-registering updates it in place. Unchanged rows keep their cell: empty stays empty, never a written default.
 **Do NOT restate the helper's validation, dedupe, or removal rules here** — spec prose is LLM-executed and untestable, and a second statement drifts from the module enforcing it. Report `errors[]` verbatim and stop; `ok:false` means nothing was written.
 **Reachability:** call `verifyReachability(repo)` before registering. `verified:false` → register anyway and report the `label` (`unverifiable — <reason>`). NEVER drop the registration because the check failed; NEVER report an unchecked repo as reachable (rule 01 claim labeling).
-**After register/deregister, regenerate `domain-entities.json`** per 3a — entities derive from this table, so skipping leaves the two views disagreeing.
 ### /charter --refresh
+**`--dry-run`:** run every analysis step below (codebase comparison, count verification, out-of-table scan, shape step, harness-selection delta), report what each would change, and **write nothing** — no merge, commit, Inception/ edit or applied offer.
 1. Verify `.claude/skills/codebase-analysis/SKILL.md` exists, then load it. **Missing:** `codebase-analysis skill not installed. Install via Praxis Hub Manager or ask user to install.` -> **STOP**
 2. Analyze codebase
 3. Compare with Inception/ artifacts, identify differences
 4. Present diff, ask for confirmation
 5. Merge changes, commit "Charter refresh"
-5a. Regenerate `domain-entities.json` via `generateFromCharter()`. Run `verifyEntityCounts()` — report mismatches (`match: false`) and unverifiable entities (`resolved: false`) **separately** per Step 2b; only mismatches feed the consent prompt (#2597). Ask before updating charter counts. Then run **Out-of-Table Count Reconciliation** (below) — `verifyEntityCounts()` sees only the Key Entities table, so prose counts need their own pass (#2636). Validate and write **beside `CHARTER.md` at project root**, to the `resolveEntitiesWriteTarget()` path per **domain-entities.json Write Target**. Include `"$schema"` first property. **#2379:** helper may return `{error, hint}` or `{warning, entities:{}}` if refreshed charter lost title or Key Entities table — surface to user and restore required sections before overwriting.
+5a. **Entity count verification** — on entities extracted **in memory** from the refreshed charter; nothing is written:
+```javascript
+const { extractEntities, verifyEntityCounts } = require('.claude/scripts/shared/charter-entities.js');
+const entities = extractEntities(fs.readFileSync('CHARTER.md', 'utf8'));
+const results = verifyEntityCounts(entities);
+```
+Each result carries a **tri-state** `match` (#2597): `true` confirmed, `false` a real disagreement, `null` no count derived; `resolved: false` names the third case, `unresolved[]` one `{location, reason}` per unreadable location. **Report mismatches and unverifiable entities separately** — an unresolvable entity is an absence of evidence, not drift: `⚠️ {entity}: charter says {charterCount}, found {actualCount} on disk`; `❓ {entity}: count not verified — {unresolved[].location}: {unresolved[].reason}`. **Only `match: false` feeds the consent prompt.** Ask before updating charter counts; **never auto-modify the charter without consent**, never offer to rewrite a count from an unresolved result (`actualCount` is `null` — rule 01 Claim Labeling). Then run **Out-of-Table Count Reconciliation** (below) — `verifyEntityCounts()` sees only the Key Entities table, so prose counts need their own pass (#2636). Report `"Count verification: {N} entities checked, {M} mismatches, {U} unverifiable"` — the unverifiable tally is unconditional. **#2379:** CHARTER.md keeps its `# Project Charter: {name}` title and `## Key Entities` table; no table → report nothing to verify.
+5b. **Charter shape (#3418)** — bring an over-grown CHARTER.md back to summary shape. Measure, then propose; never write before consent:
+```bash
+node .claude/scripts/shared/lib/charter-shape.js --propose
+```
+Target shape is `TARGET_SHAPE` in that helper (Vision, Tech Stack, In Scope, Key Entities, Current Focus, Out of Scope) — one declared place. **`inShape: true` or no CHARTER.md:** report the one-line `summary`, write nothing. Otherwise report each finding: In Scope bullets over `SHAPE_THRESHOLDS.inScopeBulletWords` or longer than one sentence, exclusion phrases inside In Scope bullets, release history and board counts in Current Focus, a Current Focus version older than the latest tag (`staleness.verifiable: false` → say no tag could be read, never "stale"). The In Scope item count is **informational, never a finding**.
+**Proposal** (`proposal`): each In Scope bullet cut to one line naming its capability — **shortened, never merged** (broader wording makes the scope check match more); exclusions moved to Out of Scope, where the checker treats them as conflicts; Current Focus kept to the current release and theme. Report every cut's disposition:
+| Disposition | Meaning |
+|---|---|
+| `pointer` | Already held by CHANGELOG.md, a PRD, a design decision, a proposal or an Inception/ artifact — named, **nothing copied** |
+| `relocate` | Found nowhere else — moved to its named destination (rationale → `Inception/Scope-Boundaries.md`, history → `Inception/Milestones.md`) |
+| `moved` | An exclusion, moved to the charter's Out of Scope |
+| `removed` | Board and git state — removed, not moved (#2931) |
+You may tighten a capability line further; keep every cut accounted for. **`proposal.audit.unaccounted` must be empty before anything is offered** — a non-empty list is a silent drop; restore it or give it a destination, then re-run.
+**Show the diff** of CHARTER.md and every Inception/ file in `proposal.relocations`, then **ASK USER** to apply. Apply only on confirmation; decline changes nothing. Under `--dry-run` report and stop. No regeneration step: the scope check reads CHARTER.md directly, so an applied change takes effect at once.
 5c. **Re-apply selection against the delta (#2853).** Refresh acts on what *changed*, never the whole declaration.
 **Newly-gained pairs only.** Compare detected *(language × role)* pairs against the suites in `testing.suites[]`. A pair with no suite triggers selection **for that pair alone**; a pair that already has one is **never re-prompted and never overwritten** — re-asking an answered question is how a refresh silently discards a deliberate choice.
 **Orphaned suites are reported, never removed.** A suite whose `match[]` matches zero files is reported by `id`, `role`, and the `match[]` globs that matched nothing — the fields the declaration holds. **No language field is read or derived**: #2849 puts none on a suite, and inferring one from a glob reports a field the config does not carry. A suite matching nothing today may match after the next branch, and only the user knows which.
@@ -327,57 +334,22 @@ This is the only step that clears a pending suite; selection never revisits an a
 - **An alias is a difference, not a duplicate.** `npm run e2e` and `npx playwright test` may name one suite two ways; adding the second declares a suite the project does not have.
 - Writes happen **only on confirmation**, to `testing.suites[]` through the helper — **never to `verificationCommands`**, a **read-only comparison** source here (#2850 retired every `/charter` write of it; an existing key is read as legacy by `resolveSuites`).
 **This is the only hook reaching an already-complete charter.** `/charter` with no arguments shows a summary and never re-runs generation, so neither Inception nor Extraction reaches a project past its first session — refresh is where an existing project acquires a declaration, and where drift between the two hand-authored surfaces is caught. Not hypothetical: this repository's `Inception/Test-Strategy.md` and its `framework-config.json` disagreed about what runs, with nothing checking them.
-5b. Hint: `"Tip: Run /charter --create-domain-entities to regenerate domain-entities.json after manual charter edits."`
+5f. **Companion table gaps (#3422):** **every run**, prompt for **every empty cell in the companions table, in any column** (Direction, Board, Responsibility, Relationship, …) — from the helper, never by parsing the table here:
+```javascript
+const { emptyCompanionCells } = require('.claude/scripts/shared/lib/companion-projects.js');
+const gaps = emptyCompanionCells(fs.readFileSync('CHARTER.md', 'utf8')); // [{repo, name, column}]
+```
+A filled cell (`bidirectional` included) is **never prompted**. Ask one companion at a time via `AskUserQuestion`, naming its empty columns. **Write only on acceptance**, via `registerCompanion`; a **declined cell is left empty**, so it is prompted again next `--refresh`. Accepted: a board-less companion is asked for Board every refresh. Under `--dry-run`, list gaps, ask nothing.
 5d. **Report directories (#2925):** when `Construction/Reports/Daily-Logs` or `Construction/Reports/Stats` is absent, offer to create the absent ones (`/idpf-stats --daily-log` and `--save` write there); create only on acceptance, change nothing on decline — `/idpf-stats` also creates its directory on demand, so declining never breaks a later report. Pre-#2925 charters reach these directories only through this step.
 5e. **Project `.npmrc` (#3016):** when the trigger in **Project `.npmrc` Offer** holds and the file is absent, make the offer; an existing file is left alone. Pre-#3016 charters reach the offer only here.
 6. Trigger skill/recipe suggestions. Detect new default skills not in `projectSkills` — copy from `{frameworkPath}/.claude/skills/`, add additively, report. Tech stack changed → keyword-based suggestions (NEW only).
-### /charter --validate
-1. Load CHARTER.md and Inception/Scope-Boundaries.md
-2. Identify current work (issue, recent commits, staged changes)
-3. Compare against in-scope/out-of-scope
-4. Report:
-| Finding | Action |
-|---------|--------|
-| Aligned | Proceed normally |
-| Possibly out of scope | Ask user to confirm intent |
-| Clearly out of scope | Suggest updating charter or revising work |
-### /charter --create-domain-entities
-Standalone regeneration of `domain-entities.json` from current charter.
-**Step 1:** Check `CHARTER.md`
-- **Exists:** Read, → Step 2
-- **Missing:** Trigger full inception (`/charter` no args). After completion, `domain-entities.json` generated in Step 7. Report and **STOP**.
-**Step 2:** Generate
-```javascript
-const { generateFromCharter, verifyEntityCounts, resolveEntitiesWriteTarget } = require('.claude/scripts/shared/generate-domain-entities.js');
-const charter = fs.readFileSync('CHARTER.md', 'utf8');
-const entities = generateFromCharter(charter, version);
-const target = resolveEntitiesWriteTarget(process.cwd());
-```
-Write to `target` (beside `CHARTER.md` at project root, per **domain-entities.json Write Target**) with `"$schema"` first property → `.claude/metadata/domain-entities-schema.json` (a relative **reference**, not a location).
-**Step 2b:** Verify counts vs filesystem: `verifyEntityCounts(entities.entities)`.
-Each result carries a **tri-state** `match` (#2597): `true` confirmed, `false` a real disagreement, `null` no count derived. `resolved: false` names the third case; `unresolved[]` gives one `{location, reason}` per unreadable location.
-**Report the three states separately. An unresolvable entity is not a mismatch** — it is an absence of evidence, and presenting it as drift is the defect #2597 fixed in the helper. For each `match: false` report `⚠️ {entity}: charter says {charterCount}, found {actualCount} on disk`. For each `resolved: false` report under a **separate heading**, never in the mismatch list: `❓ {entity}: count not verified — {unresolved[].location}: {unresolved[].reason}`.
-**Only `match: false` feeds the consent prompt.** Ask: `"Update charter counts? (y/n)"`. Yes → update CHARTER.md, re-run generate. No → proceed as-is. **Never auto-modify charter without consent.**
-**Never offer to rewrite a charter count from an unresolved result** — `actualCount` is `null` there, so the only number available is one the verifier declined to derive (rule 01 Claim Labeling: an unverifiable count is labeled, never silently rendered as a figure).
-Then run **Out-of-Table Count Reconciliation** (below); report its candidates alongside the table mismatches, same consent contract (#2636).
-**Step 3:** Validate — schema exists → validate, write to `target` (warn if invalid, non-blocking). Missing → warn, write to `target`.
-**Step 4:** Report: `Generated domain-entities.json ({count} entities)`. If verification ran: `"Count verification: {N} checked, {M} mismatches, {U} unverifiable"` — **the unverifiable tally is unconditional**: `0 unverifiable` is a result, and omitting the field at zero makes a run that could read nothing look clean (#2597). If the out-of-table scan ran: `"Out-of-table claims: {N} found ({D} drift, {A} counting-rule artifact, {U} unclassified)"` — a scan finding nothing reports `0 found`, so a skipped scan is never mistaken for a clean one (#2636)
-### domain-entities.json Write Target (#2894)
-Shared by the four writers — Process step 7, update 3a, refresh 5a, `--create-domain-entities` Step 2 — and every step reading it back.
-**One path, every layout:** beside `CHARTER.md` at project root. Obtain from `resolveEntitiesWriteTarget(projectRoot)` in `.claude/scripts/shared/generate-domain-entities.js`; never compose it, never branch on deployed vs self-hosted.
-```javascript
-const { resolveEntitiesWriteTarget } = require('.claude/scripts/shared/generate-domain-entities.js');
-const target = resolveEntitiesWriteTarget(process.cwd());
-```
-**On `ENTITIES_TARGET_OUTSIDE_PROJECT`: report the error verbatim and do not write.** The resolver compares real paths, so it throws when the target resolves through a link out of the project. In a deployed project `.claude/metadata/` is a junction into the shared hub: a write there succeeds silently into machine-wide state every project shares.
-**`.claude/metadata/` is a reference, never a destination.** `$schema` points at `.claude/metadata/domain-entities-schema.json` and validation reads it; neither makes that directory a place to write the generated entities.
 ### Out-of-Table Count Reconciliation (#2636)
-Shared by `/charter --refresh` 5a and `/charter --create-domain-entities` 2b. Both report identically; edit here, not in either caller.
+Contract for `/charter --refresh` 5a.
 `verifyEntityCounts()` reads only the `## Key Entities` table, so counts in charter **prose** (Vision, In Scope, Architecture) are never verified and drift silently. This covers them. Reports only; never rewrites on its own.
 **Step A — scan:**
 ```javascript
-const { scanOutOfTableCounts } = require('.claude/scripts/shared/generate-domain-entities.js');
-const candidates = scanOutOfTableCounts(charter, entities.entities, results);
+const { scanOutOfTableCounts } = require('.claude/scripts/shared/charter-entities.js');
+const candidates = scanOutOfTableCounts(charter, entities, results);
 ```
 Pass `results` from `verifyEntityCounts()` — supplies `diskCount`. Omit it and every candidate classifies on prose-vs-table alone, silently collapsing the Step B artifact distinction.
 **Step B — report.** Candidate fields: `entity`, `statedCount`, `tableCount`, `diskCount`, `line`, `lineText`, `matchedText`, `otherCountsOnLine`, `classification`. Group by classification; show line number and both values.
@@ -394,7 +366,7 @@ An entity whose result is `resolved: false` is **never** `counting-rule-artifact
 **Step C — consent gate.** Report-only by default. **Never auto-modify the charter without user consent.** Any `drift` candidate → **ASK USER** via `AskUserQuestion`:
 - **Update charter prose to match the table (recommended)** — apply only `drift` corrections, reported lines only
 - **Report only, change nothing**
-Accept → edit reported lines, re-run `generateFromCharter()`. Decline → change nothing. **Never blocks** — unreconciled prose counts still regenerate `domain-entities.json`; a decline is not recorded, so the next run reports again.
+Accept → edit reported lines, then re-run `verifyEntityCounts()` and `scanOutOfTableCounts()` and report whether the edits cleared the drift. Decline → change nothing. **Never blocks**; a decline is not recorded, so the next run reports again.
 False positives (an integer near an entity word that is not a count of it) are expected and acceptable. The consent gate makes that safe. Do NOT tighten the matcher into fragility to chase them.
 ## Project Skills Selection
 After charter creation, suggest skills via `.claude/metadata/skill-keywords.json`.

@@ -1,5 +1,5 @@
 # Review Execution Rule — Conditional Sections
-**Version:** v0.112.0
+**Version:** v0.113.0
 **Source:** Reference/review-execution-conditional.md
 On-demand companion to `Reference/review-execution.md` (#3009), on the `work-execution-conditional.md` pattern (#2765). The four bodies below execute only on an epic, a prior-art sweep or a test-plan/PRD review; rule 09 keeps each heading as a stub naming the trigger and this file, and its Step 1d states when the file is read.
 **This is not a rule.** Never auto-loaded; must never be registered under `deploymentFiles.rules`. Ships as every `Reference/` document does — minimized into `.min-mirror/Reference/`. Restates no peer-announcement event: those are defined once, in the rule.

@@ -1,151 +1,20 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
- * @description Generate domain-entities.json from CHARTER.md content.
- * Parses charter markdown to extract bounded context, entities,
- * scope boundaries, and drift signals into a machine-readable format.
+ * @framework-script 0.113.0
+ * @description Charter entity extraction and count verification (#3420).
+ * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
+ * memory, checks the Key Entities counts against disk, and scans charter prose
+ * for counts that disagree with the table. Formerly generate-domain-entities.js;
+ * the generated domain-entities.json it wrote is retired, and
+ * removeRetiredEntitiesFile() deletes a leftover copy.
  * @checksum sha256:placeholder
  */
 
 const fs = require('fs');
 const path = require('path');
 const { computeFenceMask } = require('./lib/checkbox-scan.js');
-const { parseCompanionTable, splitTableRow } = require('./lib/companion-projects.js');
-
-/**
- * Generate domain-entities.json content from charter markdown.
- * @param {string|null} charterContent - Raw markdown content of CHARTER.md
- * @param {string} projectVersion - Current project version
- * @returns {object} Domain entities object (or { error: string } on failure)
- */
-function generateFromCharter(charterContent, projectVersion) {
-  const CONTRACT_HINT = 'CHARTER.md must start with "# Project Charter: <name>" and include a "## Key Entities" section with a three-column table (Entity | Count | Location). Count may be "TBD". See CommandsSrc/charter.md Step 7 for the full contract (#2379).';
-
-  if (!charterContent || typeof charterContent !== 'string' || charterContent.trim() === '') {
-    return { error: 'Charter content is empty or invalid', hint: CONTRACT_HINT };
-  }
-
-  // Validate this looks like a charter (must have # heading)
-  if (!charterContent.match(/^#\s+/m)) {
-    return { error: 'Content does not appear to be a valid charter (no markdown headings found)', hint: CONTRACT_HINT };
-  }
-
-  // Extract project name from title
-  const titleMatch = charterContent.match(/^#\s+Project Charter:\s*(.+)/m);
-  if (!titleMatch) {
-    return { error: 'Charter title not found (expected "# Project Charter: <name>")', hint: CONTRACT_HINT };
-  }
-  const projectName = titleMatch[1].trim();
-
-  // Extract vision
-  const vision = extractSection(charterContent, 'Vision');
-
-  // Extract scope boundaries
-  const inScope = extractListItems(charterContent, 'In Scope');
-  const outOfScope = extractListItems(charterContent, 'Out of Scope');
-
-  // Extract entities from Key Entities table. Missing section surfaces a
-  // warning at top-level (not silent entities:{}), per #2379.
-  const hasKeyEntitiesSection = /##\s+Key Entities/.test(charterContent);
-  const entities = extractEntities(charterContent);
-  const warning = !hasKeyEntitiesSection
-    ? 'Key Entities section not found in CHARTER.md; entities is empty. ' + CONTRACT_HINT
-    : undefined;
-
-  // Extract companion repositories as external entities
-  extractCompanionRepos(charterContent, entities);
-
-  // Infer relationships between entities from charter content
-  inferRelationships(entities, charterContent);
-
-  // Build drift signals from scope (including expansion signals)
-  const driftSignals = buildDriftSignals(outOfScope, entities);
-
-  // Build validation rules from entities
-  const validationRules = buildValidationRules(entities);
-
-  // Extract architecture description
-  const architecture = extractArchitecture(charterContent);
-
-  // Extract tech stack table
-  const techStack = extractTechStack(charterContent);
-
-  // Extract current focus items
-  const currentFocus = extractListItems(charterContent, 'Current Focus');
-
-  // Extract problem statement
-  const problemStatement = extractSection(charterContent, 'Problem Statement');
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  const result = {
-    generatedFrom: 'CHARTER.md',
-    generatedAt: today,
-    projectVersion: projectVersion || 'unknown',
-    boundedContext: {
-      name: projectName,
-      purpose: vision || 'To be documented',
-      boundary: buildBoundary(projectName, inScope)
-    },
-    entities,
-    problemStatement,
-    techStack,
-    architecture,
-    currentFocus,
-    scopeBoundaries: {
-      inScope,
-      outOfScope
-    },
-    driftSignals,
-    validationRules
-  };
-  if (warning) result.warning = warning;
-  return result;
-}
-
-/**
- * Extract a section's text content (first paragraph after heading).
- */
-function extractSection(content, heading) {
-  const regex = new RegExp(`^##\\s+${escapeRegex(heading)}[\\s\\S]*?\\n\\n([\\s\\S]*?)(?=\\n##\\s)`, 'm');
-  let match = content.match(regex);
-  // Fallback: heading is the last section (no following ## heading)
-  if (!match) {
-    const fallback = new RegExp(`^##\\s+${escapeRegex(heading)}[\\s\\S]*?\\n\\n([\\s\\S]*)`, 'm');
-    match = content.match(fallback);
-  }
-  if (!match) return '';
-  // Return first non-empty line
-  const lines = match[1].trim().split('\n').filter(l => l.trim() && !l.startsWith('|') && !l.startsWith('-'));
-  return lines[0] ? lines[0].trim() : '';
-}
-
-/**
- * Extract list items from a section (lines starting with -).
- */
-function extractListItems(content, heading) {
-  const esc = escapeRegex(heading);
-  // Try exact heading (bounded by next ## or end of string), then with parenthetical suffix
-  const patterns = [
-    new RegExp(`^##\\s+${esc}(?:\\s*\\([^)]*\\))?\\s*\\n([\\s\\S]*?)(?=\\n##\\s)`, 'm'),
-    new RegExp(`^##\\s+${esc}(?:\\s*\\([^)]*\\))?\\s*\\n([\\s\\S]*)`, 'm'),
-    new RegExp(`^##\\s+[^\\n]*${esc}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s)`, 'mi'),
-    new RegExp(`^##\\s+[^\\n]*${esc}[^\\n]*\\n([\\s\\S]*)`, 'mi')
-  ];
-
-  for (const regex of patterns) {
-    const match = content.match(regex);
-    if (match && match[1].trim()) {
-      const items = match[1]
-        .split('\n')
-        .filter(line => line.match(/^\s*-\s/))
-        .map(line => line.replace(/^\s*-\s+/, '').trim());
-      if (items.length > 0) return items;
-    }
-  }
-  return [];
-}
+const { parseCompanionTable } = require('./lib/companion-projects.js');
 
 /**
  * Extract entities from a Key Entities markdown table.
@@ -263,313 +132,6 @@ function extractCompanionRepos(content, entities) {
 }
 
 /**
- * Extract tech stack from a Tech Stack markdown table.
- * @param {string} content - Charter markdown content
- * @returns {Array<{layer: string, technology: string}>}
- */
-function extractTechStack(content) {
-  let sectionMatch = content.match(/##\s+Tech Stack[^\n]*\n([\s\S]*?)(?=\n##\s)/);
-  if (!sectionMatch) {
-    sectionMatch = content.match(/##\s+Tech Stack[^\n]*\n([\s\S]*)/);
-  }
-  if (!sectionMatch) return [];
-
-  const tableLines = sectionMatch[1].split('\n').filter(l => l.startsWith('|'));
-  if (tableLines.length < 3) return []; // Need header + separator + at least one data row
-
-  const result = [];
-  for (let i = 2; i < tableLines.length; i++) {
-    const cells = tableLines[i].split('|').map(c => c.trim()).filter(c => c);
-    if (cells.length >= 2) {
-      result.push({ layer: cells[0], technology: cells[1] });
-    }
-  }
-  return result;
-}
-
-/**
- * Extract the Architecture section into a structured object.
- * Parses subsections (### headings), tables, diagrams (code blocks),
- * and infers components from table rows and subsection content.
- * @param {string} content - Charter markdown content
- * @returns {{subsections: Array, tables: Array, components: Array}}
- */
-function extractArchitecture(content) {
-  const empty = { subsections: [], tables: [], components: [] };
-
-  let match = content.match(/^##\s+Architecture[^\n]*\n([\s\S]*?)(?=\n##\s[^#])/m);
-  if (!match) {
-    match = content.match(/^##\s+Architecture[^\n]*\n([\s\S]*)$/m);
-  }
-  if (!match || !match[1].trim()) return empty;
-
-  const sectionContent = match[1];
-  const subsections = [];
-  const tables = [];
-  const components = [];
-
-  // Split into ### subsections
-  const subParts = sectionContent.split(/^###\s+/m);
-  // First part is content before any ### (skip if empty)
-  for (let i = 1; i < subParts.length; i++) {
-    const part = subParts[i];
-    const headingEnd = part.indexOf('\n');
-    if (headingEnd === -1) continue;
-
-    const heading = part.slice(0, headingEnd).trim();
-    const body = part.slice(headingEnd + 1);
-
-    const subsection = { heading };
-
-    // Extract first non-empty, non-table, non-code-fence line as description
-    const descLines = body.split('\n')
-      .filter(l => l.trim() && !l.startsWith('|') && !l.startsWith('```') && !l.startsWith('-'));
-    if (descLines.length > 0) {
-      subsection.description = descLines[0].trim();
-    }
-
-    // Extract code block as diagram
-    const codeMatch = body.match(/```[^\n]*\n([\s\S]*?)```/);
-    if (codeMatch) {
-      subsection.diagram = codeMatch[1].trimEnd();
-    }
-
-    subsections.push(subsection);
-
-    // Extract tables under this subsection
-    const tableLines = body.split('\n').filter(l => l.startsWith('|'));
-    if (tableLines.length >= 3) {
-      // Positional split: dropping empty cells here shifted every column after
-      // a blank one. Exposed by #2665 adding an optional Board column -- a row
-      // leaving it empty wrote the Searchable value into Board, Searchable into
-      // File Issues, and so on, producing output that still looked well-formed.
-      // Same splitter the companion table uses, so the two cannot diverge.
-      const headerCells = splitTableRow(tableLines[0]);
-      const rows = [];
-      for (let r = 2; r < tableLines.length; r++) {
-        const cells = splitTableRow(tableLines[r]);
-        const row = {};
-        for (let c = 0; c < headerCells.length; c++) {
-          row[headerCells[c]] = cells[c] || '';
-        }
-        rows.push(row);
-
-        // Infer component from first column of table rows
-        if (cells[0]) {
-          components.push({
-            name: cells[0].replace(/`/g, ''),
-            role: cells[1] || '',
-            inferredFrom: heading
-          });
-        }
-      }
-      tables.push({
-        parentHeading: heading,
-        columns: headerCells,
-        rows
-      });
-    }
-  }
-
-  return { subsections, tables, components };
-}
-
-/**
- * Infer relationships between entities based on charter content.
- * Detects textual cross-references in location descriptions and
- * entity name mentions in other entities' context.
- */
-function inferRelationships(entities, charterContent) {
-  const entityKeys = Object.keys(entities);
-  const entityNames = {};
-  for (const [key, entity] of Object.entries(entities)) {
-    entityNames[key] = entity.description.toLowerCase();
-  }
-
-  // Find the Key Entities table section for location text analysis
-  let tableSection = '';
-  const sectionMatch = charterContent.match(/##\s+Key Entities[^\n]*\n([\s\S]*?)(?=\n##\s)/);
-  if (sectionMatch) tableSection = sectionMatch[1].toLowerCase();
-
-  for (const [key, entity] of Object.entries(entities)) {
-    const locationText = (entity.locations || []).join(' ').toLowerCase();
-    const entityRow = getEntityRow(tableSection, entity.description);
-
-    for (const [otherKey, otherEntity] of Object.entries(entities)) {
-      if (key === otherKey) continue;
-      const otherName = otherEntity.description.toLowerCase();
-      const otherNameWords = otherName.split(/\s+/);
-
-      // Check if this entity's location/row text references another entity
-      const searchText = entityRow || locationText;
-
-      // Match multi-word entity names (e.g., "extensible commands" ≈ "slash commands")
-      if (containsEntityReference(searchText, otherKey, otherNameWords)) {
-        const existing = entity.relationships.find(r => r.target === otherKey);
-        if (!existing) {
-          entity.relationships.push({
-            type: inferRelationshipType(key, otherKey, searchText),
-            target: otherKey,
-            evidence: `Location/context references ${otherEntity.description}`
-          });
-        }
-      }
-
-      // Check location containment (parent-child by path prefix)
-      if (entity.locations && otherEntity.locations) {
-        for (const loc of entity.locations) {
-          const cleanLoc = loc.replace(/\s*\([^)]*\)\s*$/, '').trim();
-          for (const otherLoc of otherEntity.locations) {
-            const cleanOtherLoc = otherLoc.replace(/\s*\([^)]*\)\s*$/, '').trim();
-            if (cleanLoc !== cleanOtherLoc && cleanOtherLoc.startsWith(cleanLoc) && cleanLoc.endsWith('/')) {
-              const existing = entity.relationships.find(r => r.target === otherKey && r.type === 'contains');
-              if (!existing) {
-                entity.relationships.push({
-                  type: 'contains',
-                  target: otherKey,
-                  evidence: `${cleanLoc} is parent of ${cleanOtherLoc}`
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-/**
- * Get the raw table row text for a given entity from the charter table section.
- */
-function getEntityRow(tableSection, description) {
-  const descLower = description.toLowerCase();
-  const lines = tableSection.split('\n');
-  for (const line of lines) {
-    if (line.includes(descLower)) return line;
-  }
-  return '';
-}
-
-/**
- * Check if text contains a reference to an entity by key or name words.
- */
-function containsEntityReference(text, entityKey, nameWords) {
-  // Direct key match (e.g., "slash-commands")
-  if (text.includes(entityKey)) return true;
-  // Match significant name words (skip very short/common words)
-  const significant = nameWords.filter(w => w.length > 3);
-  if (significant.length === 0) return false;
-  // Require at least one significant word match
-  return significant.some(word => text.includes(word));
-}
-
-/**
- * Infer relationship type from context.
- */
-function inferRelationshipType(sourceKey, targetKey, context) {
-  if (context.includes('across') || context.includes('within')) return 'distributed-across';
-  if (context.includes('target') || context.includes('for')) return 'targets';
-  if (context.includes('import') || context.includes('from')) return 'imports-from';
-  return 'references';
-}
-
-/**
- * Build drift signals from out-of-scope items and entity validation rules.
- */
-function buildDriftSignals(outOfScope, entities) {
-  const entityOutOfBounds = outOfScope.map(item => ({
-    signal: `Story involves: ${item}`,
-    severity: 'error'
-  }));
-
-  // Scope expansion signals — warn when entity counts or structure grow
-  const scopeExpansion = [
-    {
-      signal: 'Entity count exceeds validation max range',
-      severity: 'warning'
-    },
-    {
-      signal: 'New directory or file location not in known entity locations',
-      severity: 'warning'
-    },
-    {
-      signal: 'Entity introduced that is not in charter Key Entities table',
-      severity: 'warning'
-    }
-  ];
-
-  return {
-    entityOutOfBounds,
-    scopeExpansion
-  };
-}
-
-/**
- * Build validation rules from entities that have counts.
- */
-/**
- * Build validation rules from entities with adaptive ranges.
- * @param {object} entities - Current entities
- * @param {object} [previousEntities] - Previous generation's entities (for growth rate)
- */
-function buildValidationRules(entities, previousEntities) {
-  const rules = [];
-  for (const [key, entity] of Object.entries(entities)) {
-    if (entity.count) {
-      // Check for explicit min/max override
-      if (entity.validationOverride && entity.validationOverride.min != null && entity.validationOverride.max != null) {
-        const rule = {
-          type: 'count-range',
-          entity: key,
-          description: `Expected count for ${key}`,
-          min: entity.validationOverride.min,
-          max: entity.validationOverride.max
-        };
-        if (entity.lastVerified) rule.lastVerified = entity.lastVerified;
-        rules.push(rule);
-      } else {
-        // Calculate adaptive range based on growth rate
-        const margin = calculateMargin(entity.count, key, previousEntities);
-        const rule = {
-          type: 'count-range',
-          entity: key,
-          description: `Expected count for ${key}`,
-          min: Math.max(1, entity.count - Math.ceil(entity.count * margin)),
-          max: entity.count + Math.ceil(entity.count * margin)
-        };
-        if (entity.lastVerified) rule.lastVerified = entity.lastVerified;
-        rules.push(rule);
-      }
-    }
-    if (entity.locations && entity.locations.length > 0) {
-      rules.push({
-        type: 'location-exists',
-        entity: key,
-        description: `Location must exist for ${key}`
-      });
-    }
-  }
-  return rules;
-}
-
-/**
- * Calculate the range margin based on entity growth rate.
- * Stable (< 5% growth): ±20%, Medium (5-15%): ±30%, Fast (> 15%): ±40%
- * Default (no previous data): ±20%
- */
-function calculateMargin(currentCount, entityKey, previousEntities) {
-  if (!previousEntities || !previousEntities[entityKey] || !previousEntities[entityKey].count) {
-    return 0.2; // Default ±20%
-  }
-  const prevCount = previousEntities[entityKey].count;
-  if (prevCount === 0) return 0.2;
-  const growthRate = Math.abs(currentCount - prevCount) / prevCount;
-  if (growthRate > 0.15) return 0.4;  // Fast growth
-  if (growthRate > 0.05) return 0.3;  // Medium growth
-  return 0.2;                          // Stable
-}
-
-/**
  * Parse a location string, extracting exclusion annotations.
  * "Domains/ (excludes Guides/, Templates/)" → { locations: ["Domains/"], exclude: ["Guides/", "Templates/"] }
  * "Domains/ (excludes Guides/, Templates/ infrastructure dirs)" → same exclude list; prose after a path is dropped
@@ -619,25 +181,6 @@ function splitOutsideParens(str) {
   const trimmed = current.trim();
   if (trimmed) parts.push(trimmed);
   return parts;
-}
-
-/**
- * Build a boundary description from the project name and in-scope items.
- * Summarizes what the project IS (its perimeter), rather than picking
- * an arbitrary out-of-scope item.
- */
-function buildBoundary(projectName, inScope) {
-  if (inScope.length === 0) {
-    return `${projectName} — scope not yet defined`;
-  }
-  // Take up to 3 in-scope items, strip leading qualifiers for brevity
-  const items = inScope.slice(0, 3).map(item => {
-    // Remove trailing parenthetical details for conciseness
-    return item.replace(/\s*\([^)]*\)\s*$/, '').trim();
-  });
-  const summary = items.join('; ');
-  const suffix = inScope.length > 3 ? ` (+${inScope.length - 3} more)` : '';
-  return `${projectName}: ${summary}${suffix}`;
 }
 
 /**
@@ -796,12 +339,14 @@ function collectGlobMatches(fs, path, absBase, pattern) {
  * #2597 places out of scope; `scanOutOfTableCounts` classifies that gap as a
  * `counting-rule-artifact` (#2636) instead.
  *
- * @param {object} entities - Entities object from generateFromCharter output
+ * @param {object} entities - Entities object from extractEntities()
+ * @param {{root?: string}} [options] - Project root locations resolve against (default: process.cwd())
  * @returns {Array<{entity, charterCount, actualCount: number|null,
  *   match: boolean|null, excludesApplied: boolean, resolved: boolean,
  *   unresolved: Array<{location: string, reason: string}>}>}
  */
-function verifyEntityCounts(entities) {
+function verifyEntityCounts(entities, options = {}) {
+  const root = options.root || process.cwd();
   const results = [];
 
   for (const [key, entity] of Object.entries(entities)) {
@@ -820,7 +365,7 @@ function verifyEntityCounts(entities) {
 
       if (GLOB_CHARS.test(cleanLoc)) {
         const { base, pattern } = splitGlobLocation(cleanLoc);
-        const absBase = path.resolve(base);
+        const absBase = path.resolve(root, base);
 
         let baseStat;
         try {
@@ -847,7 +392,7 @@ function verifyEntityCounts(entities) {
         continue;
       }
 
-      const fullPath = path.resolve(cleanLoc);
+      const fullPath = path.resolve(root, cleanLoc);
       let stat;
       try {
         stat = fs.statSync(fullPath);
@@ -1185,56 +730,63 @@ function scanOutOfTableCounts(charterContent, entities, countVerification) {
 }
 
 const ENTITIES_FILENAME = 'domain-entities.json';
-const ENTITIES_TARGET_OUTSIDE_PROJECT = 'ENTITIES_TARGET_OUTSIDE_PROJECT';
 
 /**
- * Resolve where domain-entities.json is written: beside CHARTER.md at the
- * project root, in every layout (#2894).
+ * True when the file at `file` is the generator's output: valid JSON whose
+ * `generatedFrom` is "CHARTER.md". Unreadable or unparseable content is not.
  *
- * The path is not the defect — the spec always prescribed the project root.
- * What nothing did was check it. In a deployed project `.claude/metadata/` is
- * a junction into the shared hub, so a write that lands there succeeds
- * silently and puts per-project state into machine-wide state. The guard
- * compares the target's *real* path against the project root's real path and
- * refuses with a named error rather than writing through a link.
- *
- * @param {string} projectRoot - Directory holding CHARTER.md
- * @param {object} [options]
- * @param {function} [options.realpath=fs.realpathSync] - Injectable so the
- *   escape can be tested without building a junction fixture
- * @returns {string} Absolute write target
- * @throws {Error} code ENTITIES_TARGET_OUTSIDE_PROJECT when the target's real
- *   path lies outside the project root; realpath errors other than ENOENT are
- *   rethrown unchanged
+ * @param {string} file
+ * @returns {boolean}
  */
-function resolveEntitiesWriteTarget(projectRoot, { realpath = fs.realpathSync } = {}) {
-  if (!projectRoot || typeof projectRoot !== 'string') {
-    throw new Error('resolveEntitiesWriteTarget: projectRoot is required');
-  }
-  const root = path.resolve(projectRoot);
-  const target = path.join(root, ENTITIES_FILENAME);
-  const realRoot = realpath(root);
-
-  // An existing file may itself be a link; an absent one (first generation)
-  // is judged by the directory it would be created in.
-  let realTarget;
+function isGeneratedEntitiesFile(file) {
   try {
-    realTarget = realpath(target);
-  } catch (err) {
-    if (!err || err.code !== 'ENOENT') throw err;
-    realTarget = path.join(realpath(path.dirname(target)), ENTITIES_FILENAME);
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return data !== null && typeof data === 'object' && data.generatedFrom === 'CHARTER.md';
+  } catch (_err) {
+    return false;
   }
+}
 
-  const rel = path.relative(realRoot, realTarget);
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
-    const err = new Error(
-      `${ENTITIES_FILENAME} would be written to ${realTarget}, outside the project root ${realRoot}. ` +
-      'Refusing to write through a link into shared state; remove the link and regenerate.'
-    );
-    err.code = ENTITIES_TARGET_OUTSIDE_PROJECT;
-    throw err;
+/**
+ * Delete a retired domain-entities.json at the project root (#3420).
+ *
+ * The file was generated from CHARTER.md and is no longer read or written, so
+ * deleting it loses nothing: a rollback can rebuild it from the charter. That
+ * is what makes deleting it at startup, outside any upgrade, safe; a retired
+ * file that is NOT derived must not be removed this way. A regular file is
+ * therefore removed only when it parses and carries `generatedFrom:
+ * "CHARTER.md"`, which the generator wrote from its first version (#3428);
+ * anything else of that name is the user's own and is left, with
+ * `reason: 'not-generated'`. A link is removed itself and never followed into
+ * the shared state it may point at.
+ *
+ * Callers: the startup hook, before it reads git status, so the session block
+ * reports the deletion as dirty; and every /charter mode.
+ *
+ * @param {string} projectRoot
+ * @returns {{removed: boolean, path: string, reason?: 'not-generated'}}
+ */
+function removeRetiredEntitiesFile(projectRoot) {
+  const target = path.join(path.resolve(projectRoot), ENTITIES_FILENAME);
+  let stat;
+  try {
+    stat = fs.lstatSync(target);
+  } catch (_err) {
+    return { removed: false, path: target };
   }
-  return target;
+  if (stat.isDirectory()) return { removed: false, path: target };
+  if (!stat.isSymbolicLink() && !isGeneratedEntitiesFile(target)) {
+    return { removed: false, path: target, reason: 'not-generated' };
+  }
+  try {
+    fs.unlinkSync(target);
+  } catch (err) {
+    // A directory junction or link refuses unlink on Windows; rmdir removes
+    // the link and leaves its target alone.
+    if (!stat.isSymbolicLink()) throw err;
+    fs.rmdirSync(target);
+  }
+  return { removed: true, path: target };
 }
 
 function escapeRegex(str) {
@@ -1242,11 +794,10 @@ function escapeRegex(str) {
 }
 
 module.exports = {
-  generateFromCharter,
+  extractEntities,
+  extractCompanionRepos,
   verifyEntityCounts,
   scanOutOfTableCounts,
-  buildValidationRules,
-  resolveEntitiesWriteTarget,
+  removeRetiredEntitiesFile,
   ENTITIES_FILENAME,
-  ENTITIES_TARGET_OUTSIDE_PROJECT
 };

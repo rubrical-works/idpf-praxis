@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.

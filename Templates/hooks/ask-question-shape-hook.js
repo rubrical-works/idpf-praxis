@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * ask-question-shape-hook.js
  *
  * PreToolUse hook (matcher: AskUserQuestion) that blocks a question shaped to
@@ -17,9 +17,10 @@
  *     as "Invalid tool parameters" without saying which.
  * The correction names each offending question and the remedy, which branches
  * on `multiSelect`: previews render for single-select questions only, so a
- * multi-select correction never suggests them. It also carries the
- * context-table convention, which the hook cannot check because it never sees
- * the text printed before the call.
+ * multi-select correction never suggests them. It closes with one line
+ * pointing to Reference/AskUserQuestion-Shape.md, which carries the
+ * convention the hook cannot check (it never sees text printed before the
+ * call); the convention itself is not restated (#3440).
  *
  * Block shape: `{decision: 'block', reason}` on stdout, exit 0 — the shape the
  * #3233 hands-on probe confirmed reaches the model.
@@ -55,7 +56,7 @@ function usable(rules) {
     && Number.isInteger(rules.maxOptions)
     && Number.isInteger(rules.maxHeaderLength)
     && rules.remedy && typeof rules.remedy.singleSelect === 'string' && typeof rules.remedy.multiSelect === 'string'
-    && Array.isArray(rules.convention);
+    && typeof rules.pointer === 'string' && rules.pointer.length > 0;
 }
 
 /**
@@ -98,26 +99,21 @@ function respond(rawInput, rules) {
   if (!Array.isArray(questions)) return SILENT;
 
   const findings = [];
-  let anySingleSelect = false;
   questions.forEach((question, i) => {
     if (!question || typeof question !== 'object') return;
     const problems = problemsWith(question, rules);
     if (problems.length === 0) return;
-    const multi = question.multiSelect === true;
-    if (!multi) anySingleSelect = true;
-    const remedy = multi ? rules.remedy.multiSelect : rules.remedy.singleSelect;
+    const remedy = question.multiSelect === true ? rules.remedy.multiSelect : rules.remedy.singleSelect;
     findings.push(`Question ${i + 1} ("${String(question.header || '').slice(0, 40)}"): ${problems.join('; ')}. ${remedy}`);
   });
   if (findings.length === 0) return SILENT;
 
-  // Previews render for single-select questions only: a correction about
-  // multi-select questions alone carries no preview advice at all.
-  const convention = anySingleSelect ? rules.convention : rules.convention.filter((line) => !/preview/i.test(line));
+  // Findings, their remedy and one pointer — never the whole convention (#3440):
+  // restating it made a single violated limit read as a style guide.
   const reason = [
     'AskUserQuestion blocked: the question text renders in bold, so it must be one short sentence (ask-question-shape.json).',
     ...findings,
-    '',
-    ...convention,
+    rules.pointer,
   ].join('\n');
   return { code: 0, stdout: JSON.stringify({ decision: 'block', reason }), stderr: '' };
 }

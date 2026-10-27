@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description The argument rule for deployed commands (#3030): main input
  *   (prose, issue numbers, a single name) is typed bare and every other option
  *   is a `--flag`. Holds the table of bare forms the rule replaced, each
@@ -14,7 +14,8 @@
  * are few, so a retired form is refused outright rather than accepted with a
  * warning. Each entry checks only the position the old form occupied: `all`
  * is retired as /audit-commands' whole argument, not as a word in a group
- * description, and `validate` only as /charter's first argument.
+ * description. /charter's `validate` is not retired but removed (#3418): with
+ * no `--validate` to name, a bare `validate` is an unknown argument.
  */
 
 /** A token at the head of the arguments, as the old subcommand word was. */
@@ -27,7 +28,7 @@ const leading = (word, replacement) => ({
  * old form sat. Keys are command names without the leading `/`.
  */
 const RETIRED_FORMS = {
-  charter: ['update', 'refresh', 'validate'].map((w) => leading(w, `--${w}`)),
+  charter: ['update', 'refresh'].map((w) => leading(w, `--${w}`)),
   // `watch` is not in the #3030 decisions table (it was missing from /ci's
   // argument-hint) but falls under the same rule, so it is retired with the rest.
   ci: ['list', 'validate', 'add', 'recommend', 'watch'].map((w) => leading(w, `--${w}`)),

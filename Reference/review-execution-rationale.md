@@ -1,5 +1,5 @@
 # Review Execution Rule — Rationale
-**Version:** v0.112.0
+**Version:** v0.113.0
 **Source:** Reference/review-execution-rationale.md
 Reasoning behind decisions rule 09 directs without re-arguing (#3009). Never auto-loaded; rule 03's On-Demand table names it. Ships as a `Reference/` document; never under `deploymentFiles.rules`.
 ## Why one rule serves both commands (#2737, #2746)

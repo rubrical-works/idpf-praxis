@@ -1,5 +1,5 @@
 ---
-version: "v0.112.0"
+version: "v0.113.0"
 description: Audit this project's command specs for LLM processing reliability, using the IDPF framework.
 argument-hint: "[--all|<command-name>|<group description>] [--help]"
 copyright: "Rubrical Works (c) 2026"

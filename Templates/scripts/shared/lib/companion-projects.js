@@ -2,15 +2,14 @@
 /**
  * Companion project registry — validate / register / deregister / list.
  *
- * CHARTER.md's `Companion Repositories` table is the source of truth;
- * `domain-entities.json` is generated from it (#2209). This module owns the
- * table's parse and rewrite so that `/charter --update` delegates rather than
- * restating the logic as prose, and so `generate-domain-entities.js` consumes
- * the same parser. One parser with two callers cannot drift; two parsers
+ * CHARTER.md's `Companion Repositories` table is the source of truth (#2209).
+ * This module owns the table's parse and rewrite so that `/charter --update`
+ * delegates rather than restating the logic as prose, and so
+ * `charter-entities.js` consumes the same parser. One parser with two callers cannot drift; two parsers
  * eventually do.
  *
- * Deliberately NOT a second registry. Two lists of the same repositories drift,
- * and `domain-entities.json` is already the generated, schema-validated copy.
+ * Deliberately NOT a second registry. Two lists of the same repositories drift;
+ * the generated JSON copy that once existed was retired for exactly that (#3420).
  * Deliberately not `.gh-pmu.json` either: its `repositories[]` array is
  * gh-pmu's own and is integrity-sealed by `.gh-pmu.checksum`.
  *
@@ -18,7 +17,7 @@
  * projects from the hub framework root, so an undeclared external `require`
  * would throw MODULE_NOT_FOUND at module load.
  *
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * Refs #2665
  */
 
@@ -28,8 +27,18 @@ const { execFileSync } = require('child_process');
  *  three are the #2209 shape and must keep their positions -- a legacy charter
  *  carrying only those three still parses. */
 const COMPANION_COLUMNS = [
-  'Repository', 'Responsibility', 'Relationship', 'Repo', 'Board', 'Searchable', 'File Issues'
+  'Repository', 'Responsibility', 'Relationship', 'Repo', 'Board', 'Searchable', 'File Issues', 'Direction'
 ];
+
+/**
+ * Which way a companion relates to this repo (#3422). `upstream`: this repo
+ * consumes it; `downstream`: it consumes this repo; `bidirectional`: both.
+ * An empty cell, an absent column or an unrecognized value reads as
+ * `bidirectional` -- the behavior before the column existed -- with
+ * `directionDeclared: false`, so a default is never mistaken for a choice.
+ */
+const DIRECTIONS = ['upstream', 'downstream', 'bidirectional'];
+const DEFAULT_DIRECTION = 'bidirectional';
 
 /** `owner/name`: exactly two non-empty segments of GitHub-legal characters. */
 const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
@@ -154,11 +163,19 @@ function locateTable(content) {
  * EMPTY_ACCEPTANCE_CRITERIA_SECTION: "no table" and "an empty table" have
  * different causes, and collapsing them hides one of them.
  */
+function parseDirection(cell) {
+  const raw = String(cell == null ? '' : cell).trim();
+  const value = raw.toLowerCase();
+  if (DIRECTIONS.includes(value)) return { direction: value, directionDeclared: true, unrecognized: null };
+  return { direction: DEFAULT_DIRECTION, directionDeclared: false, unrecognized: raw || null };
+}
+
 function parseCompanionTable(content) {
   const t = locateTable(String(content || ''));
-  if (!t) return { entries: [], sectionFound: false };
+  if (!t) return { entries: [], sectionFound: false, warnings: [] };
 
   const entries = [];
+  const warnings = [];
   for (let i = t.firstRowIdx; i < t.endIdx; i++) {
     const cells = splitTableRow(t.lines[i]);
     const name = (cells[0] || '').replace(/`/g, '').trim();
@@ -170,10 +187,38 @@ function parseCompanionTable(content) {
       repo: cells[3] || '',
       board: cells[4] || '',
       searchable: parseBool(cells[5]),
-      fileIssues: parseBool(cells[6])
+      fileIssues: parseBool(cells[6]),
+      ...(({ direction, directionDeclared }) => ({ direction, directionDeclared }))(parseDirection(cells[7]))
+    });
+    const { unrecognized } = parseDirection(cells[7]);
+    if (unrecognized) {
+      warnings.push(`Companion ${cells[3] || name}: Direction "${unrecognized}" is not one of ${DIRECTIONS.join(', ')}; read as ${DEFAULT_DIRECTION}.`);
+    }
+  }
+  return { entries, sectionFound: true, warnings };
+}
+
+/**
+ * Every empty Companion Repositories cell, by companion and column (#3422).
+ * A column an older table lacks counts as empty. /charter --refresh prompts
+ * for exactly these on every run; a filled cell is never listed.
+ * @returns {Array<{repo: string, name: string, column: string}>}
+ */
+function emptyCompanionCells(content) {
+  const t = locateTable(String(content || '').replace(/\r\n/g, '\n'));
+  if (!t) return [];
+  const out = [];
+  for (let i = t.firstRowIdx; i < t.endIdx; i++) {
+    const cells = splitTableRow(t.lines[i]);
+    const name = (cells[0] || '').replace(/`/g, '').trim();
+    if (!name) continue;
+    const repo = cells[3] || '';
+    COMPANION_COLUMNS.forEach((column, idx) => {
+      if (idx === 0) return;
+      if (!String(cells[idx] == null ? '' : cells[idx]).trim()) out.push({ repo, name, column });
     });
   }
-  return { entries, sectionFound: true };
+  return out;
 }
 
 /** Read-only view; consumers (prior-art sweep, cross-repo filing) use this. */
@@ -210,6 +255,9 @@ function validateCompanion(entry) {
   if (board && !BOARD_PATTERN.test(board)) {
     errors.push(`Board must be owner/number (got "${board}").`);
   }
+  if (e.direction !== undefined && e.direction !== null && e.direction !== '' && !DIRECTIONS.includes(e.direction)) {
+    errors.push(`Direction must be one of ${DIRECTIONS.join(', ')} (got "${e.direction}").`);
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -221,7 +269,10 @@ function renderRow(entry) {
     entry.repo || '',
     entry.board || '',
     formatBool(entry.searchable),
-    formatBool(entry.fileIssues)
+    formatBool(entry.fileIssues),
+    // An undeclared direction stays an empty cell: writing the default would
+    // turn it into a choice nobody made (#3422).
+    entry.directionDeclared === false ? '' : (entry.direction || '')
   ].map(escapeCell).join(' | ') + ' |';
 }
 
@@ -324,6 +375,7 @@ function registerCompanion(content, entry) {
   const merged = existingIdx === -1
     ? { ...entry, repo: targetRepo }
     : { ...entries[existingIdx], ...entry, repo: targetRepo };
+  if (entry.direction) merged.directionDeclared = true;
 
   const next = entries.slice();
   if (existingIdx === -1) next.push(merged); else next[existingIdx] = merged;
@@ -399,6 +451,7 @@ function formatCompanionList(entries) {
     const caps = [];
     caps.push(`searchable: ${formatBool(e.searchable)}`);
     caps.push(`file issues: ${formatBool(e.fileIssues)}`);
+    caps.push(`direction: ${e.direction || DEFAULT_DIRECTION}${e.directionDeclared ? '' : ' (undeclared)'}`);
     if (e.board) caps.push(`board: ${e.board}`);
     lines.push(`  ${e.repo || '(no repo)'}  ${e.name ? '— ' + e.name + ' ' : ''}(${caps.join(', ')})`);
   }
@@ -578,6 +631,9 @@ function defaultReachabilityRunner(repo) {
 
 module.exports = {
   COMPANION_COLUMNS,
+  DIRECTIONS,
+  DEFAULT_DIRECTION,
+  emptyCompanionCells,
   splitTableRow,
   REPO_PATTERN,
   BOARD_PATTERN,

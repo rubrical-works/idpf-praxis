@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description Collision profiler (#3133, PRD Concurrent-Work Story 1.16).
  * Replays git history grouped by issue reference, measures how often two
  * issues touched the same file — the collision rate a concurrent run would

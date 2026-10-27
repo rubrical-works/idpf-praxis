@@ -1,5 +1,5 @@
 # /work Execution Rule — Conditional Sections
-**Version:** v0.112.0
+**Version:** v0.113.0
 **Source:** Reference/work-execution-conditional.md
 On-demand companion to `08-work-execution.md` (#2765). Loaded at Step 1d only when a section below applies; the resident rule keeps every `### Step` heading as a one-line stub so the task list and this file stay in correspondence (#2763). Not a rule: never auto-loaded, never registered under `deploymentFiles.rules`. #3248 moved the `--concurrent` test-scope and Merge-Back Review Gate detail, the `--nonstop` Step 4f cadence, the `--nonstop`/`--concurrent` lifecycle and the selection-gate detail here; reasoning: `work-execution-rationale.md`.
 ### Step 1b: Epic Complexity Assessment

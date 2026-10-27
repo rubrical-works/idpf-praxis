@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.112.0",
+  "version": "0.113.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -541,6 +541,8 @@
           "audit-cooldown-check.js",
           "bluf-preamble.js",
           "branch-sync-check.js",
+          "charter-entities.js",
+          "charter-health-check.js",
           "charter-testing-audit.js",
           "ci-add.js",
           "ci-analyze.js",
@@ -572,7 +574,6 @@
           "file-companion-issue.js",
           "file-issue.js",
           "generate-changelog.js",
-          "generate-domain-entities.js",
           "generate-test-plan.js",
           "gh-auth-check.js",
           "hook-health-check.js",
@@ -636,6 +637,7 @@
           "branch-review-gate.js",
           "bulk-discover-screens.js",
           "charter-scope.js",
+          "charter-shape.js",
           "charter-template.js",
           "checkbox-scan.js",
           "classify-changed-files.js",
@@ -711,7 +713,6 @@
           "review-format.js",
           "review-mode.js",
           "runner-probe.js",
-          "schema-driven-questions.js",
           "screen-catalog.js",
           "screenshot-input.js",
           "screenshot-token-candidates.js",
@@ -986,11 +987,6 @@
           "name": "design-system-init-categories-schema",
           "source": ".claude/metadata/design-system-init-categories.schema.json",
           "description": "JSON schema for design-system-init-categories.json (#2397)"
-        },
-        {
-          "name": "domain-entities-schema",
-          "source": ".claude/metadata/domain-entities-schema.json",
-          "description": "Schema for domain-entities.json charter companion file"
         },
         {
           "name": "domain-signals",

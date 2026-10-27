@@ -2,7 +2,7 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description Format CI recommendations as a numbered interactive menu and parse user selections. Provides the display layer between ci-recommend.js (analysis) and ci-apply.js (execution). Part of the /ci --recommend subcommand.
  * @checksum sha256:placeholder
  *
@@ -25,6 +25,8 @@ function formatRecommendationMenu(recommendations) {
     const rec = recommendations[i];
     lines.push(`  ${i + 1}. [${rec.type}] ${rec.description}`);
     lines.push(`     Impact: ${rec.impact}`);
+    // #3424: a recommendation that removes or defers CI signal says which.
+    if (rec.tradeoff) lines.push(`     Gives up: ${rec.tradeoff}`);
   }
 
   lines.push('');
@@ -79,6 +81,7 @@ function formatQuietOutput(recommendations) {
   for (const rec of recommendations) {
     lines.push(`[${rec.type}] ${rec.description}`);
     lines.push(`  Impact: ${rec.impact}`);
+    if (rec.tradeoff) lines.push(`  Gives up: ${rec.tradeoff}`);
   }
   return lines.join('\n');
 }

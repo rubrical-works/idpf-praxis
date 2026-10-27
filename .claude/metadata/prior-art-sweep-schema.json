@@ -176,6 +176,88 @@
                 "skip"
               ],
               "description": "An unreachable companion is a skipped surface, never a clean no-result: zeroResolved then degrades the report to partial."
+            },
+            "directionTreatment": {
+              "type": "object",
+              "description": "How a companion hit is treated, by the companion's declared Direction (#3422). Keys mirror companion-projects.js DIRECTIONS.",
+              "required": [
+                "upstream",
+                "downstream",
+                "bidirectional"
+              ],
+              "properties": {
+                "_note": {
+                  "type": "string"
+                },
+                "upstream": {
+                  "type": "object",
+                  "required": [
+                    "treatment",
+                    "question",
+                    "description"
+                  ],
+                  "properties": {
+                    "treatment": {
+                      "type": "string",
+                      "enum": [
+                        "evidence"
+                      ]
+                    },
+                    "question": {
+                      "type": "string",
+                      "description": "id of the questions[] entry that weighs the hit"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "downstream": {
+                  "type": "object",
+                  "required": [
+                    "treatment",
+                    "description"
+                  ],
+                  "properties": {
+                    "treatment": {
+                      "type": "string",
+                      "enum": [
+                        "impact"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "bidirectional": {
+                  "type": "object",
+                  "required": [
+                    "treatment",
+                    "question",
+                    "description"
+                  ],
+                  "properties": {
+                    "treatment": {
+                      "type": "string",
+                      "enum": [
+                        "both"
+                      ]
+                    },
+                    "question": {
+                      "type": "string",
+                      "description": "id of the questions[] entry that weighs the hit"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
@@ -323,6 +405,10 @@
             "type": "string"
           },
           "description": "Marker forms the DETECTOR accepts, as opposed to the forms the commands emit (#2700). Documentation for readers of this file, who would otherwise read heading as the sole accepted form — the misreading that produced #2700. Pinned against the implementation by tests/scripts/shared/lib/prior-art-marker.test.js, so it cannot drift from classifyMarker."
+        },
+        "impactEntryFormat": {
+          "type": "string",
+          "description": "Row for a downstream companion hit (#3422): who must react when the work lands. Not a prior-art entry; never counted toward found."
         }
       },
       "additionalProperties": false

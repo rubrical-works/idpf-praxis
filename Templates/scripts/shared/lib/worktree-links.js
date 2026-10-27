@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * worktree-links.js — Hub link recreation in worktrees, and the platform
  * link/unlink helpers teardown shares (#3123, PRD Concurrent-Work Story 1.6)
  *

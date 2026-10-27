@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description Which `framework-config.json` `projectSkills` entries are missing
  *   on disk? (#3038). Splits the list into `present` and `missing`, a skill being
  *   missing when `.claude/skills/<name>/` is not a directory (an unresolvable

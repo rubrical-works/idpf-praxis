@@ -11,17 +11,16 @@ View, create, or manage the project charter.
 | `--update --register-proj` | No | Register a companion repository or board |
 | `--update --deregister-proj` | No | Remove a companion registration by `owner/name` |
 | `--update --list-proj` | No | List registered companions with their capability flags |
-| `--refresh` | No | Re-extract charter from the codebase and merge with existing |
-| `--validate` | No | Check current work against charter scope |
-| `--create-domain-entities` | No | Regenerate `domain-entities.json` from the current charter |
+| `--refresh` | No | Re-extract charter from the codebase, merge with existing, verify its counts and bring it back to summary shape |
+| `--refresh --dry-run` | No | Run every `--refresh` analysis step, the shape step included, and write nothing |
 | `--testing` | No | Run harness selection per language and role, writing `testing.suites[]` |
-| `--dry-run` | No | With `--testing` only: run selection and show what would be written, writing nothing |
+| `--dry-run` | No | With `--refresh`: report every analysis step and write nothing. With `--testing`: run selection and show what would be written, writing nothing |
 | `--check` | No | With `--testing --dry-run` only: non-interactive audit for CI, ending in a `clean` or `drift` verdict |
 | `--sweep-e2e on\|off` | No | With `--testing` only: set whether every e2e suite runs in the full test sweep `/work` runs before review, without re-running selection |
 | `--sweep-scope all\|touched` | No | With `--testing` only: set whether the full test sweep runs every suite or only the suites whose files changed, without re-running selection |
 | `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
-**Retired forms:** `update`, `refresh` and `validate` typed bare are no longer accepted; use `--update`, `--refresh` or `--validate`.
+**Retired forms:** `update` and `refresh` typed bare are no longer accepted; use `--update` or `--refresh`.
 
 ## Usage
 
@@ -30,8 +29,7 @@ View, create, or manage the project charter.
 /charter --update
 /charter --update --list-proj
 /charter --refresh
-/charter --validate
-/charter --create-domain-entities
+/charter --refresh --dry-run
 /charter --testing
 /charter --testing --dry-run
 /charter --testing --dry-run --check
@@ -48,10 +46,12 @@ View, create, or manage the project charter.
 - **Inception artifacts are written in intent voice.** No code exists yet on this path, so no `Inception/` artifact may claim to have detected anything — each one records what the project *will* use, sourced from your answers. `Inception/Tech-Stack.md` comes from the tech-stack answer alone and uses `TBD` for any detail that answer did not supply (version, package manager, runtime, build tool). This is separate from the `TBD` used for questions you skipped: that covers an unanswered question, this covers a detail that is unobservable because nothing is installed yet.
 - **Extraction mode** (existing project): loads the `codebase-analysis` skill, analyzes source code, presents findings for confirmation, then generates charter artifacts from the analysis. Artifacts here are observations, so a "detected" or "found via `<file>`" claim is permitted — each must trace back to a file that was actually read. Test commands found in `package.json` scripts, `Makefile`, `pyproject.toml` or CI workflows are shown with the file they came from and pre-filled into harness selection. If the skill is not installed the command stops and tells you to install it via Praxis Hub Manager rather than proceeding without analysis.
 - After charter creation, suggests relevant skills from `.claude/metadata/skill-keywords.json` (default skills are pre-selected) and installs confirmed selections. Also suggests matching extension recipes.
-- `/charter --validate` compares current work (issue, recent commits, staged changes) against `CHARTER.md` scope boundaries and flags anything potentially out of scope.
+- **Companion direction.** Each companion repository in the charter records a **Direction**: `upstream` (this project consumes it), `downstream` (it consumes this project) or `bidirectional`. It is asked when the charter is created and by `/charter --update --register-proj`, and `--list-proj` shows it. A companion with no direction is treated as `bidirectional` and shown as undeclared. The prior-art search uses it: a hit in an upstream companion is evidence the work may already exist there; a hit in a downstream companion is recorded as impact (who must react), never as proof the work is done.
+- **Refresh fills companion gaps.** Every `/charter --refresh` asks about each empty cell in the Companion Repositories table, in any column. Nothing is written unless you answer; a skipped cell stays empty and is asked again next time, so a companion with no project board is asked for one on each refresh.
+- **Charter shape step (`/charter --refresh`).** A charter tends to grow: In Scope bullets become paragraphs, Current Focus becomes a changelog. Refresh measures CHARTER.md against the summary shape — In Scope bullets that run past a word threshold or a second sentence, exclusion wording ("stays out of scope") inside an In Scope bullet, release history or board counts in Current Focus, and a Current Focus version older than the latest tag — then proposes a slimmed charter: one line per In Scope item (shortened, never merged), exclusions moved to Out of Scope, Current Focus kept to the current release and theme. Text it cuts is pointed to where it already lives (CHANGELOG.md, a PRD, a design decision, a proposal, an `Inception/` file) rather than copied, relocated to `Inception/Scope-Boundaries.md` or `Inception/Milestones.md` when it lives nowhere else, or listed as removed (board snapshots) — never dropped silently. You see the diff and nothing is written until you confirm. The number of In Scope items is reported but never flagged. A charter already in shape gets a one-line report. Add `--dry-run` to run every refresh analysis and write nothing. Scope checks themselves run automatically when work is created (`/proposal`, `/enhancement`, `/create-prd`, `/create-backlog`, `/add-story`) and in the review charter-alignment criterion.
 - Tech stack changes in `/charter --update` trigger additive skill and recipe suggestions for newly relevant items only.
 - **Project `.npmrc` offer.** When the stack includes JavaScript or TypeScript and the project root has no `.npmrc`, `/charter` offers to copy the framework's project template. The template sets a `min-release-age` cooldown for new package versions and turns on `ignore-scripts`. The offer is made during Inception, during Extraction, and on `/charter --refresh` for charters created before the offer existed. The file is written only if you accept, and declining is not asked again in the same run. An existing `.npmrc` is never overwritten: `/charter` reports it and names the two keys so you can merge them by hand. This offer is the only way a project gets the file: Praxis Hub Manager does not write it and a hub upgrade does not install it. In a project chartered before the offer existed, the session-startup Supply Chain row names the missing file and points to `/charter --refresh`.
-- `domain-entities.json` is always written beside `CHARTER.md` at the project root. If that path would resolve outside the project (for example through a linked directory), the error is reported and nothing is written.
+- **`domain-entities.json` is retired.** `/charter` no longer generates it, and the scope check reads `CHARTER.md` directly. If the generated file is present, every `/charter` mode deletes it (as does session startup) and reports `Retired file removed: domain-entities.json — commit the deletion`; commit the deletion. It was generated from the charter, so nothing is lost. Only the generated copy — the one carrying `"generatedFrom": "CHARTER.md"` — is deleted; a file of that name you wrote yourself is left alone. `/charter --refresh` still checks the Key Entities counts against disk, computed in memory.
 
 ## Harness Selection
 

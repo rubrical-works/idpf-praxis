@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description Charter scope check shared by the commands that create work (#3001).
  * @checksum sha256:placeholder
  *
@@ -10,11 +10,10 @@
  * now call this helper at the depth `.claude/metadata/charter-enforcement.json`
  * declares for them, so no command restates the check.
  *
- * Scope lists come from the generated `domain-entities.json` first
- * (`scopeBoundaries`, `currentFocus`) and from CHARTER.md's In Scope, Out of
- * Scope and Current Focus sections as the fallback; `source` says which, so a
- * degraded run is never read as a full one. An index older than CHARTER.md is
- * not trusted: the charter's own sections are read, with a warning (#3322). Whether CHARTER.md is an unfilled
+ * Scope lists come from CHARTER.md's In Scope, Out of Scope and Current Focus
+ * sections, read on every call. The generated JSON index it once preferred was
+ * retired (#3420): it went stale silently whenever the charter was edited
+ * without regeneration, and held nothing the charter does not. Whether CHARTER.md is an unfilled
  * template is decided by `.claude/scripts/shared/lib/charter-template.js`, the
  * one rule for it.
  *
@@ -24,7 +23,7 @@
  * CLI: node .claude/scripts/shared/lib/charter-scope.js --command <name>
  *        [--text "<work item>" | --text-file <path>] [--paths a,b] [--quiet] [--root <dir>]
  *   With neither text flag, the work item is read from stdin (#3351).
- *   → {"alignment", "matchedItems", "warnings", "skipped", "source", "depth", "ask"}, exit 0
+ *   → {"alignment", "matchedItems", "warnings", "skipped", "depth", "ask"}, exit 0
  */
 
 const fs = require('fs');
@@ -33,6 +32,14 @@ const { classifyCharterFile } = require('./charter-template');
 
 const DATA_REL = path.join('.claude', 'metadata', 'charter-enforcement.json');
 const DEFAULT_DEPTH = 'summary';
+
+/**
+ * Share of an In Scope / Current Focus item's core words a work item must
+ * share to match it (#3421). Measured, not guessed: the corpus, the rejected
+ * values and the before/after counts are in
+ * Construction/Design-Decisions/2026-10-27-charter-scope-in-scope-share.md.
+ */
+const IN_SCOPE_SHARE = 0.5;
 
 const STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'from', 'into', 'onto', 'via', 'not', 'are', 'this', 'that', 'these',
@@ -80,7 +87,16 @@ function matchItems(text, items, opts = {}) {
     const want = [...tokens(opts.outOfScope ? dropAsides(item) : item)];
     if (!want.length) continue;
     const words = want.filter((w) => have.has(w));
-    const need = opts.outOfScope ? Math.max(2, Math.ceil(want.length / 2)) : 2;
+    let need;
+    if (opts.outOfScope) {
+      need = Math.max(2, Math.ceil(want.length / 2));
+    } else {
+      // #3421: In Scope and Current Focus need IN_SCOPE_SHARE of their core
+      // words — the item with its parenthetical asides dropped — minimum two.
+      // Aside words still count as matches; they just do not raise the bar.
+      const core = tokens(dropAsides(item)).size || want.length;
+      need = Math.max(2, Math.ceil(core * IN_SCOPE_SHARE));
+    }
     if (words.length >= Math.min(need, want.length)) matched.push({ item, words });
   }
   return matched;
@@ -118,34 +134,6 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-function loadLists(root, charterText, warnings) {
-  const entitiesPath = path.join(root, 'domain-entities.json');
-  if (fs.existsSync(entitiesPath)) {
-    try {
-      const e = readJson(entitiesPath);
-      const sb = e.scopeBoundaries;
-      if (sb && Array.isArray(sb.inScope) && Array.isArray(sb.outOfScope)) {
-        let stale = false;
-        try {
-          stale = fs.statSync(path.join(root, 'CHARTER.md')).mtimeMs > fs.statSync(entitiesPath).mtimeMs;
-        } catch (_e) { /* mtime unavailable: trust the index */ }
-        if (stale) {
-          warnings.push('domain-entities.json is older than CHARTER.md; read CHARTER.md instead. Regenerate with /charter --create-domain-entities.');
-          return { source: 'charter', lists: parseCharterSections(charterText) };
-        }
-        return {
-          source: 'domain-entities',
-          lists: { inScope: sb.inScope, outOfScope: sb.outOfScope, currentFocus: Array.isArray(e.currentFocus) ? e.currentFocus : [] },
-        };
-      }
-      warnings.push('domain-entities.json has no scopeBoundaries; read CHARTER.md instead.');
-    } catch (err) {
-      warnings.push(`domain-entities.json unreadable (${err.message}); read CHARTER.md instead.`);
-    }
-  }
-  return { source: 'charter', lists: parseCharterSections(charterText) };
-}
-
 /**
  * Check a work item against the charter.
  * @param {{text: string, command?: string, paths?: string[], quiet?: boolean, root?: string}} opts
@@ -154,7 +142,7 @@ function checkScope(opts = {}) {
   const root = opts.root || process.cwd();
   const warnings = [];
   const result = (fields) => ({
-    alignment: null, matchedItems: [], warnings, skipped: null, source: null, depth, ask: false, ...fields,
+    alignment: null, matchedItems: [], warnings, skipped: null, depth, ask: false, ...fields,
   });
 
   let data;
@@ -183,7 +171,7 @@ function checkScope(opts = {}) {
   if (!charter.exists) return result({ skipped: { reason: 'no-charter', detail: 'CHARTER.md not found' } });
   if (charter.template) return result({ skipped: { reason: 'template-charter', detail: 'CHARTER.md is an unfilled template' } });
 
-  const { source, lists } = loadLists(root, fs.readFileSync(charterPath, 'utf8'), warnings);
+  const lists = parseCharterSections(fs.readFileSync(charterPath, 'utf8'));
   const matchedItems = [];
   for (const list of data.depths[depth].lists) {
     for (const m of matchItems(opts.text, lists[list], { outOfScope: list === 'outOfScope' })) matchedItems.push({ list, ...m });
@@ -197,7 +185,7 @@ function checkScope(opts = {}) {
   let ask = data.alignment[alignment].ask;
   if (opts.quiet && alignment !== 'conflicts') ask = false;
 
-  return result({ alignment, matchedItems, source, ask });
+  return result({ alignment, matchedItems, ask });
 }
 
 function parseArgs(argv) {
@@ -214,7 +202,7 @@ function parseArgs(argv) {
   return opts;
 }
 
-module.exports = { checkScope, parseCharterSections, matchItems, globToRegex };
+module.exports = { checkScope, parseCharterSections, matchItems, globToRegex, IN_SCOPE_SHARE };
 
 if (require.main === module) {
   const opts = parseArgs(process.argv.slice(2));

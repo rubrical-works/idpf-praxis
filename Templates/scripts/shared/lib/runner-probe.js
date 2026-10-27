@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description Runner-presence probe for the verification gates and the startup dependency check (#3012). Resolves the first token of a suite command on PATH — `where` on win32, `command -v` through `sh` elsewhere — without ever spawning the runner itself, and names the suites each missing runner would have served.
  * @checksum sha256:placeholder
  *

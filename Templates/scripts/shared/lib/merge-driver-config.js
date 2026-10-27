@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * merge-driver-config.js — Idempotent writer of the `merge.<name>.driver`
  * git config entry for json-merge-driver.js (#3119, PRD Concurrent-Work
  * Story 1.2)

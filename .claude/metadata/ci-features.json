@@ -31,7 +31,7 @@
   "paths-ignore": {
     "id": "paths-ignore",
     "name": "Paths Ignore",
-    "description": "Skip CI runs for documentation-only changes",
+    "description": "Skip CI runs for documentation-only changes. Patterns come from the repo layout (doc and IDPF artifact directories, root *.md, never .claude/commands/) and are added only to push/pull_request triggers the workflow already has",
     "tier": "v1",
     "category": "efficiency",
     "languages": ["*"],
@@ -39,7 +39,21 @@
       "yaml": ["on.*.paths-ignore", "on.*.paths_ignore", "paths-ignore:", "paths_ignore:"]
     },
     "template": {
-      "yaml": "on:\n  push:\n    paths-ignore:\n      - '**.md'\n      - 'docs/**'\n  pull_request:\n    paths-ignore:\n      - '**.md'\n      - 'docs/**'"
+      "yaml": "on:\n  push:\n    paths-ignore:\n      - 'docs/**'\n      - '*.md'"
+    }
+  },
+  "trigger-scope": {
+    "id": "trigger-scope",
+    "name": "Trigger Scope",
+    "description": "Run an audit or scanner workflow only when its inputs change: push/pull_request narrowed to paths: (manifests, source dirs, the workflow itself), plus a weekly schedule and workflow_dispatch. Offered for a workflow that runs on every branch push, has no test step and has an audit or scanner step",
+    "tier": "v1",
+    "category": "efficiency",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["workflow_dispatch[\\s\\S]*schedule:[\\s\\S]*cron", "schedule:[\\s\\S]*cron[\\s\\S]*workflow_dispatch"]
+    },
+    "template": {
+      "yaml": "on:\n  push:\n    paths:\n      - 'package.json'\n      - 'package-lock.json'\n      - '.github/workflows/security.yml'\n  schedule:\n    - cron: '0 6 * * 1'\n  workflow_dispatch:"
     }
   },
   "concurrency-groups": {

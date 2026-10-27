@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).

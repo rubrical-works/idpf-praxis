@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description Modify a workflow YAML file safely, preserving comments and structure. Supports adding top-level keys, inserting steps into jobs, and merging configuration blocks. Used by ci-add.js and ci-remove.js for non-destructive YAML edits.
  * @checksum sha256:placeholder
  *
@@ -45,8 +45,8 @@ function modifyWorkflow(filePath, operation) {
     setJobProperty(doc, operation.setJobProperty.job, operation.setJobProperty.path, operation.setJobProperty.value);
   }
 
-  // Serialize back to string
-  const output = doc.toString();
+  // Serialize back to string, changing only the lines the edit changed (#3425)
+  const output = serializeEdited(original, doc);
 
   // Validate before writing
   validateYaml(output);
@@ -236,15 +236,14 @@ function addStepToJob(doc, jobName, stepYaml, position) {
     throw new Error(`Job "${jobName}" not found in workflow`);
   }
 
-  // Parse the step(s) — wrap in array if needed
-  let stepContent = stepYaml.trim();
-  if (!stepContent.startsWith('-')) {
-    stepContent = '- ' + stepContent;
+  // Parse the template on its own (#3411): a sequence is the steps; a mapping
+  // is one step. Prefixing "- " to the first line alone left every following
+  // line mis-indented under it.
+  const parsedSteps = yaml.parse(stepYaml);
+  const newSteps = Array.isArray(parsedSteps) ? parsedSteps : [parsedSteps];
+  if (newSteps.some((s) => !s || typeof s !== 'object' || Array.isArray(s))) {
+    throw new Error('Step template must be a mapping (one step) or a sequence of mappings');
   }
-
-  // Parse as array items
-  const stepsArray = yaml.parse(`steps:\n${stepContent.split('\n').map(l => '  ' + l).join('\n')}`);
-  const newSteps = stepsArray.steps;
 
   // Get existing steps — doc.getIn returns YAMLSeq node, not plain array
   const existingStepsNode = doc.getIn(['jobs', jobName, 'steps']);
@@ -253,7 +252,19 @@ function addStepToJob(doc, jobName, stepYaml, position) {
     return;
   }
 
-  // Convert YAMLSeq to plain JS array
+  // Insert into the existing sequence node (#3411): rebuilding it from
+  // toJSON() and replacing it dropped every comment and flow-style value in
+  // the job's steps. The new nodes take the document's default style.
+  if (yaml.isSeq(existingStepsNode)) {
+    const items = existingStepsNode.items;
+    const at = position === 'start' ? 0
+      : position === 'before-last' ? Math.max(0, items.length - 1)
+        : items.length;
+    items.splice(at, 0, ...newSteps.map((s) => doc.createNode(s)));
+    return;
+  }
+
+  // Not a sequence node (an empty or scalar value): rebuild it as before.
   const existingSteps = existingStepsNode.toJSON
     ? existingStepsNode.toJSON()
     : (Array.isArray(existingStepsNode) ? existingStepsNode : []);
@@ -346,6 +357,121 @@ function cleanupBackups(backupDir, fileName) {
 }
 
 /**
+ * Serializer options for an edited workflow: no padding inside flow
+ * collections (`['**']`, not `[ '**' ]`) and no folding of long lines, so
+ * content an edit inserts reads like the file around it.
+ */
+const TO_STRING_OPTIONS = { flowCollectionPadding: false, lineWidth: 0 };
+
+/** Longest-common-subsequence match of two line arrays: [aIndex, bIndex] pairs, ascending. */
+function matchLines(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const w = m + 1;
+  const len = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      len[i * w + j] = a[i] === b[j] ? len[(i + 1) * w + j + 1] + 1 : Math.max(len[(i + 1) * w + j], len[i * w + j + 1]);
+    }
+  }
+  const pairs = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { pairs.push([i, j]); i++; j++; } else if (len[(i + 1) * w + j] >= len[i * w + j + 1]) i++; else j++;
+  }
+  return pairs;
+}
+
+/**
+ * Serialize an edited workflow document so that only the lines the edit
+ * changed differ from the original text (#3425).
+ *
+ * Re-serializing a whole document rewrites lines the edit never touched:
+ * the serializer pads flow lists, folds long lines and re-attaches a comment
+ * that follows a key with an empty value (`workflow_dispatch:`) to that key.
+ * Serializer options remove the first two; the third is how the library reads
+ * the comment, so no option reaches it. Instead this is a line-level three-way
+ * merge: the original document serialized as-is (`base`) and the edited one
+ * (`edited`) differ only by the edit, so each changed run of `base` lines is
+ * replaced, at the matching place in the original text, by its `edited` lines.
+ *
+ * The merge is verified, never trusted: unless the result parses to exactly
+ * the edited document, the full serialization is returned instead — correct
+ * content with the formatting drift, never a wrong workflow.
+ *
+ * @param {string} original - The file's text before the edit
+ * @param {yaml.Document} doc - The document parsed from `original`, edited
+ * @returns {string}
+ */
+function serializeEdited(original, doc) {
+  const edited = doc.toString(TO_STRING_OPTIONS);
+  const eol = /\r\n/.test(original) ? '\r\n' : '\n';
+  const fallback = eol === '\r\n' ? edited.replace(/\r?\n/g, '\r\n') : edited;
+  let base;
+  try {
+    base = yaml.parseDocument(original).toString(TO_STRING_OPTIONS);
+  } catch (_e) {
+    return fallback;
+  }
+  if (base === edited) return original;
+
+  const S = original.split(/\r?\n/);
+  const B = base.split('\n');
+  const E = edited.split('\n');
+  // Where each base line sits in the original, for the lines they share.
+  const bToS = new Map(matchLines(S, B).map(([s, b]) => [b, s]));
+  const anchors = matchLines(B, E);
+  anchors.push([B.length, E.length]);
+
+  // Each changed run of base lines becomes two operations on the original:
+  // delete the original lines those base lines came from, and insert the
+  // run's edited lines. An insertion goes where the run's first deleted line
+  // was, else straight after the original line of the last base line before
+  // the run. Every other original line is kept as written — including lines
+  // the serializer rendered differently (a moved comment, a padded list),
+  // which therefore keep their own text and place.
+  const deleted = new Set();
+  const inserts = new Map(); // original index → lines inserted before it
+  let prevB = -1;
+  let prevE = -1;
+  let lastMapped = -1; // original index of the last base line seen that has one
+  for (const [bi, ei] of anchors) {
+    if (bi - prevB > 1 || ei - prevE > 1) {
+      const removed = [];
+      for (let k = prevB + 1; k < bi; k++) if (bToS.has(k)) removed.push(bToS.get(k));
+      removed.forEach((s) => deleted.add(s));
+      const at = removed.length ? Math.min(...removed) : lastMapped + 1;
+      if (ei - prevE > 1) {
+        if (!inserts.has(at)) inserts.set(at, []);
+        inserts.get(at).push(...E.slice(prevE + 1, ei));
+      }
+      for (let k = prevB + 1; k < bi; k++) if (bToS.has(k)) lastMapped = Math.max(lastMapped, bToS.get(k));
+    }
+    if (bi < B.length && bToS.has(bi)) lastMapped = bToS.get(bi);
+    prevB = bi;
+    prevE = ei;
+  }
+  const out = [];
+  for (let s = 0; s <= S.length; s++) {
+    if (inserts.has(s)) out.push(...inserts.get(s));
+    if (s < S.length && !deleted.has(s)) out.push(S[s]);
+  }
+  // An insertion at the end belongs before the trailing newline's empty line.
+  if (inserts.has(S.length) && S[S.length - 1] === '' && out[out.length - 1] !== '') {
+    const tail = inserts.get(S.length);
+    out.splice(out.length - tail.length - 1, 1);
+    out.push('');
+  }
+
+  const merged = out.join(eol);
+  try {
+    if (JSON.stringify(yaml.parse(merged)) === JSON.stringify(doc.toJS())) return merged;
+  } catch (_e) { /* fall through to the full serialization */ }
+  return fallback;
+}
+
+/**
  * Validate that a string is valid YAML.
  * @param {string} content - YAML string to validate
  * @throws {Error} If YAML is invalid
@@ -364,4 +490,4 @@ if (require.main === module) {
   console.log('This module is used programmatically by /ci --add and /ci remove.');
 }
 
-module.exports = { modifyWorkflow, createBackup, cleanupBackups, validateYaml, setJobProperty };
+module.exports = { modifyWorkflow, createBackup, cleanupBackups, validateYaml, setJobProperty, serializeEdited, TO_STRING_OPTIONS };

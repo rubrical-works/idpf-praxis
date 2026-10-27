@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description React Native export adapter. Translates DTCG tokens to a
  *   JavaScript/TypeScript theme constants module.
  * @checksum sha256:placeholder

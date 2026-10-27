@@ -1,5 +1,5 @@
 # /code-review Execution Reference
-**Version:** v0.112.0
+**Version:** v0.113.0
 **Source:** Reference/code-review-execution.md
 `/code-review` Workflow (Steps 2–12), hoisted out of the shell (#3230) on the `/work` (#2368) / `/review-issue` (#2737) shell + execution-reference pattern. The shell `CommandsSrc/code-review.md` keeps Prerequisites, Arguments, Step 1 parsing, Error Handling and closing cleanup.
 **Why a file, not a command call.** Skill does not return; a file is executed inline in the same turn and the caller continues — so `/prepare-release` and `/prepare-beta` run the diff review from their Branch Diff Review Gate (§ Release Review Gate) instead of asking for a second command.

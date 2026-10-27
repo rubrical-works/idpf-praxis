@@ -101,7 +101,6 @@ Your choices are written to `testing.suites[]` in `framework-config.json` — th
 **What it creates:**
 ```
 CHARTER.md                     ← Main charter (vision, tech, scope)
-domain-entities.json           ← Key entities, generated from the charter (project root)
 Inception/
   ├── Charter-Details.md       ← Detailed vision and problem statement
   ├── Tech-Stack.md            ← Languages, frameworks, dependencies
@@ -129,7 +128,7 @@ Transition/
 As your project evolves:
 - `/charter --update` — Modify specific sections (vision, scope, tech stack)
 - `/charter --refresh` — Re-analyze the codebase and merge findings. For testing, refresh acts only on what changed: a newly added language or role gets harness selection for that pair alone, existing choices are never re-asked or overwritten, suites that no longer match any file are reported (never removed), and "install pending" suites are re-checked with an offer to put them back in the gate once their tooling is present
-- `/charter --validate` — Check if current work aligns with charter scope
+- `/charter --refresh --dry-run` — See what refresh would change, including the charter shape step (over-long In Scope items, exclusions inside In Scope, history in Current Focus), without writing anything
 
 **Testing drift at startup.** When your charter is active, the session startup block adds a `Testing Drift:` row if your stack has gained a language or role with no declared suite, or a declared suite matches no files. The row names `/charter --refresh` as the remedy. A `Coverage Overrides:` row may also appear when test-coverage settings in `framework-config.json` no longer fit the installed coverage-audit skill. For a JavaScript or TypeScript project, a `Supply Chain:` row appears when the project root has no `.npmrc` (run `/charter --refresh` to be offered the npm supply-chain controls) or no `.github/dependabot.yml` (run `/ci` and add the `dependabot` feature). Projects chartered before these offers existed see the row too. To silence either row after declining, set `supplyChainRows.npmrc` or `supplyChainRows.dependabot` to `false` in `framework-config.json`. These rows are advisory — nothing is changed for you, and no row appears when everything is in order.
 

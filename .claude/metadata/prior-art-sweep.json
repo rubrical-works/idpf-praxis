@@ -48,7 +48,24 @@
       "source": "CHARTER.md Companion Repositories, via .claude/scripts/shared/lib/companion-projects.js",
       "capabilityField": "searchable",
       "command": "gh issue list --repo <owner/name> --search \"<terms>\" --state all --limit 50 --json number,title,state,body",
-      "unreachable": "skip"
+      "unreachable": "skip",
+      "directionTreatment": {
+        "_note": "Read from each companion's Direction (CHARTER.md, companion-projects.js DIRECTIONS; #3422). An undeclared direction reads as bidirectional, the behavior before the column existed.",
+        "upstream": {
+          "treatment": "evidence",
+          "question": "adjacent-repo",
+          "description": "This repo consumes the companion. A hit is prior-art evidence, weighed by the adjacent-repo question: work the upstream owns maps to already-shipped per its actionIfFound. No new disposition."
+        },
+        "downstream": {
+          "treatment": "impact",
+          "description": "The companion consumes this repo. A hit names who must react when this lands. Recorded with bodyFormat.impactEntryFormat; never evidence for already-shipped and never counted as prior art."
+        },
+        "bidirectional": {
+          "treatment": "both",
+          "question": "adjacent-repo",
+          "description": "Both: weigh the hit as upstream evidence, and also record it as downstream impact."
+        }
+      }
     },
     "retrieval": {
       "strategy": "count-first",
@@ -167,7 +184,8 @@
     "foundFormat": "**Prior Art:** found — <summary> (searched: <terms>)",
     "noneFoundFormat": "**Prior Art:** none found (searched: <terms>)",
     "foundEntryFormat": "| <reference> | <relationship> |",
-    "partialFormat": "**Prior Art:** PARTIAL — <what ran>; <what failed and why>"
+    "partialFormat": "**Prior Art:** PARTIAL — <what ran>; <what failed and why>",
+    "impactEntryFormat": "| Downstream impact: <reference> | <who must react, and how> |"
   },
   "questions": [
     {
@@ -191,7 +209,7 @@
     {
       "id": "adjacent-repo",
       "question": "Does this belong to, or duplicate, work in a companion repository?",
-      "guidance": "Check whether the capability is owned elsewhere in the ecosystem before specifying it here.",
+      "guidance": "Check whether the capability is owned elsewhere in the ecosystem before specifying it here. Weigh each companion hit by its direction (searchSurfaces.companionRepos.directionTreatment): an upstream hit is evidence for this question; a downstream hit is impact, never already-shipped evidence — record it with bodyFormat.impactEntryFormat; a bidirectional hit is both.",
       "actionIfFound": "Record the owning repository. Out-of-scope work maps to already-shipped for this repo's purposes."
     }
   ]

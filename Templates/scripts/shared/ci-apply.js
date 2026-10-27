@@ -6,7 +6,7 @@ const path = require('path');
 const { readFileSafe } = require('./lib/shell-safe.js');
 
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * @description Orchestrate application of selected CI recommendations with sequential execution, confirmation prompts, error recovery, and summary reporting. Accepts recommendation objects from ci-recommend.js and applies them via ci-add.js. Part of the /ci apply subcommand.
  * @checksum sha256:placeholder
  *
@@ -28,6 +28,7 @@ function formatConfirmationSummary(recommendations) {
   for (let i = 0; i < recommendations.length; i++) {
     const rec = recommendations[i];
     lines.push(`  ${i + 1}. [${rec.type}] ${rec.description}`);
+    if (rec.tradeoff) lines.push(`     Gives up: ${rec.tradeoff}`);
   }
 
   lines.push('');
@@ -120,6 +121,17 @@ function applySingleRecommendation(projectDir, workflowsDir, rec) {
  * Apply an Alter recommendation (action version upgrade).
  */
 function applyAlter(workflowsDir, rec) {
+  // ci-recommend emits this when every NODE_EOL line is past end-of-life
+  // (#3388): the fix is a code change, not a workflow edit, so it carries no
+  // file or upgrade and is refused here with that remedy (#3411).
+  if (rec.kind === 'node-eol-table') {
+    return {
+      recommendation: rec,
+      status: 'failed',
+      error: 'Not a workflow edit: add a newer Node.js LTS line (with its end-of-life date) to the NODE_EOL table in '
+        + '.claude/scripts/shared/ci-recommend.js, then re-run /ci --recommend to get an upgrade target for the EOL pins'
+    };
+  }
   if (rec.kind === 'node-version') {
     return applyNodeVersionAlter(workflowsDir, rec);
   }
@@ -176,7 +188,7 @@ function applyNodeVersionAlter(workflowsDir, rec) {
   }
 
   const yaml = require('yaml');
-  const { validateYaml, createBackup } = require('./ci-modify.js');
+  const { validateYaml, createBackup, serializeEdited } = require('./ci-modify.js');
   const doc = yaml.parseDocument(content);
   const from = String(rec.nodeVersion);
   const to = String(rec.upgrade);
@@ -212,7 +224,7 @@ function applyNodeVersionAlter(workflowsDir, rec) {
   if (changed === 0) {
     return { recommendation: rec, status: 'failed', error: `Node.js ${from} not found in ${rec.file}` };
   }
-  const output = doc.toString();
+  const output = serializeEdited(content, doc);
   validateYaml(output);
   createBackup(filePath);
   fs.writeFileSync(filePath, output, 'utf8');

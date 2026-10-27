@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.112.0
+**Version:** v0.113.0
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule for `/work` — hybrid shell + auto-loaded rule architecture. Shell `.claude/commands/work.md` covers arguments/prereqs/errors; this rule covers the Workflow. Two companions are read on demand, never auto-loaded: `{frameworkPath}/Reference/work-execution-conditional.md` (bodies that fire only for an epic, a branch tracker, `--nonstop`, `--concurrent` or a multi-issue selection — loaded at Step 1d) and `{frameworkPath}/Reference/work-execution-rationale.md` (why each directive is as it is — read when questioning one).
 ## Execution Instructions

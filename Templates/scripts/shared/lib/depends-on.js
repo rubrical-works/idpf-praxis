@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.112.0
+ * @framework-script 0.113.0
  * depends-on.js — Parse a sub-issue body's `**Depends on:** #N, #M` line into
  * dependency edges (#3127, PRD Concurrent-Work Story 1.10)
  *
