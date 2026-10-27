@@ -1,5 +1,5 @@
 ---
-version: "v0.111.0"
+version: "v0.112.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
 argument-hint: "[epic-number] (e.g., 42 or #42) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -61,6 +61,7 @@ Re-read `.claude/metadata/ac-feasibility-prompts.json`. Apply `classify`, `verif
 | Disposition | When | Result |
 |---|---|---|
 | **Drop** | Work appears in `phaseFeasibility.ownedElsewhere` — CHANGELOG, tagging, release publication belong to `/prepare-release`'s checklist | Do not author the AC at all; tell the user which command owns it |
+| **Drop** | AC restates the project's test command passing ("`npm test` passes", "the test suite passes") — `dischargedByWorkflow`; the `/work` Step 4f sweep already runs it | Do not author the AC; tell the user `/work` Step 4f owns it. **Keep it** when `keptWhen` holds (no verification set declared, so Step 4f runs nothing) |
 | **Annotate** | Gate is genuinely load-bearing (required human review or sign-off) | Author as `- [ ] {acText} → GATE: {phase}` per `phaseFeasibility.annotationFormat` |
 
 Prefer annotation over deletion when the requirement is real — the goal is to stop the gate deadlocking `in_review`, not to remove the requirement.
@@ -73,19 +74,14 @@ Prefer annotation over deletion when the requirement is real — the goal is to 
 | Stories that must land first | **Depends on:** line — `#N, #M`, or `none` |
 Infer user type from context or ask.
 ## Phase 2: Charter Compliance Check
-**Step 1: Load charter context**
-| File | Required | Purpose |
-|------|----------|---------|
-| `CHARTER.md` | Recommended | Project vision, goals, scope |
-| `Inception/Scope-Boundaries.md` | Optional | In/out of scope boundaries |
-| `Inception/Constraints.md` | Optional | Technical/business constraints |
+Write story title + description to `.tmp-charter-scope-{random}.txt` (suffix shelled out); run `node .claude/scripts/shared/lib/charter-scope.js --command add-story --text-file <file>`; `rm` after.
+| Envelope | Report |
+|---|---|
+| `skipped` set (`no-charter` → suggest `/charter`) | One line naming `skipped.reason`; continue |
+| `alignment: aligned` | `✅ Story aligns with charter scope`, naming any `matchedItems` |
+| `ask: true` | `⚠️` with `alignment` + `matchedItems`, then the `resolutionOptions` from `.claude/metadata/charter-enforcement.json` |
 
-If no charter: `⚠️ No CHARTER.md found. Skipping compliance check. Consider /charter.`
-**Step 2: Validate story against:** vision alignment, goal relevance, scope boundaries, constraint compliance.
-**Step 3: Report compliance**
-- Aligned: `✅ Story aligns with charter scope`
-- Concern: `⚠️ Potential scope concern: ... Proceed anyway? (yes/no)`
-**ASK USER:** Confirm to proceed if concerns found.
+**ASK USER:** when `ask` is true, offer those options via `AskUserQuestion` (`expand` follows its `expansionFlow`). Relay `warnings`.
 ## Phase 3: Create Story Issue
 **Step 1: Determine priority**
 **ASK USER:** Priority:

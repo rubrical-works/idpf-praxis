@@ -122,7 +122,9 @@ Beyond the three-layer separation, IDPF manages *when* context gets loaded:
 - `Overview/Framework-Overview.md` — only when working on IDPF-Agile or the complete framework reference
 - `Overview/Framework-System-Instructions.md` — only when working on system instructions or domain specialists
 - `Assistant/Anti-Hallucination-Rules-for-PRD-Work.md` — only during PRD work
-- `Reference/work-execution-conditional.md` — only for epics, branch trackers, `--nonstop`, or multi-issue selections
+- `Reference/work-execution-conditional.md` — only for epics, branch trackers, `--nonstop`, `--concurrent`, or multi-issue selections
+- `Reference/review-execution-conditional.md` — only for epic expansion, a prior-art sweep, or test-plan and PRD reviews
+- `Reference/work-execution-rationale.md` and `Reference/review-execution-rationale.md` — the reasoning behind each execution directive, read only when a directive is being questioned
 
 **Loaded per-command:**
 - The specific command spec for the slash command being executed. A lean orchestrator, not a reference manual.
@@ -142,19 +144,20 @@ Three commands — `/work`, `/review-issue`, `/resolve-review` — no longer car
 
 The rules are auto-loaded. That means workflow text which used to be loaded *per invocation* is now resident *every session*:
 
-| Rule | Size |
+| Rule | Size (characters) |
 |---|---|
-| `08-work-execution.md` | ~61 KB |
-| `09-review-execution.md` | ~36 KB |
-| `04-deployment-awareness.md` (dev-only variant) | ~55 KB |
-| All 9 rules, this repo | ~239 KB |
-| The 8 rules deployed to user projects | ~113 KB, roughly 43,000 tokens |
+| `08-work-execution.md`, deployed variant | ~45,000 |
+| `09-review-execution.md` | ~24,000 |
+| All 9 rules, this repo | ~110,000 |
+| The 9 rules deployed to user projects (8 outside Windows) | ~100,000 |
 
-Forty-three thousand tokens is around a fifth of a 200K window, spent before the user's first message.
+Roughly a hundred thousand characters, spent before the user's first message, and the two execution rules are two thirds of it.
 
 **Why it was done anyway.** `/resolve-review` invokes `/review-issue` as a nested skill, so a single resolution cycle previously injected the same command spec twice. And a workflow that lives in a rule survives compaction without being re-read, which the STOP boundaries and status gates depend on. The trade was per-invocation cost and compaction fragility against permanent residence.
 
 **What it costs.** The tiered-loading table above is still the design, but the top tier is no longer small. A reader should understand this section as the exception that the principle now has to accommodate, not as evidence the principle was abandoned — the 165 scripts and 71 registries still carry zero context cost, and that remains the larger effect.
+
+**How the cost is being held down.** The answer so far has been to shrink the resident text rather than move it out. Each execution rule keeps every directive resident, while the bodies that fire only for some run shapes live in an on-demand conditional companion and the reasoning behind each directive lives in an on-demand rationale file. The deployed set measured 158,841 characters on 2026-10-24 and is now about 100,000. A per-rule character budget (`.claude/scripts/framework/rule-budgets.json`) holds that: a rule that grows past its budget fails the test suite unless a recorded justification covers it, and a rule that is trimmed lowers its own budget.
 
 **The open question** is whether execution rules belong in the always-loaded tier at all, or whether a fourth tier — loaded once per command family rather than once per session — would recover most of the budget without giving back compaction survival. That question is unresolved.
 

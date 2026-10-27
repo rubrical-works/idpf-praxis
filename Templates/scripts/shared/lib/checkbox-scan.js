@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * Fence-aware checkbox and section scanning for issue bodies (#2600).
  *

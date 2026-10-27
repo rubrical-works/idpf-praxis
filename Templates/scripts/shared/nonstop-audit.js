@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Post-nonstop audit for /work epic/branch processing. Performs four audits:
  *   (1) Commit density — warning if commit count < (AC count / 3) across sub-issues
  *   (2) AC checkbox — blocking if any sub-issue has unchecked - [ ] boxes in its body
@@ -33,7 +33,7 @@
 const { execSync } = require('child_process');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 const { scanCheckboxes } = require('./lib/checkbox-scan.js');
-const { readLedger, reconcile: reconcileLedger } = require('./lib/announce-ledger.js');
+const { readLedger, reconcile: reconcileLedger, invocationWindow, normalizeSessionPid } = require('./lib/announce-ledger.js');
 
 function parseArgs(argv) {
   const out = { issue: null };
@@ -206,10 +206,16 @@ function auditCommitDensityPerSubIssue(details, countFn) {
  * Step 5 overwrites status, so without the record a skipped gate left no
  * trace. Names each processed sub-issue with no recorded decision. WARNING
  * only, like (1), (4) and (5).
+ *
+ * Only this run's decisions count (#3294 F7): the ledger is never cleared, so
+ * a decision from an earlier — say, halted — run would otherwise pass a
+ * sub-issue whose gate did not fire this time. The window is the one
+ * `findGateDecision` reads: after the latest `work-invocation` for `root`,
+ * narrowed to this session when its pid is known.
  */
-function auditGateDecisions(subIssueNumbers, entries) {
+function auditGateDecisions(subIssueNumbers, entries, { root, sessionPid = null } = {}) {
   const decided = new Set();
-  for (const e of entries || []) {
+  for (const e of invocationWindow({ entries, root, sessionPid })) {
     if (e && e.event === 'gate-decision' && e.gate === 'review-state' && Array.isArray(e.issues)) {
       for (const n of e.issues) decided.add(n);
     }
@@ -304,7 +310,7 @@ function auditDocJudgment(details) {
   };
 }
 
-function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn, processed, workEnabled = false }) {
+function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn, processed, workEnabled = false, sessionPid = null }) {
   // #3271: audit what this run processed. Every child included closed ones and
   // skipped qa-required members the run never touched, so audits (2) and (5)
   // flagged work nobody was asked to do. Omitted → every child, as before.
@@ -356,9 +362,16 @@ function audit({ issueNumber, listFn, fetchFn, countFn, ledgerFn, reconcileFn, p
   const docJudgment = auditDocJudgment(details);
   // Only a caller that names its processed set records gate decisions (#3271);
   // an older caller's ledger holds none, so (6) is skipped rather than warning on all.
-  const gateDecisions = scope && ledgerRead && ledgerRead.exists !== false
-    ? auditGateDecisions(details.map((d) => d.number), ledgerRead.entries)
-    : { status: 'skip', missing: [], message: 'Gate decisions not audited — no ledger in this working directory.' };
+  // Two skip causes, two messages (#3294 F27): a caller that passed no
+  // --processed is not a working directory with no ledger.
+  let gateDecisions;
+  if (!scope) {
+    gateDecisions = { status: 'skip', missing: [], message: 'Gate decisions not audited — --processed was not passed, so the gate decisions of this run cannot be told from earlier ones.' };
+  } else if (!ledgerRead || ledgerRead.exists === false) {
+    gateDecisions = { status: 'skip', missing: [], message: 'Gate decisions not audited — no ledger in this working directory.' };
+  } else {
+    gateDecisions = auditGateDecisions(details.map((d) => d.number), ledgerRead.entries, { root: issueNumber, sessionPid });
+  }
 
   const warnings = [];
   const blocks = [];
@@ -406,7 +419,8 @@ function main() {
       countFn: (n) => countCommitsForIssue(n),
       ledgerFn: () => readLedger({ cwd: process.cwd(), includeRecordOnly: true }),
       processed: args.processed,
-      workEnabled
+      workEnabled,
+      sessionPid: normalizeSessionPid(process.env.CLAUDE_PID)
     });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);

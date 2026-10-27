@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * `/overwatch` per-project configuration (#2957): the resolver for
  * `.claude/.overwatch/config.json`, and the mechanics of `/overwatch --on`,
@@ -37,6 +37,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { atomicWriteSync } = require('./lib/shell-safe.js');
 
 const { readPresence, MARKER_DIR, MARKER_PATH } = require('./lib/overwatch-presence.js');
 
@@ -210,7 +211,7 @@ function applyToggles(cwd, { on, off }) {
   const v = validate(next);
   if (!v.ok) return { ok: false, errors: v.errors, config: null };
   fs.mkdirSync(path.dirname(configFile(cwd)), { recursive: true });
-  fs.writeFileSync(configFile(cwd), JSON.stringify(next, null, 2) + '\n');
+  atomicWriteSync(configFile(cwd), JSON.stringify(next, null, 2) + '\n'); // #3063
   return { ok: true, errors: [], config: next };
 }
 

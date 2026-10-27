@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Detect missing, partial, or stale node_modules at session startup, and probe whether each runner the project's testing.suites[] names is on PATH (#3012). Stats node_modules/<name>/package.json for each declared package and compares package-lock.json mtime against node_modules/.package-lock.json; the runner probe goes through lib/runner-probe.js (where / command -v) and never spawns the runner. Read-only and advisory — performs no installation and spawns no npm subprocess.
  * @checksum sha256:placeholder
  *
@@ -134,6 +134,56 @@ function missingRunners(projectDir, probe) {
   }
 }
 
+/**
+ * Supply-chain presence for a JS/TS project (#3313).
+ *
+ * The npm controls (`min-release-age`, `ignore-scripts`) and Dependabot
+ * cooldowns reach a project only through one-time offers — /charter's `.npmrc`
+ * offer and /ci's `dependabot` feature — so a project chartered before they
+ * shipped is never asked, and nothing later names the gap. This reports
+ * PRESENCE ONLY: an existing file suppresses its row whatever it contains, so
+ * there is no content judgment and no template comparison. Read-only — it
+ * stats two paths and writes nothing.
+ *
+ * JS/TS detection is /charter's own trigger for the offer: `package.json` on
+ * disk, or a `testing.suites[]` entry for either language. Suites declare no
+ * language field, so an entry counts when a `match` glob ends in a JS/TS
+ * extension or its id carries a js/ts/javascript/typescript token
+ * (`js-jest`, `none-typescript-unit`).
+ *
+ * Opt-out follows the tmpCleanup precedent (#2771): absent means enabled, and
+ * only the literal `false` under `supplyChainRows.<row>` suppresses that row.
+ *
+ * @returns {{stack: 'package.json'|'testing.suites'|null, npmrcMissing: boolean, dependabotMissing: boolean}}
+ */
+const JS_TS_GLOB = /\.[cm]?[jt]sx?$/i;
+const JS_TS_ID_TOKENS = new Set(['js', 'ts', 'javascript', 'typescript']);
+
+function isJsTsSuite(suite) {
+  if (!suite || typeof suite !== 'object') return false;
+  if (Array.isArray(suite.match) && suite.match.some((g) => typeof g === 'string' && JS_TS_GLOB.test(g))) return true;
+  return typeof suite.id === 'string' && suite.id.toLowerCase().split(/[-_]/).some((t) => JS_TS_ID_TOKENS.has(t));
+}
+
+function checkSupplyChain(projectDir, config) {
+  const none = { stack: null, npmrcMissing: false, dependabotMissing: false };
+  let stack = null;
+  if (fs.existsSync(path.join(projectDir, 'package.json'))) stack = 'package.json';
+  else if (Array.isArray(config?.testing?.suites) && config.testing.suites.some(isJsTsSuite)) stack = 'testing.suites';
+  if (!stack) return none;
+
+  const rows = config && typeof config.supplyChainRows === 'object' ? config.supplyChainRows : {};
+  const enabled = (key) => !(rows && rows[key] === false);
+  // GitHub reads either extension for the Dependabot config.
+  const hasDependabot = ['dependabot.yml', 'dependabot.yaml']
+    .some((f) => fs.existsSync(path.join(projectDir, '.github', f)));
+  return {
+    stack,
+    npmrcMissing: enabled('npmrc') && !fs.existsSync(path.join(projectDir, '.npmrc')),
+    dependabotMissing: enabled('dependabot') && !hasDependabot,
+  };
+}
+
 // ─── Detection ───
 
 function checkDependencies(options = {}) {
@@ -147,7 +197,9 @@ function checkDependencies(options = {}) {
   const resolved = total - missing.length;
 
   const runnersMissing = missingRunners(projectDir, options.probe || probeSuites);
-  const base = { scope, root, total, resolved, missing, runnersMissing };
+  // Always the PROJECT root, never frameworkPath: the gap is in the user's tree.
+  const supplyChain = checkSupplyChain(projectDir, readJson(path.join(projectDir, 'framework-config.json')));
+  const base = { scope, root, total, resolved, missing, runnersMissing, supplyChain };
 
   if (total === 0) return { ...base, state: 'healthy' };
 
@@ -190,4 +242,4 @@ if (require.main === module) {
   }) + '\n');
 }
 
-module.exports = { checkDependencies, MESSAGES, STALE_TOLERANCE_MS };
+module.exports = { checkDependencies, checkSupplyChain, MESSAGES, STALE_TOLERANCE_MS };

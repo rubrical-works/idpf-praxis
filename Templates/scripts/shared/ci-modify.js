@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Modify a workflow YAML file safely, preserving comments and structure. Supports adding top-level keys, inserting steps into jobs, and merging configuration blocks. Used by ci-add.js and ci-remove.js for non-destructive YAML edits.
  * @checksum sha256:placeholder
  *
@@ -30,9 +30,6 @@ function modifyWorkflow(filePath, operation) {
   // Read original content
   const original = fs.readFileSync(filePath, 'utf8');
 
-  // Create backup before modification
-  createBackup(filePath);
-
   // Parse with comment preservation
   const doc = yaml.parseDocument(original);
 
@@ -53,6 +50,10 @@ function modifyWorkflow(filePath, operation) {
 
   // Validate before writing
   validateYaml(output);
+
+  // Back up only once the edit is known to succeed (#3307): a refused merge
+  // leaves no trace on disk. The file still holds the original content here.
+  createBackup(filePath);
 
   // Write using fs (no heredocs — Windows safe)
   fs.writeFileSync(filePath, output);
@@ -88,7 +89,11 @@ function addTopLevelKey(doc, key, yamlContent) {
 
   const incoming = value ? value.toJSON() : yaml.parse(yamlContent);
   const existing = doc.get(key);
-  if (existing === undefined || !isPlainObject(incoming)) {
+  // Only `on:` has a scalar shorthand that means a mapping. Any other scalar —
+  // `concurrency: <group>` — is replaced; merging into it turned the string
+  // into a key GitHub rejects (#3370).
+  const scalarElsewhere = key !== 'on' && existing !== undefined && !yaml.isMap(existing);
+  if (existing === undefined || !isPlainObject(incoming) || scalarElsewhere) {
     doc.set(key, incoming);
     return;
   }
@@ -98,7 +103,69 @@ function addTopLevelKey(doc, key, yamlContent) {
   // A scalar or list `on:` is the event-name shorthand, so it becomes a mapping
   // of those events before the merge.
   const current = toMergeable(yaml.isNode(existing) ? existing.toJSON() : existing);
-  doc.set(key, deepMerge(current, key === 'on' ? keepBranchCoverage(current, incoming) : incoming));
+  if (key === 'on') assertNoExclusiveFilterPair(current, incoming);
+  const add = key === 'on' ? keepBranchCoverage(current, incoming) : incoming;
+  if (yaml.isMap(existing)) {
+    // Merge into the existing node (#3307): rebuilding it from toJSON() lost
+    // every comment and flow-style list the author wrote inside it.
+    mergeIntoNode(doc, existing, add);
+  } else {
+    doc.set(key, deepMerge(current, add));
+  }
+}
+
+/**
+ * Merge a plain object into a YAMLMap in place, keeping the comments and
+ * styles of every node the merge does not replace.
+ * @param {yaml.Document} doc - Owning document (creates the new nodes)
+ * @param {yaml.YAMLMap} node - Existing mapping node
+ * @param {object} add - Plain object to merge in
+ */
+function mergeIntoNode(doc, node, add) {
+  for (const [k, v] of Object.entries(add)) {
+    const child = node.get(k, true);
+    if (yaml.isMap(child) && isPlainObject(v)) {
+      mergeIntoNode(doc, child, v);
+    } else {
+      node.set(k, doc.createNode(v));
+    }
+  }
+}
+
+/** Filter pairs GitHub refuses to see together on one event. */
+const EXCLUSIVE_FILTER_PAIRS = [
+  ['paths', 'paths-ignore'],
+  ['branches', 'branches-ignore'],
+  ['tags', 'tags-ignore'],
+];
+
+/**
+ * Refuse a merge that would set both halves of an exclusive filter pair on
+ * one event (#3307). GitHub rejects such a workflow, and validateYaml only
+ * checks that the YAML parses, so the write would otherwise succeed.
+ *
+ * @param {object} current - Existing `on:` mapping (shorthand already expanded)
+ * @param {object} incoming - `on:` mapping being added
+ * @throws {Error} naming the event and the two filters
+ */
+function assertNoExclusiveFilterPair(current, incoming) {
+  for (const [event, value] of Object.entries(incoming)) {
+    const have = current[event];
+    if (!isPlainObject(have) || !isPlainObject(value)) continue;
+    for (const [a, b] of EXCLUSIVE_FILTER_PAIRS) {
+      const clash = (has(value, a) && has(have, b) && [b, a]) || (has(value, b) && has(have, a) && [a, b]);
+      if (clash) {
+        throw new Error(
+          `Cannot add "${clash[1]}" to the "${event}" trigger: it already declares "${clash[0]}", ` +
+          `and GitHub rejects an event that sets both ${a} and ${b}. No changes were written.`
+        );
+      }
+    }
+  }
+}
+
+function has(obj, k) {
+  return Object.prototype.hasOwnProperty.call(obj, k);
 }
 
 /** Ref filters that restrict an event to tags without saying anything about branches. */
@@ -233,8 +300,24 @@ function createBackup(filePath) {
 
   fs.mkdirSync(backupDir, { recursive: true });
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('Z', '').substring(0, 15);
-  const backupName = `${fileName}.${timestamp}.bak`;
+  // Full millisecond timestamp, plus a counter for a same-millisecond repeat
+  // (#3387): minute resolution let a second edit overwrite the .bak of the true
+  // original. `_` sorts after `.`, so `T…123.bak` < `T…123_01.bak` < `T…124.bak`,
+  // and an old minute-only name sorts before a new one from the same minute.
+  // The counter is one past the highest already used for this timestamp, never
+  // the first free slot: cleanupBackups deletes the oldest name first, and a
+  // reused slot sorts oldest, so the newest backup was deleted at once.
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('Z', '');
+  const prefix = `${fileName}.${timestamp}`;
+  let highest = -1;
+  for (const f of fs.readdirSync(backupDir)) {
+    if (f === `${prefix}.bak`) highest = Math.max(highest, 0);
+    const m = f.startsWith(`${prefix}_`) && /_(\d+)\.bak$/.exec(f);
+    if (m) highest = Math.max(highest, Number(m[1]));
+  }
+  const backupName = highest < 0
+    ? `${prefix}.bak`
+    : `${prefix}_${String(highest + 1).padStart(2, '0')}.bak`;
 
   fs.copyFileSync(filePath, path.join(backupDir, backupName));
 

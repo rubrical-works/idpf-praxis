@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * idpf-measure.js
  *
  * CLI for `/idpf-measure` (#2794). Binds the three helpers together:
@@ -104,6 +104,26 @@ function run(argv, opts) {
   if (mode === 'start') {
     const spawnMs = typeof o.spawnMs === 'number' ? o.spawnMs : marker.calibrateSpawnMs();
 
+    // Refuse before resetting (#3295): a refused --start must leave the
+    // previous run's retained log, which a post-hoc --report still reads.
+    if (!wiring.settingsParseable(root)) {
+      return fail('SETTINGS_UNPARSEABLE', wiring.UNPARSEABLE_MESSAGE);
+    }
+
+    // Refuse on a live foreign marker before the unlink (#3393), matching the
+    // --reset and --stop guards: the log is shared, so resetting it and
+    // overwriting the marker would discard another session's collection.
+    const existing = marker.readMarker(root);
+    const sessionPid = Number(env.CLAUDE_PID) || null;
+    if (existing.active && existing.pid !== sessionPid) {
+      return fail(
+        'FOREIGN_MARKER',
+        `A live collection marker in this working directory belongs to pid ${existing.pid}. `
+        + 'The event log is shared, so arming here would discard that session\'s '
+        + 'collected events. Nothing was changed.'
+      );
+    }
+
     // Reset first. The log is transient by decision: a run must not inherit the
     // previous one's events, which would corrupt every figure in the report.
     try {
@@ -112,7 +132,6 @@ function run(argv, opts) {
       // Nothing to reset.
     }
 
-    const existing = marker.readMarker(root);
     if (existing.reason === 'stale-pid' || existing.reason === 'stale-boot') {
       warnings.push(
         `A stale marker from pid ${existing.pid} was replaced (${existing.reason}). `
@@ -124,8 +143,9 @@ function run(argv, opts) {
     try {
       w = wiring.wire(root);
     } catch (e) {
-      // An unparseable settings.local.json is refused, not overwritten (#3059).
-      return fail('SETTINGS_UNPARSEABLE', e.message);
+      // An unparseable settings.local.json is refused, not overwritten (#3059);
+      // anything else (an I/O error) is not a parse problem and says so (#3295).
+      return fail(e.code === 'SETTINGS_UNPARSEABLE' ? 'SETTINGS_UNPARSEABLE' : 'SETTINGS_WRITE_FAILED', e.message);
     }
     const m = marker.writeMarker(root, { spawnMs, env });
 
@@ -234,6 +254,21 @@ function run(argv, opts) {
 
   // --stop
   const m = marker.readMarker(root);
+
+  // Refuse on a live foreign marker before anything is unwired (#3378) — the
+  // --reset guard above, for the same reason. Unwiring first removed the other
+  // session's tap and stopped its collection, while the removeMarker warning
+  // below said its marker had been left in place.
+  const stopperPid = Number(env.CLAUDE_PID) || null;
+  if (m.active && m.pid !== stopperPid) {
+    return fail(
+      'FOREIGN_MARKER',
+      `A live collection marker in this working directory belongs to pid ${m.pid}. `
+      + 'Disarming would remove that session\'s measurement tap and stop its collection. '
+      + 'Nothing was changed.'
+    );
+  }
+
   if (m.reason === 'no-marker') {
     warnings.push('Collection was not armed — no marker found. Nothing to disarm.');
   } else if (m.reason === 'identity-unavailable') {
@@ -272,19 +307,39 @@ function run(argv, opts) {
     );
   }
 
-  // The disarm must not read as a clean restore when it was not one (#2807).
-  // `surgical` means no pre-tap baseline was held — this `--start` found the tap
-  // already wired, or an earlier `--stop` crashed before recording one — so the
-  // file was rewritten without the tap rather than written back from a backup.
-  // Saying nothing here is how the old defect stayed invisible: it reported
-  // `restored: "verbatim"` against a baseline that already contained the tap,
-  // which was true and told the reader the opposite of what happened.
-  if (restored.restored === 'surgical') {
+  // A failed write was silent (#3378): the envelope said `failed` and the run
+  // read as a clean disarm, with the tap possibly still in the file.
+  if (restored.restored === 'failed') {
     warnings.push(
-      'The tap was removed surgically, not restored from a backup: this --start found it ' +
-      'already wired and held no pre-tap baseline. Entries belonging to the tap were removed ' +
-      'and co-tenant hooks left in place, so the result is correct but is not a byte-for-byte ' +
-      'restore — unrelated formatting in the settings file may be normalized.'
+      `${wiring.SETTINGS_RELPATH} could not be written, so the measurement tap could not be removed. `
+      + 'Check the file\'s permissions, then remove the tap entry by hand or re-run --stop.'
+    );
+  }
+
+  if (restored.restored === 'refused-unparseable') {
+    warnings.push(
+      `${wiring.SETTINGS_RELPATH} is not a valid JSON object, so --stop left it as it was rather than `
+      + 'overwrite it (#3295). If the measurement tap is still in it, remove that entry by hand '
+      + 'once the file is fixed.'
+    );
+  }
+
+  // The disarm must not read as a clean restore when it was not one (#2807).
+  // `surgical` means the file was rewritten without the tap rather than written
+  // back from a backup. Saying nothing here is how the old defect stayed
+  // invisible: it reported `restored: "verbatim"` against a baseline that
+  // already contained the tap. The cause is unwire's own `reason` (#3295) —
+  // since #3059 a file changed during the window goes surgical too, and the
+  // already-wired wording was false for it.
+  if (restored.restored === 'surgical') {
+    const why = restored.reason === 'changed-during-window'
+      ? `${wiring.SETTINGS_RELPATH} changed during the measurement window (something was saved into it), `
+        + 'so restoring the --start snapshot would have discarded that change.'
+      : 'this --start found it already wired and held no pre-tap baseline.';
+    warnings.push(
+      `The tap was removed surgically, not restored from a backup: ${why} Entries belonging to the tap were removed `
+      + 'and co-tenant hooks left in place, so the result is correct but is not a byte-for-byte '
+      + 'restore — unrelated formatting in the settings file may be normalized.'
     );
   }
 
@@ -292,7 +347,7 @@ function run(argv, opts) {
   // post-hoc --report still works, until the next --start resets it.
   return envelope('stop', {
     marker: m,
-    wiring: { restored: restored.restored },
+    wiring: { restored: restored.restored, ...(restored.reason ? { reason: restored.reason } : {}) },
     analysis,
     report: formatReport(analysis),
     warnings,

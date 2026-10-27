@@ -21,6 +21,15 @@
         "flag": "--update",
         "attach": "rest-of-line"
       }
+    ],
+    "/work": [
+      { "flag": "--assign", "attach": "none" },
+      { "flag": "--nonstop", "attach": "none" },
+      { "flag": "--wait", "attach": "none" },
+      { "flag": "--reopen", "attach": "none" },
+      { "flag": "--concurrent", "attach": "none" },
+      "--agents",
+      { "flag": "--no-review", "attach": "none" }
     ]
   }
 }

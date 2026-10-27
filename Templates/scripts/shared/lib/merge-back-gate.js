@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -39,19 +39,17 @@ const scopeDrift = require('../scope-drift-check.js');
 const logChangedFiles = require('../log-changed-files.js');
 const { extractAcceptanceCriteria } = require('./checkbox-scan.js');
 const { scopedInvocations } = require('./test-runner.js');
+// A path as git wrote it, unquoted (#3377); shared since #3382.
+const { unquoteGitPath } = require('./git-path.js');
 
 const refPattern = (issue) => new RegExp(`\\bRefs #${issue}(?!\\d)`);
 
-/** Paths named by `git status --porcelain` (rename → new path). */
+/** Paths named by `git status --porcelain` (rename → new path), unquoted (#3377). */
 function parsePorcelain(raw) {
   return String(raw || '')
     .split('\n')
     .filter((line) => line.trim() !== '')
-    .map((line) => {
-      const p = line.slice(3);
-      const arrow = p.indexOf(' -> ');
-      return arrow === -1 ? p : p.slice(arrow + 4);
-    });
+    .map(porcelainPath);
 }
 
 /** Commits in the range as `{sha, message}`, from a `%H%x1f%B%x1e` log. */
@@ -299,8 +297,7 @@ function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, 
 function porcelainPath(line) {
   const rest = line.slice(3);
   const arrow = rest.indexOf(' -> ');
-  const p = arrow === -1 ? rest : rest.slice(arrow + 4);
-  return p.replace(/^"(.*)"$/, '$1');
+  return unquoteGitPath(arrow === -1 ? rest : rest.slice(arrow + 4));
 }
 
 /**
@@ -313,8 +310,57 @@ function porcelainPath(line) {
 const HOST_WRITTEN_PATHS = Object.freeze(['.claude/settings.local.json']);
 const isHostWritten = (p) => HOST_WRITTEN_PATHS.includes(String(p).replace(/\\/g, '/'));
 
+/**
+ * The uncommitted tracker paths a concurrent run would inherit (#3277): every
+ * `git status --porcelain` path but the host-written ones. The preamble
+ * reports them as TRACKER_TREE_DIRTY before any worktree is spawned.
+ */
+function dirtyTrackerPaths(raw) {
+  return parsePorcelain(raw).filter((p) => !isHostWritten(p));
+}
+
 /** A top-level `.tmp-gate-*` entry — the gate's own files, any member's. */
 const GATE_FILE = /^\.tmp-gate-[^/]+$/;
+
+/**
+ * A concurrent run's scratch files (#3360): the gate documents, member
+ * briefs, the rolling state and the run ledger. `clearScratch` removes only
+ * these, as `--clear` removes only GATE_FILE entries.
+ */
+const SCRATCH_FILE = /^\.tmp-(?:gate|brief|rolling|concurrent)-[^/\\]+$/;
+
+/** A member's four scratch files (#3360): its three gate files, then its brief. */
+const memberScratch = (n) => [`.tmp-gate-${n}-tier1.json`, `.tmp-gate-${n}-tier3.json`, `.tmp-gate-${n}-tree-before.txt`, `.tmp-brief-${n}.md`];
+
+/**
+ * Remove a run's scratch files (#3360) — the one remover, so no step names a
+ * shell `rm` on a variable path. Every path must resolve to a file directly in
+ * `root` whose name is a SCRATCH_FILE; one that does not refuses the whole
+ * call, and nothing is removed. A path already gone is reported absent.
+ *
+ * @param {{root: string, files: string[], fs?: object}} input
+ * @returns {{ok: boolean, removed: string[], absent: string[], refused: string[]}}
+ *   removed/absent name each file relative to `root`; refused, as given.
+ */
+function clearScratch({ root, files = [], fs = require('fs') } = {}) {
+  const base = path.resolve(root);
+  const resolved = files.map((f) => ({ given: f, abs: path.resolve(base, f) }));
+  const refused = resolved.filter(({ abs }) => {
+    const rel = path.relative(base, abs);
+    if (rel !== path.basename(abs) || !SCRATCH_FILE.test(rel)) return true;
+    return fs.existsSync(abs) && !fs.statSync(abs).isFile();
+  }).map((r) => r.given);
+  if (refused.length) return { ok: false, removed: [], absent: [], refused };
+  const removed = [];
+  const absent = [];
+  for (const { abs } of resolved) {
+    const name = path.basename(abs);
+    if (!fs.existsSync(abs)) { absent.push(name); continue; }
+    fs.unlinkSync(abs);
+    removed.push(name);
+  }
+  return { ok: true, removed, absent, refused: [] };
+}
 
 /**
  * The tree-snapshot status call, shared by `tree-snapshot` and `outcome`. The
@@ -352,6 +398,22 @@ const sha256 = (text) => require('crypto').createHash('sha256').update(String(te
  *   (HOST_WRITTEN_PATHS) are listed as `hostWritten` either way.
  * @returns {{ok: boolean, outsideContract: string[], hostWritten?: string[], external?: string[]}}
  */
+/**
+ * Could run path `runPath` name a file inside the directory `dir` (`a/b/`)?
+ * A literal path under it does; so does a glob that matches a file there, or
+ * one whose literal prefix (up to the first wildcard) lies under or above it —
+ * `src/**` and `src/*\/x.js` both reach into a new `src/new/` (#3293). Over-
+ * inclusive on purpose: a missed directory lets a stray write pass Tier 3.
+ */
+function dirMayHoldRunPath(dir, runPath) {
+  if (runPath.startsWith(dir)) return true;
+  const wild = runPath.search(/[*?[{]/);
+  if (wild === -1) return false;
+  if (scopeDrift.matchesAny(`${dir}x`, [runPath])) return true;
+  const prefix = runPath.slice(0, runPath.lastIndexOf('/', wild) + 1);
+  return dir.startsWith(prefix);
+}
+
 function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-gate-${issue}-tier3.json`, siblings = [], runPaths } = {}) {
   const lines = (s) => String(s).split(/\r?\n/).filter((l) => l.trim() !== '');
   const prior = new Set(lines(before));
@@ -366,8 +428,8 @@ function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-
   const rest = changed.filter((p) => !isHostWritten(p));
   const scoped = Array.isArray(runPaths);
   // A new untracked or ignored directory is listed as `dir/`; it is inside
-  // the run when any run path lies under it.
-  const inRun = (p) => (p.endsWith('/') ? runPaths.some((r) => String(r).startsWith(p)) : scopeDrift.matchesAny(p, runPaths));
+  // the run when any run path could name a file in it (#3293).
+  const inRun = (p) => (p.endsWith('/') ? runPaths.some((r) => dirMayHoldRunPath(p, String(r))) : scopeDrift.matchesAny(p, runPaths));
   const outsideContract = scoped ? rest.filter(inRun) : rest;
   const external = scoped ? rest.filter((p) => !inRun(p)) : [];
   return { ok: outsideContract.length === 0, outsideContract, ...(hostWritten.length ? { hostWritten } : {}), ...(external.length ? { external } : {}) };
@@ -575,15 +637,19 @@ function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries
 /**
  * Resume after compaction mid fix cycle (#3141, Corner Case 5): the parent
  * re-reads the worktree branch and re-runs every tier once; that run is the
- * single fix cycle, whatever was or was not sent before the loss.
+ * single fix cycle, whatever was or was not sent before the loss. Given
+ * `git`, the range starts at memberBase() (#3293), as Tier 1's does since
+ * #3263; without it, at the recorded tip.
  */
-function resumeFixCycle({ member = {}, trackerTip = '<tracker-tip>' } = {}) {
+function resumeFixCycle({ member = {}, trackerTip = '<tracker-tip>', git } = {}) {
+  const base = git ? memberBase({ git, trackerTip, branch: member.branch }) : trackerTip;
+  const range = `${base}..${member.branch}`;
   return {
     fixCycles: 1,
     resumedFromCompaction: true,
     rerunAllTiers: true,
-    range: `${trackerTip}..${member.branch}`,
-    instruction: `Re-read the worktree branch ${member.branch} at ${member.worktreePath} and re-run Tiers 1–3 once over ${trackerTip}..${member.branch}; trust no verdict from before compaction. This re-run counts as the one fix cycle: a pass merges, a fail halts.`,
+    range,
+    instruction: `Re-read the worktree branch ${member.branch} at ${member.worktreePath} and re-run Tiers 1–3 once over ${range}; trust no verdict from before compaction. This re-run counts as the one fix cycle: a pass merges, a fail halts.`,
   };
 }
 
@@ -660,7 +726,10 @@ function overlapMessage(overlaps) {
  * @param {{base: string, head?: string, members: Array<{issue: number, body: string}>,
  *   epic?: number, regenerated?: string[], cwd: string, git: Function,
  *   suites?: object[], runSuite?: Function, protectedPaths?: object[], registrarExemption?: object,
- *   prior?: number[]}} input
+ *   prior?: number[], own?: string[], recorded?: Array<{sha: string, paths?: string[]}>}} input
+ *   `recorded` (#3286): the regenerated commits the run state holds. Each
+ *   one on this range's first-parent line counts as `own`, and its paths join
+ *   `regenerated`, so the regenerated-paths check runs without a typed --own.
  *   `prior` (#3274): run members merged in an EARLIER rolling batch. A batch's
  *   range starts at its members' earliest worktree tip, which can predate an
  *   earlier batch's merge; those members' commits are listed in
@@ -668,8 +737,8 @@ function overlapMessage(overlaps) {
  *   pass already covered them.
  */
 function runGroupTier1({
-  base, head = 'HEAD', members = [], epic, regenerated = [], cwd, git,
-  suites = [], runSuite, protectedPaths, registrarExemption, prior = [], own = [],
+  base, head = 'HEAD', members = [], epic, regenerated: givenRegenerated = [], cwd, git,
+  suites = [], runSuite, protectedPaths, registrarExemption, prior = [], own: givenOwn = [], recorded = [],
 }) {
   const range = `${base}..${head}`;
   const failures = [];
@@ -688,15 +757,39 @@ function runGroupTier1({
   const LOG = '--format=%H%x1f%P%x1f%B%x1e';
   const line = parseCommitsWithParents(git(['log', '--first-parent', LOG, range]));
   const mergeBacks = line.filter((c) => c.parents.length > 1);
+  // #3286: the regenerated-commit step records its sha (and the paths it
+  // committed) in the run state, so the commit is the parent's own whether or
+  // not --own names it. Matched by sha against this range's first-parent line —
+  // a recorded sha outside the range adds nothing — and never by message.
+  const lineShas = new Set(line.filter((c) => c.parents.length <= 1).map((c) => c.sha));
+  const recordedHere = (recorded || []).filter((r) => r && lineShas.has(r.sha));
+  const own = [...givenOwn, ...recordedHere.map((r) => r.sha)];
+  const regenerated = [...new Set([...givenRegenerated, ...recordedHere.flatMap((r) => r.paths || [])])];
   // #3284: an --own entry is `<sha>` (the parent's root-issue commit, e.g. the
   // regenerated-output commit) or `<sha>=<member>` (a commit Steps 4d/4e made
   // on the tracker FOR that member after its merge-back). The second is
   // credited to the member, so its scope-drift — the registrar exemption
   // included — reads it; credited to the root it was checked against the
   // regenerated paths only, and as a bare unnamed sha it was external.
+  // #3293: each sha is resolved to its full form first — matched by string, an
+  // abbreviated one never equaled a line sha and its commit read as external.
+  // An entry that resolves to no commit on this range's first-parent line is
+  // reported in `ownUnmatched`, never dropped silently.
+  const resolveSha = (sha) => {
+    try {
+      const out = git(['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]);
+      const full = String(out && out.stdout !== undefined ? out.stdout : out || '').trim();
+      return /^[0-9a-f]{40}$/.test(full) ? full : sha;
+    } catch (_e) {
+      return sha;
+    }
+  };
   const ownMember = new Map();
+  const ownUnmatched = [];
   const ownShas = own.map((entry) => {
-    const [sha, member] = String(entry).split('=');
+    const [given, member] = String(entry).split('=');
+    const sha = lineShas.has(given) ? given : resolveSha(given);
+    if (!lineShas.has(sha)) ownUnmatched.push(String(entry));
     if (member !== undefined && /^\d+$/.test(member)) ownMember.set(sha, Number(member));
     return sha;
   });
@@ -727,12 +820,11 @@ function runGroupTier1({
 
   const dirty = parsePorcelain(git(['status', '--porcelain'], { cwd }));
   const hostWritten = dirty.filter(isHostWritten);
-  const uncommitted = dirty.filter((p) => !isHostWritten(p));
-  if (uncommitted.length > 0) {
-    failures.push({ check: 'uncommitted', message: `Uncommitted work on the tracker: ${uncommitted.join(', ')}.` });
-  }
+  const dirtyPaths = dirty.filter((p) => !isHostWritten(p));
 
-  const nameStatusOf = (shas) => shas.map((sha) => git(['show', '--name-status', '--pretty=format:', sha])).join('\n');
+  // core.quotePath=false (#3377): a non-ASCII name arrives as itself, not as a
+  // C-quoted octal string scope-drift would compare against the declaration.
+  const nameStatusOf = (shas) => shas.map((sha) => git(['-c', 'core.quotePath=false', 'show', '--name-status', '--pretty=format:', sha])).join('\n');
   const touched = new Set();
   const perMember = {};
   for (const m of members) {
@@ -767,6 +859,18 @@ function runGroupTier1({
     }
   }
 
+  // #3277: only an uncommitted path the group touched — members' diffs ∪
+  // regenerated — fails; any other (a pre-existing bump, a peer's edit) is
+  // named as advisory. A new untracked directory is listed as `dir/`, not its
+  // files, so it is inside the set when a touched path lies under it (#3263).
+  const groupSet = [...new Set([...touched, ...regenerated])];
+  const inGroup = (p) => (p.endsWith('/') ? groupSet.some((t) => String(t).startsWith(p)) : groupSet.includes(p));
+  const uncommitted = dirtyPaths.filter(inGroup);
+  const uncommittedAdvisory = dirtyPaths.filter((p) => !inGroup(p));
+  if (uncommitted.length > 0) {
+    failures.push({ check: 'uncommitted', message: `Uncommitted work on the tracker in paths the group touched: ${uncommitted.join(', ')}.` });
+  }
+
   const suiteRuns = [];
   const scoped = scopedInvocations({ suites, changedFiles: [...touched], inWorktree: true });
   for (const run of scoped.runs) {
@@ -793,8 +897,10 @@ function runGroupTier1({
     mergesSkipped,
     priorSkipped,
     external,
+    ...(ownUnmatched.length ? { ownUnmatched } : {}),
     hostWritten,
     uncommitted,
+    uncommittedAdvisory,
     perMember,
     touched: [...touched],
     suiteRuns,
@@ -887,7 +993,10 @@ function parseNameStatus(raw) {
     .map((l) => l.trim())
     .filter(Boolean)
     .map((line) => {
-      const [code, a, b] = line.split('\t');
+      const [code, rawA, rawB] = line.split('\t');
+      // Still C-quoted for a quote, backslash or control byte (#3377).
+      const a = rawA === undefined ? rawA : unquoteGitPath(rawA);
+      const b = rawB === undefined ? rawB : unquoteGitPath(rawB);
       const status = code[0];
       if ((status === 'R' || status === 'C') && b) return { status: 'R', path: b, oldPath: a };
       return { status, path: a, oldPath: null };
@@ -1030,15 +1139,17 @@ const USAGE = [
   '  tier1       --issue N --branch B --worktree P --tracker-tip SHA [--body-file F] [--out F]',
   '  tier3-plan  --issue N --tracker-tip SHA --branch B [--body-file F] [--no-review]',
   '  tree-snapshot --out F [--clear F ...]',
-  '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...]',
+  '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...] [--post-comment]',
   '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...] [--body-file N=F ...] — with two or more members, fails before merging when they share a path outside their declared scope',
-  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...]',
+  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...] [--state F: the run-state file; its recorded regenerated commits count as --own]',
   '  batch-range --member N ... --base-of N=SHA ... --head H',
+  '  clear-member --issue N [--ledger F] [--keep-tier1 | --tier1-only] — removes the member\'s gate files and brief; keeps all when the ledger\'s worktree for N still exists',
+  '  clear-run   --file F ... — removes the run\'s state and ledger; top-level .tmp-gate-/brief-/rolling-/concurrent- files only',
   '  Common: --root DIR (default: the current directory). Bodies not given by --body-file are read with gh pmu view N --body-stdout.',
 ].join('\n');
 
-const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own']);
-const BOOLEAN = new Set(['--no-review', '--resumed']);
+const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own', '--file']);
+const BOOLEAN = new Set(['--no-review', '--resumed', '--post-comment', '--keep-tier1', '--tier1-only']);
 
 /** `<subcommand> --flag value ...` → `{sub, opts}`; repeatable flags collect arrays. */
 function parseCliArgs(argv) {
@@ -1072,6 +1183,23 @@ function cliRunSuite({ command, cwd }) {
   const r = spawnSync(command, { cwd, shell: true, encoding: 'utf8', maxBuffer: 1e8, stdio: ['ignore', 'pipe', 'pipe'], timeout: CLI_SUITE_TIMEOUT_MS });
   process.stderr.write(`$ ${command}  (cwd ${cwd})\n${r.stdout || ''}${r.stderr || ''}`);
   return { exitCode: r.error ? (r.error.code === 'ENOENT' ? 127 : null) : r.status };
+}
+
+/**
+ * Post a merge decision's comment on the issue (#3276). The body goes to gh on
+ * stdin (`--body-file -`), never through a file: while any Tier 3 reviewer
+ * runs, a root write outside the gate files fails that review.
+ * @returns {{issue: number, id: number|null, url: string}}
+ */
+function postComment({ issue, body, root, ghExec }) {
+  const url = String(ghExec(['issue', 'comment', String(issue), '--body-file', '-'], { cwd: root, input: body })).trim();
+  const m = url.match(/#issuecomment-(\d+)/);
+  return { issue, id: m ? Number(m[1]) : null, url };
+}
+
+function cliGhExec(args, { cwd, input }) {
+  const { execFileSync } = require('child_process');
+  return execFileSync('gh', args, { cwd, input, encoding: 'utf8', timeout: CLI_GIT_TIMEOUT_MS, stdio: ['pipe', 'pipe', 'pipe'] });
 }
 
 function readBody(root, issue, bodyFiles = {}) {
@@ -1116,7 +1244,7 @@ function parseMemberSpec(spec) {
 
 /**
  * @param {string[]} argv
- * @param {{git?: Function, runSuite?: Function, readBody?: Function}} [seams]
+ * @param {{git?: Function, runSuite?: Function, readBody?: Function, ghExec?: Function}} [seams]
  * @returns {{code: number, envelope: object}}
  */
 function runCli(argv, seams = {}) {
@@ -1220,6 +1348,14 @@ function runCli(argv, seams = {}) {
       member: { issue, worktreePath: opts['--worktree'], branch: opts['--branch'] },
       tier1, tier3, fixCycles: num(opts['--fix-cycles']) || 0, reviewRetries: num(opts['--review-retries']) || 0, resumedFromCompaction: !!opts['--resumed'], epic: num(opts['--epic']), unswept: unsweptOf(opts),
     });
+    if (opts['--post-comment'] && decision.action === 'merge') {
+      try {
+        const posted = postComment({ issue, body: decision.comment.body, root, ghExec: seams.ghExec || cliGhExec });
+        return { code: 0, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted } };
+      } catch (e) {
+        return { code: 1, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted: null, postError: String(e.stderr || e.message).trim() } };
+      }
+    }
     return { code: 0, envelope: { ok: true, subcommand: sub, tier3, ...decision } };
   }
 
@@ -1280,9 +1416,19 @@ function runCli(argv, seams = {}) {
     const miss = requireOpts(opts, ['--base', '--member']);
     if (miss) return fail(miss);
     const files = bodyFileMap(opts['--body-file']);
+    // #3286: --state is the run-state file; its regeneratedCommits are --own.
+    let recorded = [];
+    if (opts['--state']) {
+      try {
+        recorded = readJsonFile(root, opts['--state']).regeneratedCommits || [];
+      } catch (e) {
+        return fail(`cannot read run state ${opts['--state']}: ${e.message}`, 1);
+      }
+    }
     const members = opts['--member'].map((n) => ({ issue: Number(n), body: bodyOf(Number(n), files) }));
     const { resolveSuites } = require('./test-runner.js');
     const tier1 = runGroupTier1({
+      recorded,
       base: opts['--base'], head: opts['--head'] || 'HEAD', members, epic: num(opts['--epic']),
       regenerated: opts['--regenerated'] || [], cwd: root, git, suites: resolveSuites(root).suites, runSuite,
       prior: (opts['--prior'] || []).map(Number).filter(Number.isInteger),
@@ -1306,6 +1452,43 @@ function runCli(argv, seams = {}) {
     return { code: range.ok ? 0 : 1, envelope: { subcommand: sub, ...range } };
   }
 
+  if (sub === 'clear-member') {
+    // #3360: a member merged and In review leaves no scratch file. Its tier1
+    // file outlives every outcome that names it as --sibling (--keep-tier1,
+    // then --tier1-only), and a worktree teardown kept keeps all four, so a
+    // resumed run still finds them.
+    const miss = requireOpts(opts, ['--issue']);
+    if (miss) return fail(miss);
+    const issue = num(opts['--issue']);
+    if (!Number.isInteger(issue)) return fail('--issue takes an issue number');
+    if (opts['--keep-tier1'] && opts['--tier1-only']) return fail('give --keep-tier1 or --tier1-only, not both');
+    const fs = require('fs');
+    if (opts['--ledger']) {
+      let entry;
+      try {
+        entry = (readJsonFile(root, opts['--ledger']).members || []).find((m) => m.issue === issue);
+      } catch (e) {
+        return { code: 1, envelope: { ok: false, subcommand: sub, issue, removed: [], error: `cannot read run ledger ${opts['--ledger']}: ${e.message} — every file kept` } };
+      }
+      if (entry && entry.worktreePath && fs.existsSync(path.resolve(root, entry.worktreePath))) {
+        return { code: 0, envelope: { ok: true, subcommand: sub, issue, kept: true, worktreePath: entry.worktreePath, removed: [], absent: [] } };
+      }
+    }
+    const all = memberScratch(issue);
+    const files = opts['--tier1-only'] ? all.slice(0, 1) : opts['--keep-tier1'] ? all.slice(1) : all;
+    const r = clearScratch({ root, files });
+    return { code: r.ok ? 0 : 2, envelope: { subcommand: sub, issue, kept: false, ...r } };
+  }
+
+  if (sub === 'clear-run') {
+    // #3360: the run's state and ledger, once no member is left unmerged.
+    const miss = requireOpts(opts, ['--file']);
+    if (miss) return fail(miss);
+    const r = clearScratch({ root, files: opts['--file'] });
+    if (!r.ok) return { code: 2, envelope: { subcommand: sub, ...r, error: `clear-run takes only top-level .tmp-gate-/brief-/rolling-/concurrent- files: ${r.refused.join(', ')}` } };
+    return { code: 0, envelope: { subcommand: sub, ...r } };
+  }
+
   return fail(`unknown subcommand: ${sub}`);
 }
 
@@ -1322,6 +1505,10 @@ if (require.main === module) {
 
 module.exports = {
   runCli,
+  SCRATCH_FILE,
+  clearScratch,
+  memberScratch,
+  postComment,
   undeclaredOverlap,
   parseCliArgs,
   parseMemberSpec,
@@ -1333,6 +1520,9 @@ module.exports = {
   parseReview,
   checkReviewerTree,
   HOST_WRITTEN_PATHS,
+  dirtyTrackerPaths,
+  parsePorcelain,
+  unquoteGitPath,
   evaluateTier3,
   diffReviewSkillPresent,
   mayMerge,

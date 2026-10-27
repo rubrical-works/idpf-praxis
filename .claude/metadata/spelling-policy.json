@@ -353,7 +353,7 @@
     },
     {
       "pattern": "\"british\": \"[A-Za-z]+\"",
-      "reason": "The word a spell-carry replaced, recorded in minimize-targets.json spellCarry substitutions (#2984). A British spelling is the value's whole purpose: the verifier applies these in reverse to reconstruct the pre-carry file. Scoped to the JSON field, so ordinary prose in that file is still guarded."
+      "reason": "The word a spell-carry replaced, recorded in minimize-records.json spellCarry substitutions (#2984; moved there from minimize-targets.json by #3326). A British spelling is the value's whole purpose: the verifier applies these in reverse to reconstruct the pre-carry file. Scoped to the JSON field, so ordinary prose in that file is still guarded."
     }
   ],
   "excludePaths": [
@@ -368,6 +368,10 @@
     {
       "glob": "tests/fixtures/issue-bodies/**",
       "reason": "Captured GitHub issue bodies; issue text on GitHub is out of scope for #2978, and a fixture must match what it captured."
+    },
+    {
+      "glob": "tests/fixtures/concurrency-plan/**",
+      "reason": "Captured GitHub issue bodies replayed through buildPlan (#3287); same reason as tests/fixtures/issue-bodies/** — a fixture must match what it captured."
     },
     {
       "glob": "tests/reference/american-spelling.test.js",

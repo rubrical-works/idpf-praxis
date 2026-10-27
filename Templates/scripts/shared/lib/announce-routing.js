@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Targeted announcement routing (#2915). Given the recipient split from peer-announce.js resolveRecipients(), the resolved broadcast lever and an overwatch presence reading, decides whether an announcement goes to every addressable peer or to the live /overwatch alone. Every path short of a confirmed, uniquely addressable monitor falls back to broadcast and names why. Pure: no I/O, no throwing path.
  * @checksum sha256:placeholder
  *

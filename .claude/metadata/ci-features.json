@@ -56,6 +56,20 @@
       "yaml": "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true"
     }
   },
+  "push-pr-dedup": {
+    "id": "push-pr-dedup",
+    "name": "Push/PR Run Dedup",
+    "description": "Run CI once per head when a workflow triggers on both push and pull_request: the pull_request run cancels the push run of the same commit",
+    "tier": "v1",
+    "category": "efficiency",
+    "languages": ["*"],
+    "detectionPatterns": {
+      "yaml": ["pull_request\\.head\\.sha"]
+    },
+    "template": {
+      "yaml": "concurrency:\n  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
+    }
+  },
   "dependency-caching": {
     "id": "dependency-caching",
     "name": "Dependency Caching",

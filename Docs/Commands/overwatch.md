@@ -70,7 +70,7 @@ Sending a message to another session tells you the send succeeded, not that anyo
 
 ## One Monitor Per Directory
 
-Only one `/overwatch` runs in a working directory at a time. Starting a second one is refused, and the refusal names the running monitor's pid and start time.
+Only one `/overwatch` runs in a working directory at a time. Starting a second one is refused, and the refusal names the running monitor's pid and start time. Two monitors started at the same moment cannot both win: the marker is created exclusively, so one start claims it and the other is refused, naming the winner's pid. A start is also refused, even with no marker present, when the session cannot establish its own process identity, since a marker it wrote would not be recognized as its own.
 
 While a monitor is live it writes `.claude/.overwatch/.overwatch.json`. Monitors started by an older version write `.overwatch.json` at the project root instead, and for one release that location is still read. Every session in that directory — the monitor included — reads it and narrates inbound peer announcements quietly, the one-line acknowledgment only, for as long as the monitor runs. That is the point: one session does the analysis instead of all of them. The file is gitignored and per-machine; nothing is sent to any peer, because writing a file is not an announcement.
 

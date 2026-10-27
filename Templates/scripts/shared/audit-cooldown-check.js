@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * Cooldown-aware npm audit gate (#2537; deployed to user projects by #3016).
  *
@@ -160,14 +160,38 @@ function compareVersions(a, b) {
  * version above it.
  *
  * @param {string|null} range
+ * @param {string|null} [installed] Installed version, when known.
+ * A `||` range (#3303) is a set of disjoint sub-ranges, and a project sits in
+ * one of them: its fix is the first version above *that* sub-range's bound, so
+ * with `installed` given the bound is the one of the sub-range containing it
+ * (#3389). Taking the highest bound instead offered a 1.x project the 2.x fix
+ * — possibly inside the cooldown, deferring the run while the 1.x fix was
+ * installable. Without `installed`, or when no sub-range contains it, the
+ * highest bound is returned (and an unbounded sub-range leaves none);
+ * `candidateFixes` does not rely on that, it takes one candidate per sub-range
+ * via `subRangeBounds` and lets `classifyAudit` defer only when all are blocked.
+ *
  * @returns {{version:string, inclusive:boolean}|null} null when undeterminable
  *   — `"*"` means every version is vulnerable, which is emphatically not the
  *   same as "cooldown-blocked".
  */
-function parseUpperBound(range) {
+function parseUpperBound(range, installed) {
   if (!range || typeof range !== 'string') return null;
   const r = range.trim();
   if (r === '*' || r === '') return null;
+
+  if (r.includes('||')) {
+    if (installed) {
+      const part = r.split('||').find((p) => subRangeContains(p, installed));
+      if (part) return parseUpperBound(part);
+    }
+    const bounds = subRangeBounds(r);
+    if (bounds.some((b) => b === null)) return null;
+    return bounds.reduce((top, b) => {
+      const c = compareVersions(b.version, top.version);
+      return c > 0 || (c === 0 && b.inclusive && !top.inclusive) ? b : top;
+    });
+  }
 
   const hyphen = r.match(/^\s*[\d.]+\S*\s+-\s+(\d[\w.-]*)\s*$/);
   if (hyphen) return { version: hyphen[1], inclusive: true };
@@ -179,6 +203,47 @@ function parseUpperBound(range) {
   if (lt) return { version: lt[1], inclusive: false };
 
   return null;
+}
+
+/**
+ * Upper bound of each `||` sub-range, in order; null for an unbounded one.
+ * A range without `||` is one sub-range (#3389).
+ *
+ * @param {string} range
+ * @returns {Array<{version:string, inclusive:boolean}|null>}
+ */
+function subRangeBounds(range) {
+  return String(range).split('||').map((part) => parseUpperBound(part));
+}
+
+/**
+ * Whether a single (no `||`) sub-range contains `version` (#3389). Reads the
+ * lower bound from a hyphen range, `>=` or `>`; no lower bound means none.
+ *
+ * @param {string} part
+ * @param {string} version
+ * @returns {boolean}
+ */
+function subRangeContains(part, version) {
+  const p = String(part).trim();
+  let low = null;
+  const hyphen = p.match(/^\s*(\d[\w.-]*)\s+-\s+\d/);
+  if (hyphen) low = { version: hyphen[1], inclusive: true };
+  else {
+    const gte = p.match(/>=\s*(\d[\w.-]*)/);
+    const gt = p.match(/>\s*(\d[\w.-]*)/);
+    if (gte) low = { version: gte[1], inclusive: true };
+    else if (gt) low = { version: gt[1], inclusive: false };
+  }
+  if (low) {
+    const c = compareVersions(version, low.version);
+    if (low.inclusive ? c < 0 : c <= 0) return false;
+  }
+  const high = parseUpperBound(p);
+  // No upper bound is open-ended only for a `>`/`>=` sub-range; otherwise unparseable.
+  if (!high) return low !== null;
+  const c = compareVersions(version, high.version);
+  return high.inclusive ? c <= 0 : c < 0;
 }
 
 /**
@@ -362,8 +427,14 @@ function candidateFixes(auditJson, root, { lookup = npmJson } = {}) {
       continue;
     }
 
-    const bound = parseUpperBound(v.range);
-    if (!bound) {
+    // #3389: a `||` range is bounded by the sub-range the project is on. With
+    // the installed version unknown, every sub-range's fix is a candidate, so
+    // the run defers only when all of them are inside the cooldown.
+    const installed = installedVersionOf(name, root);
+    const parts = typeof v.range === 'string' && v.range.includes('||') ? v.range.split('||') : null;
+    const home = parts && installed ? parts.find((p) => subRangeContains(p, installed)) : null;
+    const bounds = parts && !home ? subRangeBounds(v.range) : [parseUpperBound(home || v.range)];
+    if (bounds.some((b) => !b)) {
       unpaired.push({ name, reason: 'no-range-bound' });
       continue;
     }
@@ -373,18 +444,20 @@ function candidateFixes(auditJson, root, { lookup = npmJson } = {}) {
       continue;
     }
     const times = meta.time || {};
-    const to = pickCandidate(meta.versions, bound);
-    if (!to) {
+    const targets = [...new Set(bounds.map((b) => pickCandidate(meta.versions, b)).filter(Boolean))];
+    if (!targets.length) {
       unpaired.push({ name, reason: 'no-eligible-version' });
       continue;
     }
 
-    fixes.push({
-      name,
-      from: (v.nodes && v.nodes.length ? installedVersionOf(name, root) : null) || 'installed',
-      to,
-      publishedAt: times[to] || null
-    });
+    for (const to of targets) {
+      fixes.push({
+        name,
+        from: (v.nodes && v.nodes.length ? installed : null) || 'installed',
+        to,
+        publishedAt: times[to] || null
+      });
+    }
   }
   return { fixes, unpaired };
 }

@@ -351,6 +351,23 @@
       "description": "Whether the startup hook sweeps stale `.tmp-*` scratch files from the project root (#2771). ABSENT MEANS ENABLED, matching crossSessionMessaging's absence rule: a config only ever records what was turned OFF, so the sweep arrives switched on in every project already on disk without a config edit. Set `false` to skip it entirely — no directory is scanned, nothing is deleted, and NO ROW is emitted, because a disabled sweep is the user's own choice and restating it every startup is the noise the setting removes. THIS IS THE ONE STARTUP STEP THAT MUTATES THE TREE. Every other check is advisory, per 06-runtime-triggers.md's `offer, don't force`; the exception is deliberate and bounded by what the helper refuses to delete rather than by a prompt — direct children of the project root only, name-matched against .claude/metadata/tmp-cleanup-signals.json patterns, never a directory, never git-tracked, never younger than the configured age, and nothing at all when git cannot confirm tracked status. An offer at every session start for files nobody wants is exactly the noise a hook should remove, not add. Read through .claude/scripts/shared/lib/framework-config.js resolveTmpCleanup(); no consumer re-derives the absence rule inline. It lives at the TOP LEVEL rather than inside crossSessionMessaging because the two govern unrelated subsystems — nesting it would make `crossSessionMessaging.enabled: false` silently stop a cleanup that has nothing to do with peer messaging. It lives here rather than in .claude/metadata/ for the reason #2702 recorded: that directory is a read-only hub junction in PHM-deployed projects, so a deployed project could not otherwise disable something running inside it.",
       "default": true
     },
+    "supplyChainRows": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-row opt-out for the startup hook's supply-chain presence rows (#3313). On a JS/TS project (package.json on disk, or a JS/TS testing.suites[] entry), dependency-check.js reports a missing project-root `.npmrc` (remedy: /charter --refresh, which makes the #3016 offer) and a missing `.github/dependabot.yml` (remedy: /ci's dependabot feature). Presence only: an existing file suppresses its row whatever it contains, and nothing is written or spawned. ABSENT MEANS ENABLED, following tmpCleanup (#2771): only the literal `false` under a key suppresses that row, and each key governs its own row alone. A project that declined the controls sets the key here rather than re-declining every startup; it lives in framework-config.json because .claude/metadata/ is a read-only hub junction in deployed projects.",
+      "properties": {
+        "npmrc": {
+          "type": "boolean",
+          "description": "false suppresses the missing-`.npmrc` row.",
+          "default": true
+        },
+        "dependabot": {
+          "type": "boolean",
+          "description": "false suppresses the missing-`.github/dependabot.yml` row.",
+          "default": true
+        }
+      }
+    },
     "crossSessionMessaging": {
       "type": "object",
       "additionalProperties": false,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -9,6 +9,9 @@
  * numbers. Spec replacement for /work Step 4a (#2318).
  *
  * Usage: node qa-extract.js --issue <N> [--dry-run] [--fill <path>]
+ *        node qa-extract.js --check-routes <path>   (#3362: /qa's Outcome 3 gate —
+ *          a JSON map of automationRoutes id → reason; prints validateRouteAnswers'
+ *          result, exits 0 valid, 1 invalid, 2 unreadable)
  *
  * Output (JSON envelope on stdout):
  *   { ok, issueNumber, matched: [{ acText, keyword, subIssueNumber, annotation, fillPath, fillSources, placement }],
@@ -58,11 +61,44 @@ function parseArgs(argv) {
     if (argv[i] === '--issue' && argv[i + 1]) out.issue = parseInt(argv[++i], 10);
     else if (argv[i] === '--dry-run') out.dryRun = true;
     else if (argv[i] === '--fill' && argv[i + 1]) out.fill = argv[++i];
+    else if (argv[i] === '--check-routes' && argv[i + 1]) out.checkRoutes = argv[++i];
   }
+  if (out.checkRoutes) return { checkRoutes: out.checkRoutes };
   if (!out.issue || Number.isNaN(out.issue)) {
     return { error: 'Missing or invalid --issue <number> argument.' };
   }
   return out;
+}
+
+/** Lower-cased, trimmed, trailing punctuation dropped, curly apostrophes straightened. */
+function normalizeReason(text) {
+  return String(text).toLowerCase().replace(/[‘’]/g, "'").trim().replace(/[.!?;:,\s]+$/, '').replace(/\s+/g, ' ');
+}
+
+/**
+ * May this route-answer set hand a check to a person (#3362)? Every route in
+ * `config.automationRoutes` needs a specific reason it cannot reach the check:
+ * a route that is missing, blank, or answered with a `genericReasons` entry
+ * is a problem, and any problem makes the set invalid. /qa runs this before
+ * Outcome 3 (invalid → Outcome 2); extract() runs it before filing.
+ *
+ * @param {Object<string, string>|null} answers route id → reason
+ * @param {{automationRoutes: Array<{id: string, name: string}>, genericReasons?: string[]}} config
+ * @returns {{valid: boolean, problems: Array<{route: string, problem: 'missing'|'empty'|'generic', reason?: string}>,
+ *   routes: Array<{id: string, name: string, reason: string|null}>}}
+ */
+function validateRouteAnswers(answers, config) {
+  const given = answers && typeof answers === 'object' ? answers : {};
+  const generic = new Set((config.genericReasons || []).map(normalizeReason));
+  const problems = [];
+  const routes = (config.automationRoutes || []).map(({ id, name }) => {
+    const reason = typeof given[id] === 'string' ? given[id] : null;
+    if (reason === null) problems.push({ route: id, problem: 'missing' });
+    else if (reason.trim() === '') problems.push({ route: id, problem: 'empty' });
+    else if (generic.has(normalizeReason(reason))) problems.push({ route: id, problem: 'generic', reason });
+    return { id, name, reason };
+  });
+  return { valid: problems.length === 0, problems, routes };
 }
 
 function loadConfig(configPath = CONFIG_PATH) {
@@ -511,6 +547,7 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
 
   const matched = [];
   const skipped = [];
+  const unfiled = [];
   const alreadyGated = [];
   const errors = [];
   const warnings = fillWarning ? [fillWarning] : [];
@@ -549,6 +586,18 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
     if (prior) {
       matched.push({ acText, keyword, subIssueNumber: prior.number, annotation: buildAnnotation(config.annotationFormat, acText, prior.number), existing: true });
       continue;
+    }
+    // #3362: a keyword match proposes a QA issue; it files one only once every
+    // automation route has a specific reason it cannot reach the check (the
+    // AC's `routes` in the fill). Unanswered, the AC is reported in `unfiled`
+    // for the caller to automate in-run or answer and re-run — never filed.
+    if (Array.isArray(config.automationRoutes) && config.automationRoutes.length > 0) {
+      const entry = fill && Object.prototype.hasOwnProperty.call(fill, acText) ? fill[acText] : null;
+      const check = validateRouteAnswers(entry && entry.routes, config);
+      if (!check.valid) {
+        unfiled.push({ acText, keyword, problems: check.problems });
+        continue;
+      }
     }
     if (dryRun) {
       matched.push({ acText, keyword, subIssueNumber: null, annotation: null });
@@ -594,7 +643,7 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
   // `ok` tracks creation, not placement. An unplaced sub-issue is a real gate
   // that is merely harder to reach, so it is a warning; failing the run would
   // suggest nothing was created when something was.
-  return { ok: errors.length === 0, issueNumber, matched, skipped, alreadyGated, errors, warnings };
+  return { ok: errors.length === 0, issueNumber, matched, skipped, unfiled, alreadyGated, errors, warnings };
 }
 
 async function main() {
@@ -602,6 +651,19 @@ async function main() {
   if (args.error) {
     process.stderr.write(args.error + '\n');
     process.exit(2);
+  }
+  if (args.checkRoutes) {
+    // #3362: /qa's Outcome 3 gate — a JSON map of route id → reason.
+    let answers = null;
+    try {
+      answers = JSON.parse(fs.readFileSync(args.checkRoutes, 'utf8'));
+    } catch (e) {
+      process.stderr.write(`--check-routes ${args.checkRoutes} could not be read: ${e.message}\n`);
+      process.exit(2);
+    }
+    const result = validateRouteAnswers(answers, loadConfig());
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    process.exit(result.valid ? 0 : 1);
   }
   try {
     const config = loadConfig();
@@ -637,6 +699,7 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   loadConfig,
+  validateRouteAnswers,
   loadGateMarkers,
   findGateMarker,
   extractUncheckedAcs,

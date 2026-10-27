@@ -3,13 +3,32 @@
   "title": "QA Config",
   "description": "Configuration for automatic QA sub-issue extraction from unverifiable acceptance criteria",
   "type": "object",
-  "required": ["keywords", "bodyTemplate", "subIssueCommand", "annotationFormat", "closurePath"],
+  "required": ["keywords", "automationRoutes", "genericReasons", "bodyTemplate", "subIssueCommand", "annotationFormat", "closurePath"],
   "properties": {
     "$schema": { "type": "string" },
     "keywords": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Case-insensitive keywords that indicate an AC requires manual QA"
+      "description": "Case-insensitive keywords that PROPOSE manual QA for an AC (#3362): a match never files on its own — the automationRoutes answers decide"
+    },
+    "automationRoutes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The automation routes a session must answer, each with a specific reason it cannot reach the check, before a check is handed to a person (#3362) — by /qa before Outcome 3 and by qa-extract.js before filing",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "name": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "genericReasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Reasons that explain nothing about why a route fails (#3362). Compared case-insensitively after trimming and dropping trailing punctuation; a route answered with one is treated as unanswered"
     },
     "bodyTemplate": { "type": "string" },
     "fixturesTemplate": {

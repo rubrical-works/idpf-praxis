@@ -101,7 +101,7 @@ IDPF has a full multi-session story. Sessions discover each other in the same wo
 
 And the entire channel is **deliberately non-coordinating.**
 
-Announcements are advisory and fire-and-forget. Nothing waits on delivery. Nothing blocks on a peer. Rule `08-work-execution.md` states the constraint as a principle:
+Announcements are advisory and fire-and-forget. Nothing waits on delivery. Nothing blocks on a peer. Rule `08-work-execution.md` says each announcement is "never a gate", and `Reference/review-execution-rationale.md` states the constraint as a principle:
 
 > An advisory channel that can fail a command has become a gate.
 
@@ -119,7 +119,7 @@ Sequential gating is not free, and two costs are real.
 
 **Bookkeeping overhead.** The framework measures its own. Rule `07-task-creation-timing.md` records a full `/work 2789` run costing 66 task-tool calls across 298.3 seconds — 37.3% of a 799.5-second run. That figure carries a caveat the rule states emphatically, having already had a units error propagate onward once: those are **intervals, not execution time**. An interval is wall-clock from one call to the next, so it contains the model's generation for that turn as well as the call itself. A separately instrumented run — `/work 2787`, measured with `/idpf-measure` — put actual task-tool execution at 433ms for 19 `TaskCreate` calls against 55.85s of interval, and 1.19s of task-tool execution across an 856-second run. The cost is per *round trip*, not per tool call, which is why batching calls into one message removes it and why the raw percentage overstates what the bookkeeping itself consumes.
 
-**Context budget.** The deployed rule set is roughly 112,595 bytes — about 43,000 tokens — loaded before the user's first message. That is a quarter of a 200k window spent on instructions, paid every session, whether or not any given rule is consulted.
+**Context budget.** The deployed rule set is roughly 100,000 characters, loaded before the user's first message and paid every session, whether or not any given rule is consulted. It has been trimmed from 158,841 characters and is held by a per-rule no-growth budget, but it remains a standing cost.
 
 A swarm pays none of these. It pays tokens instead, and gives up the audit trail.
 
@@ -129,7 +129,7 @@ A swarm pays none of these. It pays tokens instead, and gives up the audit trail
 
 `/work --concurrent` is the one place IDPF runs implementation in parallel, and it is built to concede nothing the thesis above argues for.
 
-**It fans out only what it can prove independent.** Members of an epic run at once only when their declared `**Files to modify:**` blocks are disjoint and their `**Depends on:**` lines are satisfied. Undeclared scope, an overlap, an always-protected path, an unreadable dependency — anything the disjointness check cannot prove — falls to a sequential tail. The decision is made from declarations on disk, not from an orchestrator's judgment in context.
+**It fans out only what it can prove independent.** Members of an epic run at once only when their declared `**Files to modify:**` blocks are disjoint and their `**Depends on:**` lines are satisfied. Two members whose scopes overlap are never run together: the later one is deferred to a later group, after the first has merged back. What the plan cannot prove safe at all falls to a sequential tail: undeclared scope, an always-protected path that another member also declares under the same protected pattern, or an unreadable or unmet dependency. The decision is made from declarations on disk, not from an orchestrator's judgment in context.
 
 **Every gate and the externalized-state model survive per member.** Each member passes the Review-State Gate and the Pre-Work Status Gate, fires its own peer announcement pair, commits as `Refs #N`, and reaches `in_review` through Steps 4–4f in the parent session. The parent's task list holds one entry per member; the ledger holds one opener and one closer per member; the audits read a concurrent run exactly as a sequential one. A swarm's coordination evaporates when the run ends; here it is still on disk.
 
@@ -158,7 +158,7 @@ A swarm pays none of these. It pays tokens instead, and gives up the audit trail
 | Does IDPF reject agent delegation? | No — it delegates execution and refuses to delegate judgment or interaction |
 | How is that refusal enforced? | By the tool boundary: delegable agents have no `AskUserQuestion` |
 | Does IDPF coordinate across sessions? | It broadcasts, deliberately without coordinating — advisory, never a gate |
-| What does sequential cost? | Wall clock, round-trip bookkeeping, and ~43k tokens of rules per session |
+| What does sequential cost? | Wall clock, round-trip bookkeeping, and ~100k characters of rules per session |
 | What does a swarm cost? | Attribution, compaction survival, and the audit trail |
 | Does IDPF ever parallelize implementation? | Yes — `--concurrent`, only for members with disjoint declared scopes, every gate kept per member, merged back through a review gate; the sequential thesis still governs the rest |
 

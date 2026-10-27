@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Analyze an issue to determine what /issue-reset would do without performing changes. Returns structured JSON with issue type, current state, reset scope (body, labels, status), and planned actions for LLM confirmation display.
  * @checksum sha256:placeholder
  *
@@ -98,17 +98,27 @@ function analyzeBody(body) {
   };
 }
 
-async function findReviewComments(issueNumber, owner, repo) {
+/**
+ * The issue's review comments, or the reason they could not be listed (#3054
+ * item 7). A failed lookup used to return [], so the reset plan showed no
+ * review comments to delete and the reset left them in place.
+ *
+ * @returns {Promise<{comments: Array<{id: number, preview: string}>|null, error: string|null}>}
+ */
+async function findReviewComments(issueNumber, owner, repo, fetchJSON = ghJSON) {
+  if (!owner || !repo) {
+    return { comments: null, error: '.gh-pmu.json names no repositories[0] (owner/name)' };
+  }
   try {
-    const comments = await ghJSON(
+    const comments = await fetchJSON(
       `api repos/${owner}/${repo}/issues/${issueNumber}/comments --paginate`
     );
     const reviewComments = comments.filter(c =>
       REVIEW_PATTERNS.some(p => p.test(c.body))
     );
-    return reviewComments.map(c => ({ id: c.id, preview: reviewCommentPreview(c.body) }));
-  } catch {
-    return [];
+    return { comments: reviewComments.map(c => ({ id: c.id, preview: reviewCommentPreview(c.body) })), error: null };
+  } catch (err) {
+    return { comments: null, error: err.message };
   }
 }
 
@@ -194,7 +204,18 @@ async function main() {
 
   // Analyze scope
   const bodyAnalysis = analyzeBody(issueData.body || '');
-  const reviewComments = await findReviewComments(issue, owner, repo);
+  const lookup = await findReviewComments(issue, owner, repo);
+  if (lookup.error) {
+    console.log(JSON.stringify({
+      ok: false, version: SCHEMA_VERSION,
+      errors: [{
+        code: 'REVIEW_COMMENTS_UNAVAILABLE',
+        message: `Could not list the review comments on #${issue} (${lookup.error}); a reset plan without them would leave them in place.`
+      }]
+    }));
+    return;
+  }
+  const reviewComments = lookup.comments;
   const testPlanFiles = findTestPlanFiles(issue);
   const hasReviewedLabel = labels.includes('reviewed');
 
@@ -233,4 +254,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { analyzeBody, reviewCommentPreview };
+module.exports = { analyzeBody, reviewCommentPreview, findReviewComments };

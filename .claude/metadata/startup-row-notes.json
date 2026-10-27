@@ -91,6 +91,28 @@
         ]
       },
       "text": "## Project Skills Missing Row (#3038)\nNames each `framework-config.json` `projectSkills` entry with no `.claude/skills/<name>/` directory here (an unresolvable symlink counts as missing; a directory without `SKILL.md` does not). `.claude/skills/` is gitignored, so a skill a teammate added through Praxis Hub Manager arrives as a name with nothing behind it, and Claude Code cannot load it. **No row when nothing is missing**; exempt when `selfHosted` is true. The row only reports — the hook copies nothing. Remedy: run Repair on this project in Praxis Hub Manager (the same definition as its Needs Repair badge). Detection is `.claude/scripts/shared/lib/project-skills-check.js`; `/sync-branch` Step 1a stops such a pull before it lands."
+    },
+    "supplyChainNpmrc": {
+      "when": {
+        "rows": [
+          "Supply Chain"
+        ],
+        "contains": [
+          ".npmrc"
+        ]
+      },
+      "text": "## Supply Chain Row — missing .npmrc (#3313)\nA JS/TS project (`package.json` on disk, or a JS/TS `testing.suites[]` entry) has no `.npmrc` at its root, so the npm supply-chain controls — `min-release-age` (resolution cooldown) and `ignore-scripts` (no install scripts) — are absent. They reach a project only through /charter's one-time offer (#3016), which a project chartered before 0.107.0 never saw. **Remedy:** tell the user, and if they want the controls, run `/charter --refresh`; it makes the offer and writes the file only on acceptance. Never write `.npmrc` yourself. **Presence only:** any existing `.npmrc` suppresses the row, whatever it contains. To stop the row for a project that declined, set `supplyChainRows.npmrc: false` in `framework-config.json`."
+    },
+    "supplyChainDependabot": {
+      "when": {
+        "rows": [
+          "Supply Chain"
+        ],
+        "contains": [
+          "dependabot.yml"
+        ]
+      },
+      "text": "## Supply Chain Row — missing Dependabot config (#3313)\nA JS/TS project has no `.github/dependabot.yml` (or `.yaml`), so it gets no tiered Dependabot update cooldowns. /charter does not offer this file; /ci's `dependabot` feature writes it. **Remedy:** tell the user, and if they want it, run `/ci` and add the `dependabot` feature. Never write the file yourself. **Presence only:** any existing file suppresses the row. To stop the row, set `supplyChainRows.dependabot: false` in `framework-config.json`."
     }
   }
 }

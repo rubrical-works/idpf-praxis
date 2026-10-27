@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * measure-wiring.js
  *
  * Self-wiring for `/idpf-measure` (#2794): registers the PostToolUse tap on
@@ -131,10 +131,7 @@ function wire(root) {
   // Refuse a file that does not parse (#3059): parseSettings reads it as {},
   // so writing the tap would replace the user's settings with the tap alone.
   if (!created && !isSettingsObject(previousRaw)) {
-    throw new Error(
-      `${SETTINGS_RELPATH} is not a valid JSON object, so the measurement tap was not wired `
-      + '(wiring it would overwrite the file). Fix the file and run --start again.'
-    );
+    throw Object.assign(new Error(UNPARSEABLE_MESSAGE), { code: 'SETTINGS_UNPARSEABLE' });
   }
 
   const settings = parseSettings(previousRaw);
@@ -157,6 +154,9 @@ function wire(root) {
   return { created, previousRaw, wiredRaw, alreadyWired: false };
 }
 
+const UNPARSEABLE_MESSAGE = `${SETTINGS_RELPATH} is not a valid JSON object, so the measurement tap was not wired `
+  + '(wiring it would overwrite the file). Fix the file and run --start again.';
+
 function isSettingsObject(raw) {
   try {
     const parsed = JSON.parse(raw);
@@ -164,6 +164,15 @@ function isSettingsObject(raw) {
   } catch (_) {
     return false;
   }
+}
+
+/**
+ * Would `wire` accept the settings file as it stands? Absent is fine — `wire`
+ * creates it. Lets a caller refuse before any side effect of its own (#3295).
+ */
+function settingsParseable(root) {
+  const raw = readRaw(root);
+  return raw === null || isSettingsObject(raw);
 }
 
 /**
@@ -209,6 +218,10 @@ function unwire(root, opts) {
 
   if (raw === null) return { restored: 'absent' };
 
+  // The #3059 refusal, mirrored (#3295): parseSettings reads an unparseable
+  // file as {}, so the surgical path would delete it or write `{}` over it.
+  if (!isSettingsObject(raw)) return { restored: 'refused-unparseable' };
+
   const settings = parseSettings(raw);
   const groups = (settings.hooks && settings.hooks[TAP_EVENT]) || [];
   for (const g of groups) {
@@ -229,9 +242,13 @@ function unwire(root, opts) {
     return { restored: 'deleted' };
   }
 
+  // Why the snapshot paths did not apply (#3295), so the caller can say so:
+  // the file changed after `wire` wrote it, or no pre-tap baseline was held
+  // (the tap was already wired at --start, or a pre-#3059 marker).
+  const reason = typeof o.wiredRaw === 'string' && raw !== o.wiredRaw ? 'changed-during-window' : 'no-baseline';
   try {
     fs.writeFileSync(target, JSON.stringify(settings, null, 2) + '\n');
-    return { restored: 'surgical' };
+    return { restored: 'surgical', reason };
   } catch (_) {
     return { restored: 'failed' };
   }
@@ -244,6 +261,8 @@ module.exports = {
   TAP_COMMAND,
   settingsPath,
   isWired,
+  UNPARSEABLE_MESSAGE,
+  settingsParseable,
   wire,
   unwire,
 };

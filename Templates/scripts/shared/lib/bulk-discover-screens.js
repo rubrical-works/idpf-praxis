@@ -1,12 +1,13 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * Bulk-discover screens from project source for /catalog-screens --init.
  *
  * Scans Svelte/React/Vue source. Auto-detects kind from path patterns:
  *   pages: routes/, pages/, views/
  *   wizard: directory name contains 'wizard'
- *   step: parent path contains 'wizard' AND name matches step\d+
+ *   step: path contains 'wizard' AND the file's parent directory name contains 'step'
+ *         (step, step1, step-two — unanchored; the file's own name is not read)
  *   section: lib/sections/ or section in path
  *   modal: name contains 'Modal'
  *   component: lib/components/, components/
@@ -58,7 +59,7 @@ function classifyKind(filePath) {
 
   if (baseLower.includes('modal')) return 'modal';
 
-  // Step: parent dir path contains 'wizard' and basename starts with 'step' or matches step\d+
+  // Step: path contains 'wizard' and the parent directory's name contains 'step' (#3305)
   if (/wizard/.test(lower) && /step\d*/.test(path.basename(path.dirname(filePath)).toLowerCase())) {
     return 'step';
   }
@@ -118,17 +119,36 @@ function detectImports(filePath, rootAbs, fileToName) {
   } catch {
     return [];
   }
-  const importRe = /import\s+\w+\s+from\s+['"]([^'"]+)['"]/g;
+  // Default, named, namespace and mixed forms (#3305): everything between
+  // `import` and `from` is ignored; only the specifier matters here.
+  const importRe = /import\s+[^'";]*?\s*from\s+['"]([^'"]+)['"]/g;
   const targets = new Set();
   let m;
   while ((m = importRe.exec(content)) !== null) {
     const spec = m[1];
     if (!spec.startsWith('.')) continue;
-    const resolved = path.resolve(path.dirname(filePath), spec);
-    const target = fileToName.get(resolved);
+    const target = resolveImport(path.resolve(path.dirname(filePath), spec), fileToName);
     if (target) targets.add(target);
   }
   return [...targets];
+}
+
+/**
+ * The screen a resolved specifier names (#3305), resolving as a bundler does:
+ * the exact path, then each source extension appended (`./Settings`), then a
+ * directory's `index<ext>` (`../components/profile`).
+ */
+function resolveImport(resolved, fileToName) {
+  const candidates = [
+    resolved,
+    ...[...SOURCE_EXTENSIONS].map((ext) => resolved + ext),
+    ...[...SOURCE_EXTENSIONS].map((ext) => path.join(resolved, `index${ext}`)),
+  ];
+  for (const c of candidates) {
+    const name = fileToName.get(c);
+    if (name) return name;
+  }
+  return null;
 }
 
 /**
@@ -169,7 +189,9 @@ function discoverScreens(projectRoot) {
   const screens = {};
   for (const f of files) {
     const name = fileToName.get(f);
-    const kind = classifyKind(f);
+    // Project-relative (#3379): the absolute path let a directory above the
+    // project — a root under .../components/ — decide every file's kind.
+    const kind = classifyKind('/' + path.relative(projectRoot, f).replace(/\\/g, '/'));
     const navigatesTo = detectImports(f, projectRoot, fileToName);
     const source = path.relative(projectRoot, f).replace(/\\/g, '/');
     const canonicalSpec = `${SPEC_SET_DIR}/${name}.json`;

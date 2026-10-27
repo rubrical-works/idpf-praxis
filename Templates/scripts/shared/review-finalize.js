@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, and assigns labels (reviewed/pending) to the reviewed issue only — never to its sub-issues (#2869).
  * @checksum sha256:placeholder
  *
@@ -20,6 +20,9 @@ const EXEC_OPTS = { encoding: 'utf-8' };
 // ─── Shared Constants ───
 
 const { EMOJI, SECTION_HEADERS, REVIEW_TYPES, REVIEWS_MARKER_PATTERN } = require('./lib/review-format');
+// The /work Step 4c parser, reused so "declared" means here exactly what the
+// gate that consumes the declaration will read (#2891). No second parser.
+const { parseDeclaredScope } = require('./scope-drift-check.js');
 
 // Header verb per review type, inverted from REVIEW_TYPES rather than copied
 // (#2594). REVIEW_TYPES is the same table REVIEW_HEADER_PATTERN's alternation
@@ -252,9 +255,48 @@ function updateBodyReviewCount(body) {
   return body.trimEnd() + '\n**Reviews:** 1\n';
 }
 
+// ─── Files-to-modify Post-condition (#2891) ───
+
+// The types rule 09 § 2a-ii runs for (Bug, Enhancement, Story; NOT epic).
+const FILES_TO_MODIFY_TYPES = new Set(['bug', 'enhancement', 'story']);
+
+/**
+ * Report whether the body finalize read carries an authored declaration.
+ *
+ * Rule 09 § 2a-ii (b) writes `**Files to modify:**` into the body before this
+ * script runs, and is model-executed: nothing returned an outcome, so a skipped
+ * write was silent and surfaced only later as a /work Step 4c halt or an
+ * `undeclared` concurrency classification (#2888, #2882, #3239). This checks
+ * the post-condition from the body itself — never whether the step "ran".
+ *
+ * Declared means `parseDeclaredScope(body).authoredPaths` is non-empty, the
+ * same scope the always-protected guard reads, so a `### Files Changed`
+ * section, inline header text, or a header naming no backticked path all
+ * count as missing.
+ *
+ * @param {{ type: string, body: string|null }} params - `body` null when the
+ *   read failed.
+ * @returns {{ filesToModifyMissing: boolean|null }} null for an out-of-scope
+ *   type or an unread body: unknown is not missing.
+ */
+function checkFilesToModify({ type, body }) {
+  if (!FILES_TO_MODIFY_TYPES.has(type) || typeof body !== 'string') {
+    return { filesToModifyMissing: null };
+  }
+  const { authoredPaths } = parseDeclaredScope(body);
+  return { filesToModifyMissing: !(authoredPaths && authoredPaths.length > 0) };
+}
+
+// Not a `- <emoji> criterion — evidence` line, so resolve-preamble.js does not
+// parse it as a finding; and never the bare header shape, so it cannot be
+// mistaken for a declaration if pasted into a body.
+const FILES_TO_MODIFY_MISSING_LINE =
+  '⚠️ No top-level `Files to modify:` / `Files:` block with backticked paths was in the issue body at finalize — ' +
+  'rule 09 § 2a-ii (b) did not leave one. /work Step 4c has no authored scope to compare against.';
+
 // ─── Comment Formatting ───
 
-function formatReviewComment(findings) {
+function formatReviewComment(findings, options = {}) {
   const date = new Date().toISOString().slice(0, 10);
   const typeLabel = TYPE_LABELS[findings.type] || findings.type || 'Generic';
   const extensions = findings.extensions && findings.extensions.length > 0
@@ -269,6 +311,10 @@ function formatReviewComment(findings) {
   lines.push(`**Total Reviews:** ${findings.reviewNumber}`);
   lines.push(`**Extensions Applied:** ${extensions}`);
   lines.push('');
+  if (options.filesToModifyMissing === true) {
+    lines.push(FILES_TO_MODIFY_MISSING_LINE);
+    lines.push('');
+  }
   lines.push(SECTION_HEADERS.findings);
   lines.push('');
 
@@ -374,6 +420,30 @@ async function applyReviewLabel({ issue, label, exec }) {
 
 // ─── Envelope Builders ───
 
+/**
+ * The review is recorded only when its body marker was written and its comment
+ * posted (#3054). Returns null when both succeeded, else the error naming each
+ * step that failed and why.
+ *
+ * @param {{issue: number|string, bodyExport: object, bodyEditResult: object|null, commentResult: object}} steps
+ * @returns {{code: string, message: string, failed: string[]}|null}
+ */
+function checkReviewRecorded({ issue, bodyExport, bodyEditResult, commentResult }) {
+  const failed = [];
+  const why = (r) => (r && r.message) || 'unknown error';
+  const commentOk = Boolean(commentResult && commentResult.ok);
+  if (!bodyExport || !bodyExport.ok) failed.push(`body export (${why(bodyExport)})`);
+  // The edit runs only after the comment posts (#3374); skipped is not failed.
+  else if (commentOk && (!bodyEditResult || !bodyEditResult.ok)) failed.push(`body edit (${why(bodyEditResult)})`);
+  if (!commentOk) failed.push(`review comment (${why(commentResult)})`);
+  if (!failed.length) return null;
+  return {
+    code: 'REVIEW_NOT_RECORDED',
+    message: `Review of #${issue} not recorded — failed: ${failed.join('; ')}. No label applied.`,
+    failed,
+  };
+}
+
 function buildSuccessResult(data) {
   return {
     ok: true,
@@ -384,6 +454,9 @@ function buildSuccessResult(data) {
     // Present-and-null, never absent (#2694): a caller must not have to tell an
     // envelope that predates this field from a run where the swap succeeded.
     labelError: data.labelError || null,
+    // Present-and-null, never absent (#2891): true/false only for a
+    // bug/enhancement/story review whose body was read.
+    filesToModifyMissing: typeof data.filesToModifyMissing === 'boolean' ? data.filesToModifyMissing : null,
     closingNotification: data.closingNotification || null,
   };
 }
@@ -396,6 +469,58 @@ function buildErrorResult(error) {
 }
 
 // ─── Execution Helpers ───
+
+/**
+ * Post the review comment and write the incremented Reviews marker (#3401).
+ *
+ * The comment posts only once the body has been read: a failed export cannot
+ * be recorded, so a comment then would be an orphan. The marker is written only
+ * once the comment exists (#3374). If that edit fails, the comment just posted
+ * is deleted, since the retry the failure calls for posts it again — leaving
+ * one `## Issue Review #N` comment rather than two. A failed delete is returned
+ * as `commentRemoveError` for the caller to report.
+ *
+ * @param {{issue: number, bodyExport: {ok: boolean, output?: string}, comment: string,
+ *          exec: (cmd: string) => Promise<{ok: boolean, output?: string, message?: string}>}} args
+ * @returns {Promise<{commentResult: object, commentPosted: boolean, commentUrl: string|null,
+ *          bodyEditResult: object|null, bodyUpdated: boolean, commentRemoved: boolean,
+ *          commentRemoveError: string|null}>}
+ */
+async function postAndCount({ issue, bodyExport, comment, exec }) {
+  const out = {
+    commentResult: null, commentPosted: false, commentUrl: null,
+    bodyEditResult: null, bodyUpdated: false, commentRemoved: false, commentRemoveError: null,
+  };
+  if (!bodyExport || !bodyExport.ok) {
+    out.commentResult = { ok: false, message: 'not posted — the issue body could not be read' };
+    return out;
+  }
+
+  const tmpCommentFile = `.tmp-${issue}-review-comment.${process.pid}.md`;
+  fs.writeFileSync(tmpCommentFile, comment);
+  out.commentResult = await exec(`gh issue comment ${issue} -F ${tmpCommentFile}`);
+  try { fs.unlinkSync(tmpCommentFile); } catch (_e) { /* ignore */ }
+  if (!out.commentResult.ok) return out;
+  out.commentPosted = true;
+  const urlMatch = String(out.commentResult.output || '').match(/(https:\/\/\S+)/);
+  if (urlMatch) out.commentUrl = urlMatch[1];
+
+  const tmpBodyFile = `.tmp-${issue}-body.${process.pid}.md`;
+  fs.writeFileSync(tmpBodyFile, updateBodyReviewCount(bodyExport.output));
+  out.bodyEditResult = await exec(`gh pmu edit ${issue} -F ${tmpBodyFile}`);
+  try { fs.unlinkSync(tmpBodyFile); } catch (_e) { /* ignore */ }
+  out.bodyUpdated = out.bodyEditResult.ok;
+  if (out.bodyUpdated) return out;
+
+  const id = out.commentUrl && (out.commentUrl.match(/#issuecomment-(\d+)/) || [])[1];
+  const removal = id
+    ? await exec(`gh api -X DELETE repos/{owner}/{repo}/issues/comments/${id}`)
+    : { ok: false, message: 'the posted comment\'s id was not in gh\'s output' };
+  out.commentRemoved = removal.ok;
+  if (removal.ok) out.commentPosted = false;
+  else out.commentRemoveError = removal.message || 'unknown error';
+  return out;
+}
 
 async function execSafe(cmd) {
   try {
@@ -462,32 +587,47 @@ async function main() {
     process.exit(1);
   }
 
-  // Update body review count
+  // Read the body first; the **Reviews:** increment is written only after the
+  // comment posts (#3374). Edited first, a failed comment left the marker with
+  // no label — `indeterminate`, which the /work gate passes — and a retry
+  // counted the one review twice.
   let bodyUpdated = false;
+  let bodyEditResult = null;
   const bodyExport = await execSafe(`gh pmu view ${issue} --body-stdout`);
-  if (bodyExport.ok) {
-    const updatedBody = updateBodyReviewCount(bodyExport.output);
-    const tmpBodyFile = `.tmp-${issue}-body.${process.pid}.md`;
-    fs.writeFileSync(tmpBodyFile, updatedBody);
-    const editResult = await execSafe(`gh pmu edit ${issue} -F ${tmpBodyFile}`);
-    bodyUpdated = editResult.ok;
-    try { fs.unlinkSync(tmpBodyFile); } catch (_e) { /* ignore */ }
+
+  // 2a-ii (b) post-condition (#2891), from the body read above — after the
+  // model's pre-finalize writes, before this script's own.
+  const { filesToModifyMissing } = checkFilesToModify({ type: findings.type, body: bodyExport.ok ? bodyExport.output : null });
+  if (filesToModifyMissing) {
+    process.stderr.write(`Warning: #${issue} has no Files to modify declaration after review (rule 09 § 2a-ii (b)).\n`);
   }
 
-  // Format and post comment
-  let commentPosted = false;
-  let commentUrl = null;
-  const comment = formatReviewComment(findings);
-  const tmpCommentFile = `.tmp-${issue}-review-comment.${process.pid}.md`;
-  fs.writeFileSync(tmpCommentFile, comment);
-  const commentResult = await execSafe(`gh issue comment ${issue} -F ${tmpCommentFile}`);
-  if (commentResult.ok) {
-    commentPosted = true;
-    // Try to extract URL from output
-    const urlMatch = commentResult.output.match(/(https:\/\/\S+)/);
-    if (urlMatch) commentUrl = urlMatch[1];
+  // Post the comment and write the Reviews marker it stands for (#3374, #3401).
+  const comment = formatReviewComment(findings, { filesToModifyMissing });
+  const recorded = await postAndCount({ issue, bodyExport, comment, exec: execSafe });
+  const { commentResult, commentPosted, commentUrl } = recorded;
+  bodyEditResult = recorded.bodyEditResult;
+  bodyUpdated = recorded.bodyUpdated;
+  if (recorded.commentRemoveError) {
+    process.stderr.write(`Warning: the review comment for #${issue} could not be removed after the body edit failed (${recorded.commentRemoveError}); delete ${commentUrl} before retrying.\n`);
   }
-  try { fs.unlinkSync(tmpCommentFile); } catch (_e) { /* ignore */ }
+
+  // Fail closed (#3054): the label is what review-state.js reads as "reviewed",
+  // so it is applied only once the comment and the Reviews marker it stands for
+  // exist. Either failing is the whole result, never an ok:true footnote.
+  const notRecorded = checkReviewRecorded({ issue, bodyExport, bodyEditResult, commentResult });
+  if (notRecorded) {
+    const result = {
+      ...buildErrorResult(notRecorded),
+      bodyUpdated,
+      commentPosted,
+      commentUrl,
+      labelAssigned: null,
+      labelError: null,
+    };
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    process.exit(1);
+  }
 
   // Assign label
   const label = determineLabel(findings.recommendation);
@@ -535,6 +675,7 @@ async function main() {
     commentUrl,
     labelAssigned,
     labelError,
+    filesToModifyMissing,
     closingNotification,
   });
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
@@ -554,6 +695,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  postAndCount,
   parseArgs,
   parseFindingsFile,
   normalizeFindings,
@@ -563,6 +705,8 @@ module.exports = {
   reviewVerb,
   determineLabel,
   applyReviewLabel,
+  checkReviewRecorded,
+  checkFilesToModify,
   buildClosingNotification,
   buildSuccessResult,
   buildErrorResult,

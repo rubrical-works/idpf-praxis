@@ -56,20 +56,20 @@ The Kanban template hides the **Labels** field by default. Making it visible giv
 3. In the field list, click **Labels** — this toggles it from **Hidden** to **Visible**.
 4. Click **Save changes to view** (or **Save view**) to persist the change to the view, not just your local session.
 
-### 4. Add the `QA Required` status option
+### 4. Add the `QA required` status option
 
 The Kanban template ships with Todo / In Progress / Done only. Praxis files
-manual-verification sub-issues into a **`QA Required`** column, so the option has
+manual-verification sub-issues into a **`QA required`** column, so the option has
 to exist before any project cloned from this template can use it.
 
 1. On the project, click the **⋯** (more options) button in the top right.
 2. Select **Settings**, then click the **Status** field in the field list.
-3. Click **+ Add option** and type the name exactly: `QA Required` — capital Q,
-   capital A, a **space**, capital R. The name is matched literally.
+3. Click **+ Add option** and type the name exactly: `QA required` — capital Q,
+   capital A, a **space**, lowercase r. The name is matched literally.
 4. Save.
 
 **Why this is not optional.** `.gh-pmu.json` maps the alias `qa_required` to the
-column name `QA Required`. Commands address the column by alias — `gh pmu move
+column name `QA required`. Commands address the column by alias — `gh pmu move
 <n> --status qa_required` — and the alias resolves to a name the board must
 actually have. Without the option, the alias is a dangling reference and every
 QA sub-issue transition fails against an otherwise healthy board.
@@ -77,8 +77,8 @@ QA sub-issue transition fails against an otherwise healthy board.
 **Why the space rather than a hyphen (#2821).** `gh pmu init --source-project`
 does not copy your aliases — it *derives* them from the source board's option
 names, lowercasing and replacing spaces with underscores. Hyphens are left
-alone. So `QA Required` derives `qa_required`, which is the alias the framework
-uses everywhere; `QA-Required` would derive `qa-required`, and every command
+alone. So `QA required` derives `qa_required`, which is the alias the framework
+uses everywhere; `QA-required` would derive `qa-required`, and every command
 issuing `--status qa_required` would fail with `invalid status value` on an
 otherwise correctly-built board. Praxis Hub Manager runs that init path for
 every project it bootstraps, so the column name here decides whether QA
@@ -105,7 +105,7 @@ Before moving on, confirm:
 - [ ] The project exists under the correct owner (user or organization).
 - [ ] The project contains **no items** (import was deselected).
 - [ ] The board view shows the **Labels** field on cards (drag a test card on if needed, then delete it).
-- [ ] The **Status** field has a `QA Required` option, spelled exactly.
+- [ ] The **Status** field has a `QA required` option, spelled exactly.
 - [ ] You have recorded the project **name** or **number**.
 
 ---

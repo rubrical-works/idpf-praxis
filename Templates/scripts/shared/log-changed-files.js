@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Compute the Files Changed section for a /work issue by scanning commits that
  * reference the issue ("Refs #N"), classifying each file via lib/classify-changed-files.js,
  * and emitting a formatted markdown section to stdout. Empty output when no commits match
@@ -14,6 +14,10 @@ const { execSync } = require('child_process');
 const { formatFilesChanged } = require('./lib/classify-changed-files');
 const { issueRefGrepPattern, parseNameStatusLine } = require('./lib/issue-ref-match.js');
 
+// The base is interpolated into a shell string (#3290), so only a hex SHA may
+// reach it — anything else could carry `$(...)` or a backtick.
+const SHA_PATTERN = /^[0-9a-fA-F]{4,40}$/;
+
 function parseArgs(argv) {
   const out = { issue: null };
   for (let i = 0; i < argv.length; i++) {
@@ -23,10 +27,16 @@ function parseArgs(argv) {
   if (!out.issue || Number.isNaN(out.issue)) {
     return { error: 'Missing or invalid --issue <number> argument.' };
   }
+  if (out.sinceCommit !== undefined && !SHA_PATTERN.test(out.sinceCommit)) {
+    return { error: `Invalid --since-commit "${out.sinceCommit}": expected a 4-40 character hex commit SHA.` };
+  }
   return out;
 }
 
 function readGitLog(issueNumber, execFn = execSync, base = null) {
+  if (base && !SHA_PATTERN.test(base)) {
+    throw new Error(`base "${base}" is not a commit SHA`);
+  }
   // Boundary-anchored (#2467): a bare `Refs #24` grep also matched #245, #2453
   // and every other longer number, polluting the "### Files Changed" section
   // that scope-drift-check then consumes as declared scope.
@@ -34,7 +44,9 @@ function readGitLog(issueNumber, execFn = execSync, base = null) {
   // commits out of this run's Files Changed.
   const range = base ? ` ${base}..HEAD` : '';
   return execFn(
-    `git log --name-status --grep="${issueRefGrepPattern(issueNumber)}" --pretty=format:""${range}`,
+    // core.quotePath=false (#3382): a non-ASCII name arrives literal; what
+    // git still quotes is undone by parseNameStatusLine.
+    `git -c core.quotePath=false log --name-status --grep="${issueRefGrepPattern(issueNumber)}" --pretty=format:""${range}`,
     { encoding: 'utf8' }
   );
 }

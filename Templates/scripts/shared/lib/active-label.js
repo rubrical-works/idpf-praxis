@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Manage the 'active' label on branch tracker issues, ensuring at most one open tracker holds it. Exports ensureActiveLabel() and removeActiveLabelOnly(). Used by create-branch.js and destroy-branch.js.
  * @checksum sha256:placeholder
  *
@@ -109,8 +109,8 @@ function getTrackerForBranch() {
 
 /**
  * Ensure the given tracker has the 'active' label.
- * Removes the label from any other tracker first (atomic swap).
- * Idempotent — no-op if tracker already has the label.
+ * Removes the label from every other tracker first (#3063).
+ * Idempotent — no edit when it is already the only active tracker.
  * Never throws.
  *
  * @param {number} trackerNum - Tracker issue number to make active
@@ -119,18 +119,18 @@ function ensureActiveLabel(trackerNum) {
     if (!trackerNum) return;
 
     try {
-        const currentActive = findActiveTracker();
+        // Every active tracker, not the first gh lists (#3063): two concurrent
+        // ensures can leave two labeled, and clearing one left the other.
+        // null = lookup failed: nothing known to clear, the target still gets it.
+        const active = findActiveTrackers() || [];
 
-        // Already active — no-op
-        if (currentActive === trackerNum) return;
-
-        // Remove from old tracker if one exists
-        if (currentActive) {
-            execSafe(`gh issue edit ${currentActive} --remove-label=active`);
+        for (const other of active) {
+            if (other !== trackerNum) execSafe(`gh issue edit ${other} --remove-label=active`);
         }
 
-        // Add to new tracker
-        execSafe(`gh issue edit ${trackerNum} --add-label=active`);
+        if (!active.includes(trackerNum)) {
+            execSafe(`gh issue edit ${trackerNum} --add-label=active`);
+        }
     } catch (_e) {
         // Non-throwing — label management is supplementary
     }

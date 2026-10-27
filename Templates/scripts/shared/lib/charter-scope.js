@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+// Rubrical Works (c) 2026
+/**
+ * @framework-script 0.112.0
+ * @description Charter scope check shared by the commands that create work (#3001).
+ * @checksum sha256:placeholder
+ *
+ * Charter enforcement used to be the always-on 04-charter-enforcement rule,
+ * paid in every session for checks that run in five commands. Those commands
+ * now call this helper at the depth `.claude/metadata/charter-enforcement.json`
+ * declares for them, so no command restates the check.
+ *
+ * Scope lists come from the generated `domain-entities.json` first
+ * (`scopeBoundaries`, `currentFocus`) and from CHARTER.md's In Scope, Out of
+ * Scope and Current Focus sections as the fallback; `source` says which, so a
+ * degraded run is never read as a full one. An index older than CHARTER.md is
+ * not trusted: the charter's own sections are read, with a warning (#3322). Whether CHARTER.md is an unfilled
+ * template is decided by `.claude/scripts/shared/lib/charter-template.js`, the
+ * one rule for it.
+ *
+ * Built-ins only: deployed with `.claude/scripts/shared/` (runtime dependency
+ * contract, rule 04).
+ *
+ * CLI: node .claude/scripts/shared/lib/charter-scope.js --command <name>
+ *        [--text "<work item>" | --text-file <path>] [--paths a,b] [--quiet] [--root <dir>]
+ *   With neither text flag, the work item is read from stdin (#3351).
+ *   → {"alignment", "matchedItems", "warnings", "skipped", "source", "depth", "ask"}, exit 0
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { classifyCharterFile } = require('./charter-template');
+
+const DATA_REL = path.join('.claude', 'metadata', 'charter-enforcement.json');
+const DEFAULT_DEPTH = 'summary';
+
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'into', 'onto', 'via', 'not', 'are', 'this', 'that', 'these',
+  'those', 'its', 'all', 'any', 'new', 'use', 'using', 'used', 'per', 'out', 'our', 'your', 'can',
+  'will', 'has', 'have', 'was', 'were', 'but', 'such', 'only', 'also', 'more', 'less', 'each',
+]);
+
+function tokens(text) {
+  const out = new Set();
+  for (const raw of String(text || '').toLowerCase().split(/[^a-z0-9]+/)) {
+    if (raw.length < 3 || STOPWORDS.has(raw)) continue;
+    out.add(raw.length > 4 && raw.endsWith('s') ? raw.slice(0, -1) : raw);
+  }
+  return out;
+}
+
+/** Remove parenthetical asides — "(this is a framework/tooling repo)" — from a bullet. */
+function dropAsides(item) {
+  return String(item || '').replace(/\([^()]*\)/g, ' ');
+}
+
+/**
+ * Items whose significant words appear in the text: one word for a one-word
+ * item, two for anything longer, so a single shared word is not a match.
+ *
+ * Parentheticals (#3322): with `outOfScope: true`, words inside a bullet's
+ * parentheses do not count toward its match — on an Out of Scope bullet they
+ * are an explanatory aside ("(this is a framework/tooling repo)") whose
+ * ordinary vocabulary would flag in-scope work as a conflict. In Scope and
+ * Current Focus bullets keep their parenthetical words, which carry their main
+ * terms ("Script infrastructure (… hooks …)").
+ *
+ * Share (#3322): an Out of Scope item also needs at least half of its
+ * significant words (minimum two), so a long item is not matched by two
+ * incidental ones; a conflict is blocking, a missed in-scope match is not.
+ * @param {string} text
+ * @param {string[]} items
+ * @param {{outOfScope?: boolean}} [opts]
+ * @returns {Array<{item: string, words: string[]}>}
+ */
+function matchItems(text, items, opts = {}) {
+  const have = tokens(text);
+  const matched = [];
+  for (const item of items || []) {
+    const want = [...tokens(opts.outOfScope ? dropAsides(item) : item)];
+    if (!want.length) continue;
+    const words = want.filter((w) => have.has(w));
+    const need = opts.outOfScope ? Math.max(2, Math.ceil(want.length / 2)) : 2;
+    if (words.length >= Math.min(need, want.length)) matched.push({ item, words });
+  }
+  return matched;
+}
+
+function sectionBullets(charterText, heading) {
+  const re = new RegExp(`^##\\s+${heading}[^\\n]*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'im');
+  const m = String(charterText || '').match(re);
+  if (!m) return [];
+  return m[1]
+    .split('\n')
+    .map((l) => l.match(/^\s*[-*]\s+(.*\S)\s*$/))
+    .filter(Boolean)
+    .map((x) => x[1]);
+}
+
+function parseCharterSections(charterText) {
+  return {
+    inScope: sectionBullets(charterText, 'In Scope'),
+    outOfScope: sectionBullets(charterText, 'Out of Scope'),
+    currentFocus: sectionBullets(charterText, 'Current Focus'),
+  };
+}
+
+function globToRegex(glob) {
+  const re = glob
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\u0000')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\u0000/g, '.*');
+  return new RegExp(`^${re}$`);
+}
+
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function loadLists(root, charterText, warnings) {
+  const entitiesPath = path.join(root, 'domain-entities.json');
+  if (fs.existsSync(entitiesPath)) {
+    try {
+      const e = readJson(entitiesPath);
+      const sb = e.scopeBoundaries;
+      if (sb && Array.isArray(sb.inScope) && Array.isArray(sb.outOfScope)) {
+        let stale = false;
+        try {
+          stale = fs.statSync(path.join(root, 'CHARTER.md')).mtimeMs > fs.statSync(entitiesPath).mtimeMs;
+        } catch (_e) { /* mtime unavailable: trust the index */ }
+        if (stale) {
+          warnings.push('domain-entities.json is older than CHARTER.md; read CHARTER.md instead. Regenerate with /charter --create-domain-entities.');
+          return { source: 'charter', lists: parseCharterSections(charterText) };
+        }
+        return {
+          source: 'domain-entities',
+          lists: { inScope: sb.inScope, outOfScope: sb.outOfScope, currentFocus: Array.isArray(e.currentFocus) ? e.currentFocus : [] },
+        };
+      }
+      warnings.push('domain-entities.json has no scopeBoundaries; read CHARTER.md instead.');
+    } catch (err) {
+      warnings.push(`domain-entities.json unreadable (${err.message}); read CHARTER.md instead.`);
+    }
+  }
+  return { source: 'charter', lists: parseCharterSections(charterText) };
+}
+
+/**
+ * Check a work item against the charter.
+ * @param {{text: string, command?: string, paths?: string[], quiet?: boolean, root?: string}} opts
+ */
+function checkScope(opts = {}) {
+  const root = opts.root || process.cwd();
+  const warnings = [];
+  const result = (fields) => ({
+    alignment: null, matchedItems: [], warnings, skipped: null, source: null, depth, ask: false, ...fields,
+  });
+
+  let data;
+  let depth = DEFAULT_DEPTH;
+  try {
+    data = readJson(path.join(root, DATA_REL));
+  } catch (err) {
+    return result({ skipped: { reason: 'no-config', detail: `${DATA_REL} unreadable: ${err.message}` } });
+  }
+  const checkpoint = data.checkpoints[opts.command];
+  if (checkpoint) depth = checkpoint.depth;
+  else warnings.push(`No charter checkpoint for command "${opts.command}"; checked at ${DEFAULT_DEPTH} depth.`);
+
+  if (fs.existsSync(path.join(root, data.optOut.file))) {
+    return result({ skipped: { reason: 'opt-out', detail: `${data.optOut.file} present` } });
+  }
+  const paths = (opts.paths || []).map((p) => String(p).replace(/\\/g, '/'));
+  if (paths.length) {
+    const patterns = data.exclusions.map(globToRegex);
+    if (paths.every((p) => patterns.some((re) => re.test(p)))) {
+      return result({ skipped: { reason: 'excluded-path', detail: 'every path matches a framework exclusion' } });
+    }
+  }
+  const charterPath = path.join(root, 'CHARTER.md');
+  const charter = classifyCharterFile(charterPath);
+  if (!charter.exists) return result({ skipped: { reason: 'no-charter', detail: 'CHARTER.md not found' } });
+  if (charter.template) return result({ skipped: { reason: 'template-charter', detail: 'CHARTER.md is an unfilled template' } });
+
+  const { source, lists } = loadLists(root, fs.readFileSync(charterPath, 'utf8'), warnings);
+  const matchedItems = [];
+  for (const list of data.depths[depth].lists) {
+    for (const m of matchItems(opts.text, lists[list], { outOfScope: list === 'outOfScope' })) matchedItems.push({ list, ...m });
+  }
+
+  let alignment;
+  if (matchedItems.some((m) => m.list === 'outOfScope')) alignment = 'conflicts';
+  else if (matchedItems.length || !data.depths[depth].lists.includes('inScope')) alignment = 'aligned';
+  else alignment = 'possibly-misaligned';
+
+  let ask = data.alignment[alignment].ask;
+  if (opts.quiet && alignment !== 'conflicts') ask = false;
+
+  return result({ alignment, matchedItems, source, ask });
+}
+
+function parseArgs(argv) {
+  const opts = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--command') opts.command = argv[++i];
+    else if (a === '--text') opts.text = argv[++i];
+    else if (a === '--text-file') opts.text = fs.readFileSync(argv[++i], 'utf8');
+    else if (a === '--paths') opts.paths = argv[++i].split(',').filter(Boolean);
+    else if (a === '--quiet') opts.quiet = true;
+    else if (a === '--root') opts.root = argv[++i];
+  }
+  return opts;
+}
+
+module.exports = { checkScope, parseCharterSections, matchItems, globToRegex };
+
+if (require.main === module) {
+  const opts = parseArgs(process.argv.slice(2));
+  // Neither --text nor --text-file: the text arrives on stdin (#3351), as
+  // declared-scope-check.js reads its body, so a caller writes no temp file.
+  if (opts.text === undefined) opts.text = fs.readFileSync(0, 'utf8');
+  process.stdout.write(JSON.stringify(checkScope(opts), null, 2) + '\n');
+}

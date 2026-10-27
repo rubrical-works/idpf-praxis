@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Shared epic-creation helper (#2408). Used by /add-story and
  * /split-story to create epics through a single, testable code path. Returns
  * the standard JSON envelope { ok, epicNumber, labelsVerified, branchAssigned,
@@ -32,6 +32,7 @@ const { execFileTimed: execFileSync } = require('./lib/exec.js');
 // #2599: assignee comes from the --assignee override, else a JS constant.
 // No configuration file is consulted (see lib/gh-pmu-config.js).
 const { resolveAssignee, DEFAULT_ASSIGNEE } = require('./lib/gh-pmu-config.js');
+const { parseCharterSections, matchItems } = require('./lib/charter-scope.js');
 
 const VALID_PRIORITIES = ['p0', 'p1', 'p2'];
 
@@ -114,37 +115,21 @@ Expand with detailed acceptance criteria as scope becomes clearer.
 
 // ─── Charter Validation ─────────────────────────────────────
 
-function extractOutOfScopeBlock(charterText) {
-  if (!charterText) return '';
-  const m = charterText.match(/##\s+Out of Scope\s*\n([\s\S]*?)(?=\n##\s|$)/i);
-  return m ? m[1] : '';
-}
-
-function tokenize(s) {
-  return (s || '')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(t => t.length >= 3);
-}
-
+// Matching is lib/charter-scope.js's (#3001), so the epic theme check and the
+// commands' charter checks cannot disagree about what overlaps — given the same
+// Out of Scope options checkScope passes (#3338).
 function validateCharterScope(theme, charterText) {
   const warnings = [];
   if (!charterText) {
     warnings.push('No CHARTER.md content available — skipped scope check.');
     return { warnings };
   }
-  const oos = extractOutOfScopeBlock(charterText);
-  if (!oos) return { warnings };
-
-  const themeTokens = new Set(tokenize(theme));
-  const oosTokens = new Set(tokenize(oos));
-  for (const t of themeTokens) {
-    if (oosTokens.has(t)) {
-      warnings.push(
-        `Theme "${theme}" overlaps with charter Out of Scope section (matched token: "${t}").`
-      );
-      break;
-    }
+  const { outOfScope } = parseCharterSections(charterText);
+  const [hit] = matchItems(theme, outOfScope, { outOfScope: true });
+  if (hit) {
+    warnings.push(
+      `Theme "${theme}" overlaps with charter Out of Scope item "${hit.item}" (matched: ${hit.words.join(', ')}).`
+    );
   }
   return { warnings };
 }

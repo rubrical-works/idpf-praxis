@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * Resolver for the `crossSessionMessaging` project config (#2702).
  *
@@ -352,6 +352,35 @@ function readJsonOrUndefined(filePath) {
 }
 
 /**
+ * Whether `.claude/x-session.json` exists and, if so, whether it holds an
+ * object (#3054 item 6). The readers degrade past a malformed file on purpose;
+ * a writer must not, or it overwrites what the user wrote with defaults.
+ *
+ * @param {string} cwd  Project root.
+ * @returns {{exists: boolean, malformed: boolean, reason: string|null}}
+ */
+function inspectXSessionFile(cwd) {
+  const fs = require('fs');
+  const path = require('path');
+  const filePath = path.join(typeof cwd === 'string' && cwd ? cwd : process.cwd(), X_SESSION_REL_PATH);
+  let text;
+  try {
+    text = fs.readFileSync(filePath, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return { exists: false, malformed: false, reason: null };
+    return { exists: true, malformed: true, reason: `unreadable (${err.message})` };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { exists: true, malformed: true, reason: `not valid JSON (${err.message})` };
+  }
+  if (!isPlainObject(parsed)) return { exists: true, malformed: true, reason: 'not a JSON object' };
+  return { exists: true, malformed: false, reason: null };
+}
+
+/**
  * Resolve the effective state from a project on disk, applying the full
  * precedence chain (#2774):
  *
@@ -505,6 +534,7 @@ module.exports = {
   X_SESSION_REL_PATH,
   resolveCrossSessionConfig,
   readCrossSessionConfig,
+  inspectXSessionFile,
   formatEffectiveState,
 };
 

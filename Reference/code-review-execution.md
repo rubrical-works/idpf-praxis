@@ -1,5 +1,5 @@
 # /code-review Execution Reference
-**Version:** v0.111.0
+**Version:** v0.112.0
 **Source:** Reference/code-review-execution.md
 `/code-review` Workflow (Steps 2–12), hoisted out of the shell (#3230) on the `/work` (#2368) / `/review-issue` (#2737) shell + execution-reference pattern. The shell `CommandsSrc/code-review.md` keeps Prerequisites, Arguments, Step 1 parsing, Error Handling and closing cleanup.
 **Why a file, not a command call.** Skill does not return; a file is executed inline in the same turn and the caller continues — so `/prepare-release` and `/prepare-beta` run the diff review from their Branch Diff Review Gate (§ Release Review Gate) instead of asking for a second command.
@@ -186,12 +186,12 @@ Refuses a release or beta whose branch carries an unreviewed change or an introd
 - Fresh record → no inline review (an earlier `/code-review --diff` is not paid twice); apply the severity policy, record source `already fresh`.
 - No usable record, or a stale one → report `Branch diff review missing or stale (record headSha <sha|none>, HEAD <sha>).` with the helper's `reason` and any `offending` paths. Then compute, read-only, the set the review would read (Step 3 discovery + excludes ∩ changed files; tests excluded, deleted dropped):
   - No reviewable source file in it → report `No reviewable source files changed on this branch relative to <ref> (<sha>); review gate passed vacuously.` and continue (tests- or docs-only branch); offer nothing.
-  - Otherwise offer via `AskUserQuestion`, stating the diff-set file count: `Run the diff review now (recommended)` / `Stop; I'll run /code-review --diff myself`. Over 40 files recommend stop instead, naming `--batch N` — an inline review reads every file before Phase 3 and risks compaction mid-release.
+  - Otherwise offer via `AskUserQuestion` (shape: `{frameworkPath}/Reference/AskUserQuestion-Shape.md`, #3233): base and file-count table first; options `1.Run the diff review now (recommended)`, `2.Stop; I'll run /code-review --diff myself`; question `Run the branch diff review now (<N> files)?`; previews: the first runs `/code-review --diff <ref>` inline, then re-checks; the second STOPs (below). Over 40 files recommend stop instead, naming `--batch N` — an inline review reads every file before Phase 3 and risks compaction mid-release.
   - **Accept** → execute § `/code-review` — Workflow, Steps 2–12, inline with `--diff <ref>` (`<ref>` = the gate's resolved base) — no `Skill` call, no other flag. It runs its Step 8 (filing, one `AskUserQuestion`), Step 10 (`lastDiffReview`), Step 10a (commit); Step 12 prunes only its `code-review:` tasks and hands back here.
   - **Decline** → **STOP**: `Run /code-review --diff, then re-run /<command>.`
   - **After the inline run** → re-read `.code-review-manifest.json` from disk, re-apply the partial-record check and `reviewRecordFreshness`. Still missing/stale → **STOP** with `Branch diff review still stale after the inline run (<reason>). Run /code-review --diff, then re-run /<command>.` — never loop or retry. Fresh → severity policy, record source `inline run this invocation`.
 - `findings.introduced.high` > 0 → **STOP**, naming filed `issues` and introduced counts; `findings.preExisting` counts reported alongside, never block.
-- `findings.introduced.medium` > 0 and `findings.introduced.high` = 0 → **ASK USER** via `AskUserQuestion`: continue, or stop to address them.
+- `findings.introduced.medium` > 0 and `findings.introduced.high` = 0 → **ASK USER** via `AskUserQuestion`: continue, or stop to address them. Findings table (issue, file, title) first; options `1.Continue`, `2.Stop to address them`; question `<M> introduced medium findings: continue the release?`; previews: *Continue* → proceed, findings filed; *Stop to address them* → STOP before any version file is edited.
 - Only `low`/`info` counts in `findings.introduced`, or none → report the counts and continue.
 
 **Gate report** — every outcome evaluating a record reports from the record itself:

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * Boundary-anchored issue-reference matching and name-status parsing (#2467).
  *
@@ -19,10 +19,12 @@
  * Centralized here so the five call sites cannot drift apart -- five
  * separately-corrected regexes would.
  *
- * Runtime dependency contract: Node built-ins only, and in fact zero requires.
+ * Runtime dependency contract: Node built-ins and colocated helpers only.
  * Deployed helpers run from the framework root, whose node_modules contains
  * only the packages declared in framework-manifest.json runtimeNpmDependencies.
  */
+
+const { unquoteGitPath } = require('./git-path.js');
 
 /**
  * Git `--grep` uses POSIX BASIC regular expressions by default, where the
@@ -103,6 +105,10 @@ function bodyMentionsIssue(text, issueNumber) {
  * both scope-relevant, and recording only one is what let `git mv` of a
  * protected file pass the gate.
  *
+ * Paths are returned unquoted (#3382): git C-quotes a name holding a quote,
+ * a backslash or — under core.quotePath — a non-ASCII byte, and every caller
+ * compares the path against a declared or protected one.
+ *
  * @param {string} line
  * @returns {{ status: string, paths: string[] }|null} null for blank lines,
  *   commit headers, and unrecognized statuses
@@ -123,12 +129,12 @@ function parseNameStatusLine(line) {
     if (parts.length < 2) return null;
     const paths = parts.slice(0, 2).map(p => p.trim()).filter(Boolean);
     if (paths.length < 2) return null;
-    return { status, paths };
+    return { status, paths: paths.map(unquoteGitPath) };
   }
 
   const single = rest.split('\t')[0].trim();
   if (!single) return null;
-  return { status, paths: [single] };
+  return { status, paths: [unquoteGitPath(single)] };
 }
 
 /**

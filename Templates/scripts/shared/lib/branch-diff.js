@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Branch diff helpers. Exports BASE_REF_CANDIDATES, resolveBranchBase(), changedFilesSinceBase() and classifyFindingRange() and reviewRecordFreshness() — the one definition of "what this branch changed" shared by /code-review --diff and announce.js.
  * @checksum sha256:placeholder
  *
@@ -27,6 +27,8 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileTimed } = require('./exec.js');
+// Undo git's C-style quoting of a path (#3170); shared since #3382.
+const { unquoteGitPath } = require('./git-path.js');
 
 const GIT_TIMEOUT_MS = 10000;
 // A release branch's -U0 diff runs to megabytes; Node's 1 MB default failed it
@@ -129,56 +131,37 @@ function diffTarget(sha, includeWorkingTree) {
   return includeWorkingTree ? [sha] : [sha, 'HEAD'];
 }
 
+/**
+ * Files, deletions, renames and copies from `git diff --name-status`.
+ * Paths are unquoted (#3399): git C-quotes a path holding a double quote, a
+ * backslash or a control character even under core.quotePath=false, and the
+ * ranges parseRanges returns are keyed by the plain path (#3170).
+ * @param {string} raw
+ * @returns {{files: Set<string>, deleted: string[], renamed: {from: string, to: string}[],
+ *            copied: {from: string, to: string}[]}}
+ */
 function parseNameStatus(raw) {
   const files = new Set();
   const deleted = [];
   const renamed = [];
+  const copied = [];
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
-    const parts = line.split('\t');
-    const status = parts[0];
+    const [status, ...paths] = line.split('\t');
+    const [first, second] = paths.map(unquoteGitPath);
     if (status.startsWith('R')) {
-      renamed.push({ from: parts[1], to: parts[2] });
-      files.add(parts[2]);
+      renamed.push({ from: first, to: second });
+      files.add(second);
     } else if (status.startsWith('C')) {
-      files.add(parts[2]);
+      copied.push({ from: first, to: second });
+      files.add(second);
     } else if (status === 'D') {
-      deleted.push(parts[1]);
+      deleted.push(first);
     } else {
-      files.add(parts[1]);
+      files.add(first);
     }
   }
-  return { files, deleted, renamed };
-}
-
-const C_ESCAPES = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
-
-/**
- * Undo git's C-style quoting of a path (`"b/a\"q.js"`, octal `\303\251`).
- * Octal escapes are bytes, so the result is decoded as UTF-8.
- * @param {string} quoted - including the surrounding double quotes
- * @returns {string}
- */
-function unquoteCPath(quoted) {
-  const body = quoted.slice(1, -1);
-  const bytes = [];
-  for (let i = 0; i < body.length; i++) {
-    const ch = body[i];
-    if (ch !== '\\') {
-      bytes.push(...Buffer.from(ch, 'utf8'));
-      continue;
-    }
-    const next = body[i + 1];
-    if (/[0-7]/.test(next)) {
-      const oct = body.slice(i + 1, i + 4).match(/^[0-7]{1,3}/)[0];
-      bytes.push(parseInt(oct, 8));
-      i += oct.length;
-    } else {
-      bytes.push(C_ESCAPES[next] !== undefined ? C_ESCAPES[next] : next.charCodeAt(0));
-      i += 1;
-    }
-  }
-  return Buffer.from(bytes).toString('utf8');
+  return { files, deleted, renamed, copied };
 }
 
 /**
@@ -193,7 +176,7 @@ function unquoteCPath(quoted) {
 function headerPath(target) {
   let t = target.replace(/\t$/, '');
   if (t === '/dev/null') return null;
-  if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) t = unquoteCPath(t);
+  t = unquoteGitPath(t);
   return t.replace(/^b\//, '');
 }
 
@@ -262,7 +245,7 @@ function changedFilesSinceBase(options = {}) {
     if (includeWorkingTree) {
       workingTreeIncluded = git(['status', '--porcelain'], cwd).trim().length > 0;
       const untracked = git(['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard'], cwd)
-        .split('\n').map((l) => l.trim()).filter(Boolean);
+        .split('\n').map((l) => l.trim()).filter(Boolean).map(unquoteGitPath);
       for (const rel of untracked) {
         nameStatus.files.add(rel);
         const n = countLines(cwd, rel);
@@ -280,6 +263,7 @@ function changedFilesSinceBase(options = {}) {
       files,
       deleted: nameStatus.deleted.sort(),
       renamed: nameStatus.renamed,
+      copied: nameStatus.copied,
       ranges: fileRanges,
       workingTreeIncluded,
     };
@@ -383,6 +367,7 @@ module.exports = {
   changedFilesSinceBase,
   classifyFindingRange,
   parseRanges,
+  parseNameStatus,
   isReviewOutputPath,
   reviewRecordFreshness,
 };

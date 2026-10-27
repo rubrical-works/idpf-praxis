@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Analyze a project and generate CI improvement recommendations based on detected languages, test tooling, deployment targets, and deprecated action versions. Produces structured recommendation objects consumed by ci-recommend-ui.js and ci-apply.js.
  * @checksum sha256:placeholder
  *
@@ -38,9 +38,63 @@ const DEPRECATED_ACTIONS = {
 };
 
 /**
- * EOL or outdated Node.js versions.
+ * End-of-life date of each Node.js LTS line (nodejs.org release schedule),
+ * supported through that day (#3383). The outdated set and the upgrade target
+ * are derived from today's date, so a line drops out of support on its date
+ * with no code change — the flat list this replaces went stale silently.
+ * A line absent from the table is never flagged.
  */
-const OUTDATED_NODE_VERSIONS = ['10', '12', '14', '16'];
+const NODE_EOL = {
+  '10': '2021-04-30',
+  '12': '2022-04-30',
+  '14': '2023-04-30',
+  '16': '2023-09-11',
+  '18': '2025-04-30',
+  '20': '2026-04-30',
+  '22': '2027-04-30',
+  '24': '2028-04-30'
+};
+
+/** True when `version`'s end-of-life day has fully passed on `now`. */
+function isNodeEol(version, now) {
+  const eol = NODE_EOL[version];
+  return Boolean(eol) && Date.parse(`${eol}T23:59:59.999Z`) < now.getTime();
+}
+
+/**
+ * The major line a `node-version` value pins, or null when it pins none
+ * (#3383). '18', '18.x', '18.20.4', 'v18', '^18', '~18' and '18.*' all pin
+ * 18; an open range ('>=18') or an alias ('lts/*') pins no line, since
+ * setup-node resolves it to the newest matching release.
+ * @param {*} spec
+ * @returns {string|null}
+ */
+function nodeMajorLine(spec) {
+  const [major, ...rest] = String(spec).trim().replace(/^[v^~]/i, '').split('.');
+  if (!/^\d+$/.test(major) || !rest.every((p) => /^(\d+|x|\*)$/i.test(p))) return null;
+  return String(Number(major));
+}
+
+/**
+ * Node.js lines past end-of-life on `now`.
+ * @param {Date} [now]
+ * @returns {string[]}
+ */
+function outdatedNodeVersions(now = new Date()) {
+  return Object.keys(NODE_EOL).filter((v) => isNodeEol(v, now));
+}
+
+/**
+ * Version an EOL Node.js recommendation upgrades to: the oldest line in the
+ * table still in support on `now` (#3369 set 22; #3383 derives it, so the
+ * target is never itself end-of-life).
+ * @param {Date} [now]
+ * @returns {string|null}
+ */
+function nodeUpgradeTarget(now = new Date()) {
+  const supported = Object.keys(NODE_EOL).filter((v) => !isNodeEol(v, now));
+  return supported.sort((a, b) => Number(a) - Number(b))[0] || null;
+}
 
 /**
  * Inventory all workflow files in a project.
@@ -119,11 +173,21 @@ function inventoryWorkflows(projectDir) {
 /**
  * Analyze gaps between current workflows and best practices.
  * @param {string} projectDir - Path to project root
+ * @param {{ now?: Date }} [options] - `now` is the date Node end-of-life is judged on (#3383)
  * @returns {Array<{ type: string, description: string, impact: string, feature?: string, file?: string }>}
  */
-function analyzeGaps(projectDir) {
+function analyzeGaps(projectDir, { now = new Date() } = {}) {
   const recommendations = [];
   const workflows = inventoryWorkflows(projectDir);
+  const outdatedNode = outdatedNodeVersions(now);
+  const nodeTarget = nodeUpgradeTarget(now);
+  // #3388: with every table line past end-of-life there is no target, so a
+  // per-pin "upgrade to null" is withheld and the exhausted table is named once.
+  const stalePins = [];
+  const flagEol = (rec) => {
+    if (nodeTarget) recommendations.push(rec);
+    else stalePins.push(`${rec.nodeVersion} in ${rec.file}`);
+  };
   const analysis = analyzeProject(projectDir);
 
   // Check each workflow for issues
@@ -155,12 +219,17 @@ function analyzeGaps(projectDir) {
       for (const step of job.steps) {
         if (step && step.uses && /actions\/setup-node/i.test(step.uses) && step.with) {
           const nodeVersion = String(step.with['node-version'] || '');
-          if (OUTDATED_NODE_VERSIONS.includes(nodeVersion)) {
-            recommendations.push({
+          if (outdatedNode.includes(nodeMajorLine(nodeVersion))) {
+            flagEol({
               type: 'Alter',
-              description: `Node.js ${nodeVersion} is EOL — upgrade to 18+ in ${wf.fileName}`,
+              description: `Node.js ${nodeVersion} is EOL — upgrade to ${nodeTarget} in ${wf.fileName}`,
               impact: 'Security: EOL versions no longer receive patches',
-              file: wf.fileName
+              file: wf.fileName,
+              // ci-apply.js applyAlter routes kind 'node-version' to a document
+              // edit; the actionRef string replacement cannot express it (#3369).
+              kind: 'node-version',
+              nodeVersion,
+              upgrade: nodeTarget
             });
           }
         }
@@ -172,20 +241,39 @@ function analyzeGaps(projectDir) {
           ? job.matrix['node-version']
           : [job.matrix['node-version']];
         for (const v of versions) {
-          if (OUTDATED_NODE_VERSIONS.includes(String(v))) {
-            recommendations.push({
+          if (outdatedNode.includes(nodeMajorLine(v))) {
+            flagEol({
               type: 'Alter',
-              description: `Node.js ${v} in matrix is EOL — remove or replace with 18+ in ${wf.fileName}`,
+              description: `Node.js ${v} in matrix is EOL — replace with ${nodeTarget} in ${wf.fileName}`,
               impact: 'Security: EOL versions no longer receive patches',
-              file: wf.fileName
+              file: wf.fileName,
+              kind: 'node-version',
+              nodeVersion: String(v),
+              upgrade: nodeTarget
             });
           }
         }
       }
     }
 
-    // --- Improve: Missing concurrency groups on PR workflows ---
-    if (wf.triggers.includes('pull_request') && !wf.raw.includes('concurrency')) {
+    // --- Improve: push + pull_request run twice on one head (#3364) ---
+    // Once a PR is open, every push fires both events for the same commit. A
+    // github.ref key puts them in different groups, so concurrency-groups
+    // cannot dedupe them; the directional head.sha group (#2571) can. Offered
+    // INSTEAD of concurrency-groups for these workflows, never beside it.
+    const pushAndPR = wf.triggers.includes('push') && wf.triggers.includes('pull_request');
+    if (pushAndPR) {
+      if (!/pull_request\.head\.sha/.test(wf.raw)) {
+        recommendations.push({
+          type: 'Improve',
+          description: `Key ${wf.fileName}'s concurrency group on the PR head SHA so a push and its pull_request run test the commit once`,
+          impact: 'Efficiency: the push run of a commit with an open PR is cancelled by its pull_request run',
+          feature: 'push-pr-dedup',
+          file: wf.fileName
+        });
+      }
+    } else if (wf.triggers.includes('pull_request') && !wf.raw.includes('concurrency')) {
+      // --- Improve: Missing concurrency groups on PR workflows ---
       recommendations.push({
         type: 'Improve',
         description: `Add concurrency groups to ${wf.fileName} to cancel superseded PR runs`,
@@ -211,6 +299,19 @@ function analyzeGaps(projectDir) {
         });
       }
     }
+  }
+
+  // --- Alter: the EOL table itself is exhausted (#3388) ---
+  // No `upgrade`, so ci-apply refuses it rather than writing null into a
+  // workflow: the fix is a newer line in NODE_EOL, not a workflow edit.
+  if (stalePins.length) {
+    recommendations.push({
+      type: 'Alter',
+      kind: 'node-eol-table',
+      description: `Every Node.js line in the NODE_EOL table is past end-of-life on ${now.toISOString().slice(0, 10)} — `
+        + `add a newer LTS line to NODE_EOL in ci-recommend.js so EOL pins have an upgrade target (${stalePins.join(', ')})`,
+      impact: 'Security: EOL versions no longer receive patches, and no supported target is known'
+    });
   }
 
   // --- Improve: Missing artifact retention ---
@@ -304,4 +405,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { inventoryWorkflows, analyzeGaps, RECOMMENDATION_TYPES };
+module.exports = { inventoryWorkflows, analyzeGaps, RECOMMENDATION_TYPES, NODE_EOL, outdatedNodeVersions, nodeUpgradeTarget };

@@ -1,5 +1,5 @@
 ---
-version: "v0.111.0"
+version: "v0.112.0"
 description: Start working on issues with validation and automatic task extraction, using the IDPF framework.
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--concurrent [--agents N] [--no-review]] | --status <status> [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -70,11 +70,11 @@ Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. Fast-for
 
 ---
 ## Concurrent Mode (#3117)
-`--concurrent` on an epic/branch tracker runs file-disjoint sub-issues at once. The preamble's `concurrencyPlan` groups members with disjoint declared scope and met `**Depends on:**` edges, at most `--agents N` per group in dependency-layer order; undeclared scope, an overlap, an always-protected path or an unmet dependency falls to a **sequential tail** worked as standard `/work`. The parent owns every gate, announcement, merge-back and status move; a member agent owns only Step 3 in its worktree (`concurrent-orchestration.js`). Before merge-back the **Merge-Back Review Gate** (`merge-back-gate.js`) runs Tiers 1–3; `--no-review` skips Tier 3, reported. One fix cycle per fail; a second fail halts, worktree kept.
+`--concurrent` on an epic/branch tracker runs file-disjoint sub-issues at once. The preamble's `concurrencyPlan` groups members with met `**Depends on:**` edges, at most `--agents N` per group in dependency-layer order; two members with overlapping declared scope never share a group — the later is **deferred** to a later group, and its dependents wait for it. Declared `concurrency` accumulator and derived-artifact paths are not overlap. Only undeclared scope, an always-protected path another member also matches under the same pattern (`scope-drift-protected-paths.json`), or an unreadable or unmet dependency falls to a **sequential tail** worked as standard `/work`. The parent owns every gate, announcement, merge-back and status move; a member agent owns only Step 3 in its worktree (`concurrent-orchestration.js`). Before merge-back the **Merge-Back Review Gate** (`merge-back-gate.js`) runs Tiers 1–3; `--no-review` skips Tier 3, reported. One fix cycle per fail; a second fail halts, worktree kept.
 | Mode | STOP cadence | Reporting |
 |---|---|---|
 | `--concurrent` | **One STOP per group** after merge-back, every member `in_review`; tail STOPs per member | Group report, then per member |
-| `--nonstop --concurrent` | **No STOP**, **no fixed groups** — rolling schedule: a member starts when a slot frees and every member it depends on has merged back; the parent advances it with `concurrent-orchestration.js next-steps` | Per member as it reaches `in_review`; nonstop summary last, repeating any leftover-worktree report |
+| `--nonstop --concurrent` | **No STOP**, **no fixed groups** — rolling schedule: a member starts when a slot frees and every member it depends on has merged back; the parent advances it with `concurrent-orchestration.js next-steps`; a lone runnable member, none running, is worked inline — no worktree, agent or merge-back | Per member as it reaches `in_review`; nonstop summary last, repeating any leftover-worktree report |
 **Fallback:** a plan with **zero groups** runs exactly as sequential and says why. **Default unchanged:** without `--concurrent` nothing here applies; `--agents` or `--no-review` alone is reported as ignored. Rules: `.claude/rules/08-work-execution.md` Steps 2c, 3, 6a; `Reference/work-execution-conditional.md` §§ 2c, 6a.
 
 ---

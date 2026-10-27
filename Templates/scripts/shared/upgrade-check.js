@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Check for third-party framework/dependency upgrades. Detects ecosystems from manifest files at the project root (never from CHARTER.md or Tech-Stack.md prose), queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
  *
@@ -11,8 +11,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, execFileSync } = require('child_process');
-const { readFileSafe, readJsonSafe } = require('./lib/shell-safe.js');
+const { execFileSync } = require('child_process');
+const { readFileSafe, readJsonSafe, atomicWriteSync } = require('./lib/shell-safe.js');
 const { validateNpmPackageName } = require('./lib/input-validation.js');
 
 // ======================================
@@ -414,12 +414,31 @@ function parseRequirementsTxt(content) {
 // ======================================
 
 /**
+ * Resolve how to spawn npm without a shell.
+ * On win32 npm is npm.cmd, which execFileSync cannot spawn without a shell
+ * (ENOENT for 'npm', EINVAL for 'npm.cmd' since CVE-2024-27980), so run the
+ * npm-cli.js that ships beside the node binary instead (#3050).
+ * @param {object} [env]
+ * @param {string} [env.platform] - Defaults to process.platform
+ * @param {string} [env.execPath] - Defaults to process.execPath
+ * @param {Function} [env.exists] - Defaults to fs.existsSync
+ * @returns {{file: string, prefix: string[]}|null} null when no shell-free npm exists
+ */
+function resolveNpmCommand({ platform = process.platform, execPath = process.execPath, exists = fs.existsSync } = {}) {
+  if (platform !== 'win32') return { file: 'npm', prefix: [] };
+  const cli = path.win32.join(path.win32.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  return exists(cli) ? { file: execPath, prefix: [cli] } : null;
+}
+
+/**
  * Query a package registry for the latest version of a package.
  * @param {string} registry - Registry type ('npm', 'pypi', 'crates')
  * @param {string} packageName - Package name
+ * @param {object} [env] - Platform overrides for resolveNpmCommand (tests), and timeoutMs
  * @returns {string|null} Latest version or null on failure
  */
-function queryLatestVersion(registry, packageName) {
+function queryLatestVersion(registry, packageName, env = {}) {
+  const timeoutMs = env.timeoutMs || LOOKUP_TIMEOUT_MS;
   try {
     switch (registry) {
       case 'npm': {
@@ -427,19 +446,24 @@ function queryLatestVersion(registry, packageName) {
         // cloned repo attacker-controlled. Validate against the npm grammar and
         // spawn via execFileSync array-args so it never reaches a shell (#2456).
         const safeName = validateNpmPackageName(packageName);
+        const npm = resolveNpmCommand(env);
+        if (!npm) return null;
         const result = execFileSync(
-          'npm',
-          ['view', safeName, 'version'],
-          { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000 }
+          npm.file,
+          [...npm.prefix, 'view', safeName, 'version'],
+          { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: timeoutMs }
         );
         return result.trim();
       }
       case 'pypi': {
-        const result = execSync(
-          `pip index versions "${packageName}" 2>/dev/null | head -1`,
-          { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000 }
+        // Array-args and a JS first-line parse: the old `2>/dev/null | head -1`
+        // shell string cannot run under cmd.exe (#3050).
+        const result = execFileSync(
+          'pip',
+          ['index', 'versions', packageName],
+          { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: timeoutMs }
         );
-        const match = result.match(/\(([^)]+)\)/);
+        const match = String(result).split(/\r?\n/)[0].match(/\(([^)]+)\)/);
         return match ? match[1] : null;
       }
       default:
@@ -448,6 +472,76 @@ function queryLatestVersion(registry, packageName) {
   } catch {
     return null;
   }
+}
+
+// Per-lookup timeout, and the overall budget for all lookups. The budget sits
+// under startup-hook.js's 40 s final kill stage so the check reports instead
+// of being killed (#3050).
+const LOOKUP_TIMEOUT_MS = 10000;
+const LOOKUP_BUDGET_MS = 25000;
+
+/**
+ * Query every dependency under one overall time budget.
+ * Lookups run in order; each gets min(LOOKUP_TIMEOUT_MS, budget remaining),
+ * and once the budget is spent the rest are failed without a spawn, so N
+ * dependencies cost at most the budget rather than N × 10 s (#3050).
+ * @param {Array<{dep: object, ecosystem: string, registry: string}>} items
+ * @param {object} [opts]
+ * @param {Function} [opts.query] - (registry, name, timeoutMs) → version|null
+ * @param {number} [opts.budgetMs]
+ * @param {Function} [opts.now]
+ * @returns {{checked: object[], outdated: object[], failed: object[]}}
+ */
+function checkDependencies(items, {
+  query = (registry, name, timeoutMs) => queryLatestVersion(registry, name, { timeoutMs }),
+  budgetMs = LOOKUP_BUDGET_MS,
+  now = Date.now
+} = {}) {
+  const checked = [];
+  const outdated = [];
+  const failed = [];
+  const start = now();
+
+  for (const { dep, ecosystem, registry } of items) {
+    const remaining = budgetMs - (now() - start);
+    if (remaining <= 0) {
+      failed.push({ ...dep, ecosystem, reason: 'time budget exceeded' });
+      continue;
+    }
+    const latest = query(registry, dep.name, Math.min(LOOKUP_TIMEOUT_MS, remaining));
+    if (!latest) {
+      failed.push({ ...dep, ecosystem, reason: 'lookup failed' });
+      continue;
+    }
+    checked.push({ ...dep, latest, ecosystem });
+    if (compareVersions(dep.installed, latest) < 0) {
+      outdated.push({ ...dep, latest, ecosystem });
+    }
+  }
+  return { checked, outdated, failed };
+}
+
+/**
+ * Build the result message and decide whether to advance lastCheck.
+ * A lookup that failed is unknown, never up to date; when nothing could be
+ * checked at all, lastCheck stays put so the next session retries (#3050).
+ * @param {{checked: object[], outdated: object[], failed: object[]}} result
+ * @returns {{message: string, writeLastCheck: boolean, failed: object[]}}
+ */
+function summarizeCheck({ checked, outdated, failed }) {
+  const failedList = failed.map(({ name, ecosystem, reason }) => ({ name, ecosystem, reason }));
+  if (checked.length === 0 && failed.length > 0) {
+    return {
+      message: `Could not query the registry for any of ${failed.length} package(s); nothing was checked`,
+      writeLastCheck: false,
+      failed: failedList
+    };
+  }
+  const parts = [outdated.length > 0
+    ? `Found ${outdated.length} outdated package(s)`
+    : (failed.length > 0 ? `No outdated package(s) among ${checked.length} checked` : 'All packages are up-to-date')];
+  if (failed.length > 0) parts.push(`${failed.length} package(s) could not be checked`);
+  return { message: parts.join('; '), writeLastCheck: true, failed: failedList };
 }
 
 // ======================================
@@ -472,7 +566,7 @@ function readCheckConfig(projectDir) {
  */
 function writeCheckConfig(projectDir, config) {
   const configPath = path.join(projectDir, CONFIG_FILE);
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  atomicWriteSync(configPath, JSON.stringify(config, null, 2) + '\n'); // #3063
 }
 
 // ======================================
@@ -523,9 +617,7 @@ async function main() {
   }
 
   // Query each ecosystem's registry for the manifest files actually found
-  const outdated = [];
-  const checked = [];
-
+  const items = [];
   for (const { name: eco, files: depFiles } of detections) {
     const ecoInfo = ECOSYSTEM_REGISTRY.find(e => e.name === eco);
 
@@ -534,32 +626,28 @@ async function main() {
       const content = readFileSafe(depPath);
       if (content === null) continue;
 
-      const deps = parseDependencyVersions(depFile, content);
-      for (const dep of deps) {
-        const latest = queryLatestVersion(ecoInfo.registry, dep.name);
-        if (!latest) continue;
-
-        checked.push({ ...dep, latest, ecosystem: eco });
-
-        if (compareVersions(dep.installed, latest) < 0) {
-          outdated.push({ ...dep, latest, ecosystem: eco });
-        }
+      for (const dep of parseDependencyVersions(depFile, content)) {
+        items.push({ dep, ecosystem: eco, registry: ecoInfo.registry });
       }
     }
   }
 
-  // Update config with check timestamp
-  writeCheckConfig(projectDir, { lastCheck: new Date().toISOString() });
+  const { checked, outdated, failed } = checkDependencies(items);
+  const summary = summarizeCheck({ checked, outdated, failed });
+
+  // Update config with check timestamp — not when every lookup failed (#3050)
+  if (summary.writeLastCheck) {
+    writeCheckConfig(projectDir, { lastCheck: new Date().toISOString() });
+  }
 
   // Output result
   console.log(JSON.stringify({
     success: true,
-    message: (outdated.length > 0
-      ? `Found ${outdated.length} outdated package(s)`
-      : 'All packages are up-to-date') + (disagreementNote ? `.${disagreementNote}` : ''),
+    message: summary.message + (disagreementNote ? `.${disagreementNote}` : ''),
     data: {
       ecosystems,
       checked: checked.length,
+      failed: summary.failed,
       outdated,
       techStackSource,
       techStackDisagreement: disagreement
@@ -593,6 +681,10 @@ module.exports = {
   resolveTechStack,
   parseDependencyVersions,
   queryLatestVersion,
+  resolveNpmCommand,
+  summarizeCheck,
+  checkDependencies,
+  LOOKUP_BUDGET_MS,
   readCheckConfig,
   writeCheckConfig,
   stripVersionPrefix,

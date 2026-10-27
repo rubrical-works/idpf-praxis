@@ -27,6 +27,7 @@ idea: Dark Mode Support
 - Also triggered by the `idea:` alias — identical workflow and output
 - Supports two creation modes: **Quick** (single description prompt) and **Guided** (step-by-step prompts for Problem Statement, Proposed Solution, Implementation Criteria, Alternatives, Impact, and Screen Discovery); mode is auto-selected based on how much detail was provided in the command
 - Proposal document must include `**File:** Proposal/[Name].md` — required for `/create-prd` integration
+- Checks the title and problem statement against `CHARTER.md` scope. When they match no charter item or match an out-of-scope item, you are shown the matching items and offered: expand the charter scope, defer to a future release, proceed anyway, or revise the proposal. Advisory only — it never blocks creation, and it is skipped with a one-line note when there is no charter, the charter is an unfilled template, or the project has opted out with `.no-charter-enforcement`
 - After creating the document, creates a GitHub issue with the `proposal` label (priority P2, status Backlog) and updates the document with the issue number
 - **STOP** after reporting — does not implement anything unless the user explicitly says "work" or "implement"
 - Warns before overwriting an existing `Proposal/[Name].md`

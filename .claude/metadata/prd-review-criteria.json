@@ -163,6 +163,14 @@
       "requiresTestPlan": false
     },
     {
+      "id": "charter-alignment",
+      "name": "Aligned with the charter",
+      "description": "PRD title, problem statement and proposed solution compared against CHARTER.md In Scope, Out of Scope and Current Focus",
+      "type": "objective",
+      "autoCheckMethod": "Run node .claude/scripts/shared/lib/charter-scope.js --command create-prd --text-file <file>, with the title, problem statement and proposed solution written to a .tmp- file, and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning, naming that the PRD matches no In Scope or Current Focus item. conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the PRD's own scope section; scope-boundaries covers that.",
+      "requiresTestPlan": false
+    },
+    {
       "id": "screen-spec-alignment",
       "name": "Screen spec alignment (UI PRDs)",
       "description": "Verify PRD UI requirements align with referenced screen specs",

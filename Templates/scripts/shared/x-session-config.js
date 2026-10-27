@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -43,7 +43,9 @@ const { helpEnvelope } = require('./lib/command-args.js');
 const {
   resolveCrossSessionConfig,
   readCrossSessionConfig,
+  inspectXSessionFile,
   formatEffectiveState,
+  X_SESSION_REL_PATH,
 } = require('./lib/cross-session-config.js');
 
 /**
@@ -566,6 +568,16 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
       // already consistent.
       memory: memoryStatus(cwd, shownWritten.noticeNarration === false, null, null),
     }, effectiveRouting(shown, cwd, routingProbe));
+  }
+
+  // A malformed file is refused, never overwritten (#3054 item 6). The readers
+  // ignore it so an advisory channel cannot fail /work; a write built on that
+  // degraded read would replace what the user wrote with defaults, which is the
+  // "a rejected invocation writes nothing" rule broken from the other side.
+  const existing = inspectXSessionFile(cwd);
+  if (existing.malformed) {
+    return fail([`${X_SESSION_REL_PATH} is ${existing.reason}; nothing was written. `
+      + 'Fix or delete the file, then re-run.']);
   }
 
   const after = applyLevers(before, parsed);

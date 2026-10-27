@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * validate-dist.js - Distribution integrity validator
  *
  * Validates that the distribution package is complete and consistent.
@@ -73,7 +73,6 @@ const requiredFiles = [
   'CHANGELOG.md',
   'LICENSE',
   'SECURITY.md',
-  'audit.js',
   'validate-dist.js',
   'framework-manifest.json',
   'package.json',
@@ -178,7 +177,7 @@ if (checksums && checksums.files) {
 section('Version Injection');
 
 const sampleFiles = [
-  'audit.js',
+  'validate-dist.js',
   'README.md',
 ];
 

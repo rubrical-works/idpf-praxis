@@ -1,5 +1,5 @@
 ---
-version: "v0.111.0"
+version: "v0.112.0"
 allowed-tools: Bash, Read, AskUserQuestion, Skill, SendMessage
 description: Verify one qa-required issue through a bounded set of outcomes and offer to close it with recorded evidence, using the IDPF framework.
 argument-hint: "#issue [--pass] [--assign] [--help]"
@@ -110,6 +110,7 @@ Name what a test would assert, **resolve where it goes**, then **offer** to auth
 **A flow check resolves to the declared e2e suite, not a module stem.** A check is a **flow** when it crosses modules, or the parent's `### Files Changed` names **more than one source with no single owner**:
 - Location from `framework-config.json` `testing.suites[]` — the entry whose `role` is `e2e` — at its `match[]` globs. The project declares the layout; this spec names no directory.
 - Propose a **flow-named** spec — named for the journey, not a source stem — carrying the `@covers` annotation below.
+- **A manual-only suite is still a target (#3362).** A suite declared `execution: "manual-only"` is still a valid placement: it is kept out of the sweep and CI, not out of `/qa`. Place the spec there and /qa runs it itself, scoped to it, after the suite's `prepare` (pack/build) phase.
 - **A stem-named module test is never the answer for a flow.** It pairs against a source it does not exercise, so the audit reports that source covered and the real gap disappears — worse than the orphan it avoids, since nothing is left to report.
 **No path resolves → name which condition failed, then ask.** Three conditions, each **by name**, never one "could not resolve" line — they have three different remedies:
 | Condition | Meaning |
@@ -142,8 +143,10 @@ Ask where the test should live via `AskUserQuestion`. **It never places silently
 **A module test is unaffected by `@covers`** — the classifier reads flow tags only in a flow location, so a `@covers` tag on one declares nothing; module tests keep the plain in-file comment.
 **A contract test carries `@subject` instead (#2904).** When the authored test's subject is a non-code artifact — a contract test as `{frameworkPath}/Reference/Contract-Test-Classification.md` defines one — declare each subject with `@subject` in its leading comment block, beside the provenance comment. That document owns classification, placement and grammar; **do not decide the class by judgment here** or restate its rule. Undeclared, the next audit counts it a module orphan.
 #### Outcome 3: Manual-only
-Verifiable only by a person (deployed hub, real remote, second OS, re-scan, visual check). **STOP with a structured report and leave a closure path.** Do not move the issue, check a box, or touch the parent's gate line. The report names:
-1. **Numbered concrete steps** requiring a person — commands to run, what to open or click, in order — and why automation does not reach them. Not a restatement of `### Steps to Perform`.
+Verifiable only by a person, and only once every automation route failed for a stated reason (entry gate below). A deployed hub, a real remote account, a second OS the session cannot reach, a re-scan are reasons a route fails, not categories that skip the question; rendered output is not one — the DOM, a screenshot comparison or the accessibility tree can usually assert it. **STOP with a structured report and leave a closure path.** Do not move the issue, check a box, or touch the parent's gate line.
+**Entry gate (#3362) — no Outcome 3 report is emitted unless automation was exhausted.** First write a JSON map of every `automationRoutes` id in `.claude/scripts/shared/lib/qa-config.json` → the specific reason that route cannot reach `### Steps to Perform` to `.tmp-qa-routes-$ISSUE.json`, run `node .claude/scripts/shared/qa-extract.js --check-routes .tmp-qa-routes-$ISSUE.json`, remove the file. Exit 0 (valid) → the report. Exit 1 (invalid: a route missing, blank, or a `genericReasons` answer such as "it's visual" or "native dialog") → Outcome 2, naming each flagged route; automatable until a specific reason says otherwise. A credential or account the session does not hold is a valid reason, stated as such; that handing it over is cheaper is not.
+The report names:
+1. **Numbered concrete steps** requiring a person — commands to run, what to open or click, in order — and why automation does not reach them: each automation route with its reason, from the entry gate's validated list. Not a restatement of `### Steps to Perform`.
 2. **The environment** needed.
 3. **The evidence that would close the issue** — the observable property that separates PASS from FAIL (e.g. "the use-case diagram renders as an SVG with 3 actors"), never "looks correct".
 4. **Location** — the exact path, URL or UI location of each thing to inspect, findable without searching; a generated artifact is named here by its scratch path.
@@ -171,7 +174,7 @@ When the check is on something locally producible (rendered diagram or HTML page
 **Generating the artifact is not verifying it** — the observation and the verdict stay human, recorded through the evidence template.
 ##### Recording the verdict on a re-invocation (#2835)
 The template above serves the hand-off path. On a **direct** `/qa #N` re-invocation the check has already been performed, so the paste is clerical. After the structured report raise **one** `AskUserQuestion` — *Record PASS*, *Record FAIL*, *Not yet performed*; **the default when nothing is chosen is *Not yet performed***, leaving the run untouched.
-**The question text names the numbered steps and the PASS/FAIL evidence property (#2979)** — items 1 and 3 carried into the question, **not a one-line summary**. The question may render over the earlier prose, so one merely referring back leaves the person choosing with nothing on screen; *Not yet performed* then only ends the run, the report already shown.
+**Prompt shape (#3233, superseding #2979's in-question steps):** (1) the printed report, then a verdict table with first column `{n}.{label}` — `1.Record PASS`, `2.Record FAIL`, `3.Not yet performed` — matching the unprefixed options in that order; (2) a one-line question, `QA #N: record the verdict?`; (3) each option's `preview` carries its verdict condition plus the numbered steps (report items 1 and 3), so steps and condition are on screen at the choice. *Not yet performed* only ends the run, the report already shown. Convention: `{frameworkPath}/Reference/AskUserQuestion-Shape.md`.
 **The observation is collected as free text, in the user's own words — with one exception, scoped to `--pass` typed on the command line (#3011), stated in the next subsection.** The verdict is two tokens and may be an option; *Observed result* and *Steps performed* are not — ask conversationally and record what comes back. A session-composed option describing what happened ("the prompt fired as expected") reintroduces the self-report the boundary below forbids, the person reduced to confirming this session's account of itself. **Why the `PASS`-only relaxation stays inside that boundary (#3011, narrowing #2835):** the pre-generated observation is the QA body's own expected result, not this session's account of itself; the person typed the verdict and vouches for the composed text at the confirm step. The attestation stays human; only clerical composition moves. **`FAIL` stays free text** on every path — a failure's observed result is what only the person who saw it can supply.
 **Compose the comment from the template above, verbatim** — the same `**QA Evidence:**` block — so Step 2's reader matches it unchanged. Write to `.tmp-qa-evidence-$ISSUE.md`, post, then `rm`:
 ```bash
@@ -247,6 +250,7 @@ An all-green run reports the evidence and **offers to close**: **Verified by** (
 | Issue closed or `done` | Nothing to verify → STOP |
 | Parent line absent | Continue; Step 3a reports it, outcome 1 unavailable |
 | `tdd-refactor-coverage-audit` absent | Reported by name at Step 3a; outcome 2 |
+| Outcome 3 routes invalid (`--check-routes` exit 1) | Outcome 2, naming each flagged route |
 | Candidate test fails | Real finding → STOP, nothing closed |
 | Any verification command red | STOP, nothing closed — pre-existing failures included |
 | `source: "none"` | Report the undeclared set → STOP |

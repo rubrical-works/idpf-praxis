@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -43,7 +43,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const LEDGER_FILENAME = '.tmp-announce-ledger.jsonl';
+// Outside the .tmp- namespace (#3063): the startup scratch sweep collects
+// every .tmp-* file after 24h, so a long /work run lost its gate decisions.
+const LEDGER_FILENAME = '.claude/.announce-ledger.jsonl';
+// The pre-#3063 name, still read for one release and folded into the new
+// file by the first update.
+const LEGACY_LEDGER_FILENAME = '.tmp-announce-ledger.jsonl';
 
 /**
  * The events this ledger tracks, and only these.
@@ -149,6 +154,57 @@ function ledgerPath(cwd = process.cwd()) {
   return path.join(cwd, LEDGER_FILENAME);
 }
 
+function legacyLedgerPath(cwd = process.cwd()) {
+  return path.join(cwd, LEGACY_LEDGER_FILENAME);
+}
+
+/**
+ * Create `.claude/` under the working directory when it is missing — and only
+ * that one level, so a working directory that does not exist still fails the
+ * write rather than being created by it.
+ */
+function ensureLedgerDir(file) {
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+}
+
+/**
+ * Status-update rows (#3346). A dispatch or receipt outcome is APPENDED as one
+ * of these, `ref` naming the entry it updates, and readLedger() folds it onto
+ * that entry — last update wins per id. They are never entries themselves and
+ * never counted malformed.
+ *
+ * Why append rather than rewrite: the ledger is shared by every session in the
+ * working directory, and a read-modify-write of the whole file dropped any row
+ * another session appended between the read and the write, tore the file for a
+ * concurrent reader, and deleted every malformed line it could not parse. An
+ * append touches no existing line. (The pre-#3063 legacy file is still read but
+ * no longer folded into the new one: that fold was itself a whole-file write.)
+ */
+const DISPATCH_UPDATE = 'dispatch-update';
+const RECEIPT_UPDATE = 'receipt-update';
+const UPDATE_EVENTS = Object.freeze([DISPATCH_UPDATE, RECEIPT_UPDATE]);
+
+/** Append one update row; `beforeWrite` is a test seam for the interleaving case. */
+function appendUpdate(row, options = {}) {
+  if (typeof options._beforeWrite === 'function') options._beforeWrite();
+  const file = ledgerPath(options.cwd || process.cwd());
+  ensureLedgerDir(file);
+  fs.appendFileSync(file, `${JSON.stringify({ id: newId(), ts: new Date().toISOString(), ...row })}\n`, 'utf8');
+}
+
+/** Apply one update row to the entry it references. */
+function foldUpdate(entry, update) {
+  if (update.event === DISPATCH_UPDATE) {
+    entry.dispatch = update.dispatch;
+    if (Object.prototype.hasOwnProperty.call(update, 'detail')) entry.detail = update.detail;
+  } else if (update.event === RECEIPT_UPDATE) {
+    entry.receipt = 'received';
+    entry.receiptFrom = update.receiptFrom;
+    entry.receiptAt = update.receiptAt;
+  }
+}
+
 function newId() {
   // Enough entropy to be unique within one working directory's run, and short
   // enough to paste into a report. No crypto import for a bookkeeping key.
@@ -245,7 +301,9 @@ function record(entry, options = {}) {
       if (typeof entry.decision === 'string') row.decision = entry.decision;
     }
 
-    fs.appendFileSync(ledgerPath(options.cwd || process.cwd()), `${JSON.stringify(row)}\n`, 'utf8');
+    const file = ledgerPath(options.cwd || process.cwd());
+    ensureLedgerDir(file);
+    fs.appendFileSync(file, `${JSON.stringify(row)}\n`, 'utf8');
     return { ok: true, id: row.id, entry: row };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
@@ -268,46 +326,56 @@ function record(entry, options = {}) {
  * simply not asked for. The default is what every pre-#2871 caller receives.
  */
 function readLedger(options = {}) {
-  const file = ledgerPath(options.cwd || process.cwd());
+  const cwd = options.cwd || process.cwd();
+  const file = ledgerPath(cwd);
   const includeRecordOnly = options.includeRecordOnly === true;
   const empty = { entries: [], malformed: 0, exists: false, path: file };
-  let raw;
+  let raw = '';
   try {
-    if (!fs.existsSync(file)) return empty;
-    raw = fs.readFileSync(file, 'utf8');
+    // Legacy rows first: they were written before any row under the new name.
+    const present = [legacyLedgerPath(cwd), file].filter((p) => fs.existsSync(p));
+    if (present.length === 0) return empty;
+    raw = present.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
   } catch (err) {
     return { ...empty, error: err && err.message ? err.message : 'ledger read failed' };
   }
 
-  const entries = [];
+  const rows = [];
+  const updates = [];
   let malformed = 0;
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     try {
       const parsed = JSON.parse(line);
       const isRow = parsed && typeof parsed === 'object';
-      if (isRow && TRACKED_EVENTS.includes(parsed.event)) entries.push(parsed);
-      else if (isRow && RECORD_ONLY_EVENTS.includes(parsed.event)) {
-        if (includeRecordOnly) entries.push(parsed);
-      } else malformed += 1;
+      if (isRow && TRACKED_EVENTS.includes(parsed.event)) rows.push(parsed);
+      else if (isRow && RECORD_ONLY_EVENTS.includes(parsed.event)) rows.push(parsed);
+      else if (isRow && UPDATE_EVENTS.includes(parsed.event) && typeof parsed.ref === 'string') updates.push(parsed);
+      else malformed += 1;
     } catch {
       malformed += 1;
     }
   }
+  // Fold every update onto its entry, in file order, BEFORE filtering, so a
+  // record-only entry's updates apply whether or not it is returned (#3346).
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const u of updates) {
+    const target = byId.get(u.ref);
+    if (target) foldUpdate(target, u);
+  }
+  const entries = includeRecordOnly ? rows : rows.filter((r) => TRACKED_EVENTS.includes(r.event));
   return { entries, malformed, exists: true, path: file };
 }
 
 /**
  * Close out a recorded announcement with what actually happened to the send.
  *
- * Rewrites the whole file rather than appending a second row: the question the
- * audit asks is "what became of this opener", and two rows for one event make
- * that a join rather than a lookup. The file is small — one line per
- * announcement per run — so the rewrite is cheaper than the ambiguity.
+ * Appends a `dispatch-update` row that readLedger() folds onto the entry
+ * (#3346), so the question the audit asks — "what became of this opener" — is
+ * still a lookup on the folded entry, and no other session's row is touched.
+ * It used to rewrite the whole file, which lost concurrently appended rows.
  *
- * Reads record-only entries too (#2871). The rewrite is built from what was
- * read, so a tracked-only read would delete every review entry on the first
- * close-out — and a review entry has to be closable here itself.
+ * Reads record-only entries too (#2871), so a review entry is closable here.
  *
  * An unknown id is REFUSED, never applied to the most recent entry. Guessing
  * would attribute a failure to whichever announcement happened to be last,
@@ -320,23 +388,15 @@ function updateDispatch(id, outcome = {}, options = {}) {
   }
   const { entries, exists } = readLedger({ ...options, includeRecordOnly: true });
   if (!exists) return { ok: false, error: 'No ledger to update.' };
+  if (!entries.some((e) => e.id === id)) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
 
-  let found = false;
-  for (const e of entries) {
-    if (e.id === id) {
-      e.dispatch = result;
-      if (outcome.detail !== undefined) e.detail = outcome.detail;
-      found = true;
-    }
-  }
-  if (!found) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
-
+  const row = { event: DISPATCH_UPDATE, ref: id, dispatch: result };
+  if (outcome.detail !== undefined) row.detail = outcome.detail;
   try {
-    const file = ledgerPath(options.cwd || process.cwd());
-    fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+    appendUpdate(row, options);
     return { ok: true, id };
   } catch (err) {
-    return { ok: false, error: err && err.message ? err.message : 'ledger rewrite failed' };
+    return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
   }
 }
 
@@ -352,24 +412,18 @@ function updateDispatch(id, outcome = {}, options = {}) {
 function updateReceipt(id, details = {}, options = {}) {
   const { entries, exists } = readLedger({ ...options, includeRecordOnly: true });
   if (!exists) return { ok: false, error: 'No ledger to update.' };
-
-  let found = false;
-  for (const e of entries) {
-    if (e.id === id) {
-      e.receipt = 'received';
-      e.receiptFrom = typeof details.from === 'string' && details.from.trim() !== '' ? details.from.trim() : null;
-      e.receiptAt = new Date().toISOString();
-      found = true;
-    }
-  }
-  if (!found) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
+  if (!entries.some((e) => e.id === id)) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
 
   try {
-    const file = ledgerPath(options.cwd || process.cwd());
-    fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+    appendUpdate({
+      event: RECEIPT_UPDATE,
+      ref: id,
+      receiptFrom: typeof details.from === 'string' && details.from.trim() !== '' ? details.from.trim() : null,
+      receiptAt: new Date().toISOString(),
+    }, options);
     return { ok: true, id };
   } catch (err) {
-    return { ok: false, error: err && err.message ? err.message : 'ledger rewrite failed' };
+    return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
   }
 }
 
@@ -406,6 +460,12 @@ function recordInvocation({ root }, options = {}) {
   return record({ event: 'work-invocation', issues: [root], root, dispatch: 'skipped' }, options);
 }
 
+/** The decisions each recorded gate accepts — rule 08 Step 3 (#3294 F26). */
+const GATE_DECISIONS = Object.freeze({
+  'review-state': Object.freeze(['proceed', 'declined', 'stop', 'halt']),
+  'pre-work-status': Object.freeze(['moved', 'already']),
+});
+
 /** Record one per-sub-issue gate decision for the current invocation (#3271). */
 function recordGateDecision({ issue, gate, decision, root }, options = {}) {
   return record({ event: 'gate-decision', issues: [issue], root, gate, decision, dispatch: 'skipped' }, options);
@@ -418,14 +478,26 @@ function recordGateDecision({ issue, gate, decision, root }, options = {}) {
  * not record a new start), and a fresh /work run asks again.
  */
 function findGateDecision({ entries, issue, gate, root, sessionPid }) {
-  const mine = (Array.isArray(entries) ? entries : [])
-    .filter((e) => e && e.root === root && e.sessionPid === sessionPid);
-  let start = -1;
-  mine.forEach((e, i) => { if (e.event === 'work-invocation') start = i; });
-  if (start === -1) return null;
-  const hits = mine.slice(start + 1)
+  // A null pid is every session's pid: matching on it would let concurrent
+  // sessions reuse each other's decisions (#3294 F25), so nothing is reused.
+  if (sessionPid == null) return null;
+  const hits = invocationWindow({ entries, root, sessionPid })
     .filter((e) => e.event === 'gate-decision' && e.gate === gate && Array.isArray(e.issues) && e.issues.includes(issue));
   return hits.length ? hits[hits.length - 1] : null;
+}
+
+/**
+ * The entries recorded for `root` after its latest `work-invocation` — one
+ * /work run's window (#3271). A known `sessionPid` narrows it to that
+ * session; null leaves every session's entries in (#3294 F7). No invocation
+ * recorded → an empty window.
+ */
+function invocationWindow({ entries, root, sessionPid = null }) {
+  const mine = (Array.isArray(entries) ? entries : [])
+    .filter((e) => e && e.root === root && (sessionPid == null || e.sessionPid === sessionPid));
+  let start = -1;
+  mine.forEach((e, i) => { if (e.event === 'work-invocation') start = i; });
+  return start === -1 ? [] : mine.slice(start + 1);
 }
 
 function reconcile({ entries, issues, workEnabled = false } = {}) {
@@ -509,10 +581,12 @@ function reconcile({ entries, issues, workEnabled = false } = {}) {
 
 module.exports = {
   LEDGER_FILENAME,
+  LEGACY_LEDGER_FILENAME,
   TRACKED_EVENTS,
   RECORD_ONLY_EVENTS,
   BRANCH_OPERATION_EVENTS,
   PUSH_EVENTS,
+  UPDATE_EVENTS,
   DISPATCH_STATES,
   OPENER,
   CLOSER,
@@ -528,6 +602,9 @@ module.exports = {
   recordInvocation,
   recordGateDecision,
   findGateDecision,
+  invocationWindow,
+  GATE_DECISIONS,
+  cli,
 };
 
 /**
@@ -541,7 +618,12 @@ function cli(argv, env = process.env, cwd = process.cwd()) {
   const [cmd, ...rest] = argv;
   const opt = {};
   for (let i = 0; i < rest.length; i++) {
-    if (rest[i].startsWith('--')) opt[rest[i].slice(2)] = rest[i + 1];
+    if (!rest[i].startsWith('--')) continue;
+    // A missing value must not swallow the next flag (#3294 F26).
+    const value = rest[i + 1];
+    if (value === undefined || value.startsWith('--')) return { ok: false, error: `${rest[i]} requires a value` };
+    opt[rest[i].slice(2)] = value;
+    i++;
   }
   const options = { cwd, sessionPid: normalizeSessionPid(env.CLAUDE_PID) };
   const root = Number(opt.root);
@@ -550,6 +632,11 @@ function cli(argv, env = process.env, cwd = process.cwd()) {
   if (cmd === 'gate') {
     const issue = Number(opt.issue);
     if (!Number.isInteger(issue) || !opt.gate) return { ok: false, error: '--issue <N> and --gate <name> are required' };
+    const allowed = GATE_DECISIONS[opt.gate];
+    if (!allowed) return { ok: false, error: `unknown gate ${JSON.stringify(opt.gate)}; expected one of ${Object.keys(GATE_DECISIONS).join(', ')}` };
+    if (opt.decision !== undefined && !allowed.includes(opt.decision)) {
+      return { ok: false, error: `--decision for ${opt.gate} must be one of ${allowed.join(', ')}` };
+    }
     if (opt.decision) return recordGateDecision({ issue, gate: opt.gate, decision: opt.decision, root }, options);
     const found = findGateDecision({ entries: readLedger({ cwd, includeRecordOnly: true }).entries, issue, gate: opt.gate, root, sessionPid: options.sessionPid });
     return { ok: true, decision: found ? found.decision : null };

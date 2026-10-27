@@ -293,9 +293,22 @@ The project charter (`CHARTER.md`) supports both approaches:
 
 ### For Bottom-Up
 
-- `/add-story` checks charter compliance
-- Warns if story may be out of scope
+- `/add-story`, `/enhancement` and `/proposal` check new work against the charter
+- Warns if work may be out of scope
 - Prevents organic growth from drifting off-mission
+
+### When the Check Runs
+
+Charter checks run inside the commands that create work, not on every message:
+
+| Command | What it checks |
+|---------|----------------|
+| `/create-prd` | The source proposal, against in-scope, out-of-scope and current-focus items |
+| `/create-backlog` | The PRD each epic and story is created from, the same way |
+| `/proposal`, `/enhancement` | The title and description, against in-scope and out-of-scope items |
+| `/add-story` | The story, against out-of-scope items only |
+
+Work that matches the charter proceeds without interruption. Work that matches nothing in the charter is shown to you for confirmation, and work that matches an out-of-scope item is flagged with options to resolve it. You can skip the check for a session by saying so, or turn it off for the project with a `.no-charter-enforcement` file.
 
 The charter acts as a **guardrail**, not a gate — it guides both approaches toward project goals.
 

@@ -24,6 +24,7 @@ Create GitHub epics and stories from an approved PRD, with TDD test case skeleto
 - Test case skeletons from the approved `Test-Plan-{name}.md` are embedded directly in each story's body, using the correct syntax for the project's language and test framework.
 - Each story's **E2E** line is taken from `framework-config.json` `testing.suites[]` — the suite whose `role` is `e2e`, as declared by `/charter` harness selection. No e2e framework is detected or guessed.
 - Each story gets a **Depends on:** line taken from the PRD story. After every story exists, PRD story ids (`Story 1.1`) are rewritten to issue numbers (`#3118`), including forward references. An id that does not resolve to a story in this backlog is left as written and reported, never dropped or guessed. A PRD story with no dependency statement gets `none (not stated in the PRD)` and is listed in the closing summary.
+- **Charter scope check before any epic is created.** The PRD title, summary and epic names are checked against `CHARTER.md`. When they match no charter item or match an out-of-scope item, you are shown the matching items and offered: expand the charter scope, defer to a future release, proceed anyway, or revise. Advisory only — it never blocks the backlog, and it is skipped with a one-line note when there is no charter, the charter is an unfilled template, or the project has opted out with `.no-charter-enforcement`.
 - Epic priority is set to the highest priority among its child stories.
 - After creation, runs keyword matching against story content and suggests relevant skills to install — can be skipped or selectively accepted.
 - Moves the PRD tracker to `in_progress` status; the tracker stays open until `/complete-prd` is run.
@@ -36,6 +37,7 @@ Two related rules apply when converting these rows:
 
 - If a row names a command as the reviewer but that command's documented scope does not cover reviewing implemented work, the human action is emitted instead of the command name.
 - If a row describes work another command's checklist already owns, it is dropped rather than annotated.
+- A criterion that only restates the project's test command passing ("`npm test` passes") is dropped and noted in the report, because `/work` already runs the full verification sweep before review. It is kept when the project declares no verification commands.
 
 ## Success Criteria Are Never Invented
 

@@ -4,7 +4,20 @@
   "_meta": {
     "description": "Per-pattern Git Bash corrections moved out of the always-on 05-windows-shell rule (#2997). .claude/hooks/shell-safety-hook.js tests each detector against the Bash tool_input.command and emits only the matching corrections: `advise` as PreToolUse additionalContext (the call proceeds), `block` as exit 2 with the correction on stderr. Text is the minimized rule wording, carried verbatim; the two block entries are new short texts drawn from the Command Translations table and Process Management.",
     "consumer": ".claude/hooks/shell-safety-hook.js",
-    "detectors": "Detectors favor recall over precision for `advise` (a spurious hint costs a paragraph) and precision for `block` (a false block stops a legitimate command). Two kinds of shape block: the ones always wrong on Git Bash (`dateSlashT`, `taskkill`), and one safety block, `gitWorktreeRemove` (#3186), which refuses `git worktree remove` only when the command names a `.tmp-wt-` target — the one place the framework recreates hub links."
+    "detectors": "Detectors favor recall over precision for `advise` (a spurious hint costs a paragraph) and precision for `block` (a false block stops a legitimate command). Two kinds of shape block: the ones always wrong on Git Bash (`dateSlashT`, `taskkill`), and one safety block, `gitWorktreeRemove` (#3186), which refuses `git worktree remove` only when the command names a `.tmp-wt-` target — the one place the framework recreates hub links.",
+    "rmVariablePath": {
+      "issue": "#3324",
+      "observed": "2026-10-24, /work 3247 --nonstop and /enhancement: Claude Code printed \"Dangerous rm operation on possibly-empty variable path: $R/$F in 'rm $R/$F' (rewrite it as \"${R:?}\"/\"${F:?}\" or use a literal path)\" and held the command for approval.",
+      "probe": "2026-10-25, /work 3310 in auto permission mode: `rm $P/$F` and `rm -rf $P/$F` both ran with no prompt, so the built-in check does not fire in that mode and the remaining shapes could not be probed there.",
+      "shapes": {
+        "rm $R/$F": "flagged — observed 2026-10-24 (verbatim message above)",
+        "rm $F": "unverifiable — single-variable form; the auto-mode session used to probe never shows the prompt",
+        "rm \"$F\"": "unverifiable — quoted without :?; same reason",
+        "rm \"${F:?}\"": "accepted — the rewrite the check's own message proposes"
+      },
+      "hookOrdering": "unverifiable — whether this advice reaches the session before the built-in prompt for the same command was not observable in auto mode; the PreToolUse hook runs before the tool call, so the advice is at least present for the retry.",
+      "disposition": "advise, not block: the flagged set beyond `rm $R/$F` is unverified, and a block on an unverified shape would stop legitimate commands (see detectors: precision for block). The CommandsSrc `rm $X` occurrences are left unchanged because single-variable `rm $X` is not shown to be flagged (#3324 AC4 condition not established)."
+    }
   },
   "corrections": {
     "heredocBackticks": {
@@ -89,7 +102,7 @@
     },
     "rmMultiplePaths": {
       "detector": {
-        "source": "\\brm\\s+-[A-Za-z]*r[A-Za-z]*\\s+(\\S+\\s+\\S+|\\S*\\*\\*)",
+        "source": "^(?:[^'\"]|'[^']*'|\"(?:[^\"\\\\]|\\\\.)*\")*?(?:^|[;&|(]\\s*|\\n\\s*)(?:sudo\\s+)?rm\\s+-[A-Za-z]*r[A-Za-z]*\\s+(?:[^\\s;&|]+\\s+[^\\s;&|-][^\\s;&|]*|[^\\s;&|]*\\*\\*)",
         "flags": ""
       },
       "disposition": "advise",
@@ -126,6 +139,14 @@
       },
       "disposition": "block",
       "text": "**`git worktree remove` is blocked on a framework worktree (`.tmp-wt-*`).** It deletes THROUGH the gitignored hub links inside the worktree, with or without `--force` — in a Praxis Hub Manager project that empties the hub for every project on the machine (#3124). Tear it down with the unlink-first route instead:\n`node .claude/scripts/shared/lib/worktree-teardown.js --root <root> --worktree <path>`\nIt unlinks and verifies every link, then runs `git worktree remove` without `--force`. A `workstream/*` worktree holds no hub links and is not blocked."
+    },
+    "rmVariablePath": {
+      "detector": {
+        "source": "(^|[;&|(]\\s*|\\n\\s*)rm\\s[^\\n;&|]*?(?<!\")\\$(?!\\{[A-Za-z_]\\w*:\\?)\\{?[A-Za-z_]",
+        "flags": ""
+      },
+      "disposition": "advise",
+      "text": "**rm on a Variable Path:** Claude Code holds `rm $R/$F` (an unquoted variable in the path) for approval as a possibly-empty variable path, and auto-denies it in an unattended session. Use one of:\n```bash\nrm .tmp-3324.md                                   # literal relative .tmp- path, from the repo root\nrm \"${F:?}\"                                       # quoted; fails loudly if F is empty\nnode -e \"require('fs').unlinkSync('.tmp-3324.md')\"\n```"
     }
   }
 }

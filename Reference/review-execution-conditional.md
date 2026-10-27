@@ -1,5 +1,5 @@
 # Review Execution Rule — Conditional Sections
-**Version:** v0.111.0
+**Version:** v0.112.0
 **Source:** Reference/review-execution-conditional.md
 On-demand companion to `Reference/review-execution.md` (#3009), on the `work-execution-conditional.md` pattern (#2765). The four bodies below execute only on an epic, a prior-art sweep or a test-plan/PRD review; rule 09 keeps each heading as a stub naming the trigger and this file, and its Step 1d states when the file is read.
 **This is not a rule.** Never auto-loaded; must never be registered under `deploymentFiles.rules`. Ships as every `Reference/` document does — minimized into `.min-mirror/Reference/`. Restates no peer-announcement event: those are defined once, in the rule.
@@ -24,7 +24,7 @@ The decision (`decideSweep`, arguments, status table) is resident in the rule; t
 |---|---|
 | **Marker** | **Forces a re-sweep** even when `classifyMarker(body)` is already `complete`. A stale marker is the main reason a human asks for a sweep; refusing because one exists makes the flag useless exactly when it is wanted |
 | **Cutoff** | **Overrides** `isExemptFromSweep(createdAt)`. That exemption stops *automatic* sweeping stamping markers into pre-feature issues; an explicit request is not automatic, and the date is not what the user is asking about |
-| **Criterion trigger** | **Sweeps regardless of issue type.** `prior-art-checked` is defined in `review-criteria.json` for `enhancement` only, so `bug`, `story`, `epic` and `generic` have no ❌ to fire on. A flag effective on one type of five is the silent-drop failure on a second axis |
+| **Criterion trigger** | **Sweeps regardless of issue type.** `prior-art-checked` is defined in `review-criteria.json` for `bug`, `story`, `generic` and `enhancement`, which sweep automatically under `full`; `epic` omits it on purpose (an expanded epic reviews each child through the child's own criteria), so only the flag sweeps an epic. A flag effective only on the types that already sweep is the silent-drop failure on a second axis |
 On a type with no `prior-art-checked` criterion do **not** invent one: sweep, write the section, and report findings as a standalone `**Prior Art:**` observation. `review-criteria.json` fixes the criterion list; this step does not extend it.
 **Sweeping:** run the #2514 procedure, reading `.claude/metadata/prior-art-sweep.json` for surfaces, excludes, term derivation, dispositions and body formats — none restated here.
 **Output:** findings in the review; write `**Prior Art:**` into the body via `insertPriorArtSection` from the same helper.

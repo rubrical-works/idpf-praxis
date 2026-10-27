@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -177,7 +177,7 @@ function parseArgs(args) {
  */
 async function gatherAllData(issueNum) {
   const result = await execJSON(
-    `gh pmu view ${issueNum} --json=number,title,labels,body,state,status`,
+    `gh pmu view ${issueNum} --json=number,title,labels,body,state,status,parentIssue`,
     'NOT_FOUND',
     `Issue #${issueNum} not found`
   );
@@ -198,8 +198,64 @@ async function gatherAllData(issueNum) {
       body: result.data.body,
       state: result.data.state
     },
-    status: (result.data.status || '').toLowerCase()
+    status: (result.data.status || '').toLowerCase(),
+    parent: result.data.parentIssue || null
   };
+}
+
+// ─── Default-Mode Epic Continuation (#3325) ───
+
+const labelNames = (labels) => (labels || []).map(l => (typeof l === 'string' ? l : l.name));
+const PROCESSED_STATUSES = new Set(['in review', 'in_review', 'done']);
+
+/**
+ * Decide whether /done on a sub-issue hands back to /work on its parent epic.
+ * A default-mode epic advances one sub-issue per `/work #<epic>` invocation, so
+ * the continuation is due while an open sibling is still unprocessed — not In
+ * review, not Done, and not qa-required (which /work skips for /qa).
+ * @param {{ issueNumber: number, parent: { number: number, labels: Array }|null,
+ *           siblings: Array<{ number: number, status?: string, labels?: Array }> }} input
+ * @returns {{ epic: number, remaining: number[], guidance: string[] }|null}
+ */
+function buildEpicContinuation({ issueNumber, parent, siblings }) {
+  if (!parent || !labelNames(parent.labels).includes('epic')) return null;
+  const remaining = (siblings || [])
+    .filter(s => s.number !== issueNumber)
+    .filter(s => !PROCESSED_STATUSES.has(String(s.status || '').toLowerCase()))
+    .filter(s => !labelNames(s.labels).includes('qa-required'))
+    .map(s => s.number);
+  if (remaining.length === 0) return null;
+  return { epic: parent.number, remaining, guidance: [`Next: /work #${parent.number}`] };
+}
+
+/**
+ * Look up the parent epic's open siblings and build the continuation.
+ * No parent → no call. Every lookup failure is a warning, never a /done failure.
+ * @param {number} issueNum
+ * @param {{ number: number }|null} parentRef - `parentIssue` from the issue view
+ * @param {Function} [execJSONFn] - injectable for tests
+ * @returns {Promise<{ nextSteps: object|null, calls: number, warning?: string }>}
+ */
+async function resolveEpicContinuation(issueNum, parentRef, execJSONFn = execJSON) {
+  if (!parentRef || !parentRef.number) return { nextSteps: null, calls: 0 };
+  const epicNum = parentRef.number;
+  // A { code, message } object like every other warnings[] entry (#3357).
+  const warning = {
+    code: 'EPIC_CONTINUATION_UNAVAILABLE',
+    message: `Could not check parent #${epicNum} for unprocessed sub-issues; run /work #${epicNum} if any remain.`,
+  };
+  const parentResult = await execJSONFn(`gh pmu view ${epicNum} --json=labels,subIssues`, 'NOT_FOUND', `Issue #${epicNum} not found`);
+  if (parentResult.error) return { nextSteps: null, calls: 1, warning };
+  const parent = { number: epicNum, labels: parentResult.data.labels };
+  if (!labelNames(parent.labels).includes('epic')) return { nextSteps: null, calls: 1 };
+  const open = (parentResult.data.subIssues || [])
+    .filter(s => String(s.state || '').toUpperCase() === 'OPEN' && s.number !== issueNum)
+    .map(s => s.number);
+  if (open.length === 0) return { nextSteps: null, calls: 1 };
+  const sibResult = await execJSONFn(`gh pmu view ${open.join(' ')} --json=number,status,labels`, 'NOT_FOUND', 'Sub-issues not found');
+  if (sibResult.error) return { nextSteps: null, calls: 2, warning };
+  const siblings = Array.isArray(sibResult.data) ? sibResult.data : [sibResult.data];
+  return { nextSteps: buildEpicContinuation({ issueNumber: issueNum, parent, siblings }), calls: 2 };
 }
 
 // ─── Label Detection ───
@@ -567,6 +623,17 @@ async function runSingleIssue(issueNum, options = {}) {
     }
   }
 
+  // 5a. Default-mode epic continuation (#3325): a sub-issue whose parent epic
+  // still has unprocessed siblings hands back to a fresh /work #<epic>.
+  const continuation = await resolveEpicContinuation(issueNum, dataResult.parent);
+  roundTrips += continuation.calls;
+  if (continuation.warning) warnings.push(continuation.warning);
+  if (continuation.nextSteps) {
+    nextSteps = nextSteps
+      ? { ...nextSteps, ...continuation.nextSteps, guidance: [...nextSteps.guidance, ...continuation.nextSteps.guidance] }
+      : continuation.nextSteps;
+  }
+
   // 6. Process diff verification result
   let diffVerification = null;
   if (verifyResult !== null) {
@@ -642,11 +709,22 @@ async function runSingleIssue(issueNum, options = {}) {
     gates.skippedReason = moveSkip.skippedReason;
   }
 
-  const envelope = buildSuccessEnvelope(context, gates, warnings);
+  const envelope = attachDiffVerification(buildSuccessEnvelope(context, gates, warnings), diffVerification);
+  envelope.roundTrips = roundTrips;
+  return envelope;
+}
+
+/**
+ * Attach a diff-verification result to a success envelope. buildSuccessEnvelope
+ * never carries one; runSingleIssue adds it here, and only when verification ran.
+ * @param {object} envelope
+ * @param {object|null} diffVerification
+ * @returns {object} the same envelope
+ */
+function attachDiffVerification(envelope, diffVerification) {
   if (diffVerification) {
     envelope.diffVerification = diffVerification;
   }
-  envelope.roundTrips = roundTrips;
   return envelope;
 }
 
@@ -718,6 +796,30 @@ async function runDiscovery(options = {}) {
   return envelope;
 }
 
+/**
+ * The --issues envelope (#3054 item 4). A batch in which every issue failed is
+ * a failed batch: ok:false, ALL_MEMBERS_FAILED, exit 1 — the shape
+ * work-preamble.js has used since #3260. A batch with any issue that succeeded
+ * stays ok, its failures in results[].
+ *
+ * @param {number[]} issues   The batch, in argument order
+ * @param {object[]} results  One runSingleIssue envelope per issue
+ * @returns {object}
+ */
+function buildBatchEnvelope(issues, results) {
+  const allFailed = results.length > 0 && results.every((r) => !r.ok);
+  return {
+    ok: !allFailed,
+    version: SCHEMA_VERSION,
+    results,
+    errors: allFailed
+      ? [{ code: 'ALL_MEMBERS_FAILED', message: `Every issue in the batch failed: ${issues.map((n) => `#${n}`).join(', ')}.` }]
+      : [],
+    warnings: [],
+    roundTrips: results.reduce((sum, r) => sum + (r.roundTrips || 0), 0)
+  };
+}
+
 // ─── Main Entry Point ───
 
 async function main() {
@@ -759,16 +861,10 @@ async function main() {
     for (const num of parsed.issues) {
       results.push(await runSingleIssue(num, { forceMove: parsed.forceMove }));
     }
-    const envelope = {
-      ok: true,
-      version: SCHEMA_VERSION,
-      results,
-      warnings: [],
-      roundTrips: results.reduce((sum, r) => sum + (r.roundTrips || 0), 0)
-    };
+    const envelope = buildBatchEnvelope(parsed.issues, results);
     if (parsed.yes) envelope.yes = true;
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
-    process.exit(0);
+    process.exit(envelope.ok ? 0 : 1);
     return;
   }
 }
@@ -787,6 +883,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  attachDiffVerification,
+  buildBatchEnvelope,
   classifyError,
   execSafe,
   execJSON,
@@ -794,6 +892,8 @@ module.exports = {
   gatherAllData,
   hasPrdLabel,
   isApprovalGate,
+  buildEpicContinuation,
+  resolveEpicContinuation,
   isMoveEligible,
   classifyMoveSkip,
   parsePrdReference,

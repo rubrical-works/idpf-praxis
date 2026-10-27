@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * Validate Mockups/screen-catalog.json against 9 invariants.
  *
  * Invariants:
@@ -126,12 +126,40 @@ function validateCatalog(catalog, opts = {}) {
   };
 }
 
+/**
+ * Load the catalog to validate (#3054 item 9). A path passed explicitly is
+ * required: missing or unparseable, it is an error — it used to validate an
+ * empty catalog, "0 error(s)", exit 0. The default path is optional: a project
+ * with no catalog yet validates an empty one, with a warning naming the path.
+ *
+ * @param {string|undefined} argPath  The path given on the command line
+ * @param {string} cwd
+ * @returns {{catalog: object|null, error: string|null, warning: string|null}}
+ */
+function loadCatalog(argPath, cwd) {
+  const catalogPath = argPath || path.join(cwd, 'Mockups', 'screen-catalog.json');
+  if (!fs.existsSync(catalogPath)) {
+    if (argPath) return { catalog: null, error: `catalog not found: ${catalogPath}`, warning: null };
+    return { catalog: { version: 1, screens: {} }, error: null, warning: `no catalog at ${catalogPath}; validated an empty one` };
+  }
+  try {
+    return { catalog: JSON.parse(fs.readFileSync(catalogPath, 'utf8')), error: null, warning: null };
+  } catch (err) {
+    return { catalog: null, error: `catalog unreadable: ${catalogPath} (${err.message})`, warning: null };
+  }
+}
+
 if (require.main === module) {
-  const catalogPath = process.argv[2] || path.join(process.cwd(), 'Mockups', 'screen-catalog.json');
-  const catalog = fs.existsSync(catalogPath) ? JSON.parse(fs.readFileSync(catalogPath, 'utf8')) : { version: 1, screens: {} };
-  const result = validateCatalog(catalog, { projectRoot: process.cwd() });
+  const loaded = loadCatalog(process.argv[2], process.cwd());
+  if (loaded.error) {
+    process.stdout.write(JSON.stringify({ errors: [{ message: loaded.error }], warnings: [], exitCode: 1, summary: '1 error(s), 0 warning(s)' }, null, 2) + '\n');
+    process.exit(1);
+  }
+  const result = validateCatalog(loaded.catalog, { projectRoot: process.cwd() });
+  if (loaded.warning) result.warnings.unshift({ message: loaded.warning });
+  result.summary = `${result.errors.length} error(s), ${result.warnings.length} warning(s)`;
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   process.exit(result.exitCode);
 }
 
-module.exports = { validateCatalog };
+module.exports = { validateCatalog, loadCatalog };

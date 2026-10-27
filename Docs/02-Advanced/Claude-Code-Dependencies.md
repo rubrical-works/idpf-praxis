@@ -87,7 +87,7 @@ This line previously asserted the behavior with nothing having checked it. Measu
 
 **What would break:** If rules stopped auto-loading, the assistant would lose its quality guardrails mid-session. Anti-hallucination rules prevent version number invention during releases. GitHub workflow rules enforce STOP boundaries. Without these, the assistant becomes unreliable for framework development.
 
-### 3. Hooks (12 hook registrations, 7 event types)
+### 3. Hooks (13 hook registrations, 7 event types)
 
 **How it works:** Claude Code fires JavaScript hooks in response to events. Hooks are registered in `.claude/settings.local.json` under the `hooks` key. Each hook specifies an event type, a matcher pattern (for the events that support one), and a command to execute.
 
@@ -99,11 +99,11 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 
 | Basis | Count | What it counts |
 |-------|-------|----------------|
-| **Registrations** (used above) | **12** | Entries in this repo's `settings.local.json`, across 7 event types |
-| Files in `.claude/hooks/` | 13 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/`, while `pre-push` and the two dev-only hooks below are files without a `settings.local.json` registration of this shape |
-| Deployed to user projects | 11 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 10 `.js` plus the non-`.js` `pre-push` script |
+| **Registrations** (used above) | **13** | Entries in this repo's `settings.local.json`, across 7 event types |
+| Files in `.claude/hooks/` | 14 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/`, while `pre-push` and the two dev-only hooks below are files without a `settings.local.json` registration of this shape |
+| Deployed to user projects | 12 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 11 `.js` plus the non-`.js` `pre-push` script |
 
-**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js`, `shell-safety-hook.js`, `worktree-create-hook.js` and `worktree-remove-hook.js` are deployed but registered by the hub installer (from `deploymentFiles.hooksConfig`), not by this file.
+**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js`, `shell-safety-hook.js`, `ask-question-shape-hook.js`, `worktree-create-hook.js` and `worktree-remove-hook.js` are deployed but registered by the hub installer (from `deploymentFiles.hooksConfig`), not by this file.
 
 **Event types we use:**
 
@@ -112,6 +112,7 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 | `PreToolUse` | `Edit\|Write` | `guard-commands-src.js` | Guards direct edits to generated command specs |
 | `PreToolUse` | `Bash\|PowerShell` | `block-cd.js` | Denies working-directory changes (`cd`, `pushd`, `chdir`, and in PowerShell `Set-Location`, `sl`, `Push-Location`), whose persisted cwd silently breaks later relative paths (#3017) |
 | `PreToolUse` | `Bash` | `shell-safety-hook.js` | Emits the Git Bash correction for a matching command shape; blocks `date /t` and `taskkill /F` (#2997), and `git worktree remove` on a `.tmp-wt-*` target, naming `worktree-teardown.js` instead (#3186) |
+| `PreToolUse` | `AskUserQuestion` | `ask-question-shape-hook.js` | Blocks a question that is too long or carries a table, list items or several paragraphs, and the tool's own limits (more than 4 options, a header over 12 characters), returning the remedy: context as markdown before the call, a one-sentence question, previews for long single-select content (#3233) |
 | `PostToolUse` | `Edit\|Write` | `test-on-change.js` | Runs tests automatically when files are edited/written |
 | `UserPromptSubmit` | — | `workflow-trigger.js` | Detects `bug:`, `work #N`, `done`, `review #N` and routes to commands |
 | `SessionStart` | `startup` | `startup-hook.js` | Initializes session state |

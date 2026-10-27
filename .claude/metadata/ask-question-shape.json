@@ -1,0 +1,23 @@
+{
+  "$schema": "./ask-question-shape-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Limits and correction text for .claude/hooks/ask-question-shape-hook.js (#3233). Claude Code renders AskUserQuestion question text in bold, so context belongs in markdown printed before the call, not in the question. maxOptions and maxHeaderLength are the tool's own hard limits (#3198); maxQuestionLength is a convention threshold: one sentence.",
+    "issue": 3233
+  },
+  "maxQuestionLength": 200,
+  "maxOptions": 4,
+  "maxHeaderLength": 12,
+  "remedy": {
+    "singleSelect": "Print the context as ordinary markdown before the call, keep `question` to one sentence, and put long per-option content in that option's `preview`.",
+    "multiSelect": "Print the context as ordinary markdown before the call, keep `question` to one sentence, and keep short option descriptions. Previews render only for single-select questions, so none are suggested here."
+  },
+  "convention": [
+    "When a table of candidates or findings is printed before the prompt, its first column is `{n}.{label}`, with no space after the dot: `{n}` is the number Claude Code shows beside the option, `{label}` the option's label (row `1.Threshold boundary` matches option `Threshold boundary`).",
+    "Option labels carry no number prefix: Claude Code numbers options in single- and multi-select prompts alike, so a prefixed label renders as `1. 1.Label`.",
+    "A single item's context (one finding, one record) is a bold-label list (`**Criterion:**`, `**Detail:**`), not a table. Tables are for rows that map to options.",
+    "A preview showing a change uses BEFORE / AFTER blocks, never diff `-`/`+` markers, which collide with `- [ ]` checkboxes.",
+    "A call carrying several questions prints one option table per question, under a bold heading matching that question's `header`, numbering from 1 each time.",
+    "Full convention: `{frameworkPath}/Reference/AskUserQuestion-Shape.md`."
+  ]
+}

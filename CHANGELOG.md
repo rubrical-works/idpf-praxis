@@ -8,6 +8,138 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.112.0] - 2026-10-26
+
+The always-loaded rules are now well under Claude Code's instruction-size limit, and `/work` loads
+its epic, branch-tracker and concurrent instructions only for runs that need them. Charter checks
+moved out of the always-on rules into the commands that create work. JavaScript and TypeScript
+projects missing an `.npmrc` or Dependabot config now see a startup row, and `/ci` recommends Node
+end-of-life upgrades and a single CI run per change. `/work --assign` and `/assign-branch` now warn
+when a branch tracker reaches GitHub's 100 sub-issue limit instead of reporting success.
+
+**Upgrade notes:**
+
+- **Charter checks run per command (#3001).** `/create-prd`, `/create-backlog`, `/proposal`,
+  `/enhancement` and `/add-story` check new work against the charter, and `/review-issue` gains a
+  charter-alignment criterion. Opt out for a project with a `.no-charter-enforcement` file.
+
+- **Prompt shape is enforced (#3233).** A PreToolUse hook blocks an `AskUserQuestion` whose question
+  is long or contains tables or lists, or that exceeds the tool's 4-option or 12-character header
+  limits, and returns the correction.
+
+- **Supply-chain startup rows (#3313).** A JS/TS project without `.npmrc` or
+  `.github/dependabot.yml` gets a `Supply Chain:` startup row. Silence either with
+  `supplyChainRows.npmrc` or `supplyChainRows.dependabot` set to `false` in `framework-config.json`.
+
+- **Tracker sub-issue limit (#3404, #3405).** When the branch tracker already has 100 sub-issues,
+  assignment still sets the Branch field but reports `TRACKER_LINK_FAILED`; work such an issue
+  directly with `/work N`, since `/work <tracker>` will not see it.
+
+### Added
+
+- `AskUserQuestion` shape hook, enforcing a one-sentence question and the tool's option and header
+  limits (#3233)
+- Startup rows for a missing `.npmrc` or `dependabot.yml` on JS/TS projects (#3313)
+- Charter enforcement data (`charter-enforcement.json`) and a shared charter scope check used by the
+  checkpoint commands and `/review-issue` (#3001)
+- Per-rule size budgets for the deployed rule set, with a ratchet that blocks growth (#3036)
+- `/ci` recommends upgrading Node 18 and 20 from a dated end-of-life table, and recommends main-only
+  push plus `pull_request` triggers (#3383, #3364)
+- `/work` Step 3 narrows per-AC test runs with a suite's declared selector (#3318)
+- `/review-issue` flags a `Files to modify` block that is misplaced or names no path, and adds
+  minimization byproducts when a minimized source is declared (#3279, #3275)
+- `assign-branch --link-json` prints a machine-readable `LINK_OUTCOME` line (#3405)
+- Shell-safety hook advises against `rm` on an unquoted variable path (#3324)
+- `/work --nonstop --concurrent` works a lone runnable member inline instead of in a worktree
+  (#3342)
+
+### Changed
+
+- Rules 01, 02, 03, 05, 06, 08 and 09 condensed; `/work` loads only the conditional sections a run
+  needs, and default-mode epic runs state per-sub-issue continuation explicitly (#3247, #3248,
+  #3249, #3251, #3252, #3325)
+- `prior-art-checked` now covers bug, story and generic issues, so `reviewSweep: "full"` sweeps them
+  (#3315)
+- An acceptance criterion that only restates the test command passing is discharged by the `/work`
+  Step 4f sweep instead of running the suite twice (#3316)
+- QA routing must exhaust automation before handing a check to a person (#3362)
+- `/done`'s CI watch sizes its timeout from recent job durations and re-arms once on timeout (#3321)
+- `/prepare-release` pushes the release branch once, with the prep commit (#3364)
+- `/work` epic and branch runs no longer create shared step tasks for steps that repeat per
+  sub-issue (#3323)
+- `/resolve-review` prints the issue URL on its own line in the closing report and no longer before
+  prompts that hide it (#3343, #3361)
+- `assign-branch` makes one `gh` call per phase instead of one per issue (#3283, #3359)
+- Concurrent runs: the tracker tree is checked before spawning, overlaps defer one member to a later
+  group, rule regeneration chains through `.min-mirror/`, merged members drop out of the run
+  ledger, and the merge-back gate posts its own comment (#3276, #3277, #3285, #3286, #3287, #3341,
+  #3349, #3350, #3351)
+- Shared-state writes (announce ledger, config backfills, active label, settings, minimize records,
+  overwatch marker) are safe under concurrent sessions (#3063, #3326, #3346)
+- Thirteen scripts and gates that reported success after checking nothing now fail closed (#3054)
+- `done-preamble` emits its epic-continuation warning as a `{code, message}` object (#3357)
+- The QA status option is documented as `QA required`, the board's canonical name (#3366)
+- Framework development (not shipped): `.claude/skills/` is tracked in git, `minimize-helper.js
+  record` writes a record for a hand-carried edit, `minimize-byproducts.js` lists
+  `minimize-targets.json` only for an untracked source, and the Windows worktree CI job runs on the
+  pull request and `main` only (#3347, #3319, #3352, #3317)
+- Proposals drafted or revised: Machine-Wide Overwatch, Concurrent Multi-Issue Review,
+  Framework-Declared Subagent Definitions, Opt-In User Input Forensics Logging and Prior-Art Sweep
+  Determinism (#3174, #3199, #3215, #3345, #3381)
+
+### Fixed
+
+- `work N M` routed only the first issue, and `work N --flags` dropped the flags (#3384, #3314);
+  `workflow-trigger` never emitted the epic task list and wrote malformed hook output (#3052)
+- `/work --assign` reported success when the tracker link failed (#3405); `assign-branch` exited 0
+  when nothing was assigned and expanded epics twice on removal (#3373)
+- `work-preamble`: the batch path reopened In review and Done members, and the Processing Order
+  rewrite deleted body lines below it (#3291, #3292)
+- `test-on-change` hook never fired (#3051); `test-runner` bypassed `onScoped: 'skip'` and scoping
+  validation and misreported skipped exclusive suites (#3394, #3300)
+- CI scripts: `ci-add` wiped the first strategy feature's matrix and wrote broken workflows,
+  push-pr-dedup corrupted concurrency, a node-version recommendation rewrote every occurrence,
+  `ci-remove` removed the wrong concurrency block, `ci-modify` merged conflicting path filters and
+  overwrote same-minute backups, and the Node upgrade target became null once every line was
+  end-of-life (#3390, #3369, #3370, #3397, #3396, #3307, #3387, #3388)
+- `audit-cooldown-check` misread `||` version ranges and could defer when a fix was installable
+  (#3303, #3389)
+- `review-finalize` posted the review comment when the review could not be recorded, and wrote
+  `**Reviews:**` before the comment posted (#3401, #3374); `/review-issue` could skip the Files to
+  modify body write (#2891)
+- Git-quoted and non-ASCII paths were misread by scope drift, Files Changed, `done-verify`,
+  `merge-back-gate` and `branch-diff` (#3382, #3377, #3399, #3296)
+- `done-verify` and `log-changed-files` interpolated paths into shell commands; `scope-drift-check
+  --since-commit` widened the commit set instead of narrowing it (#3290, #3297)
+- `idpf-measure` could overwrite an unparseable `settings.local.json`, drop another session's log on
+  `--start`, and disarm another session's measurement on `--stop` (#3295, #3393, #3378)
+- Concurrency plan and merge-back gate missed glob overlaps, protected patterns, new-directory writes
+  and abbreviated SHAs (#3293, #3301); announce ledger and nonstop audit scoping (#3294)
+- `fw-audit-lang` and `import-skills` could empty a registry from a bad snapshot or manifest (#3371,
+  #3395)
+- `framework-config` validation errors all pointed at the root (#3304); `charter-scope` and
+  `create-epic` disagreed on scope conflicts (#3322, #3338)
+- `bulk-discover-screens` missed extensionless and index imports and classified by absolute path
+  (#3305, #3379)
+- `upgrade-check` reported every dependency current on Windows (#3050); `task-tools-check --enable`
+  replaced a symlinked settings file (#3375); `overwatch-presence` let two monitors claim a stale
+  marker (#3376)
+- `startup-hook` timeout ladder could hit the harness timeout (#3299); `ci-watch` reported a
+  completed run as timed out (#3355); `generate-test-plan` called an unsupported `gh pmu` flag (#3367)
+- `/prepare-release` described its post-merge CI gate as `--branch` while running `--sha` (#3312);
+  the shell-safety `rm` correction fired on a single-path `rm -rf` and inside quoted strings (#3348)
+- `validate-helpers` checked manifest keys that do not exist (#3372); minimize records and wording
+  after the records split (#3337, #3339, #3353, #3354); rule 09 described AC check-off no review
+  performs (#3288); `Sequential-vs-Swarm.md` overlap wording (#3340)
+- Test-suite quality: hollow, hard-coded, mock-only, non-branching and narrow assertions, coverage
+  gaps and undeclared contract tests (#3327, #3328, #3329, #3331, #3332, #3333, #3334, #3335,
+  #3336); flaky `qa-extract` and `test-on-change` fixtures (#3309, #3365); `/work --concurrent`
+  left temp files at the root (#3360)
+
+### Removed
+
+- `audit.js`, dead code that shipped with every release (#3330)
+
 ## [0.111.0] - 2026-10-23
 
 `/work --nonstop --concurrent` now starts the next member as soon as a slot frees, and a resumed
@@ -3097,7 +3229,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.111.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.112.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -3390,7 +3522,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.111.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.112.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -3761,13 +3893,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.111.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.111.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.111.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.112.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.112.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.112.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.111.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.112.0` placeholder (#1479)
 
 ---
 
@@ -4465,15 +4597,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.111.0 placeholder after packaging
+- **#1059** - Skills retain v0.112.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.111.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.112.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.111.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.112.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -4633,7 +4765,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.111.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.112.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -4741,7 +4873,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.111.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.112.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -4772,8 +4904,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.111.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.111.0` placeholder
+- **#933** - v0.112.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.112.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -4914,7 +5046,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.111.0` placeholder
+  - Changed hardcoded version to `v0.112.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -4954,7 +5086,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.111.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.112.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -5031,10 +5163,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.111.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.112.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.111.0` placeholder
+- **#821** - README-DIST.md now uses `v0.112.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -5151,7 +5283,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.111.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.112.0 placeholder
 
 ---
 
@@ -5199,7 +5331,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.111.0 placeholders to 209 framework source files
+- Restored v0.112.0 placeholders to 209 framework source files
 
 ---
 
@@ -5267,12 +5399,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.111.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.112.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.111.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.112.0` format for consistent replacement
 
 ---
 
@@ -5341,7 +5473,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.111.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.112.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

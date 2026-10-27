@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Analyze commits referencing an issue to detect hallucinated or incomplete work. Examines diffs for comment-only changes, EOF-only appends, and suspect patterns (e.g., TODO placeholders, empty function bodies). Parallelizes per-commit and per-file git operations for performance. Used by /done verification phase.
  * @checksum sha256:placeholder
  *
@@ -10,7 +10,7 @@
 
 // Spawns bounded via lib/exec.js (#2469) — aliased to the original name
 // so call sites are unchanged.
-const { execTimedAsync } = require('./lib/exec.js');
+const { execTimedAsync, execFileTimedAsync } = require('./lib/exec.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 
 const execAsync = execTimedAsync;
@@ -63,41 +63,6 @@ function isCommentLine(line) {
 function isWhitespaceLine(line) {
     if (typeof line !== 'string') return false;
     return line.trim().length === 0;
-}
-
-/**
- * Parse a git stat line into structured data.
- * Example input: " review-prd.md | 6 ++++++"
- * Returns { file, insertions, deletions } or null if not a file stat line.
- */
-function parseStatLine(line) {
-    if (typeof line !== 'string' || !line.trim()) return null;
-
-    // Match: " filename | N +++---" pattern
-    const match = line.match(/^\s*(.+?)\s*\|\s*(\d+)\s*([+-]*)\s*$/);
-    if (!match) return null;
-
-    const file = match[1].trim();
-    const changes = parseInt(match[2], 10);
-    const symbols = match[3] || '';
-
-    // Filter out summary lines like "3 files changed, 141 insertions(+)"
-    if (file.includes('file') && file.includes('changed')) return null;
-
-    const plusCount = (symbols.match(/\+/g) || []).length;
-    const minusCount = (symbols.match(/-/g) || []).length;
-    const total = plusCount + minusCount;
-
-    let insertions, deletions;
-    if (total === 0) {
-        insertions = changes;
-        deletions = 0;
-    } else {
-        insertions = Math.round(changes * plusCount / total);
-        deletions = Math.round(changes * minusCount / total);
-    }
-
-    return { file, insertions, deletions };
 }
 
 /**
@@ -285,16 +250,39 @@ function parseNumstatLine(line) {
  * Get the per-file change counts for a commit. --numstat, not --stat
  * (#3059): --stat abbreviates a long path to `.../lib/x.js`, so the per-file
  * diff for that name came back empty and comment-only detection never fired.
+ * --no-renames (#3296): with rename detection on, a moved file is reported as
+ * `src/{old.js => new.js}`, which names no file and diffs empty the same way.
+ * -z (#3377): without it git C-quotes a name holding a space or a non-ASCII
+ * byte (`"src/caf\303\251.js"`), which also names no file. Records are then
+ * NUL-terminated; split them with splitNumstat.
  */
 async function getCommitStat(hash) {
-    return execSafe(`git show --numstat --format="" ${hash}`);
+    return execSafe(`git show --numstat -z --no-renames --format="" ${hash}`);
 }
 
 /**
- * Get the diff for a specific file in a commit
+ * Split `--numstat -z` output into "<ins>\t<del>\t<path>" records (#3377).
+ * A newline-separated (non -z) output still splits, so a caller handed either
+ * form reads it the same way.
+ */
+function splitNumstat(output) {
+    return String(output || '').split(output && output.includes('\0') ? '\0' : '\n')
+        .map((rec) => rec.replace(/^\n+/, ''))
+        .filter(Boolean);
+}
+
+/**
+ * Get the diff for a specific file in a commit. argv, not a shell string
+ * (#3290): the path comes from a commit, and git's --numstat quoting escapes
+ * only " and \, so a name holding `$(...)` or a backtick would execute.
  */
 async function getFileDiff(hash, file) {
-    return execSafe(`git show ${hash} -- "${file}"`);
+    try {
+        const { stdout } = await execFileTimedAsync('git', ['show', hash, '--', file], EXEC_OPTS);
+        return stdout.trim();
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -318,7 +306,7 @@ async function analyzeCommit(hash) {
     const files = [];
 
     if (statOutput) {
-        const statLines = statOutput.split('\n');
+        const statLines = splitNumstat(statOutput);
         const parsedFiles = statLines.map(parseNumstatLine).filter(Boolean);
 
         // Parallelize per-file diff retrieval
@@ -474,7 +462,6 @@ module.exports = {
     execSafe,
     isCommentLine,
     isWhitespaceLine,
-    parseStatLine,
     parseNumstatLine,
     classifyDiffLines,
     findCommitsForIssue,

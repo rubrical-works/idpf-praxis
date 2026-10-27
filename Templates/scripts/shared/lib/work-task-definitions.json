@@ -5,8 +5,8 @@
     {
       "order": 1,
       "subject": "Step 1d: Load Conditional Sections",
-      "condition": "context.type == 'epic' || context.type == 'branch' || --nonstop || selection of 2+ issues",
-      "description": "Reads {frameworkPath}/Reference/work-execution-conditional.md, which carries the bodies of Steps 1b, 2b, 2b-ii, 2c and 6a; their headings in the rule are stubs. A deferred read with no task entry is invisible to compaction recovery — the same silent-skip shape #2763 fixed for the steps themselves — so the read is its own entry. Runs first, before Step 1a, because Step 1b's body lives in the file it loads."
+      "condition": "context.type == 'epic' || context.type == 'branch' || --nonstop || --concurrent || selection of 2+ issues",
+      "description": "Runs .claude/scripts/shared/lib/work-conditional-sections.js for the run shape and holds its output: only the sections of {frameworkPath}/Reference/work-execution-conditional.md that shape needs (a default-mode epic gets Steps 2b and 2b-ii, never the --nonstop/--concurrent cadence and lifecycle — #3325); their headings in the rule are stubs. A deferred read with no task entry is invisible to compaction recovery — the same silent-skip shape #2763 fixed for the steps themselves — so the read is its own entry. Runs first, before Step 1a, because Step 1b's body lives in the file it loads."
     },
     {
       "order": 2,
@@ -60,60 +60,70 @@
       "order": 10,
       "subject": "Step 3: Work the Issue (Pre-Agent + Sub-Agent + Commit-per-AC gates apply)",
       "condition": "always",
-      "description": "Pre-Agent Status Gate is a compaction-recovery safeguard — re-verify in_progress before spawning any implementation Agent. Sub-Agent Review Gate: file content must be read and verified after every Agent return; agent summaries do not satisfy this gate. For direct-work paths (no Agent spawn), the Sub-Agent Review Gate is N/A; Step 4 file re-reads absorb the verification intent and are mandatory when strictTDD=true. Run scoped tests (touched directory tree: .claude/scripts/shared/lib → tests/scripts/shared/lib; command spec → tests/metadata or tests/commands) between AC commits for fast feedback; full-suite runs once per sub-issue at Step 4f before in_review. Commit-per-AC: do not start the next AC until this commit is made."
+      "scope": "per-sub-issue",
+      "description": "Pre-Agent Status Gate is a compaction-recovery safeguard — re-verify in_progress before spawning any implementation Agent. Sub-Agent Review Gate: file content must be read and verified after every Agent return; agent summaries do not satisfy this gate. For direct-work paths (no Agent spawn), the Sub-Agent Review Gate is N/A; Step 4 file re-reads absorb the verification intent and are mandatory when strictTDD=true. Run scoped tests between AC commits for fast feedback — narrowed by the suite's declared selector (sweepSelect) when one exists, otherwise by the touched tree, reported either way; full-suite runs once per sub-issue at Step 4f before in_review. Commit-per-AC: do not start the next AC until this commit is made."
     },
     {
       "order": 11,
       "subject": "Step 3b: Documentation Judgment",
       "condition": "always",
+      "scope": "per-sub-issue",
       "description": "Construction/ artifacts (Design-Decisions, Tech-Debt) capture the why behind the work. Re-read doc-templates.json from disk — never paraphrase from memory."
     },
     {
       "order": 12,
       "subject": "Step 4: Verify Acceptance Criteria",
       "condition": "always",
+      "scope": "per-sub-issue",
       "description": "Ground in file state — re-read each modified file before evaluating its corresponding AC. Prevents batch fatigue hallucination where pattern-matching against memory replaces reading the file."
     },
     {
       "order": 13,
       "subject": "Step 4a: QA Extraction",
       "condition": "created at Phase 2; executes only if unverifiable ACs found",
+      "scope": "per-sub-issue",
       "description": "Unverifiable ACs become QA sub-issues automatically. Re-read .claude/scripts/shared/lib/qa-config.json from disk."
     },
     {
       "order": 14,
       "subject": "Step 4b: Force-Move Prohibition Check",
       "condition": "always",
+      "scope": "per-sub-issue",
       "description": "Story/enhancement issues you implemented this session must NOT be force-moved past unchecked AC boxes. Detection: label + this-session-in-progress check."
     },
     {
       "order": 15,
       "subject": "Step 4d: Minimize Touched Command Specs",
       "condition": "dev-repo AND any commit in this sub-issue touched CommandsSrc/",
+      "scope": "per-sub-issue",
       "description": "CommandsSrc/ edits require LLM-driven minimization to regenerate Stage 1 + Stage 2 outputs. Generative task — must invoke /fw-minimize-files via Skill tool, not a script call. Synced source + outputs is the contract the deploy pipeline depends on."
     },
     {
       "order": 16,
       "subject": "Step 4e: Register Added Helpers",
       "condition": "dev-repo AND any commit in this sub-issue added a new .js under .claude/scripts/shared/[lib/]",
+      "scope": "per-sub-issue",
       "description": "Helper registration is off-band from helper creation — framework-manifest.json deploymentFiles.scripts.[shared|lib].files + constants.js INSTALLED_FILES_MANIFEST.scripts[Lib].files + @framework-script JSDoc tag all require parallel updates or CI (deployment-parity.test.js, manifest-validation.test.js) fails. Detection: git diff --name-status filtered by 'A' + path prefix .claude/scripts/shared/."
     },
     {
       "order": 17,
       "subject": "Step 4c: Log Changed Files to Issue Body",
       "condition": "always",
+      "scope": "per-sub-issue",
       "description": "Issue body becomes a permanent record of what shipped. Useful for post-release audits. Runs after Steps 4d/4e, so their commits are logged and gated in the same pass (#3261); re-run it after a Step 4f fix commit, before Step 5."
     },
     {
       "order": 18,
       "subject": "Step 4f: Full-Suite Regression Sweep",
       "condition": "always",
+      "scope": "per-sub-issue-unless-nonstop",
       "description": "Scoped per-AC tests can miss cross-cutting regressions; the full sweep at the sub-issue boundary catches them before in_review. Runs once per sub-issue after Step 4c (which follows 4d/4e), before Step 5. Failure blocks the in_review move; commit a fix, re-run, and once it passes re-run Step 4c before Step 5 (#3261). Under --nonstop on an epic or branch tracker it runs once at the end of the run instead, over every processed sub-issue's changed files, after the last sub-issue and before Step 6a; sub-issues move to in_review on their scoped tests, and a failure halts the run with attribution while they stay in_review. Mark this task completed after that sweep."
     },
     {
       "order": 19,
       "subject": "Step 5: Move to in_review",
       "condition": "always",
+      "scope": "per-sub-issue",
       "description": "Status transition is the handoff to user review."
     },
     {

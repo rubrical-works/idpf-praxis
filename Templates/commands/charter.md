@@ -1,5 +1,5 @@
 ---
-version: "v0.111.0"
+version: "v0.112.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
 argument-hint: "[--update [--register-proj|--deregister-proj|--list-proj]|--refresh|--validate|--create-domain-entities|--testing [--dry-run [--check]] [--sweep-e2e on|off] [--sweep-scope all|touched]] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -48,7 +48,7 @@ fwconfig.write(process.cwd(), config); // throws on validation failure
 ```
 If `fwconfig.write` throws, surface error and stop — do NOT retry with raw file I/O.
 ## Project `.npmrc` Offer (#3016)
-**Trigger:** stack includes JavaScript or TypeScript (a `testing.suites[]` entry for either, or `package.json` on disk) and no `.npmrc` at the project root. **Offer** to copy `{frameworkPath}/Templates/project/.npmrc` there — the `min-release-age` cooldown and `ignore-scripts` block the framework adopted for itself (#2481). Write **only on acceptance**; on decline change nothing and do not re-ask in the run. An existing `.npmrc` is **never overwritten** — report it, name the two keys for a hand merge, move on. Rule 06: offer, never force. Praxis Hub Manager's project-create path is the other writer; this offer is how a project created without or before it gets the file.
+**Trigger:** stack includes JavaScript or TypeScript (a `testing.suites[]` entry for either, or `package.json` on disk) and no `.npmrc` at the project root. **Offer** to copy `{frameworkPath}/Templates/project/.npmrc` there — the `min-release-age` cooldown and `ignore-scripts` block the framework adopted for itself (#2481). Write **only on acceptance**; on decline change nothing and do not re-ask in the run. An existing `.npmrc` is **never overwritten** — report it, name the two keys for a hand merge, move on. Rule 06: offer, never force. This offer is the only path a project gets the file — Praxis Hub Manager does not write it and a hub upgrade does not install it (`Templates/project/.npmrc` is a project file). The startup Supply Chain row (#3313) names the gap in a project chartered before the offer and points here via `/charter --refresh`.
 ## Template Detection
 **One rule (#2893):** `.claude/scripts/shared/lib/charter-template.js`, shared with the startup hook and `Reference/Charter-Enforcement.md`. NEVER copy its pattern into this spec — three restated copies drifted until none matched the Praxis Hub Manager bootstrap charter, which then read as complete.
 `node .claude/scripts/shared/lib/charter-template.js CHARTER.md` → `{"exists", "template", "placeholders": [...]}`; report the `placeholders` when routing to Step 3.

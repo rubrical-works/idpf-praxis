@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Detect whether the Claude Code task tools (TaskCreate/TaskGet/TaskList/TaskUpdate) are locally enabled at session startup. Reads CLAUDE_CODE_ENABLE_TODO_TOOLS from process env and from the user and project settings tiers, and notes whether the gate cache mentions the remote flag. Detection is read-only; the only write path is the explicit --enable invocation.
  * @checksum sha256:placeholder
  *
@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { atomicWriteSync } = require('./lib/shell-safe.js');
 
 /**
  * The local override. Note it is NOT `CLAUDE_CODE_ENABLE_TASKS`, which gates a
@@ -175,6 +176,29 @@ function checkTaskTools(options = {}) {
 // ─── Write path (explicit --enable only) ───
 
 /**
+ * The path to write when `file` may be a symlink (#3375): its resolved target,
+ * so the link survives the atomic rename. A dangling link resolves to where it
+ * points; a regular file or a missing path is returned unchanged.
+ * @param {string} file
+ * @param {object} [fsImpl] - `fs`, injectable for tests
+ * @returns {string}
+ */
+function resolveWriteTarget(file, fsImpl = fs) {
+  let isLink = false;
+  try {
+    isLink = fsImpl.lstatSync(file).isSymbolicLink();
+  } catch (_e) {
+    return file;
+  }
+  if (!isLink) return file;
+  try {
+    return fsImpl.realpathSync(file);
+  } catch (_e) {
+    return path.resolve(path.dirname(file), fsImpl.readlinkSync(file));
+  }
+}
+
+/**
  * Add the override to the user-tier settings file.
  *
  * User tier is the only target: it survives a relaunch and is not owned by
@@ -214,8 +238,13 @@ function enableLocally(options = {}) {
   const updated = { ...settings, env: { ...settings.env, [ENV_VAR]: 'true' } };
 
   try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `${JSON.stringify(updated, null, 2)}\n`);
+    // Written at the link's target (#3375): atomicWriteSync renames a temp file
+    // over its path, and a rename over a symlink replaces the link itself — a
+    // dotfiles-linked settings.json became a standalone copy.
+    const target = resolveWriteTarget(file);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    // Atomic (#3063): Claude Code and other sessions read this file live.
+    atomicWriteSync(target, `${JSON.stringify(updated, null, 2)}\n`);
   } catch (e) {
     return { ok: false, changed: false, path: file, error: e.message };
   }
@@ -263,6 +292,7 @@ if (require.main === module) {
 module.exports = {
   checkTaskTools,
   enableLocally,
+  resolveWriteTarget,
   userSettingsPath,
   MESSAGES,
   REASONS,

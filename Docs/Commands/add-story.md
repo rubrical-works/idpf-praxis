@@ -21,7 +21,7 @@ Add a new story to an epic with charter compliance validation and automatic test
 ## Key Behaviors
 
 - If no epics exist or you select "Create new epic", the command creates the epic first, then adds the story to it.
-- Validates the story description against `CHARTER.md` scope before creating the issue. Warns on potential out-of-scope items and asks for confirmation to proceed.
+- Validates the story title and description against `CHARTER.md` scope before creating the issue. An aligned story proceeds without interruption. A story that matches no charter item, or matches an out-of-scope item, is reported with the matching items and you choose how to resolve it: expand the charter scope, defer to a future release, proceed anyway (logged as scope drift), or revise the story. The check is skipped, with a one-line note, when there is no `CHARTER.md` (it suggests `/charter`), when the charter is still an unfilled template, or when a `.no-charter-enforcement` file opts the project out.
 - Creates the story issue with a full canonical template (Description, Relevant Skills, Acceptance Criteria, TDD Test Cases, Definition of Done). All sections are required; use "N/A" rather than omitting any.
 - Requires a **Files to modify** section listing only the files this story's criteria implicate. A purely behavioral story uses the section marker with `N/A` — omitting the section entirely is not equivalent.
 - The story's **E2E** line names the harness from the suite whose `role` is `e2e` in `framework-config.json` `testing.suites[]` — the declaration `/charter` harness selection writes. `Inception/Test-Strategy.md` is consulted only as corroboration when the config declares nothing; no framework name is ever invented.
@@ -43,6 +43,7 @@ Before the story is created, each acceptance criterion is checked against two qu
 | Situation | Result |
 |---|---|
 | The work belongs to another command's checklist (CHANGELOG entries, tagging, release publication) | Not authored at all; you are told which command owns it |
+| The criterion restates the project's test command passing ("`npm test` passes", "the test suite passes") | Not authored; `/work` already runs the full verification sweep before review. Kept when the project declares no verification commands, since then it is the only test run the story gets |
 | The gate is genuinely load-bearing, such as a required human sign-off | Authored as an explicitly-open gate rather than an ordinary checkbox |
 
 Annotation is preferred over deletion when the requirement is real. The goal is to stop a gate deadlocking the story at review, not to drop the requirement.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Check .gh-pmu.json config integrity via gh pmu config verify.
  * Gates on gh-pmu >= 1.3.1 (config verify was introduced in that version).
  * Non-blocking; used during session startup.
@@ -66,20 +66,62 @@ function resolvePmuVersion(argv, probe = getPmuVersion) {
 }
 
 /**
- * Run gh pmu config verify and return { exitCode, stderr }.
+ * Run gh pmu config verify and return { exitCode, stderr, reason }.
  * Exit code 2 = critical drift (gh-pmu >= version with #792).
+ *
+ * `exitCode: null` means the command never reported an exit — it timed out or
+ * could not be spawned — and `reason` says which (#3054 item 8). It used to be
+ * mapped to 1 and reported as drift: a false verdict, not a missing one.
  */
-function runConfigVerify() {
+function runConfigVerify(exec = execSync) {
   try {
-    execSync('gh pmu config verify', {
+    exec('gh pmu config verify', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000
     });
-    return { exitCode: 0, stderr: '' };
+    return { exitCode: 0, stderr: '', reason: null };
   } catch (err) {
-    return { exitCode: err.status || 1, stderr: (err.stderr || '') };
+    if (typeof err.status !== 'number') {
+      const reason = err.code === 'ETIMEDOUT' || err.signal ? 'timed out' : `could not run (${err.code || err.message})`;
+      return { exitCode: null, stderr: (err.stderr || '').toString(), reason };
+    }
+    return { exitCode: err.status, stderr: (err.stderr || '').toString(), reason: null };
   }
+}
+
+/**
+ * The envelope for a config verify result — verified, critical drift, drift,
+ * or unverified when the check could not run (#3054 item 8).
+ */
+function buildVerifyEnvelope({ exitCode, stderr, reason }, version, versionSource) {
+  if (exitCode === null) {
+    return {
+      success: true,
+      message: `Could not verify config integrity — gh pmu config verify ${reason}.`,
+      data: { status: 'unverified', reason, version, versionSource }
+    };
+  }
+  if (exitCode === 0) {
+    return {
+      success: true,
+      message: 'Config integrity verified.',
+      data: { status: 'verified', version, versionSource }
+    };
+  }
+  if (exitCode === 2) {
+    // Exit code 2 = critical drift (gh-pmu#792)
+    return {
+      success: true,
+      message: 'Critical config drift detected — project identity fields changed.',
+      data: { status: 'critical_drift', fields: parseCriticalFields(stderr), version, versionSource }
+    };
+  }
+  return {
+    success: true,
+    message: 'Config drift detected — run gh pmu config verify for details.',
+    data: { status: 'drift', exitCode, version, versionSource }
+  };
 }
 
 /**
@@ -96,47 +138,21 @@ function parseCriticalFields(stderr) {
   return fields;
 }
 
-function main() {
-  const args = process.argv.slice(2);
-
-  // Simulation flags for testing
-  if (args.includes('--simulate-no-pmu')) {
-    console.log(JSON.stringify({
-      success: true,
-      message: 'gh pmu not available — skipping config integrity check.',
-      data: { status: 'skipped', reason: 'gh pmu not available' }
-    }));
-    return;
-  }
-
-  if (args.includes('--simulate-old-version')) {
-    console.log(JSON.stringify({
-      success: true,
-      message: 'gh pmu version too old — skipping config integrity check.',
-      data: { status: 'skipped', reason: 'gh pmu version < 1.3.1' }
-    }));
-    return;
-  }
-
-  if (args.includes('--simulate-critical-drift')) {
-    console.log(JSON.stringify({
-      success: true,
-      message: 'Critical config drift detected — project identity fields changed.',
-      data: {
-        status: 'critical_drift',
-        fields: [
-          { field: 'project.number', from: '7', to: '42' },
-          { field: 'project.owner', from: 'rubrical-works', to: 'other-owner' }
-        ]
-      }
-    }));
-    return;
-  }
+/**
+ * Run the check and print its envelope. The version probe, the exec that runs
+ * `gh pmu config verify` and the printer are injectable so tests drive the real
+ * path; the test-only flags that once short-circuited to canned output are
+ * gone (#3328).
+ * @param {string[]} [args]
+ * @param {{ probe?: () => string|null, exec?: Function, log?: (s: string) => void }} [deps]
+ */
+function main(args = process.argv.slice(2), deps = {}) {
+  const { probe = getPmuVersion, exec = execSync, log = console.log } = deps;
 
   // Check gh pmu availability
-  const { version, versionSource } = resolvePmuVersion(args);
+  const { version, versionSource } = resolvePmuVersion(args, probe);
   if (!version) {
-    console.log(JSON.stringify({
+    log(JSON.stringify({
       success: true,
       message: 'gh pmu not available — skipping config integrity check.',
       data: { status: 'skipped', reason: 'gh pmu not available', versionSource }
@@ -146,7 +162,7 @@ function main() {
 
   // Version gate
   if (compareSemver(version, MIN_VERSION) < 0) {
-    console.log(JSON.stringify({
+    log(JSON.stringify({
       success: true,
       message: `gh pmu ${version} does not support config verify — skipping.`,
       data: { status: 'skipped', reason: `gh pmu version ${version} < ${MIN_VERSION}`, versionSource }
@@ -155,29 +171,7 @@ function main() {
   }
 
   // Run config verify
-  const { exitCode, stderr } = runConfigVerify();
-
-  if (exitCode === 0) {
-    console.log(JSON.stringify({
-      success: true,
-      message: 'Config integrity verified.',
-      data: { status: 'verified', version, versionSource }
-    }));
-  } else if (exitCode === 2) {
-    // Exit code 2 = critical drift (gh-pmu#792)
-    const fields = parseCriticalFields(stderr);
-    console.log(JSON.stringify({
-      success: true,
-      message: 'Critical config drift detected — project identity fields changed.',
-      data: { status: 'critical_drift', fields, version, versionSource }
-    }));
-  } else {
-    console.log(JSON.stringify({
-      success: true,
-      message: 'Config drift detected — run gh pmu config verify for details.',
-      data: { status: 'drift', exitCode, version, versionSource }
-    }));
-  }
+  log(JSON.stringify(buildVerifyEnvelope(runConfigVerify(exec), version, versionSource)));
 }
 
 // #2615: guarded so requiring this module does not run the integrity check and
@@ -188,8 +182,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildVerifyEnvelope,
   compareSemver,
   getPmuVersion,
+  main,
   parseCriticalFields,
-  resolvePmuVersion
+  resolvePmuVersion,
+  runConfigVerify
 };

@@ -75,5 +75,22 @@
         "ownerChecklistItem": "- [ ] Release assets verified"
       }
     ]
+  },
+  "dischargedByWorkflow": {
+    "question": "Does this AC restate a check a /work step already runs on every issue — the project's own test command passing?",
+    "guidance": "Not a phase question: the condition resolves during implementation. It duplicates the /work Step 4f verification sweep, which runs every declared verification command before in_review, so an AC restating it is worked as its own deliverable and the suite runs twice. Judge by what the AC asks for, not its wording — 'npm test passes', 'the test suite passes' and 'all tests green' are the same AC.",
+    "action": "DROP the AC and tell the user which step owns it (the entry's `owner`). Do not annotate it — there is no gate to wait for. Keep it, unchanged, when the entry's `keptWhen` condition holds: there Step 4f runs nothing, so the AC is the only test run the issue gets.",
+    "entries": [
+      {
+        "work": "The project test suite passes",
+        "owner": "/work Step 4f",
+        "examples": [
+          "`npm test` passes",
+          "the test suite passes",
+          "all tests pass"
+        ],
+        "keptWhen": "The project's verification set resolves to `none` (no verificationCommands, testCommand or testing.suites declared) — Step 4f then runs nothing."
+      }
+    ]
   }
 }

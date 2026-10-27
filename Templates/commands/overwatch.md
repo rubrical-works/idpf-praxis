@@ -1,5 +1,5 @@
 ---
-version: "v0.111.0"
+version: "v0.112.0"
 description: Dedicate a session to observing cross-session IDPF activity.
 argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -68,23 +68,24 @@ node .claude/scripts/shared/lib/cross-session-config.js
 ```
 **Never re-derive the defaults inline** — six consumers share the absence rule, and the `discovery: false` group implication is what a local copy gets wrong.
 ### Step 1a: Claim the Presence Marker (#2769)
-**Delegate the decision; do not re-derive it here.**
+**Delegate the decision and the write; do not re-derive either here.**
 ```bash
-node -e "console.log(JSON.stringify(require('./.claude/scripts/shared/lib/overwatch-presence.js').decideStart(process.cwd(), {force: FORCE})))"
+node -e "console.log(JSON.stringify(require('./.claude/scripts/shared/lib/overwatch-presence.js').claimPresence(process.cwd(), {force: FORCE})))"
 ```
-`FORCE` ← Step 0's `force`. Returns `{proceed, reason, message}`.
+`FORCE` ← Step 0's `force`. Returns `{claimed, reason, message}`. **`claimPresence` writes the marker itself (#3063)** — never write it from this step: it runs `decideStart`, creates the marker exclusively on `no-marker`, and overwrites only for the stale reasons, `self` and `live` with `--force`. Of two simultaneous starts, the loser's exclusive create gets `claimed: false`, `reason: claimed-concurrently`, naming the winner.
 **Session identity travels in `CLAUDE_PID`, inherited — do not substitute it (#2795).** `decideStart` resolves the session pid from the environment, the same source `peers-check.js` uses to recognize itself. It must **never** be `process.pid`: inside `node -e` that is the node child's pid, fresh every invocation and never the marker's, which made the `self` row unreachable and left a re-arming monitor refusing itself. A substituted placeholder was rejected for the same reason — an unsubstituted one fails in that direction, silently.
-- `proceed: false` → **refuse to start.** Report `message` verbatim and **STOP**. Write nothing.
-- `proceed: true` → write the marker at `.claude/.overwatch/.overwatch.json` (`overwatch-presence.js` `markerPath(cwd)`), creating `.claude/.overwatch/` if absent, with `{pid, procStart, startedAt, cwd, version}`, then continue. **`pid` is the session pid (`CLAUDE_PID`)** — the identity `decideStart` compares next tick. Writing this process's pid makes the marker read `stale-pid` immediately and defeats the `self` row.
+- `claimed: false` → **refuse to start.** Report `message` verbatim and **STOP**. Nothing was written.
+- `claimed: true` → the marker is at `.claude/.overwatch/.overwatch.json` (`markerPath(cwd)`) with `{pid, procStart, startedAt, cwd, version}`; continue. **`pid` is the session pid (`CLAUDE_PID`)** — the identity `decideStart` compares next tick — so an unresolved `CLAUDE_PID` refuses even with no marker (`self-pid-unresolved`): a marker naming this process's pid would read `stale-pid` immediately and defeat the `self` row.
 **Write the current path only; the fallbacks are read, never written (#2928, #2957).** `readPresence` falls back to the pre-move root `.overwatch.json`, then the pre-rename `.hall-monitor.json`, one release each, reporting which path answered in `markerFile`. The write above writes the new path, so a fallback marker is never cleaned up — left inert, since the new path wins whenever several exist. Only a fallback-served reading means an older monitor is live here.
-| `reason` | `proceed` | Meaning |
+| `reason` | `claimed` | Meaning |
 |---|---|---|
-| `no-marker` | yes | Nothing there; write |
+| `no-marker` | yes | Nothing there; created exclusively |
+| `claimed-concurrently` | **no** | Another start's exclusive create won the race; `message` names its pid |
 | `stale-pid`, `stale-boot`, `malformed`, `cwd-mismatch` | yes | **Overwrite. Never refuse** |
 | `self` | yes | This **session's** own marker — the same monitor re-arming, not a second one. Reachable only because `CLAUDE_PID` carries the session pid into the subprocess |
 | `live` | **no** | A different monitor is running here; `message` names its pid, `startedAt` and `--force` |
 | `live` with `--force` | yes | Overwrite, naming the pid displaced |
-| `self-pid-unresolved` | **no** | A marker is live but `CLAUDE_PID` is unset or unreadable, so this session cannot tell whether it is its own. Its own reason, never folded into `live` |
+| `self-pid-unresolved` | **no** | `CLAUDE_PID` is unset or unreadable: with a live marker this session cannot tell whether it is its own, with none it cannot write one naming itself. Its own reason, never folded into `live` |
 **Refusal is scoped to `live` and `self-pid-unresolved`, and must stay that way.** The helper never deletes, so this overwrite is the **only** cleanup path a stale marker has; if any stale reason could refuse, one crashed monitor would lock out every future monitor in this directory permanently — `malformed` being the sharpest case, where a truncated write becomes an unrecoverable lock.
 **`self-pid-unresolved` refuses but is not a `live` verdict and must not be reported as one.** Treating it as `self` starts a second monitor on a guess; treating it as `live` blames a foreign monitor that may not exist and points at `--force`, which is not the remedy for meeting your own marker. `--force` still displaces the marker in this state, being the remedy for a foreign marker and a recycled win32 pid regardless of whether identity was established.
 **Writing a file is not an announcement.** #2768's *emits nothing* criterion, as narrowed by #2914 to overlap notices, is preserved here: nothing is sent to any peer.

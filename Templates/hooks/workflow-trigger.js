@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -256,8 +256,11 @@ process.stdin.on('end', () => {
         // "check"/"verify" plus an issue number; the STOP directive is for
         // the user's own analysis requests, and on a hand-back it halted
         // --nonstop runs (#3163).
+        // triggerMatch is excluded for the same one-document reason (#3052):
+        // "bug: check #12 ..." printed the /bug invocation and ANALYSIS MODE.
+        // The routed command creates an issue and STOPs, so nothing is lost.
         const analysisMatch = hasAnalysisKeyword && hasIssueRef && !workTrigger && !reviewTrigger
-            && !testPlanApprovalTrigger && !isHarnessFrame;
+            && !testPlanApprovalTrigger && !isHarnessFrame && !triggerMatch;
 
         if (!isCommandRequest && !triggerMatch && !workTrigger && !doneTrigger && !reviewTrigger && !testPlanApprovalTrigger && !analysisMatch) {
             process.exit(0);
@@ -297,9 +300,19 @@ process.stdin.on('end', () => {
             // Try to extract issue number using flexible patterns:
             // 1. Explicit #N reference anywhere: "work on #123", "work #123 now"
             // 2. Number after work [on] [issue]: "work 123", "work on 45", "work issue 789"
-            const explicitIssue = prompt.match(/#(\d+)/);
-            const implicitIssue = prompt.match(/^work (?:on )?(?:issue )?(\d+)/i);
-            const issueNumber = explicitIssue ? explicitIssue[1] : (implicitIssue ? implicitIssue[1] : null);
+            // Every number is collected (#3384): a single match routed the
+            // first and dropped the rest with no warning. Bare numbers stay
+            // anchored to the run right after `work [on] [issue]` (#2782);
+            // #N references count anywhere, as the done route reads them.
+            const explicitIssues = (prompt.match(/#(\d+)/g) || []).map((n) => n.slice(1));
+            const implicitIssues = [];
+            const afterWork = /^work /i.test(prompt) ? prompt.replace(/^work (?:on )?(?:issue )?/i, '') : '';
+            for (const token of afterWork.split(/[\s,]+/)) {
+                if (!/^\d+$/.test(token)) break;
+                implicitIssues.push(token);
+            }
+            const issueNumbers = [...new Set([...implicitIssues, ...explicitIssues])];
+            const issueNumber = issueNumbers.length ? issueNumbers[0] : null;
 
             // Try to extract batch status: "work all in Ready", "work the issues in backlog".
             // Validated against .gh-pmu.json rather than matched loosely (#2782) — see
@@ -308,6 +321,58 @@ process.stdin.on('end', () => {
 
             // If no issue number and no status, exit silently (let Claude handle naturally)
             if (!issueNumber && !statusFilter) {
+                process.exit(0);
+            }
+
+            // Pass flags through (#3314), as the review path does (#2515).
+            // Before this every flag was discarded, so `work 383 --nonstop`
+            // became a default run with nothing to show it was narrowed.
+            const { flags: workFlags } = extractFlags(
+                prompt,
+                getRecognizedFlags('/work'),
+                getRestOfLineFlags('/work')
+            );
+            const withWorkFlags = (invocation) => (workFlags ? `${invocation} ${workFlags}` : invocation);
+
+            // Several issues (#3384): the branch check runs for each, and the
+            // block names every unassigned one. No [AUTO-TASK] — one issue's
+            // criteria would read as the whole run's, and /work's preamble
+            // extracts each issue's itself. A failed lookup fails open, as the
+            // single-issue path does.
+            if (issueNumbers.length > 1) {
+                const assignRequested = workFlags.split(/\s+/).includes('--assign');
+                const unassigned = [];
+                if (!assignRequested) {
+                    for (const n of issueNumbers) {
+                        try {
+                            const data = JSON.parse(execSync(
+                                `gh pmu view ${n} --json=fieldValues`,
+                                { encoding: 'utf-8', timeout: 10000 }
+                            ));
+                            const branch = data.fieldValues?.Branch;
+                            if (!branch || branch === 'null') unassigned.push(n);
+                        } catch (_error) {
+                            // Unknown is not unassigned: /work's preamble checks again.
+                        }
+                    }
+                }
+                if (unassigned.length) {
+                    const refs = unassigned.map((n) => `#${n}`).join(', ');
+                    const output = {
+                        decision: 'block',
+                        reason: `${unassigned.length === 1 ? 'Issue' : 'Issues'} ${refs} ${unassigned.length === 1 ? 'has' : 'have'} no branch assignment.\n\nUse: /assign-branch ${refs.replace(/,/g, '')} release/vX.Y.Z\n\nOr pass --assign to assign them to the current branch.`
+                    };
+                    console.log(JSON.stringify(output));
+                    process.exit(0);
+                }
+                const output = {
+                    systemMessage: `Success`,
+                    hookSpecificOutput: {
+                        hookEventName: 'UserPromptSubmit',
+                        additionalContext: withRoutingNote(`[INVOKE: ${withWorkFlags(`/work ${issueNumbers.join(' ')}`)}]\n`, 'work')
+                    }
+                };
+                console.log(JSON.stringify(output));
                 process.exit(0);
             }
 
@@ -324,21 +389,27 @@ process.stdin.on('end', () => {
 
                 const issueData = JSON.parse(result);
                 const branch = issueData.fieldValues?.Branch;
-                if (!branch || branch === '' || branch === 'null') {
-                    // No branch assigned - block with actionable message
+                // --assign asks /work's preamble to assign the branch, so an
+                // unassigned issue is exactly the case it exists for (#3052):
+                // blocking here made the flag unreachable.
+                const assignRequested = workFlags.split(/\s+/).includes('--assign');
+                if ((!branch || branch === '' || branch === 'null') && !assignRequested) {
+                    // No branch assigned - block with actionable message.
+                    // The documented UserPromptSubmit block (#3052): `reason` is
+                    // shown to the user and not added to context. The previous
+                    // permissionDecision is PreToolUse-only, and its
+                    // hookSpecificOutput lacked the required hookEventName, so
+                    // the harness rejected it and the message never appeared.
                     const output = {
-                        continue: false,
-                        hookSpecificOutput: {
-                            permissionDecision: 'deny',
-                            message: `Issue #${issueNumber} has no branch assignment.\n\nUse: /assign-branch #${issueNumber} release/vX.Y.Z\n\nOr use: gh pmu move ${issueNumber} --branch "release/vX.Y.Z"`
-                        }
+                        decision: 'block',
+                        reason: `Issue #${issueNumber} has no branch assignment.\n\nUse: /assign-branch #${issueNumber} release/vX.Y.Z\n\nOr use: gh pmu move ${issueNumber} --branch "release/vX.Y.Z"`
                     };
                     console.log(JSON.stringify(output));
                     process.exit(0);
                 }
 
                 // Branch assigned - route to /work command
-                let contextMessage = `[INVOKE: /work ${issueNumber}]\n`;
+                let contextMessage = `[INVOKE: ${withWorkFlags(`/work ${issueNumber}`)}]\n`;
 
                 // PRD Tracker Auto-Move (#1193)
                 // Check issue body for **PRD Tracker:** #NNN and move to in_progress if needed
@@ -370,22 +441,34 @@ process.stdin.on('end', () => {
                 const isEpic = labels.some(l => l === 'epic' || l.name === 'epic');
 
                 if (isEpic) {
-                    // Epic: get sub-issues for todo list
+                    // Epic: get sub-issues for todo list. `sub list --json`
+                    // returns `{ issue, children, summary }`, not an array
+                    // (#3052), so `.length` on it was undefined and the list was
+                    // never emitted. A bare array is still accepted.
+                    let unavailable = null;
                     try {
                         const subResult = execSync(
                             `gh pmu sub list ${issueNumber} --json`,
                             { encoding: 'utf-8', timeout: 10000 }
                         );
-                        const subIssues = JSON.parse(subResult);
-                        if (subIssues && subIssues.length > 0) {
+                        const parsed = JSON.parse(subResult);
+                        const children = Array.isArray(parsed) ? parsed : parsed?.children;
+                        if (!Array.isArray(children)) {
+                            unavailable = 'unexpected gh pmu sub list response shape';
+                        } else if (children.length > 0) {
                             contextMessage += `\n[AUTO-TASK: EPIC]\n`;
                             contextMessage += `Create a task list from these sub-issues:\n`;
-                            subIssues.forEach(sub => {
+                            children.forEach(sub => {
                                 contextMessage += `- #${sub.number}: ${sub.title}\n`;
                             });
                         }
                     } catch (_subError) {
-                        // Fail silently - sub-issue query is optional
+                        unavailable = 'gh pmu sub list failed';
+                    }
+                    // Still optional, but no longer silent: /work's preamble
+                    // enumerates the sub-issues itself.
+                    if (unavailable) {
+                        contextMessage += `\n[AUTO-TASK: EPIC unavailable — ${unavailable}; /work enumerates the sub-issues itself]\n`;
                     }
                 } else {
                     // Story/Bug: extract acceptance criteria checkboxes
@@ -417,7 +500,7 @@ process.stdin.on('end', () => {
                     systemMessage: `Success`,
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: withRoutingNote(`[INVOKE: /work ${issueNumber}]`, 'work')
+                        additionalContext: withRoutingNote(`[INVOKE: ${withWorkFlags(`/work ${issueNumber}`)}]`, 'work')
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -429,7 +512,7 @@ process.stdin.on('end', () => {
             // Route to /work --status <status> (#3030): the trigger keeps its
             // "work all in <status>" phrasing; the command takes the flag form.
             if (statusFilter) {
-                let contextMessage = `[INVOKE: /work --status ${statusFilter}]\n`;
+                let contextMessage = `[INVOKE: ${withWorkFlags(`/work --status ${statusFilter}`)}]\n`;
 
                 try {
                 // Opportunistically query issues for AUTO-TASK
@@ -642,11 +725,19 @@ process.stdin.on('end', () => {
  * unreadable file degrades safely: no flag is "recognized", so none claims a
  * value, but flag-shaped tokens are still extracted and passed through.
  *
+ * An entry declared `attach: "none"` (#3314) is left out: "recognized" here
+ * means "may claim a following token", which is exactly what a switch such as
+ * /work's --nonstop must not do. It is still extracted by shape and passed
+ * through like any flag-shaped token.
+ *
  * @param {string} command - Slash command including leading slash (e.g. '/review-issue')
  * @returns {string[]} Recognized flags, or [] when undeclared or unreadable
  */
 function getRecognizedFlags(command) {
-    return readAllowlistEntries(command).map(flagNameOf).filter(Boolean);
+    return readAllowlistEntries(command)
+        .filter((e) => !(e && typeof e === 'object' && e.attach === 'none'))
+        .map(flagNameOf)
+        .filter(Boolean);
 }
 
 /**

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -437,9 +437,14 @@ function loadRegistrarExemption(metadataPath = DEFAULT_METADATA_PATH) {
  * the default branch, as announce.js resolves it — so a reopened issue's
  * released commits are not read as this run's. No base → all history.
  */
+// --since-commit narrows (#3297): it replaces the range base and keeps the
+// issue grep. Dropping the grep read every commit since the sha — other
+// issues' and peers' — as this issue's, and their protected edits halted it.
 function gitLogArgs(issueNumber, { sinceCommit = null, base = null } = {}) {
-  if (sinceCommit) return ['log', '--name-status', `${sinceCommit}..HEAD`, '--pretty=format:'];
-  return ['log', '--name-status', `--grep=${issueRefGrepPattern(issueNumber)}`, '--pretty=format:', ...(base ? [`${base}..HEAD`] : [])];
+  const from = sinceCommit || base;
+  // core.quotePath=false (#3382): a non-ASCII name arrives literal; what git
+  // still quotes is undone by parseNameStatusLine.
+  return ['-c', 'core.quotePath=false', 'log', '--name-status', `--grep=${issueRefGrepPattern(issueNumber)}`, '--pretty=format:', ...(from ? [`${from}..HEAD`] : [])];
 }
 
 /** The run base (#3267): merge-base sha and its commit time, or nulls. */

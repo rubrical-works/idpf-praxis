@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -123,21 +123,49 @@ async function getIssueLabels(issueNumber) {
 }
 
 /**
+ * Fetch labels once per issue (#3283). The branch-tracker check and epic
+ * expansion read the same labels, so main() builds this map once and hands it
+ * to both rather than letting each fetch every issue again. Fetches run
+ * concurrently, at most PARALLEL_BATCH_SIZE in flight — the same bound the
+ * assignment batches use. Order does not matter: each fetch is independent.
+ *
+ * @param {number[]} issueNumbers
+ * @returns {Promise<Map<number, {labels: string[], loaded: boolean}>>}
+ */
+async function fetchLabelMap(issueNumbers) {
+    const map = new Map();
+    const queue = [...new Set(issueNumbers)];
+    let next = 0;
+    async function worker() {
+        while (next < queue.length) {
+            const num = queue[next++];
+            map.set(num, await getIssueLabels(num));
+        }
+    }
+    const workers = Math.min(PARALLEL_BATCH_SIZE, queue.length);
+    await Promise.all(Array.from({ length: workers }, worker));
+    return map;
+}
+
+/**
  * Expand epic issues into their sub-issues for bulk assignment.
  * When an issue with the 'epic' label is passed, fetches its sub-issues
  * and adds them to the issue list. Returns both the expanded list and
  * a Set of sub-issue numbers (for tracker linking exclusion).
  *
  * @param {number[]} issueNumbers - Issue numbers from args
+ * @param {Map<number, {labels: string[], loaded: boolean}>} [labelMap] - Labels
+ *   already fetched by fetchLabelMap; fetched here when omitted
  * @returns {Promise<{expanded: number[], epicSubIssues: Set<number>}>}
  */
-async function expandEpicSubIssues(issueNumbers) {
+async function expandEpicSubIssues(issueNumbers, labelMap) {
     const expanded = [];
     const epicSubIssues = new Set();
+    const labelsByIssue = labelMap || await fetchLabelMap(issueNumbers);
 
     for (const num of issueNumbers) {
         expanded.push(num);
-        const { labels, loaded } = await getIssueLabels(num);
+        const { labels, loaded } = labelsByIssue.get(num) || await getIssueLabels(num);
 
         if (!loaded) {
             console.log(`  ⚠ Epic #${num}: label detection failed — assign sub-issues manually`);
@@ -214,12 +242,15 @@ function classifyExpansionResult({ issueNumber, isEpic, labelsLoaded, children }
  * fetch failures.
  *
  * @param {number[]} issueNumbers
+ * @param {Map<number, {labels: string[], loaded: boolean}>} [labelMap] - Labels
+ *   already fetched by fetchLabelMap; fetched here when omitted
  * @returns {Promise<number[]>} Issue numbers that are branch trackers
  */
-async function findBranchTrackers(issueNumbers) {
+async function findBranchTrackers(issueNumbers, labelMap) {
     const trackers = [];
+    const labelsByIssue = labelMap || await fetchLabelMap(issueNumbers);
     for (const num of issueNumbers) {
-        const { labels } = await getIssueLabels(num);
+        const { labels } = labelsByIssue.get(num) || await getIssueLabels(num);
         if (labels.some(l => l.toLowerCase() === 'branch')) {
             trackers.push(num);
         }
@@ -403,63 +434,278 @@ async function getIssuesByStatus(status = 'backlog') {
     return [];
 }
 
+/**
+ * Assign one issue to a branch. `execAsyncSafe` resolves null when
+ * `gh pmu move` exits non-zero, so null is a failure — logged and returned
+ * false, matching removeFromBranch (#3359, from #3054 item 3).
+ * @returns {Promise<boolean>} true only when the move succeeded
+ */
 async function assignToBranch(issueNumber, branch, useCurrent = false) {
     try {
         const branchArg = useCurrent ? 'current' : branch;
         const displayBranch = useCurrent ? `${branch} (current)` : branch;
         console.log(`  → Assigning #${issueNumber} to ${displayBranch}`);
         const moveResult = await execAsyncSafe('gh', ['pmu', 'move', String(issueNumber), '--branch', branchArg]);
-        if (moveResult && moveResult.includes('unknown flag')) {
-            console.log(`    (Note: gh pmu --branch not supported, manual assignment needed)`);
+        if (moveResult === null) {
+            console.log(`    ⚠ Failed to assign #${issueNumber} to ${displayBranch}`);
             return false;
         }
         return true;
     } catch (err) {
-        if (showTiming) console.log(`  ⚠ assignToBranch(${issueNumber}) failed: ${err.message}`);
+        console.log(`    ⚠ Failed to assign #${issueNumber}: ${err.message}`);
         return false;
     }
 }
 
 /**
- * Link a single issue to the branch tracker as a sub-issue.
- * Logs success or failure (never swallows errors silently).
- * @returns {boolean} true if linked, false if failed or skipped
+ * Assign several issues in one `gh pmu move <N1> <N2> … --branch <b>` call
+ * (#3359). A non-zero exit does not say which issue failed, so it falls back
+ * to per-issue moves — in parallel batches above PARALLEL_THRESHOLD — and each
+ * failing issue is named by assignToBranch.
+ * @returns {Promise<number[]>} the issues actually assigned, in input order
  */
-async function linkToTracker(issueNumber, tracker) {
+async function assignIssuesToBranch(issueNumbers, branch, useCurrent = false) {
+    if (issueNumbers.length === 0) return [];
+    const branchArg = useCurrent ? 'current' : branch;
+    const displayBranch = useCurrent ? `${branch} (current)` : branch;
+
+    // gh-pmu refuses a multi-issue move without --yes ("use --yes to confirm
+    // bulk update of N issues") before updating anything.
+    const confirm = issueNumbers.length > 1 ? ['--yes'] : [];
+    startTimer('batchAssign');
+    const batched = await execAsyncSafe('gh', ['pmu', 'move', ...issueNumbers.map(String), '--branch', branchArg, ...confirm]);
+    endTimer('batchAssign');
+    if (batched !== null) {
+        for (const num of issueNumbers) console.log(`  → Assigned #${num} to ${displayBranch}`);
+        return [...issueNumbers];
+    }
+
+    console.log(`  ⚠ Batched move failed — assigning one issue at a time to find the failures`);
+    const assigned = [];
+    startTimer('perIssueAssign');
+    if (issueNumbers.length > PARALLEL_THRESHOLD) {
+        for (let i = 0; i < issueNumbers.length; i += PARALLEL_BATCH_SIZE) {
+            const batch = issueNumbers.slice(i, i + PARALLEL_BATCH_SIZE);
+            const results = await Promise.all(
+                batch.map(num => assignToBranch(num, branch, useCurrent).then(ok => ({ num, ok })))
+            );
+            for (const r of results) if (r.ok) assigned.push(r.num);
+        }
+    } else {
+        for (const num of issueNumbers) {
+            if (await assignToBranch(num, branch, useCurrent)) assigned.push(num);
+        }
+    }
+    endTimer('perIssueAssign');
+    return assigned;
+}
+
+/**
+ * GitHub's refusal once a parent holds its maximum of sub-issues (#3404):
+ * "Parent cannot have more than 100 sub-issues". A platform limit, not a
+ * transient failure, so it is reported once per run rather than per child.
+ */
+const SUB_ISSUE_LIMIT_PATTERN = /cannot have more than (\d+) sub-issues/i;
+const DEFAULT_SUB_ISSUE_LIMIT = 100;
+
+/**
+ * The link outcome every link path returns and `--link-json` prints (#3405).
+ * `reasons` maps each `failed` child to its failure text; `limitSize` is the
+ * limit GitHub named when any child landed in `limit`.
+ * @returns {{linked: number, already: number, failed: number[], limit: number[], limitSize: number|null, reasons: Object<string, string>}}
+ */
+function emptyLinkOutcome() {
+    return { linked: 0, already: 0, failed: [], limit: [], limitSize: null, reasons: {} };
+}
+
+/**
+ * The sub-issue limit a gh-pmu failure message names, or null when the
+ * failure is anything else.
+ * @param {string} text
+ * @returns {number|null}
+ */
+function subIssueLimitIn(text) {
+    const m = SUB_ISSUE_LIMIT_PATTERN.exec(String(text || ''));
+    return m ? Number(m[1]) : null;
+}
+
+/**
+ * Link a single issue to the branch tracker as a sub-issue. Logs success or
+ * failure (never swallows errors silently); a sub-issue-limit refusal is left
+ * to the caller's one warning.
+ * @returns {Promise<{result: 'linked'|'failed'|'limit', limit?: number, reason?: string}>}
+ */
+function linkOneToTracker(issueNumber, tracker) {
     return new Promise((resolve) => {
         execFile('gh', ['pmu', 'sub', 'add', String(tracker), String(issueNumber)],
             { encoding: 'utf-8', timeout: DEFAULT_TIMEOUT_MS }, (err, stdout, stderr) => {
                 if (err) {
-                    const errMsg = stderr || err.message || 'unknown error';
+                    const errMsg = (stderr || err.message || 'unknown error').trim();
+                    const limit = subIssueLimitIn(errMsg);
+                    if (limit) return resolve({ result: 'limit', limit });
                     console.log(`    ⚠ Failed to link #${issueNumber} to tracker #${tracker}: ${errMsg}`);
-                    return resolve(false);
+                    return resolve({ result: 'failed', reason: errMsg });
                 }
                 const output = (stdout || '').trim();
                 if (output.includes('already') && (output.includes('parent') || output.includes('sub-issue'))) {
                     console.log(`    ⚠ #${issueNumber} already has a parent — skipped`);
-                    return resolve(false);
+                    return resolve({ result: 'failed', reason: output });
                 }
                 console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
-                resolve(true);
+                resolve({ result: 'linked' });
             });
     });
 }
 
 /**
- * Link multiple issues to a tracker sequentially.
- * Sequential execution avoids race condition when multiple sub-issue
- * additions target the same parent (GitHub sub-issue API limitation).
+ * Link a single issue to the branch tracker as a sub-issue.
+ * @returns {Promise<boolean>} true if linked, false if failed, skipped or refused at the limit
  */
-async function linkAllToTracker(issueNumbers, tracker) {
-    if (!tracker || issueNumbers.length === 0) return;
+async function linkToTracker(issueNumber, tracker) {
+    return (await linkOneToTracker(issueNumber, tracker)).result === 'linked';
+}
+
+/**
+ * Whether this gh-pmu's `sub add` takes several children (gh-pmu 1.8.0,
+ * gh-pmu#945), read from the `<child-issue>...` usage line of its help. The
+ * framework enforces no minimum gh-pmu version, so an older one — or a help
+ * call that fails — means the per-child loop.
+ * @returns {Promise<boolean>}
+ */
+async function detectMultiChildSubAdd() {
+    const help = await execAsyncSafe('gh', ['pmu', 'sub', 'add', '--help']);
+    return !!help && /<child-issue>\.\.\./.test(help);
+}
+
+/**
+ * Parse a multi-child `gh pmu sub add` run: one `✓ #N: <title>`,
+ * `✓ #N: already linked` or `✗ #N: <reason>` line per child (gh-pmu 1.8.0).
+ * The header and summary lines carry no `#N:` marker and are skipped.
+ * @param {string} output - stdout of the run, whether it exited zero or not
+ * @returns {Map<number, {result: 'linked'|'already'|'failed', detail: string}>}
+ */
+function parseSubAddBatchOutput(output) {
+    const results = new Map();
+    for (const line of String(output || '').split(/\r?\n/)) {
+        const m = line.match(/^\s*([✓✗])\s+#(\d+):\s*(.*)$/);
+        if (!m) continue;
+        const detail = m[3].trim();
+        let result = 'failed';
+        if (m[1] === '✓') result = detail === 'already linked' ? 'already' : 'linked';
+        results.set(Number(m[2]), { result, detail });
+    }
+    return results;
+}
+
+/**
+ * Link several issues in one `gh pmu sub add <tracker> <children…>` call.
+ * gh-pmu links every child it can and exits non-zero if any failed, so the
+ * per-child lines are read either way and nothing is retried: a retry would
+ * only meet the same different-parent refusal.
+ */
+function linkBatchToTracker(issueNumbers, tracker) {
+    return new Promise((resolve) => {
+        execFile('gh', ['pmu', 'sub', 'add', String(tracker), ...issueNumbers.map(String)],
+            { encoding: 'utf-8', timeout: DEFAULT_TIMEOUT_MS }, (err, stdout, stderr) => {
+                const parsed = parseSubAddBatchOutput(stdout);
+                const outcome = emptyLinkOutcome();
+                for (const num of issueNumbers) {
+                    const r = parsed.get(num);
+                    if (r && r.result === 'linked') {
+                        outcome.linked++;
+                        console.log(`    ↳ Linked #${num} to tracker #${tracker}`);
+                    } else if (r && r.result === 'already') {
+                        outcome.already++;
+                        console.log(`    ↳ #${num} already linked to tracker #${tracker}`);
+                    } else {
+                        const reason = r ? r.detail
+                            : ((stderr || '').trim() || (err && err.message) || 'no result reported');
+                        const limit = subIssueLimitIn(reason);
+                        if (limit) {
+                            outcome.limit.push(num);
+                            outcome.limitSize = limit;
+                            continue;
+                        }
+                        outcome.failed.push(num);
+                        outcome.reasons[num] = reason;
+                        console.log(`    ⚠ Failed to link #${num} to tracker #${tracker}: ${reason}`);
+                    }
+                }
+                resolve(outcome);
+            });
+    });
+}
+
+/**
+ * Link issues to a tracker. With multi-child `sub add` (detected once per
+ * run) and more than one issue, one call; otherwise sequentially, one child
+ * per call — sequential avoids the race when several sub-issue additions
+ * target the same parent (GitHub sub-issue API limitation).
+ * @param {number[]} issueNumbers
+ * @param {number} tracker
+ * A child GitHub refuses because the tracker is at its sub-issue limit lands
+ * in `limit`, not `failed` (#3404): its Branch field is already set, so the
+ * run continues and the exit code is unchanged — one warning names it.
+ * @param {{multiChild?: boolean}} [options] - skip detection when already known
+ * @returns {Promise<ReturnType<typeof emptyLinkOutcome>>}
+ */
+async function linkAllToTracker(issueNumbers, tracker, options = {}) {
+    let outcome = emptyLinkOutcome();
+    if (!tracker || issueNumbers.length === 0) return outcome;
     console.log(`\nLinking to tracker #${tracker}...`);
-    let linked = 0;
-    for (const num of issueNumbers) {
-        if (await linkToTracker(num, tracker)) {
-            linked++;
+
+    const multiChild = issueNumbers.length > 1 &&
+        (options.multiChild !== undefined ? options.multiChild : await detectMultiChildSubAdd());
+    if (multiChild) {
+        startTimer('batchLink');
+        outcome = await linkBatchToTracker(issueNumbers, tracker);
+        endTimer('batchLink');
+    } else {
+        for (const num of issueNumbers) {
+            const one = await linkOneToTracker(num, tracker);
+            if (one.result === 'linked') {
+                outcome.linked++;
+            } else if (one.result === 'limit') {
+                outcome.limit.push(num);
+                outcome.limitSize = one.limit;
+            } else {
+                outcome.failed.push(num);
+                outcome.reasons[num] = one.reason;
+            }
         }
     }
-    console.log(`  ${linked}/${issueNumbers.length} linked to tracker #${tracker}`);
+
+    const limitLabel = `GitHub's ${outcome.limitSize || DEFAULT_SUB_ISSUE_LIMIT} sub-issue limit`;
+    if (outcome.limit.length > 0) {
+        const nums = outcome.limit.map(n => `#${n}`).join(', ');
+        console.log(`  ⚠ Tracker #${tracker} is at ${limitLabel}: ${nums} not linked. ` +
+            'Their Branch field is set, but they are not tracker sub-issues, so `gh pmu sub list` ' +
+            'and branch close will not see them.');
+    }
+    const notes = [];
+    if (outcome.already > 0) notes.push(`${outcome.already} already linked`);
+    if (outcome.limit.length > 0) notes.push(`${outcome.limit.length} not linked: tracker at ${limitLabel}`);
+    if (outcome.failed.length > 0) notes.push(`${outcome.failed.length} failed`);
+    const noteText = notes.length > 0 ? ` (${notes.join('; ')})` : '';
+    console.log(`  ${outcome.linked + outcome.already}/${issueNumbers.length} linked to tracker #${tracker}${noteText}`);
+    return outcome;
+}
+
+/**
+ * The mutating phases of an assignment (#3359): one batched move, then one
+ * link pass over the issues actually assigned — a failed move is neither
+ * counted nor linked. Epic sub-issues are not linked: the epic is their parent.
+ * @returns {Promise<{assigned: number[], link: ReturnType<typeof emptyLinkOutcome>}>}
+ */
+async function assignAndLink({ issueNumbers, branch, useCurrent, tracker, epicSubIssues }) {
+    const assigned = await assignIssuesToBranch(issueNumbers, branch, useCurrent);
+    console.log(`\n✓ ${assigned.length} issues assigned to ${branch}${useCurrent ? ' (current)' : ''}`);
+
+    const linkable = assigned.filter(num => !epicSubIssues.has(num));
+    const link = tracker && linkable.length > 0
+        ? await linkAllToTracker(linkable, tracker)
+        : emptyLinkOutcome();
+    return { assigned, link };
 }
 
 /**
@@ -509,17 +755,26 @@ function parseAssignArgs(args) {
         confirmRemove,
         remove: args.includes('--remove') || confirmRemove,
         timing: args.includes('--timing'),
+        linkJson: args.includes('--link-json'),
     };
 }
 
-async function main() {
-    let args = process.argv.slice(2);
-
-    // Handle space-separated arguments passed as a single string (from skill invocation)
-    // e.g., "#789 #790 #788" gets passed as one arg instead of three separate args
+/**
+ * Split space-separated arguments passed as a single string (from skill invocation),
+ * e.g. "#789 #790 #788" arriving as one arg instead of three. Anything else is
+ * returned unchanged.
+ * @param {string[]} args
+ * @returns {string[]}
+ */
+function splitQuotedArgs(args) {
     if (args.length === 1 && args[0].includes(' ')) {
-        args = args[0].split(/\s+/).filter(a => a.trim());
+        return args[0].split(/\s+/).filter(a => a.trim());
     }
+    return args;
+}
+
+async function main() {
+    const args = splitQuotedArgs(process.argv.slice(2));
 
     const parsed = parseAssignArgs(args);
     if (parsed.help) {
@@ -548,8 +803,10 @@ async function main() {
             return;
         }
 
-        // Show affected issues for confirmation
-        const { expanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers);
+        // Show affected issues for confirmation. De-duplicated: an epic named
+        // beside its own children expands them a second time (#3373).
+        const { expanded: rawExpanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers);
+        const expanded = [...new Set(rawExpanded.map(Number))];
         console.log(`Issues to remove from branch (${expanded.length} total):`);
         for (const num of expanded) {
             const marker = epicSubIssues.has(num) ? ' (sub-issue)' : '';
@@ -574,7 +831,9 @@ async function main() {
         console.log('CONFIRM_REMOVE');
         console.log(JSON.stringify({ issues: expanded, epicSubIssues: [...epicSubIssues] }));
         console.log('');
-        console.log(`To complete: node .claude/scripts/shared/assign-branch.js ${expanded.map(n => `${n}`).join(' ')} --confirm-remove`);
+        // The original numbers, not the expansion: --confirm-remove expands
+        // epics again, so passing the children too processed them twice (#3373).
+        console.log(`To complete: node .claude/scripts/shared/assign-branch.js ${issueNumbers.map(n => `${n}`).join(' ')} --confirm-remove`);
         endTimer('total');
         return;
     }
@@ -770,7 +1029,9 @@ async function main() {
     // Branch trackers are container issues, not units of implementation work;
     // assigning one to a branch is always a user mistake. Detected before any
     // mutation (epic expansion, assignment, tracker linking).
-    const trackerHits = await findBranchTrackers(issueNumbers);
+    // Labels are fetched once here and shared with Step 5b's epic expansion (#3283).
+    const labelMap = await fetchLabelMap(issueNumbers);
+    const trackerHits = await findBranchTrackers(issueNumbers, labelMap);
     if (trackerHits.length > 0) {
         for (const num of trackerHits) {
             console.error(`Error: Issue #${num} is a branch tracker and cannot be assigned. Target the sub-issues on the branch instead.`);
@@ -784,7 +1045,7 @@ async function main() {
     // Deduplicated again after expansion: parse-time dedup cannot see a sub-issue the
     // user names explicitly *and* that expansion pulls in via its epic — those arrive
     // as two distinct tokens and only collide once the epic is expanded (#2554).
-    const { expanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers);
+    const { expanded, epicSubIssues } = await expandEpicSubIssues(issueNumbers, labelMap);
     issueNumbers = [...new Set(expanded)];
 
     // Step 6: Confirm if large selection
@@ -794,7 +1055,6 @@ async function main() {
     }
 
     // Step 7: Assign issues (use --branch current when single branch)
-    let totalAssigned = 0;
     const useCurrent = (currentBranch && branch === currentBranch);
 
     // Resolve branch tracker from discovered branches (correct for target branch,
@@ -804,43 +1064,18 @@ async function main() {
 
     console.log(`Assigning to ${branch}${useCurrent ? ' (current)' : ''}:\n`);
 
-    // Collect issue numbers for deferred tracker linking (serialized post-pass)
-    const issuesToLink = [];
-
-    // For parallel assignment (when multiple issues)
-    if (issueNumbers.length > PARALLEL_THRESHOLD) {
-        startTimer('parallelAssign');
-        for (let i = 0; i < issueNumbers.length; i += PARALLEL_BATCH_SIZE) {
-            const batch = issueNumbers.slice(i, i + PARALLEL_BATCH_SIZE);
-            const results = await Promise.all(
-                batch.map(num => assignToBranch(num, branch, useCurrent).then(assigned => ({ num, assigned })))
-            );
-
-            for (const r of results) {
-                if (r.assigned) {
-                    totalAssigned++;
-                    issuesToLink.push(r.num);
-                }
-            }
-        }
-        endTimer('parallelAssign');
-    } else {
-        // Sequential for small batches (simpler output)
-        for (const num of issueNumbers) {
-            if (await assignToBranch(num, branch, useCurrent)) {
-                totalAssigned++;
-                issuesToLink.push(num);
-            }
-        }
-    }
-
-    console.log(`\n✓ ${totalAssigned} issues assigned to ${branch}${useCurrent ? ' (current)' : ''}`);
-
-    // Phase 2: Sequential tracker linking (avoids race condition on same parent)
-    // Epic sub-issues are excluded — they already have the epic as parent
-    const linkableIssues = issuesToLink.filter(num => !epicSubIssues.has(num));
-    if (tracker && linkableIssues.length > 0) {
-        await linkAllToTracker(linkableIssues, tracker);
+    // One gh call per phase (#3359): a batched move, then a batched link of
+    // the issues that were actually assigned.
+    const { assigned, link } = await assignAndLink({ issueNumbers, branch, useCurrent, tracker, epicSubIssues });
+    // Machine-readable link outcome on request (#3405): work-preamble reads it,
+    // since a limit-only outcome exits 0 (#3404) and the exit code cannot say so.
+    if (parsed.linkJson) console.log(`LINK_OUTCOME ${JSON.stringify({ tracker: tracker || null, ...link })}`);
+    // Fewer assigned than requested is a failure (#3373): work-preamble reads
+    // exit 0 as "assigned", so `/work --assign` reported moves that never happened.
+    const failed = issueNumbers.filter(num => !assigned.includes(num));
+    if (failed.length > 0) {
+        console.error(`Error: ${failed.length} of ${issueNumbers.length} issue(s) were not assigned to ${branch}: ${failed.map(n => `#${n}`).join(', ')}`);
+        process.exitCode = 1;
     }
     endTimer('total');
 }
@@ -930,12 +1165,14 @@ async function removeFromBranch(issueNumber, trackerNumber) {
             operations.push(`remove assigned label from #${issueNumber}`);
         }
 
-        // Clear branch field and set status to backlog
+        // Clear branch field and set status to backlog — `--backlog` does both,
+        // so the operation names both (#3359)
         const moved = await execAsyncSafe('gh', ['pmu', 'move', String(issueNumber), '--backlog']);
+        const backlogOp = `clear Branch field and set status to backlog for #${issueNumber}`;
         if (moved === null) {
-            failures.push(`set #${issueNumber} to backlog`);
+            failures.push(backlogOp);
         } else {
-            operations.push(`set #${issueNumber} to backlog`);
+            operations.push(backlogOp);
         }
 
         if (failures.length > 0) {
@@ -958,8 +1195,10 @@ async function removeIssues(issueNumbers) {
         return { removed: 0, total: 0, results: [] };
     }
 
-    // Expand epics to include sub-issues
-    const { expanded } = await expandEpicSubIssues(issueNumbers);
+    // Expand epics to include sub-issues, once each (#3373): an epic named
+    // beside its children would otherwise remove every child twice.
+    const { expanded: rawExpanded } = await expandEpicSubIssues(issueNumbers);
+    const expanded = [...new Set(rawExpanded.map(Number))];
 
     // Resolve every parent tracker once for the run, not once per issue.
     const trackers = await resolveTrackerForIssues(expanded);
@@ -985,11 +1224,16 @@ if (require.main === module) {
 module.exports = {
     getLastVersion,
     getIssueLabels,
+    fetchLabelMap,
     generateBranchSuggestions,
     getSubIssueCountAsync,
     getOpenBranches,
     getIssuesByStatus,
     assignToBranch,
+    assignIssuesToBranch,
+    assignAndLink,
+    detectMultiChildSubAdd,
+    parseSubAddBatchOutput,
     resolveTrackerForIssues,
     removeFromBranch,
     removeIssues,
@@ -1000,6 +1244,7 @@ module.exports = {
     findBranchTrackers,
     hasBranchAssigned,
     parseAssignArgs,
+    splitQuotedArgs,
     resolveImplicitBranch,
     reportUnresolvedBranch,
     main,

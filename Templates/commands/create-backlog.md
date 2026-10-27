@@ -1,5 +1,5 @@
 ---
-version: "v0.111.0"
+version: "v0.112.0"
 description: Create GitHub epics and stories from a PRD, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -125,6 +125,8 @@ Read `PRD/{name}/PRD-{name}.md` and extract Epics, Stories, Acceptance criteria.
 | Story `**Depends on:**` statement | Story body `**Depends on:**` line (resolved in Phase 6b) |
 | Priority (P0/P1/P2) | Priority field |
 
+**Step 3: Charter scope check (#3001)** — Write PRD title, summary and epic names to `.tmp-charter-scope-{random}.txt` (suffix shelled out); run `node .claude/scripts/shared/lib/charter-scope.js --command create-backlog --text-file <file>`; `rm` after. `skipped` → one line why, continue. `ask: true` → report `alignment` + `matchedItems`, offer `resolutionOptions` from `.claude/metadata/charter-enforcement.json` via `AskUserQuestion` before any epic is created (`expand` follows its `expansionFlow`). Relay `warnings`. Advisory: never blocks the backlog.
+
 ## Phase 4: Load Test Cases
 
 1. Read `PRD/{name}/Test-Plan-{name}.md`
@@ -210,6 +212,7 @@ For each PRD AC about to be materialized into a story body in Phase 6, apply the
 | Disposition | When | Emit |
 |---|---|---|
 | **Drop** | Work appears in `phaseFeasibility.ownedElsewhere` — another command's checklist discharges it (CHANGELOG, tagging, release publication → `/prepare-release`) | Nothing. Note the drop in the report; do **not** emit or annotate a story checkbox |
+| **Drop** | AC restates the project's test command passing ("`npm test` passes", "the test suite passes") — `dischargedByWorkflow`; the `/work` Step 4f sweep already runs it | Nothing. Note the drop, naming `/work` Step 4f, in the report. **Keep it** when `keptWhen` holds (no verification set declared, so Step 4f runs nothing) |
 | **Annotate** | Gate is genuinely load-bearing (required human review or sign-off) | `- [ ] {acText} → GATE: {phase}` per `phaseFeasibility.annotationFormat` |
 
 Report both dispositions (`Annotated → GATE: review — "{acText}"` / `Dropped (owned by /prepare-release) — "{acText}"`) so the user sees what changed on the way in.

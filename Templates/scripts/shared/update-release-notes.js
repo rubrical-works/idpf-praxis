@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -24,6 +24,21 @@ const { validateVersion } = require('./lib/input-validation.js');
  */
 function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Find a version's section in CHANGELOG text: `## [X.Y.Z] - YYYY-MM-DD`, then
+ * everything up to the next `## [` heading or the end. LF or CRLF.
+ * @param {string} changelog - CHANGELOG.md content
+ * @param {string} version - Version, with or without a leading 'v'
+ * @returns {RegExpMatchArray|null} match[1] is the date, match[2] the raw section
+ */
+function extractChangelogSection(changelog, version) {
+    const escapedVersion = escapeRegex(version.replace('v', ''));
+    const versionPattern = new RegExp(
+        `## \\[${escapedVersion}\\]\\s*-\\s*(\\d{4}-\\d{2}-\\d{2})\\r?\\n([\\s\\S]*?)(?=## \\[|$)`
+    );
+    return changelog.match(versionPattern);
 }
 
 /**
@@ -375,14 +390,7 @@ async function main() {
         }
 
         const changelog = fs.readFileSync(changelogPath, 'utf8');
-        const versionNum = version.replace('v', '');
-        const escapedVersion = escapeRegex(versionNum);
-
-        // Extract section for this version including the header (for date)
-        const versionPattern = new RegExp(
-            `## \\[${escapedVersion}\\]\\s*-\\s*(\\d{4}-\\d{2}-\\d{2})\\r?\\n([\\s\\S]*?)(?=## \\[|$)`
-        );
-        const match = changelog.match(versionPattern);
+        const match = extractChangelogSection(changelog, version);
 
         if (!match) {
             console.log(JSON.stringify({
@@ -459,6 +467,7 @@ module.exports = {
     checkLatestRelease,
     getRepoUrl,
     escapeRegex,
+    extractChangelogSection,
     main
 };
 

@@ -25,7 +25,8 @@ To see this command's extension points, run `/extensions --list --command prepar
 
 ## Key Behaviors
 
-- If run from `main`, automatically creates a `release/vX.Y.Z` branch before proceeding; if already on a release branch, continues in place
+- If run from `main`, shows the commit analysis and asks you to use the recommended version, give another, or stop; it then creates and checks out a `release/vX.Y.Z` branch locally. The new branch is not pushed until the release prep commit, which publishes it and sets its upstream in one push, so CI does not run on a head that is replaced moments later. If already on a release branch, continues in place
+- Every confirmation shows its context first (commit analysis, validation results, PR details, tag and CI results as a table), then asks a one-line question with a preview of what each choice does — for example *Tag and push* (creates the tag and starts the distribution deploy) or *Stop* (nothing changed)
 - Five phases: Analysis → Validation → Prepare (CHANGELOG, README, version files) → Git Operations (PR, merge, tag) → Close & Cleanup (deployment comment, branch deletion, GitHub Release)
 - Multiple confirmation checkpoints: version, validation passed, PR approval, ready to tag, deployment verified
 - Checks for incomplete issues before starting by previewing the branch close itself (`gh pmu branch close "$BRANCH" --dry-run`), so the list shown is exactly what Step 4.3 will move to Backlog. With no issues listed it says so explicitly; otherwise it names them and asks: **Transfer** (move them with `/transfer-issue`, then re-check), **Continue anyway** (states which issues Step 4.3 will move to Backlog and have their Branch field cleared), or **Stop** (halt before Phase 1, nothing changed)

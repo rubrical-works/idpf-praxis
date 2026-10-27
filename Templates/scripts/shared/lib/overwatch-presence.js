@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  *
  * `/overwatch` presence marker (#2769).
  *
@@ -416,6 +416,146 @@ function decideStart(cwd, options) {
   };
 }
 
+/**
+ * Decide AND write the marker (#3063 item 6). `/overwatch` Step 1a used to
+ * write the file itself after `decideStart` returned `proceed: true`, so two
+ * simultaneous starts could both read `no-marker` and both write; the second
+ * write silently took the slot. Here the write is the claim:
+ *
+ * | decideStart reason                              | write              |
+ * |-------------------------------------------------|--------------------|
+ * | no-marker                                       | exclusive (`wx`)   |
+ * | stale-pid, stale-boot, malformed, cwd-mismatch  | overwrite (CAS)    |
+ * | self, live + force                              | overwrite (CAS)    |
+ * | live, self-pid-unresolved                       | none — refused     |
+ *
+ * CAS (#3376): the overwrite holds an exclusive `<marker>.lock` and writes
+ * only if the marker still reads as it did when the decision was made; a held
+ * lock or a changed marker is `claimed-concurrently`.
+ *
+ * An exclusive create that finds a file already there lost a race: it is
+ * refused as `claimed-concurrently`, naming the winner's pid, and writes
+ * nothing. A marker needs the session pid, so an unresolved `CLAUDE_PID`
+ * refuses even on `no-marker` — a null pid would read `malformed` at once.
+ *
+ * @param {string} cwd
+ * @param {{force?: boolean, env?: object, version?: string|null, platform?: string,
+ *          readProcStart?: function, _beforeWrite?: function}} [options]
+ *   `_beforeWrite` is a test seam: it runs between the decision and the write.
+ * @returns {{claimed: boolean, reason: string, message: string}}
+ */
+function claimPresence(cwd, options) {
+  const opts = isPlainObject(options) ? options : {};
+  const env = opts.env || process.env;
+  // The marker as this claim saw it, compared again under the lock before an
+  // overwrite (#3376).
+  const seen = readMarkerRaw(cwd);
+  const decision = decideStart(cwd, opts);
+  if (!decision.proceed) return { claimed: false, reason: decision.reason, message: decision.message };
+
+  const pid = resolveSessionPid(env);
+  if (pid === null) {
+    return {
+      claimed: false,
+      reason: 'self-pid-unresolved',
+      message: 'CLAUDE_PID is unset or unreadable, so no marker can name this session. Not starting.',
+    };
+  }
+
+  const readProcStart = typeof opts.readProcStart === 'function' ? opts.readProcStart : defaultReadProcStartLinux;
+  const marker = {
+    pid,
+    procStart: readProcStart(pid),
+    startedAt: new Date().toISOString(),
+    cwd,
+    version: opts.version === undefined ? frameworkVersion(cwd) : opts.version,
+  };
+  const file = markerPath(cwd);
+  const body = JSON.stringify(marker, null, 2) + '\n';
+
+  if (typeof opts._beforeWrite === 'function') opts._beforeWrite();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+
+  if (decision.reason === 'no-marker') {
+    try {
+      fs.writeFileSync(file, body, { flag: 'wx' });
+    } catch (err) {
+      if (err && err.code === 'EEXIST') return concurrentRefusal(cwd);
+      throw err;
+    }
+  } else {
+    // An overwrite is a compare-and-swap under a short-lived exclusive lock
+    // (#3376): decided alone, two starts over one stale marker both wrote and
+    // both claimed. A lock alone is not enough — the second could take it after
+    // the first released it — so the marker must still be the one decided on.
+    const lock = `${file}.lock`;
+    if (!acquireLock(lock, pid)) return concurrentRefusal(cwd);
+    try {
+      if (readMarkerRaw(cwd) !== seen) return concurrentRefusal(cwd);
+      const { atomicWriteSync } = require('./shell-safe.js');
+      atomicWriteSync(file, body);
+    } finally {
+      try { fs.unlinkSync(lock); } catch { /* already gone */ }
+    }
+  }
+  return { claimed: true, reason: decision.reason, message: decision.message };
+}
+
+/** A lock older than this was left by a claim that crashed holding it. */
+const CLAIM_LOCK_STALE_MS = 10 * 1000;
+
+/**
+ * Take the claim lock with an exclusive create, taking over a lock left
+ * behind by a crash (older than CLAIM_LOCK_STALE_MS) once.
+ * @returns {boolean} true when this call holds the lock
+ */
+function acquireLock(lock, pid) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(lock, String(pid), { flag: 'wx' });
+      return true;
+    } catch (err) {
+      if (!err || err.code !== 'EEXIST') throw err;
+      let stale = false;
+      try { stale = Date.now() - fs.statSync(lock).mtimeMs > CLAIM_LOCK_STALE_MS; } catch { stale = true; }
+      if (!stale) return false;
+      try { fs.unlinkSync(lock); } catch { /* another claim took it over */ }
+    }
+  }
+  return false;
+}
+
+/** The marker file's raw text, or null when there is none. */
+function readMarkerRaw(cwd) {
+  try {
+    return fs.readFileSync(markerPath(cwd), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** The refusal a claim that lost a race returns, naming the winner when known. */
+function concurrentRefusal(cwd) {
+  const winner = readPresence(cwd);
+  return {
+    claimed: false,
+    reason: 'claimed-concurrently',
+    message: 'Another overwatch claimed this working directory first'
+      + (winner.pid === null ? '.' : ` (pid ${winner.pid}).`)
+      + ' Not starting a second one.',
+  };
+}
+
+/** framework-config.json `frameworkVersion`, or null when it cannot be read. */
+function frameworkVersion(cwd) {
+  try {
+    const v = JSON.parse(fs.readFileSync(path.join(cwd, 'framework-config.json'), 'utf8')).frameworkVersion;
+    return typeof v === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   MARKER_FILENAME,
   MARKER_DIR,
@@ -426,5 +566,6 @@ module.exports = {
   PRESENCE_REASONS,
   readPresence,
   decideStart,
+  claimPresence,
   resolveSessionPid,
 };

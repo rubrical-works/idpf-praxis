@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Remove CI features from GitHub Actions workflow files. Locates feature configuration across workflow YAML files and cleanly removes associated sections (top-level keys, job steps, triggers). Part of the /ci remove subcommand.
  * @checksum sha256:placeholder
  *
@@ -19,8 +19,26 @@ const { createBackup, validateYaml } = require('./ci-modify.js');
  * Top-level keys associated with features that can be cleanly removed.
  */
 const FEATURE_TOP_LEVEL_KEYS = {
-  'concurrency-groups': 'concurrency'
+  'concurrency-groups': 'concurrency',
+  'push-pr-dedup': 'concurrency'
 };
+
+/**
+ * Whether a top-level block is this feature's own (#3396). Both concurrency
+ * features share the key, and push-pr-dedup is detected by pull_request.head.sha
+ * anywhere in the file, so deleting the key on detection alone could remove the
+ * other feature's block. push-pr-dedup owns a group keyed on the PR head SHA;
+ * concurrency-groups owns any other concurrency block.
+ * @param {string} featureId
+ * @param {*} value - The key's value as plain data
+ * @returns {boolean}
+ */
+function ownsTopLevelBlock(featureId, value) {
+  if (FEATURE_TOP_LEVEL_KEYS[featureId] !== 'concurrency') return true;
+  const group = value && typeof value === 'object' ? value.group : value;
+  const dedup = /pull_request\.head\.sha/.test(String(group == null ? '' : group));
+  return featureId === 'push-pr-dedup' ? dedup : !dedup;
+}
 
 /**
  * Find which workflow file contains a given feature.
@@ -111,6 +129,14 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
 
     let removed;
     if (topLevelKey) {
+      if (doc.has(topLevelKey) && !ownsTopLevelBlock(featureId, doc.toJS()[topLevelKey])) {
+        return {
+          success: false,
+          message: `Feature "${featureId}" is detected in ${path.basename(found.file)} but cannot be removed automatically — its top-level "${topLevelKey}" block belongs to another feature. Nothing was removed and the file is unchanged.`,
+          file: found.file,
+          feature: featureId
+        };
+      }
       removed = doc.has(topLevelKey);
       doc.delete(topLevelKey);
     } else {

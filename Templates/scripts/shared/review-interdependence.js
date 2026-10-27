@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Analyze interdependence between multiple issues.
  * Detects overlap, ordering dependencies, conflicts, and shared criteria
  * using config-driven evaluation dimensions.
@@ -18,6 +18,7 @@ const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 // Step 4c gate enforces, and the two disagreeing is worse than either being
 // imperfect.
 const { parseDeclaredScope, matchesAny } = require('./scope-drift-check.js');
+const { loadConcurrency } = require('./lib/derived-artifacts.js');
 
 const CONFIG_PATH = path.resolve(__dirname, '../../metadata/review-interdependence.json');
 
@@ -233,9 +234,42 @@ function detectOrdering(issues, tokens, config) {
 }
 
 /**
- * Detect conflicts between issue pairs.
+ * The project's declared accumulator paths, lowercased (#3326).
+ *
+ * Read through derived-artifacts.js, the one read path for the concurrency
+ * block. An absent, unreadable or rejected block yields none, so every shared
+ * path is compared exactly as before.
+ *
+ * @param {string} cwd - Project root
+ * @returns {string[]}
  */
-function detectConflicts(issues, tokens, config) {
+function loadAccumulatorPaths(cwd) {
+  try {
+    return loadConcurrency(cwd).accumulators.map((a) => String(a.path).replace(/\\/g, '/').toLowerCase());
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Whether an extracted file token names a declared accumulator — the full
+ * path, or the bare filename a body often uses instead.
+ */
+function isAccumulatorToken(token, accumulatorPaths) {
+  const t = token.replace(/^\.\//, '');
+  return accumulatorPaths.some((p) => p === t || p.endsWith('/' + t));
+}
+
+/**
+ * Detect conflicts between issue pairs.
+ *
+ * A declared accumulator is SKIPPED, not downgraded (#3326): the json-merge
+ * driver unions its records by key, so two issues that both add and remove
+ * entries in it merge without a conflict. Every issue that minimizes a source
+ * declares minimize-targets.json; even an info-level finding for each such pair
+ * would bury the conflicts that are real.
+ */
+function detectConflicts(issues, tokens, config, accumulatorPaths = []) {
   const findings = [];
   const severity = (config.dimensions.conflicts && config.dimensions.conflicts.severity) || 'error';
   const addRemove = (config.dimensions.conflicts &&
@@ -248,7 +282,8 @@ function detectConflicts(issues, tokens, config) {
       const textB = ((issues[j].title || '') + ' ' + (issues[j].body || '')).toLowerCase();
 
       // Check shared scope first
-      const sharedFiles = tokens[i].files.filter(f => tokens[j].files.includes(f));
+      const sharedFiles = tokens[i].files.filter(f =>
+        tokens[j].files.includes(f) && !isAccumulatorToken(f, accumulatorPaths));
       if (sharedFiles.length === 0) continue;
 
       // Add/remove conflict: one adds to a file, the other removes it
@@ -515,9 +550,11 @@ function isEligibleForInterdependence(labels) {
 /**
  * Analyze interdependence between multiple issues.
  * @param {Array<{number, title, type, labels, body}>} issues
+ * @param {{cwd?: string}} [opts] - `cwd` locates framework-config.json, whose
+ *   declared accumulators are exempt from the conflicts dimension
  * @returns {{ issues: number[], findings: Array, suggestedOrder: number[] }}
  */
-function analyzeInterdependence(issues) {
+function analyzeInterdependence(issues, opts = {}) {
   if (!issues || issues.length < 2) {
     return {
       issues: (issues || []).map(i => i.number),
@@ -546,7 +583,7 @@ function analyzeInterdependence(issues) {
     findings.push(...detectOrdering(sorted, tokens, config));
   }
   if (config.dimensions.conflicts && config.dimensions.conflicts.enabled !== false) {
-    findings.push(...detectConflicts(sorted, tokens, config));
+    findings.push(...detectConflicts(sorted, tokens, config, loadAccumulatorPaths(opts.cwd || process.cwd())));
   }
   if (config.dimensions.sharedCriteria && config.dimensions.sharedCriteria.enabled !== false) {
     findings.push(...detectSharedCriteria(sorted, tokens, config));

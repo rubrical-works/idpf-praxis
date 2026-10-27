@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -25,11 +25,12 @@ const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 // #3128: processing order is a topological sort of the **Depends on:** graph.
 const { topoOrder } = require('./lib/topo-order.js');
 // #3129: the parent's step sequence and member spawn requests for --concurrent.
-const { buildRun, nextSteps, memberTasks, memberBriefs, extractBriefSections, MEMBER_TEMPLATES } = require('./lib/concurrent-orchestration.js');
+const { buildRun, nextSteps, memberTasks, memberBriefs, extractBriefSections, MEMBER_TEMPLATES, pruneRunLedger } = require('./lib/concurrent-orchestration.js');
 // #3259: the status move waits on the Review-State Gate's decision, computed
 // from the same classifier and aggregator the gate itself uses.
 const { classifyReviewState } = require('./review-state.js');
 const { evaluateBranchReviewGate } = require('./lib/branch-review-gate.js');
+const { dirtyTrackerPaths } = require('./lib/merge-back-gate.js');
 
 /**
  * The Step 3 gate's action matrix. Loaded by require, not fs, so it resolves
@@ -721,7 +722,10 @@ const PO_ITEM = /^\s*(?:\d+[.)]|[-*+])\s+/;
  * exactly the section applyProcessingOrder replaces. Recognized: the bold
  * header with items below or inline after it, and a markdown heading. Items
  * are list lines; blank lines between items do not end the section — the
- * first non-blank, non-item line, or any heading, does.
+ * first non-blank, non-item line, any heading, or an item with no `#N`
+ * reference does. The inline form is the header line alone (#3291): lines
+ * below it are body content the reader never used, so the writer must not
+ * replace them.
  *
  * @param {string[]} lines
  * @returns {{start: number, end: number, inline: string, items: string[]}|null}
@@ -733,11 +737,12 @@ function findProcessingOrderSection(lines) {
   const inline = bold ? bold[1].trim() : '';
   const items = [];
   let end = start + 1;
+  if (inline) return { start, end, inline, items };
   let i = start + 1;
   while (i < lines.length) {
     const line = lines[i];
     if (line.trim() === '') { i++; continue; }
-    if (!PO_ITEM.test(line) || /^\s*#{1,6}\s/.test(line)) break;
+    if (!PO_ITEM.test(line) || /^\s*#{1,6}\s/.test(line) || !/#\d+/.test(line)) break;
     items.push(line);
     i++;
     end = i;
@@ -1057,6 +1062,32 @@ async function readResumeLogsFromGit(numbers) {
   return logs;
 }
 
+/** The tracker tree's `git status --porcelain` (#3277); unreadable reads as clean. */
+async function readTrackerStatusFromGit() {
+  try {
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd: process.cwd() });
+    return String(stdout || '');
+  } catch (_e) {
+    return '';
+  }
+}
+
+/**
+ * TRACKER_TREE_DIRTY (#3277): uncommitted paths on the tracker, named before
+ * any worktree is spawned. group-tier1 fails only on those inside the group's
+ * touched set, so this is advisory: a pre-existing bump or a peer's edit is
+ * seen at the start of the run, not discovered at the end of a group.
+ */
+function trackerTreeDirtyWarning(raw) {
+  const paths = dirtyTrackerPaths(raw);
+  if (paths.length === 0) return null;
+  return {
+    code: 'TRACKER_TREE_DIRTY',
+    paths,
+    message: `Uncommitted on the tracker before any worktree is spawned: ${paths.join(', ')}. group-tier1 fails on one only if the group touches it — commit, move or leave each knowingly.`,
+  };
+}
+
 /**
  * The worktrees git knows and this tracker's run ledger (#3264), for
  * matchKeptWorktrees. Either read failing reads as none: a missing ledger
@@ -1079,6 +1110,11 @@ async function readResumeWorktreesFromDisk(tracker) {
   return { worktrees, ledger };
 }
 
+/** Write the pruned run ledger back to `.tmp-concurrent-<tracker>.json` (#3350). */
+function writeResumeLedgerToDisk(tracker, ledger) {
+  fs.writeFileSync(path.join(process.cwd(), `.tmp-concurrent-${tracker}.json`), JSON.stringify(ledger, null, 2));
+}
+
 /**
  * The concurrent run the parent executes (#3129): its step sequence, with a
  * worktree spawn request carrying each group member's brief, and one task per
@@ -1086,8 +1122,10 @@ async function readResumeWorktreesFromDisk(tracker) {
  *
  * Each member's brief is written to `.tmp-brief-<N>.md` at the root and the
  * spawn request names that file (#3280), so the envelope never carries the
- * brief. Written on every preamble run, so a resumed run rewrites a file the
- * startup sweep removed. A failed write inlines every brief and warns.
+ * brief. The member's scratch-clear step removes it once the member is
+ * merged and In review (#3360); the startup sweep is only the fallback, for a
+ * halted or interrupted run. Written on every preamble run, so a resumed run
+ * rewrites a file either removed. A failed write inlines every brief and warns.
  *
  * Under `--nonstop` with at least one group the run is the rolling schedule
  * (#3274, `schedule: 'rolling'`): the steps are nextSteps' first output, and
@@ -1404,13 +1442,53 @@ async function checkAssignability(issueNum, targetBranch, workstreams) {
  * @param {string} [branch] - The checked-out branch; omitted only by legacy callers
  * @returns {Promise<{ assigned: boolean, error?: { code: string, message: string } }>}
  */
+/**
+ * The LINK_OUTCOME line assign-branch.js prints under --link-json (#3405).
+ * @param {string} stdout
+ * @returns {object|null} null when no parseable line is present
+ */
+function parseLinkOutcome(stdout) {
+  const line = String(stdout || '').split(/\r?\n/).reverse().find(l => l.startsWith('LINK_OUTCOME '));
+  if (!line) return null;
+  try { return JSON.parse(line.slice('LINK_OUTCOME '.length)); } catch (_e) { return null; }
+}
+
+/**
+ * A TRACKER_LINK_FAILED warning when the Branch field was set but the issue is
+ * not a tracker sub-issue (#3405) — `/work <tracker>` enumerates sub-issues,
+ * so without this the issue silently drops out of tracker runs. `assigned`
+ * stays true: the Branch field assignment itself succeeded.
+ * @param {number} issueNum
+ * @param {object|null} outcome - parseLinkOutcome() result
+ * @returns {{code: string, message: string}|null}
+ */
+function trackerLinkWarning(issueNum, outcome) {
+  if (!outcome) return null;
+  const num = Number(issueNum);
+  const tracker = outcome.tracker ? `#${outcome.tracker}` : 'the branch tracker';
+  let reason = null;
+  if ((outcome.limit || []).map(Number).includes(num)) {
+    reason = `the tracker is at GitHub's ${outcome.limitSize || 100} sub-issue limit`;
+  } else if ((outcome.failed || []).map(Number).includes(num)) {
+    reason = (outcome.reasons && outcome.reasons[num]) || 'no reason reported';
+  }
+  if (!reason) return null;
+  return {
+    code: 'TRACKER_LINK_FAILED',
+    message: `#${num} was assigned to the branch but not linked to tracker ${tracker} as a sub-issue: ${reason}. ` +
+      `/work ${tracker.replace(/^the branch tracker$/, '<tracker>')} will not process it.`,
+  };
+}
+
 async function performAssignment(issueNum, branch) {
   const scriptPath = path.join(__dirname, 'assign-branch.js');
   const args = [scriptPath, `#${issueNum}`];
   if (branch) args.push('--branch', branch);
+  args.push('--link-json');
   try {
-    await execFileAsync('node', args, EXEC_OPTS);
-    return { assigned: true };
+    const { stdout } = await execFileAsync('node', args, EXEC_OPTS);
+    const warning = trackerLinkWarning(issueNum, parseLinkOutcome(stdout));
+    return warning ? { assigned: true, warning } : { assigned: true };
   } catch (e) {
     const msg = e.stderr ? e.stderr.toString().trim() : e.message;
     return {
@@ -1514,6 +1592,7 @@ async function runSingleIssue(issueNum, options) {
       if (!assignResult.assigned) {
         return buildErrorEnvelope([assignResult.error]);
       }
+      if (assignResult.warning) warnings.push(assignResult.warning);
       assignGate = true;
     }
   }
@@ -1606,10 +1685,7 @@ async function runSingleIssue(issueNum, options) {
   const priorNorm = normalizeStatus(priorStatus);
   const finished = priorNorm === 'inreview' || priorNorm === 'done';
   if (finished && !(options && options.reopen)) {
-    return failAfterAssign([{
-      code: priorNorm === 'done' ? 'ALREADY_DONE' : 'ALREADY_IN_REVIEW',
-      message: `Issue #${issueNum} is already ${priorStatus}; /work made no status move. Re-run with --reopen to move it back to in_progress and work it again.`
-    }]);
+    return failAfterAssign([finishedWorkError(issueNum, priorStatus, priorNorm)]);
   }
 
   // The tree's active members, held for the #3259 start-move decision below.
@@ -1773,13 +1849,26 @@ async function runSingleIssue(issueNum, options) {
       // the plan falls back to sequential. Injectable so tests read no disk.
       const hook = (options.resolveWorktreeHook || resolveWorktreeHookFromDisk)();
       if (hook && Array.isArray(hook.warnings)) warnings.push(...hook.warnings);
+      // #3277: the tracker tree is checked before any spawn step. Injectable
+      // so tests run no git.
+      const dirtyTree = trackerTreeDirtyWarning(await (options.readTrackerStatus || readTrackerStatusFromGit)());
+      if (dirtyTree) warnings.push(dirtyTree);
       // #3264: a resumed run's members already merged on the tracker are
       // finished, not re-spawned. Injectable so tests run no git.
       const numbers = statusResult.active.map((s) => s.number);
       const logs = await (options.readResumeLogs || readResumeLogsFromGit)(numbers);
       const { merged } = classifyResume({ members: numbers, logs });
       const found = await (options.readResumeWorktrees || readResumeWorktreesFromDisk)(issueNum);
-      const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees, ledger: found.ledger, members: numbers.filter((n) => !merged.includes(n)) });
+      // #3350: drop ledger entries whose worktree is gone and whose member is
+      // not active, before matching; a kept worktree's entry always stays.
+      const pruned = pruneRunLedger(found.ledger, { worktrees: found.worktrees, active: numbers });
+      if (pruned.dropped.length) {
+        try {
+          (options.writeResumeLedger || writeResumeLedgerToDisk)(issueNum, pruned.ledger);
+        } catch (_e) { /* the in-memory prune still applies to this run */ }
+        warnings.push({ code: 'RUN_LEDGER_PRUNED', dropped: pruned.dropped, message: `Pruned ${pruned.dropped.length} run-ledger ${pruned.dropped.length === 1 ? 'entry' : 'entries'} with no worktree and no active member: ${pruned.dropped.map((n) => `#${n}`).join(', ')}.` });
+      }
+      const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees, ledger: pruned.ledger, members: numbers.filter((n) => !merged.includes(n)) });
       for (const k of worktreeMatch.kept) {
         warnings.push({ code: 'KEPT_WORKTREE', message: `#${k.issue} has a worktree kept from an earlier run at ${k.worktreePath} (${k.branch}); it is held, not re-spawned, since it may hold fixes. Check it, then merge it with \`node .claude/scripts/shared/lib/merge-back-gate.js merge-back --tracker <tracker branch> --member ${k.issue}:${k.branch}:${k.worktreePath}\`, or tear it down with worktree-teardown.js, and re-run.` });
       }
@@ -1912,6 +2001,17 @@ async function resolveStatusIssues(status) {
  * @param {object} [options] - Optional flags (e.g., { assign: true })
  * @returns {Promise<object>} Per-issue result envelope
  */
+/**
+ * The #3265 refusal for finished work, shared by the single and batch paths
+ * (#3292) so the two cannot word or code it differently.
+ */
+function finishedWorkError(issueNum, priorStatus, priorNorm) {
+  return {
+    code: priorNorm === 'done' ? 'ALREADY_DONE' : 'ALREADY_IN_REVIEW',
+    message: `Issue #${issueNum} is already ${priorStatus}; /work made no status move. Re-run with --reopen to move it back to in_progress and work it again.`
+  };
+}
+
 async function runSingleIssueWithShared(issueNum, shared, options) {
   const warnings = [];
   let roundTrips = 0;
@@ -1974,6 +2074,7 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
       if (!assignResult.assigned) {
         return { ok: false, issueNum, errors: [assignResult.error], warnings: [], roundTrips };
       }
+      if (assignResult.warning) warnings.push(assignResult.warning);
       assignGate = true;
     }
   }
@@ -2007,6 +2108,25 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
     context.redirect = redirect.command;
     context.redirectLabel = redirect.label;
     return { ok: true, issueNum, context, gates, autoTask: { items: [] }, errors: [], warnings, roundTrips };
+  }
+
+  // #3292: the #3265 finished-work guard, at the same point as the single
+  // path (after the redirect). Without it a batch member In review or Done
+  // came back ok and Step 3's status gate moved it back to in_progress.
+  const priorStatus = branchResult.branch && branchResult.branch.status;
+  const priorNorm = normalizeStatus(priorStatus);
+  if (priorNorm === 'inreview' || priorNorm === 'done') {
+    if (!(options && options.reopen)) {
+      return {
+        ok: false,
+        issueNum,
+        errors: [finishedWorkError(issueNum, priorStatus, priorNorm)],
+        warnings: [],
+        roundTrips,
+        ...(assignGate ? { gates: { assigned: true } } : {})
+      };
+    }
+    gates.reopenedFrom = priorStatus;
   }
 
   const autoTask = parseAcceptanceCriteria(issueResult.issue.body);

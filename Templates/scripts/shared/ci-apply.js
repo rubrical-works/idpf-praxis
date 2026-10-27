@@ -6,7 +6,7 @@ const path = require('path');
 const { readFileSafe } = require('./lib/shell-safe.js');
 
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Orchestrate application of selected CI recommendations with sequential execution, confirmation prompts, error recovery, and summary reporting. Accepts recommendation objects from ci-recommend.js and applies them via ci-add.js. Part of the /ci apply subcommand.
  * @checksum sha256:placeholder
  *
@@ -56,10 +56,27 @@ function applyRecommendations(projectDir, recommendations, options = {}) {
 
   const results = [];
   const workflowsDir = path.join(projectDir, '.github', 'workflows');
+  // #3397: ci-recommend emits one node-version rec per occurrence, and the
+  // first apply rewrites them all. A later rec for the same (file, version,
+  // target) in this run is that same change, already made — not a failure.
+  // Across runs a stale rec still fails, since nothing here vouches for it.
+  const nodeKey = (rec) => (rec.type === 'Alter' && rec.kind === 'node-version'
+    ? JSON.stringify([rec.file, String(rec.nodeVersion), String(rec.upgrade)]) : null);
+  const appliedNode = new Set();
 
   for (const rec of recommendations) {
+    const key = nodeKey(rec);
+    if (key && appliedNode.has(key)) {
+      results.push({
+        recommendation: rec,
+        status: 'applied',
+        detail: `Node.js ${rec.nodeVersion} in ${rec.file} already applied by an earlier recommendation in this run`
+      });
+      continue;
+    }
     try {
       const result = applySingleRecommendation(projectDir, workflowsDir, rec);
+      if (key && result.status === 'applied') appliedNode.add(key);
       results.push(result);
     } catch (err) {
       results.push({
@@ -103,6 +120,9 @@ function applySingleRecommendation(projectDir, workflowsDir, rec) {
  * Apply an Alter recommendation (action version upgrade).
  */
 function applyAlter(workflowsDir, rec) {
+  if (rec.kind === 'node-version') {
+    return applyNodeVersionAlter(workflowsDir, rec);
+  }
   if (!rec.file || !rec.actionRef || !rec.upgrade) {
     return {
       recommendation: rec,
@@ -139,6 +159,71 @@ function applyAlter(workflowsDir, rec) {
 }
 
 /**
+ * Apply an EOL Node.js Alter (#3369): replace the version in every
+ * actions/setup-node `with.node-version` and every `strategy.matrix.node-version`
+ * list. Edited on the document so comments survive; validated and backed up
+ * before the write, as ci-modify does. A matrix that already lists the target
+ * drops the EOL entry rather than listing the target twice.
+ */
+function applyNodeVersionAlter(workflowsDir, rec) {
+  if (!rec.file || !rec.nodeVersion || !rec.upgrade) {
+    return { recommendation: rec, status: 'failed', error: 'Missing file, nodeVersion, or upgrade in recommendation' };
+  }
+  const filePath = path.join(workflowsDir, rec.file);
+  const content = readFileSafe(filePath);
+  if (content === null) {
+    return { recommendation: rec, status: 'failed', error: `Workflow file not found: ${rec.file}` };
+  }
+
+  const yaml = require('yaml');
+  const { validateYaml, createBackup } = require('./ci-modify.js');
+  const doc = yaml.parseDocument(content);
+  const from = String(rec.nodeVersion);
+  const to = String(rec.upgrade);
+  let changed = 0;
+
+  const jobs = doc.get('jobs');
+  for (const jobPair of yaml.isMap(jobs) ? jobs.items : []) {
+    const job = jobPair.value;
+    if (!yaml.isMap(job)) continue;
+
+    const matrix = job.getIn(['strategy', 'matrix', 'node-version'], true);
+    if (yaml.isSeq(matrix)) {
+      const hasTarget = matrix.items.some(n => String(yaml.isScalar(n) ? n.value : n) === to);
+      for (let i = matrix.items.length - 1; i >= 0; i--) {
+        const node = matrix.items[i];
+        if (String(yaml.isScalar(node) ? node.value : node) !== from) continue;
+        if (hasTarget) matrix.items.splice(i, 1);
+        else matrix.items[i] = doc.createNode(Number(to));
+        changed++;
+      }
+    }
+
+    const steps = job.get('steps');
+    for (const step of yaml.isSeq(steps) ? steps.items : []) {
+      if (!yaml.isMap(step) || !/actions\/setup-node/.test(String(step.get('uses') || ''))) continue;
+      if (String(step.getIn(['with', 'node-version'])) === from) {
+        step.setIn(['with', 'node-version'], to);
+        changed++;
+      }
+    }
+  }
+
+  if (changed === 0) {
+    return { recommendation: rec, status: 'failed', error: `Node.js ${from} not found in ${rec.file}` };
+  }
+  const output = doc.toString();
+  validateYaml(output);
+  createBackup(filePath);
+  fs.writeFileSync(filePath, output, 'utf8');
+  return {
+    recommendation: rec,
+    status: 'applied',
+    detail: `Replaced Node.js ${from} with ${to} in ${rec.file} (${changed} occurrence(s))`
+  };
+}
+
+/**
  * Apply an Add recommendation (add CI feature).
  * Delegates to ci-add infrastructure when available.
  */
@@ -155,7 +240,9 @@ function applyAdd(projectDir, rec) {
   // and returns { success, message, file?, feature? } — not { detail }.
   try {
     const { addCIFeature } = require('./ci-add.js');
-    const result = addCIFeature(projectDir, rec.feature, { skipConfirm: true });
+    // The recommendation was made for rec.file; target it rather than letting
+    // ci-add guess a workflow (#3370).
+    const result = addCIFeature(projectDir, rec.feature, { skipConfirm: true, file: rec.file });
     if (!result.success) {
       return {
         recommendation: rec,

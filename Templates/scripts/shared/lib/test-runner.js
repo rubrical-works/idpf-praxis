@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -340,13 +340,23 @@ function resolveSuites(cwd = process.cwd()) {
  *   from "everything passed", since both are an empty result and conflating
  *   them is a silent skip. Suites whose scoped command and `cwd` match share
  *   one run carrying every id and the union of their files (#3025).
+ *   `selections` (#3318) — selector results keyed by suite id, as Step 4f
+ *   passes them to `sweepInvocations` — narrows a selector-declaring suite to
+ *   the tests its selector chose; each run then carries `selection` and an
+ *   empty selection is listed in `selectedNone`. Absent, nothing changes.
  */
-function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false } = {}) {
+function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false, selections } = {}) {
   const runs = [];
   const warnings = [];
   const notRun = [];
   const scopedSkipped = [];
   const matchedAny = new Set();
+  // #3318: opt-in. Only a caller passing `selections` (/work Step 3) gets
+  // selector-narrowed runs and a `selection` report on each run; every other
+  // caller — the Merge-Back Gate, the regeneration runner — gets exactly the
+  // result it got before.
+  const selectionAware = selections !== undefined && selections !== null;
+  const selectedNone = [];
   // Inside a member's worktree only parallel suites run (#3132). Exclusive
   // suites are returned as the deferred set the parent runs after merge-back
   // — never dropped, so a role-default e2e suite is never skipped. An
@@ -361,12 +371,13 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
 
   for (const suite of split.parallel) {
     const files = filesForSuite(suite, changedFiles);
-    if (files.length === 0) continue;
-    files.forEach((f) => matchedAny.add(f));
-
     const scoped = suite.scoped || {};
     let mode = scoped.mode === undefined ? DEFAULT_SCOPING_MODE : scoped.mode;
-    if (!SCOPING_MODES.includes(mode)) {
+    // #3394: the suite's own declarations are honored before its selector is
+    // consulted — a selector reads every changed file, so it reaches the suite
+    // even when its match globs do not.
+    const reached = files.length > 0 || (selectionAware && declaresSelector(suite));
+    if (reached && !SCOPING_MODES.includes(mode)) {
       // Named, never silently skipped: an unrecognized mode is a declaration
       // the project believes is in force.
       warnings.push(
@@ -376,13 +387,40 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
       mode = DEFAULT_SCOPING_MODE;
     }
 
-    if (mode === DEFAULT_SCOPING_MODE && scoped.onScoped === 'skip') {
+    if (reached && mode === DEFAULT_SCOPING_MODE && scoped.onScoped === 'skip') {
       // #3273: matched, and skipped by its own declaration — named, so it is
       // distinguishable from a suite nothing matched. Not `notRun`, which
       // records failures to run that the merge-back gate treats as such.
-      scopedSkipped.push({ suiteId: suite.id, reason: 'onScoped: skip — this suite runs only in the full sweep' });
+      // #3300: "only in the full sweep" is true only of a swept suite; every
+      // shipped harness with onScoped: skip is also sweep: false.
+      files.forEach((f) => matchedAny.add(f));
+      scopedSkipped.push({
+        suiteId: suite.id,
+        reason: suite.sweep === false
+          ? 'onScoped: skip — and the suite declares sweep: false, so neither a scoped run nor the sweep runs it'
+          : 'onScoped: skip — this suite runs only in the full sweep',
+      });
       continue;
     }
+
+    let fallback = null;
+    if (selectionAware) {
+      const picked = selectedRun(suite, selections[suite.id], changedFiles);
+      if (picked.run) {
+        // The selector read every changed file, so it reached them all.
+        changedFiles.forEach((f) => matchedAny.add(f));
+        runs.push(picked.run);
+        continue;
+      }
+      if (picked.none) {
+        selectedNone.push(picked.none);
+        continue;
+      }
+      fallback = picked.fallback;
+    }
+
+    if (files.length === 0) continue;
+    files.forEach((f) => matchedAny.add(f));
 
     let command;
     let narrowed = false;
@@ -404,7 +442,9 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
       }
     }
 
-    runs.push({ suiteId: suite.id, mode, command, narrowed, files, cwd: suiteCwd(suite), kind: suite.kind });
+    const run = { suiteId: suite.id, mode, command, narrowed, files, cwd: suiteCwd(suite), kind: suite.kind };
+    if (fallback) run.selection = fallback;
+    runs.push(run);
   }
 
   const merged = collapseRuns(runs, (run) => run.command, (into, from) => {
@@ -416,13 +456,65 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
     runs: merged.runs,
     collapsed: merged.collapsed,
     unmatched: changedFiles.filter((f) => !matchedAny.has(f)),
-    reason: runs.length === 0 && changedFiles.length > 0 ? 'no-suites-matched' : null,
+    // #3300: suites that matched but were all skipped by onScoped are not
+    // "no suites matched" — the two have different remedies.
+    reason: runs.length === 0 && changedFiles.length > 0
+      ? (scopedSkipped.length > 0 ? 'matched-suites-skipped' : 'no-suites-matched')
+      : null,
     deferred,
     invalid,
     notRun,
     scopedSkipped,
     manualOnly,
     warnings,
+    ...(selectionAware ? { selectedNone } : {}),
+  };
+}
+
+/**
+ * One suite's per-AC run as its selector decides it (#3318).
+ *
+ * Mirrors the Step 4f sweep's use of `resolveSelection`, with one difference:
+ * where the sweep falls back to the suite's `full` command, a per-AC run falls
+ * back to today's touched-tree narrowing — a scoped run is a feedback loop, and
+ * Step 4f still sweeps in full. Every fallback is reported, never silent.
+ *
+ * @returns {{run?: object, none?: object, fallback?: object}} exactly one key
+ */
+function selectedRun(suite, result, changedFiles) {
+  const touched = (selection) => ({
+    fallback: { mode: 'touched', fallback: selection.fallback, report: `touched tree — ${selection.report.replace(/^full — /, '')}` },
+  });
+  if (!declaresSelector(suite)) return touched({ fallback: 'no-selector', report: 'no sweepSelect declared' });
+
+  const selection = resolveSelection(suite, result, changedFiles);
+  if (selection.mode === 'none') {
+    return { none: { suiteId: suite.id, report: selection.report, reason: selection.reason, verdict: 'selected none — ran nothing, not a pass' } };
+  }
+  if (selection.mode !== 'selected') return touched(selection);
+
+  const template = (suite.scoped || {}).command;
+  if (typeof template !== 'string' || !template.includes('{files}')) {
+    return touched({ fallback: 'no-files-placeholder', report: 'the scoped command has no {files} placeholder to carry every selected test' });
+  }
+  let command;
+  try {
+    command = expandPlaceholders(template, selection.tests);
+  } catch (err) {
+    return touched({ fallback: 'selection-unsafe', report: `a selected test is not shell-safe: ${err.message}` });
+  }
+  const { tests, ...reported } = selection;
+  return {
+    run: {
+      suiteId: suite.id,
+      mode: (suite.scoped || {}).mode || DEFAULT_SCOPING_MODE,
+      command,
+      narrowed: true,
+      files: tests,
+      cwd: suiteCwd(suite),
+      kind: suite.kind,
+      selection: reported,
+    },
   };
 }
 
@@ -443,8 +535,8 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false 
  * unmatched one is in `unmatchedCannotNarrow`, an unknown id in `warnings`.
  *
  * @returns {{runs: object[], collapsed: object[], serial: true, manualOnly: string[],
- *   invalid: object[], unmatchedExclusive: string[], unmatchedCannotNarrow: string[],
- *   warnings: string[]}}
+ *   invalid: object[], scopedSkipped: object[], unmatchedExclusive: string[],
+ *   unmatchedCannotNarrow: string[], warnings: string[]}}
  */
 function deferredInvocations({ suites = [], changedFiles = [], cannotNarrow = [] } = {}) {
   const { exclusive, parallel, invalid, manualOnly, warnings } = partitionByConcurrency(suites);
@@ -459,14 +551,21 @@ function deferredInvocations({ suites = [], changedFiles = [], cannotNarrow = []
   const scoped = scopedInvocations({ suites: exclusive, changedFiles });
   const late = scopedInvocations({ suites: narrowSuites, changedFiles });
   const ran = new Set([...scoped.runs, ...late.runs].flatMap((r) => r.suiteIds));
+  // #3300: a suite its own `onScoped: 'skip'` declaration skipped matched —
+  // reported as skipped, never as unmatched (every shipped e2e harness).
+  // Also a warning, so the merge-back step — which names every warning — names it.
+  const scopedSkipped = [...scoped.scopedSkipped, ...late.scopedSkipped];
+  const accounted = new Set([...ran, ...scopedSkipped.map((s) => s.suiteId)]);
+  for (const s of scopedSkipped) warnings.push(`Suite "${s.suiteId}" matched and was not run: ${s.reason}.`);
   return {
     runs: [...scoped.runs, ...late.runs],
     collapsed: [...scoped.collapsed, ...late.collapsed],
     serial: true,
     manualOnly,
     invalid,
-    unmatchedExclusive: exclusive.map((s) => s.id).filter((id) => !ran.has(id)),
-    unmatchedCannotNarrow: narrowSuites.map((s) => s.id).filter((id) => !ran.has(id)),
+    scopedSkipped,
+    unmatchedExclusive: exclusive.map((s) => s.id).filter((id) => !accounted.has(id)),
+    unmatchedCannotNarrow: narrowSuites.map((s) => s.id).filter((id) => !accounted.has(id)),
     warnings: [...warnings, ...scoped.warnings, ...late.warnings],
   };
 }

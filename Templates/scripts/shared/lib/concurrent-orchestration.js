@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -39,8 +39,9 @@
  * schedule (#3274): a member starts when a slot frees, not when its group
  * drains. Default mode keeps the fixed groups and their per-group STOP.
  *
- * Pure over its inputs: no gh, no git, no disk — except the `next-steps`
- * CLI at the bottom, which reads and writes the rolling run's state file.
+ * Pure over its inputs: no gh, no git, no disk — except the CLIs at the
+ * bottom (`next-steps`, `replan`, `record-spawn`, `record-regenerated`), which
+ * read and write the run's state and ledger files.
  */
 
 /** Steps the parent owns, by the ids rule 08 uses. */
@@ -94,8 +95,8 @@ const STEP_INSTRUCTION_EXEMPT = Object.freeze({
 const MEMBER_TEMPLATES = Object.freeze({
   'gate-tier1': `Run \`${GATE_CLI} tier1 --issue {{n}} --branch <#{{n}}'s wt/* branch> --worktree <#{{n}}'s worktree path> --tracker-tip {{tip}} --out .tmp-gate-{{n}}-tier1.json\` — it writes the Tier 1 document itself (#3225); record the sha256 its envelope's out reports, and do not redirect stdout into that file. Exit 1 is a Tier 1 failure: carry it to the outcome step, never merge past it.`,
   'gate-tier2': 'Read every file in .tmp-gate-{{n}}-tier1.json tier2.files, file by file, against #{{n}}\'s acceptance criteria, as tier2.instruction says. Record the read as pass or fail with the file and line of anything no AC asks for; the direct-work exemption never applies.',
-  'gate-tier3': `Run \`${GATE_CLI} tier3-plan --issue {{n}} --tracker-tip {{tip}} --branch <#{{n}}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` (it removes any earlier cycle's review first) and record the sha256 its envelope reports, then spawn the reviewer Agent in slot {{slot}} with tier3.request.prompt exactly — never the implementer's summary. The reviewer writes its own review to .tmp-gate-{{n}}-tier3.json (#3204); do not copy or re-word its reply. Write no other file in the project root while the review runs: any change other than this member's own review and snapshot, or a running-group sibling's own gate files, fails Tier 3 (#3220).`,
-  'gate-outcome': `Run \`${GATE_CLI} outcome --issue {{n}} --worktree <#{{n}}'s worktree path> --branch <#{{n}}'s wt/* branch> --tier1 .tmp-gate-{{n}}-tier1.json --tier1-sha <sha256 from #{{n}}'s tier1 --out envelope> --tier3 .tmp-gate-{{n}}-tier3.json --tree-before .tmp-gate-{{n}}-tree-before.txt --tree-before-sha <sha256 from #{{n}}'s tree-snapshot envelope>{{siblings}}{{unswept}}\` (\`--no-review\` in place of --tier3, --tree-before and --tree-before-sha when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — it runs decideOutcome on the tiers. action merge → post comment.body on #{{n}} and continue; send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when the decision carries outsideContract (#3226), first report those paths and clear them — remove or restore what this run wrote; a path another session is editing is cleared by waiting for that session to settle it, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` again, re-spawn the reviewer in slot {{slot}} with the same tier3.request.prompt, then re-run this outcome with the new sha and \`--review-retries 1\` (a second one halts, attributed to the reviewer); halt → print report: the --nonstop halt, worktree kept, #{{n}} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
+  'gate-tier3': `Run \`${GATE_CLI} tier3-plan --issue {{n}} --tracker-tip {{tip}} --branch <#{{n}}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` (it clears an earlier review) and record its sha256, then spawn the reviewer Agent in slot {{slot}} with tier3.request.prompt exactly — never the implementer's summary. The reviewer writes its own review to .tmp-gate-{{n}}-tier3.json (#3204); never re-word it. \`outcome --post-comment\` posts the comment; write no root file. A change in the running members' \`runPaths\` but this member's review, snapshot or a sibling's gate files fails Tier 3 (#3220); one outside is reported as \`external\`, not failed.`,
+  'gate-outcome': `Run \`${GATE_CLI} outcome --issue {{n}} --worktree <#{{n}}'s worktree path> --branch <#{{n}}'s wt/* branch> --tier1 .tmp-gate-{{n}}-tier1.json --tier1-sha <sha256 from #{{n}}'s tier1 --out envelope> --tier3 .tmp-gate-{{n}}-tier3.json --tree-before .tmp-gate-{{n}}-tree-before.txt --tree-before-sha <sha256 from #{{n}}'s tree-snapshot envelope>{{siblings}}{{unswept}} --post-comment\` (\`--no-review\` for the three Tier 3 flags when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — decideOutcome decides. action merge → it posted the comment: report posted.url (postError → re-run; never a file); send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when the decision carries outsideContract (#3226), first report those paths and clear them — remove or restore what this run wrote; a path another session is editing is cleared by waiting for that session to settle it, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` again, re-spawn the reviewer in slot {{slot}} with the same tier3.request.prompt, then re-run this outcome with the new sha and \`--review-retries 1\` (a second one halts, attributed to the reviewer); halt → print report: the --nonstop halt, worktree kept, #{{n}} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
 });
 
 /**
@@ -199,7 +200,8 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
 /**
  * Where a member's brief is written (#3280): `.tmp-brief-<N>.md` at the
  * project root, absolute, because the member reads it from its worktree.
- * The `.tmp-` prefix puts it under the startup stale-scratch sweep.
+ * The member's scratch-clear step removes it (#3360); the `.tmp-` prefix
+ * leaves the startup stale-scratch sweep as the fallback for a halted run.
  */
 function briefPathOf(root, issue) {
   return `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/.tmp-brief-${issue}.md`;
@@ -539,7 +541,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
       kind: 'deferred-skills', step: 'deferred-skills', owner: 'parent', group,
       instruction: 'For every deferred-to-session entry the runner returned (deferredSkillInvocations in regeneration-runner.js), invoke that generator through the Skill tool in the parent before the group continues — a script cannot run a Skill-invoked generator. Then run regenerateAfterSkills({cwd, changedPaths}) over the paths they rewrote (#3272): it rebuilds what reads them, e.g. the extension registry, without deferring the skill again. Carry both sets of paths forward.',
     });
-    steps.push(regeneratedCommit({ group }));
+    steps.push(regeneratedCommit({ group }, stateFile));
     // After reconciliation (#3272): the exclusive suites test the reconciled
     // tree, not one side's copy of a derived artifact.
     steps.push({
@@ -557,13 +559,20 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     // before the group is reported.
     steps.push({
       kind: 'post-merge-pass', step: 'post-merge-pass', owner: 'parent', group, members: [...groupMembers],
-      instruction: `Run \`${GATE_CLI} group-tier1 --base <tip recorded at group ${group} start> ${groupMembers.map((n) => `--member ${n}`).join(' ')} --group ${group}${unsweptFlags()} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those.`,
+      instruction: `Run \`${GATE_CLI} group-tier1${stateFile ? ` --state ${stateFile}` : ''} --base <tip recorded at group ${group} start> ${groupMembers.map((n) => `--member ${n}`).join(' ')} --group ${group}${unsweptFlags()} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those.`,
     });
     if (!nonstop) {
       steps.push({ kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers] });
     }
     for (const n of groupMembers) finish(n, group, 'post');
-    if (!nonstop) steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'group', group });
+    // #3360: every sibling outcome ran before the group's merge-back, so each
+    // member's four scratch files go once the group is reported. Default mode
+    // only: under --nonstop the preamble runs groups on the rolling schedule
+    // (nextSteps), which emits its own cleanup.
+    if (!nonstop) {
+      for (const n of groupMembers) steps.push(memberClear(n, { ledgerFile, where: { group } }));
+      steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'group', group });
+    }
   }
 
   for (const n of reviewGate(tail)) {
@@ -627,7 +636,10 @@ function nextSteps(runState = {}) {
   const slotOf = { ...(runState.slotOf || {}) };
   let batches = runState.batches || 0;
   const order = layers.flat();
-  const total = order.length;
+  // #3301: finishOnly members are part of the run and count as passed once
+  // finished, so T counts them too — buildRun's total already does.
+  const finishOnlyAll = Array.isArray(runState.finishOnly) ? runState.finishOnly : [];
+  const total = new Set([...order, ...finishOnlyAll]).size;
   const mergedSet = new Set(merged);
   const steps = [];
   const unswept = passed.length ? ` ${passed.map((n) => `--unswept ${n}`).join(' ')}` : '';
@@ -667,6 +679,16 @@ function nextSteps(runState = {}) {
   }
   if (finishing.length) passed = [...passed, ...finishing];
 
+  // #3360: a merged member's tier1 file held for the members running beside
+  // it is removed once they have all merged — each ran its outcome first.
+  const ledgerFile = runState.ledgerFile || null;
+  const pendingTier1 = { ...(runState.pendingTier1 || {}) };
+  for (const [k, holders] of Object.entries(pendingTier1)) {
+    if (!holders.every((m) => mergedSet.has(m) || passed.includes(m))) continue;
+    steps.push(memberClear(Number(k), { mode: 'tier1-only', ledgerFile }));
+    delete pendingTier1[k];
+  }
+
   // A batch: every merged member not yet handed one, in merge order.
   let batch = null;
   const fresh = merged.filter((n) => !batched.includes(n));
@@ -694,7 +716,7 @@ function nextSteps(runState = {}) {
       kind: 'deferred-skills', step: 'deferred-skills', owner: 'parent', batch: id,
       instruction: 'For every deferred-to-session entry the runner returned (deferredSkillInvocations in regeneration-runner.js), invoke that generator through the Skill tool in the parent before the batch continues — a script cannot run a Skill-invoked generator. Then run regenerateAfterSkills({cwd, changedPaths}) over the paths they rewrote (#3272): it rebuilds what reads them, e.g. the extension registry, without deferring the skill again. Carry both sets of paths forward.',
     });
-    steps.push(regeneratedCommit({ batch: id }));
+    steps.push(regeneratedCommit({ batch: id }, runState.stateFile || null));
     // #3284: each member's 4–4c before the pass, so its 4d/4e commits are in
     // the range the pass reviews; Step 5 onward and the report follow it.
     const PRE = POST_WORK.slice(0, POST_WORK.indexOf('4f'));
@@ -702,7 +724,7 @@ function nextSteps(runState = {}) {
     for (const n of fresh) for (const sid of PRE) steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n, batch: id });
     steps.push({
       kind: 'post-merge-pass', step: 'post-merge-pass', owner: 'parent', batch: id, members: [...fresh],
-      instruction: `Run \`${GATE_CLI} batch-range ${fresh.map((n) => `--member ${n}`).join(' ')} --head <batch ${id}'s last commit: its last merge-back, or the regenerated-commit commit after it>\` with \`--base-of <N>=<tip>\` for every member started so far, in the order the tips were recorded; its base is the earliest worktree-creation tip among ${list(fresh)}. Then run \`${GATE_CLI} group-tier1 --base <earliest worktree-creation tip among ${list(fresh)}> --head <batch ${id}'s last commit> ${fresh.map((n) => `--member ${n}`).join(' ')} --group ${id}${priorFlags}${unswept} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 over this batch's own range: a later commit is outside it, and an earlier batch's members (--prior) are skipped, never failed. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those. Record batch ${id}'s members as passed once their reports below are printed.`,
+      instruction: `Run \`${GATE_CLI} batch-range ${fresh.map((n) => `--member ${n}`).join(' ')} --head <batch ${id}'s last commit: its last merge-back, or the regenerated-commit commit after it>\` with \`--base-of <N>=<tip>\` for every member started so far, in the order the tips were recorded; its base is the earliest worktree-creation tip among ${list(fresh)}. Then run \`${GATE_CLI} group-tier1${runState.stateFile ? ` --state ${runState.stateFile}` : ''} --base <earliest worktree-creation tip among ${list(fresh)}> --head <batch ${id}'s last commit> ${fresh.map((n) => `--member ${n}`).join(' ')} --group ${id}${priorFlags}${unswept} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 over this batch's own range: a later commit is outside it, and an earlier batch's members (--prior) are skipped, never failed. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those. Record batch ${id}'s members as passed once their reports below are printed.`,
     });
     fresh.forEach((n, i) => {
       for (const sid of POST) steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n, batch: id });
@@ -711,22 +733,38 @@ function nextSteps(runState = {}) {
         text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${passed.length + i + 1}/${total} processed)`,
       });
     });
+    // #3360: after the reports, each member's scratch files. A member still
+    // running may name one of these as --sibling, so its tier1 file waits.
+    const stillRunning = started.filter((m) => !mergedSet.has(m) && !passed.includes(m));
+    for (const n of fresh) {
+      if (stillRunning.length) pendingTier1[n] = [...stillRunning];
+      steps.push(memberClear(n, { mode: stillRunning.length ? 'keep-tier1' : 'all', ledgerFile, holders: stillRunning, where: { batch: id } }));
+    }
   }
 
-  // Start members while a slot is free and their dependencies have merged.
-  const running = started.filter((n) => !mergedSet.has(n));
+  // Start members while a slot is free and their dependencies are done: merged
+  // back, or — for a member worked inline (#3342) — passed.
+  const passedSet = new Set(passed);
+  const doneDep = (d) => mergedSet.has(d) || passedSet.has(d);
+  const running = started.filter((n) => !mergedSet.has(n) && !passedSet.has(n));
+  const runnable = order.filter((n) => !started.includes(n) && (dependsOn[n] || []).every(doneDep));
   const start = [];
   const used = new Set(running.map((n) => slotOf[n]));
   for (const n of order) {
     if (running.length + start.length >= maxAgents) break;
     if (started.includes(n)) continue;
-    if (!(dependsOn[n] || []).every((d) => mergedSet.has(d))) continue;
+    if (!(dependsOn[n] || []).every(doneDep)) continue;
     let slot = 1;
     while (used.has(slot)) slot += 1;
     used.add(slot);
     slotOf[n] = slot;
     start.push(n);
   }
+  // #3342: a member runnable alone, with nothing running, buys no parallelism
+  // from a worktree — it is worked inline in the tracker checkout instead, and
+  // recorded passed (never merged) once its report is printed.
+  const inline = [...(runState.inline || [])];
+  const lone = start.length === 1 && running.length === 0 && runnable.length === 1;
   for (const n of start) {
     started.push(n);
     const slot = slotOf[n];
@@ -737,6 +775,25 @@ function nextSteps(runState = {}) {
         kind: 'step', step: sid, owner: 'parent', issue: n,
         ...(sid === 'review-state-gate' && runState.stateFile ? { instruction: `If this gate stops #${n}, run ${report(`--stopped ${n}`)} — it halts the run — and execute the steps it prints.` } : {}),
       });
+    }
+    if (lone) {
+      inline.push(n);
+      delete slotOf[n];
+      steps.push({
+        kind: 'inline', step: 'inline', owner: 'parent', issue: n,
+        instruction: `#${n} is the only runnable member and none is running: work it inline in the tracker checkout as standard /work Steps 3–5 — no worktree, no member agent, no merge-back, and so no Merge-Back Review Gate; the Sub-Agent Review Gate is N/A on this direct-work path. Every other gate applies unchanged.`,
+      });
+      steps.push({ kind: 'step', step: '3', owner: 'parent', issue: n, suiteScope: 'root' });
+      for (const sid of POST_WORK) if (sid !== '4f') steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n });
+      // #3360: no gate files, but the preamble wrote its brief. Before the
+      // report, whose instruction moves the run on.
+      steps.push(memberClear(n, { ledgerFile }));
+      steps.push({
+        kind: 'report', step: 'report', owner: 'parent', issue: n,
+        text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${passed.length + 1}/${total} processed)`,
+        instruction: `Once this report is printed, run ${runState.stateFile ? report(`--passed ${n}`) : `next-steps --passed ${n}`} and execute what it prints.`,
+      });
+      continue;
     }
     steps.push({
       kind: 'spawn', step: 'spawn', owner: 'parent', issue: n, slot,
@@ -783,15 +840,56 @@ function nextSteps(runState = {}) {
     });
     steps.push({ kind: 'step', step: '4f', owner: 'parent', scope: 'run', cwd: 'tracker', members: [...passed, ...tail] });
     steps.push({ kind: 'summary', step: '6', owner: 'parent', processed: passed.length + tail.length, repeats: ['leftover-worktrees'] });
+    const runFiles = [runState.stateFile, ledgerFile].filter(Boolean);
+    if (runFiles.length) steps.push(runClear(runFiles));
   }
+
+  // #3349: keep every set handed out, so an output the parent lost can be
+  // printed again verbatim. A rebuild cannot reproduce it: the state holds no
+  // per-batch membership or `passed` snapshot.
+  const issued = { ...(runState.issued || {}) };
+  if (batch) issued[`batch:${batch.id}`] = { batch, steps: steps.filter((s) => s.batch === batch.id) };
+  for (const n of start) issued[`start:${n}`] = { start: [n], steps: steps.filter((s) => s.issue === n && s.batch === undefined) };
 
   return {
     start, batch, steps, done: ended,
-    state: { ...runState, started, slotOf, batched, batches, passed, ...(finishing.length ? { resumeFinished: true } : {}), ...(ended ? { ended: true } : {}) },
+    state: { ...runState, started, slotOf, batched, batches, passed, issued, inline, pendingTier1, ...(finishing.length ? { resumeFinished: true } : {}), ...(ended ? { ended: true } : {}) },
   };
 }
 
 const list = (nums) => (nums.length ? nums.map((n) => `#${n}`).join(', ') : 'none');
+
+/**
+ * A member's scratch-file cleanup step (#3360), once it is merged and In
+ * review: `merge-back-gate.js clear-member`, the guarded remover. `mode`
+ * 'all' removes its three gate files and its brief; 'keep-tier1' keeps the
+ * tier1 file for the running members in `holders`, whose outcome may name
+ * this member as --sibling and read that file for its scope; 'tier1-only'
+ * removes it once they have all merged. `--ledger` lets clear-member keep all
+ * four when teardown kept the member's worktree.
+ */
+function memberClear(n, { mode = 'all', ledgerFile = null, holders = [], where = {} } = {}) {
+  const args = ['clear-member', '--issue', String(n), ...(ledgerFile ? ['--ledger', ledgerFile] : []),
+    ...(mode === 'keep-tier1' ? ['--keep-tier1'] : mode === 'tier1-only' ? ['--tier1-only'] : [])];
+  const why = mode === 'keep-tier1'
+    ? `it keeps .tmp-gate-${n}-tier1.json, since ${list(holders)} ran beside #${n} and an outcome naming it as --sibling reads that file; a later step removes it once they have merged`
+    : mode === 'tier1-only'
+      ? `every member that ran beside #${n} has merged, so no outcome reads its tier1 file any more`
+      : `#${n} is merged and In review, so its gate files and brief have no reader left`;
+  return {
+    kind: 'scratch-clear', step: 'scratch-clear', owner: 'parent', issue: n, ...where, args,
+    instruction: `Run \`${GATE_CLI} ${args.join(' ')}\` — ${why}. It keeps every file while the ledger's worktree for #${n} still exists (teardown kept it), so a resumed run finds them. Never remove them by hand.`,
+  };
+}
+
+/** The run's last cleanup (#3360): the rolling state and ledger, after the run-level sweep passed. */
+function runClear(files) {
+  const args = ['clear-run', ...files.flatMap((f) => ['--file', f])];
+  return {
+    kind: 'scratch-clear', step: 'scratch-clear', owner: 'parent', scope: 'run', args,
+    instruction: `Only once the run-level Step 4f passed and the summary is printed: run \`${GATE_CLI} ${args.join(' ')}\` — every member merged, so the run state and ledger have no reader left. A failed sweep halts the run and keeps both for --resumed.`,
+  };
+}
 
 /** A resumed run's already-merged member (#3264): finished, never re-spawned. */
 function resumeFinish(n) {
@@ -812,12 +910,31 @@ function resumeFinish(n) {
  * @param {{group?: number, batch?: number}} where
  * @returns {object} A parent step
  */
-function regeneratedCommit(where) {
+function regeneratedCommit(where, stateFile = null) {
   const label = where.group !== undefined ? `group ${where.group}` : `batch ${where.batch}`;
+  const flag = where.group !== undefined ? `--group ${where.group}` : `--batch ${where.batch}`;
+  // #3286: recorded in the run state, the commit reaches group-tier1's
+  // regenerated-paths check without the parent typing its sha as --own.
+  const record = stateFile
+    ? ` Then, with the commit at HEAD, run \`${ORCH_CLI} record-regenerated --state ${stateFile} ${flag} --path <path> for each path it committed\` — the post-merge pass reads the sha from there.`
+    : '';
   return {
     kind: 'regenerated-commit', step: 'regenerated-commit', owner: 'parent', ...where,
-    instruction: `Commit the paths the reconcile, deferred-skills and regenerateAfterSkills steps rewrote, and only those, as \`Refs #<root> — regenerate derived artifacts (${label})\`; <root> is the epic, or the branch tracker's own issue. Nothing rewritten → no commit.`,
+    instruction: `Commit the paths the reconcile, deferred-skills and regenerateAfterSkills steps rewrote, and only those, as \`Refs #<root> — regenerate derived artifacts (${label})\`; <root> is the epic, or the branch tracker's own issue. Nothing rewritten → no commit.${record}`,
   };
+}
+
+/**
+ * Record a regenerated-output commit in the run state (#3286). Pure: returns
+ * a new state with `regeneratedCommits` holding `{sha, paths, group|batch}`,
+ * an earlier entry for the same sha replaced in place.
+ */
+function recordRegenerated(state, { sha, paths = [], group, batch } = {}) {
+  const entry = { sha, paths: [...paths], ...(group !== undefined ? { group } : { batch }) };
+  const list = [...((state && state.regeneratedCommits) || [])];
+  const at = list.findIndex((e) => e.sha === sha);
+  if (at === -1) list.push(entry); else list[at] = entry;
+  return { ...(state || {}), regeneratedCommits: list };
 }
 
 /**
@@ -892,15 +1009,18 @@ function mergeBack({ git, tracker, epic, members = [], order = [], tail = [], pr
       continue;
     }
     const conflicted = git(['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-    // #3263: no conflicted path means git refused to start the merge — local
-    // changes at the root (often another session's) it would overwrite. It
-    // names them in stderr as tab-indented lines; nothing to abort.
-    const refused = conflicted.length === 0;
-    const files = refused
-      ? (r.stderr || '').split('\n').filter((l) => /^\t/.test(l)).map((l) => l.trim()).filter(Boolean)
-      : conflicted;
-    if (!refused) git(['merge', '--abort']);
-    const halted = { issue: m.issue, branch: m.branch, worktreePath: m.worktreePath, ontoTip, files, stderr: r.stderr || '', ...(refused ? { refused: true } : {}) };
+    // #3263: git refuses to start a merge that would overwrite local changes
+    // at the root (often another session's), naming them in stderr as
+    // tab-indented lines; nothing to abort. #3293: only that text means
+    // refused — a mistyped branch, a hook or GPG failure or a held index.lock
+    // also leave no conflicted path, and are reported as a merge failure.
+    const stderr = r.stderr || '';
+    const tabbed = stderr.split('\n').filter((l) => /^\t/.test(l)).map((l) => l.trim()).filter(Boolean);
+    const refused = conflicted.length === 0 && /would be overwritten by merge/.test(stderr);
+    const failedToStart = conflicted.length === 0 && !refused;
+    const files = refused ? tabbed : conflicted;
+    if (conflicted.length > 0) git(['merge', '--abort']);
+    const halted = { issue: m.issue, branch: m.branch, worktreePath: m.worktreePath, ontoTip, files, stderr, ...(refused ? { refused: true } : {}) };
     const unmerged = sequence.slice(i + 1);
     return {
       ok: false, tracker, merged, halted, unmerged, tailNotStarted: [...tail], worktreesKept: [...members],
@@ -908,7 +1028,9 @@ function mergeBack({ git, tracker, epic, members = [], order = [], tail = [], pr
         epic,
         reason: refused
           ? 'merge refused — local changes at the root would be overwritten (uncommitted or staged, possibly another session\'s); nothing was merged for this member'
-          : 'residual merge conflict after reconciliation',
+          : failedToStart
+            ? `merge failed — git could not merge ${m.branch} (see git's output below); nothing was merged for this member`
+            : 'residual merge conflict after reconciliation',
         failed: halted,
         merged: merged.map((x) => x.issue), unmerged, tailNotStarted: tail, processed, total, worktreesKept: members, unswept,
       }),
@@ -1069,7 +1191,10 @@ module.exports = {
   runNextStepsCli,
   runReplanCli,
   recordSpawn,
+  pruneRunLedger,
   runRecordSpawnCli,
+  recordRegenerated,
+  runRecordRegeneratedCli,
 };
 
 /**
@@ -1088,6 +1213,32 @@ function recordSpawn(ledger, entry) {
   const next = { issue: entry.issue, branch: entry.branch, worktreePath: entry.worktreePath };
   if (at === -1) members.push(next); else members.splice(at, 0, next);
   return { ...(ledger || {}), members };
+}
+
+/**
+ * Drop run-ledger entries nothing can match any more (#3350). `recordSpawn`
+ * only ever adds, so members of a long-finished run stayed in the ledger and
+ * could mis-attribute a worktree should a branch name be reused. An entry is
+ * dropped only when its worktree is gone AND its member is not in the active
+ * set; an entry whose worktree still exists is kept whatever its member's
+ * state, since that is a kept worktree #3264's resume matching reports.
+ * Paths compare as `matchKeptWorktrees` compares them. Pure.
+ *
+ * @param {{members: object[]}|null} ledger
+ * @param {{worktrees: {worktreePath: string}[], active: number[]}} opts
+ * @returns {{ledger: object|null, dropped: number[]}}
+ */
+function pruneRunLedger(ledger, { worktrees = [], active = [] } = {}) {
+  if (!ledger || !Array.isArray(ledger.members)) return { ledger: ledger || null, dropped: [] };
+  const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const onDisk = new Set(worktrees.map((w) => norm(w.worktreePath)));
+  const dropped = [];
+  const members = ledger.members.filter((m) => {
+    const keep = onDisk.has(norm(m.worktreePath)) || active.includes(m.issue);
+    if (!keep) dropped.push(m.issue);
+    return keep;
+  });
+  return { ledger: { ...ledger, members }, dropped };
 }
 
 /** The command a spawn step names for the parent to run once the spawn returns. */
@@ -1129,6 +1280,7 @@ const addNotStarted = (list, more) => [...(list || []), ...more.filter((f) => Nu
  * `next-steps` CLI (#3274) — the parent's handle on nextSteps between events.
  *   node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state F
  *     [--merged N ...] [--passed N ...] [--stopped N ...] [--not-started N[=<path>] ...]
+ *   ... next-steps --state F --show-batch <id> | --show-start <N>   (#3349, read-only replay)
  * Reads the run state the preamble wrote, adds the merges, passes, gate stops
  * and failed worktree creations (#3269) the parent records, prints {ok, start, batch, steps, done, templates} and
  * writes the new state back. With replan below, the only disk access in this
@@ -1144,6 +1296,8 @@ function runNextStepsCli(argv) {
     else if (a === '--passed') opts.passed.push(Number(argv[++i]));
     else if (a === '--stopped') opts.stopped.push(Number(argv[++i]));
     else if (a === '--not-started') opts.notStarted.push(parseNotStarted(argv[++i]));
+    else if (a === '--show-batch') opts.showBatch = Number(argv[++i]);
+    else if (a === '--show-start') opts.showStart = Number(argv[++i]);
     else if (a !== 'next-steps') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
   }
   if (!opts.state) return { code: 1, envelope: { ok: false, error: '--state <file> is required' } };
@@ -1152,6 +1306,18 @@ function runNextStepsCli(argv) {
     state = JSON.parse(fs.readFileSync(opts.state, 'utf8'));
   } catch (e) {
     return { code: 1, envelope: { ok: false, error: `cannot read run state ${opts.state}: ${e.message}` } };
+  }
+  // #3349: replay a set already handed out, verbatim. Read-only — the state
+  // file is never written, so a replay cannot advance the run.
+  if (opts.showBatch !== undefined || opts.showStart !== undefined) {
+    const key = opts.showBatch !== undefined ? `batch:${opts.showBatch}` : `start:${opts.showStart}`;
+    const label = opts.showBatch !== undefined ? `batch ${opts.showBatch}` : `the start of #${opts.showStart}`;
+    const set = (state.issued || {})[key];
+    if (!set) return { code: 1, envelope: { ok: false, error: `the run state has not issued ${label}` } };
+    return {
+      code: 0,
+      envelope: { ok: true, replay: true, start: set.start || [], batch: set.batch || null, steps: set.steps, done: false, templates: { ...MEMBER_TEMPLATES } },
+    };
   }
   const recorded = {
     merged: addNums(state.merged, opts.merged), passed: addNums(state.passed, opts.passed),
@@ -1192,9 +1358,51 @@ function runReplanCli(argv) {
   return { code: 0, envelope: { ok: true, steps, total, templates } };
 }
 
+/**
+ * `record-regenerated --state F (--group G | --batch B) [--sha SHA] [--path P]...`
+ * (#3286): record the regenerated-output commit in the run state, so the
+ * post-merge pass's `group-tier1 --state F` treats it as --own. `--sha`
+ * defaults to HEAD — the step runs it right after making the commit.
+ */
+function runRecordRegeneratedCli(argv, seams = {}) {
+  const fs = require('fs');
+  const opts = { paths: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--state') opts.state = argv[++i];
+    else if (a === '--group') opts.group = Number(argv[++i]);
+    else if (a === '--batch') opts.batch = Number(argv[++i]);
+    else if (a === '--sha') opts.sha = argv[++i];
+    else if (a === '--path') opts.paths.push(argv[++i]);
+    else if (a !== 'record-regenerated') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
+  }
+  if (!opts.state) return { code: 1, envelope: { ok: false, error: '--state <file> is required' } };
+  const where = Number.isInteger(opts.group) ? { group: opts.group } : Number.isInteger(opts.batch) ? { batch: opts.batch } : null;
+  if (!where) return { code: 1, envelope: { ok: false, error: '--group <G> or --batch <B> is required' } };
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(opts.state, 'utf8'));
+  } catch (e) {
+    return { code: 1, envelope: { ok: false, error: `cannot read run state ${opts.state}: ${e.message}` } };
+  }
+  let sha = opts.sha;
+  if (!sha) {
+    const git = seams.git || ((args) => require('child_process').execFileSync('git', args, { encoding: 'utf8', timeout: 60_000 }));
+    try { sha = String(git(['rev-parse', 'HEAD'])).trim(); } catch (e) {
+      return { code: 1, envelope: { ok: false, error: `cannot resolve HEAD: ${e.message}` } };
+    }
+  }
+  const next = recordRegenerated(state, { sha, paths: opts.paths, ...where });
+  fs.writeFileSync(opts.state, JSON.stringify(next, null, 2));
+  return { code: 0, envelope: { ok: true, state: opts.state, recorded: next.regeneratedCommits.find((e) => e.sha === sha) } };
+}
+
 if (require.main === module) {
   const argv = process.argv.slice(2);
-  const result = argv[0] === 'replan' ? runReplanCli(argv) : argv[0] === 'record-spawn' ? runRecordSpawnCli(argv) : runNextStepsCli(argv);
+  const result = argv[0] === 'replan' ? runReplanCli(argv)
+    : argv[0] === 'record-spawn' ? runRecordSpawnCli(argv)
+      : argv[0] === 'record-regenerated' ? runRecordRegeneratedCli(argv)
+        : runNextStepsCli(argv);
   process.stdout.write(JSON.stringify(result.envelope, null, 2) + '\n');
   process.exitCode = result.code;
 }

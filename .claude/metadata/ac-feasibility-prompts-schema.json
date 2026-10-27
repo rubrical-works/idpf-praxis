@@ -5,7 +5,7 @@
   "description": "Schema for .claude/metadata/ac-feasibility-prompts.json — externalized LLM-readable prompt block driving the AC verification-mechanism feasibility gate in /add-story, /bug, /enhancement (and, per #2425 follow-up, /create-prd and /create-backlog).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "classify", "verificationGate", "deliverableSplit", "phaseFeasibility"],
+  "required": ["version", "classify", "verificationGate", "deliverableSplit", "phaseFeasibility", "dischargedByWorkflow"],
   "properties": {
     "$schema": { "type": "string" },
     "version": {
@@ -96,6 +96,41 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Verbatim checklist line in the owning command spec. Must exist there — the claim is verified by test, so this file cannot itself name a capability a command lacks."
+              }
+            }
+          }
+        }
+      }
+    },
+    "dischargedByWorkflow": {
+      "type": "object",
+      "description": "Fifth gate (#3316): ACs restating a check a /work step already runs on every issue. Not a phase class — the condition resolves during implementation — so it sits beside phaseFeasibility, not inside it. Dropped at authoring like ownedElsewhere, but with no ownerChecklistItem: the owner is a rule step, which has no checklist line to quote.",
+      "additionalProperties": false,
+      "required": ["question", "guidance", "action", "entries"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "guidance": { "type": "string", "minLength": 1 },
+        "action": { "type": "string", "minLength": 1 },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["work", "owner", "examples", "keptWhen"],
+            "properties": {
+              "work": { "type": "string", "minLength": 1 },
+              "owner": { "type": "string", "minLength": 1, "description": "The /work step that discharges the AC." },
+              "examples": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 },
+                "description": "AC wordings of this class. Non-exhaustive — judge by what the AC asks for, not its wording."
+              },
+              "keptWhen": {
+                "type": "string",
+                "minLength": 1,
+                "description": "When the owner step runs nothing, so the AC is not redundant and must be kept."
               }
             }
           }

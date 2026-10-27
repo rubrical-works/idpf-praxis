@@ -1,0 +1,54 @@
+{
+  "$schema": "./charter-enforcement-schema.json",
+  "description": "Charter scope checkpoints, read by .claude/scripts/shared/lib/charter-scope.js and the commands that call it (#3001). Checks are conversational, never blocking: the user can expand scope, defer, proceed or revise. Formerly the always-on 04-charter-enforcement rule.",
+  "version": 1,
+  "checkpoints": {
+    "create-backlog": { "depth": "full", "checks": "the PRD each epic and story is created from" },
+    "create-prd": { "depth": "full", "checks": "the source proposal" },
+    "proposal": { "depth": "summary", "checks": "the proposal title and problem statement" },
+    "enhancement": { "depth": "summary", "checks": "the enhancement title and description" },
+    "add-story": { "depth": "quick", "checks": "the story title and description" }
+  },
+  "depths": {
+    "full": { "lists": ["inScope", "outOfScope", "currentFocus"], "loads": ["CHARTER.md", "Inception/Scope-Boundaries.md"] },
+    "summary": { "lists": ["inScope", "outOfScope"], "loads": ["CHARTER.md"] },
+    "quick": { "lists": ["outOfScope"], "loads": ["CHARTER.md"] }
+  },
+  "alignment": {
+    "aligned": { "description": "The work matches an in-scope or current-focus item, or (quick depth) matches no out-of-scope item", "action": "Proceed without interruption", "ask": false },
+    "possibly-misaligned": { "description": "The work matches no charter item, in scope or out", "action": "Ask the user to confirm", "ask": true },
+    "conflicts": { "description": "The work matches an out-of-scope item", "action": "Flag the conflict and offer the resolution options", "ask": true }
+  },
+  "resolutionOptions": [
+    { "id": "expand", "label": "Expand charter scope", "action": "Follow expansionFlow, then continue with the original work" },
+    { "id": "defer", "label": "Defer to a future release", "action": "Note in the work item: \"Deferred - out of current scope\"" },
+    { "id": "proceed", "label": "Proceed anyway", "action": "Log a scope-drift warning and continue" },
+    { "id": "revise", "label": "Revise the work item", "action": "Help the user change the work item to fit current scope" }
+  ],
+  "expansionFlow": [
+    "Ask which scope item to add",
+    "Add it to the In Scope section of Inception/Scope-Boundaries.md with \"Added <date> for <work item>\"",
+    "Update the CHARTER.md In Scope section when the item is major",
+    "Commit: \"Expand charter scope: add <item>\"",
+    "Continue with the original work"
+  ],
+  "exclusions": [
+    ".claude/**",
+    "IDPF-*/**",
+    "Overview/**",
+    "Assistant/**",
+    "Reference/**",
+    "System-Instructions/**",
+    "Skills/**",
+    "Templates/**",
+    ".min-mirror/**",
+    "framework-config.json",
+    "framework-manifest.json",
+    ".gh-pmu.json"
+  ],
+  "optOut": {
+    "file": ".no-charter-enforcement",
+    "perSession": "The user says to skip charter validation for this session; the command then does not call the helper",
+    "quietMode": "The user asks for quiet validation: ask only on conflicts; possibly-misaligned is reported but not asked (helper flag --quiet)"
+  }
+}

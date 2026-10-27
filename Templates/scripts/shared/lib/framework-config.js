@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -97,8 +97,8 @@ function read(cwd) {
  * @param {object} config - Config object to validate
  * @param {string} [cwd=process.cwd()] - Project root (for schema resolution)
  * @returns {{ valid: boolean, errors: Array|null }} Validation result. When
- *   invalid, `errors` is the ajv error array (each entry has `dataPath`,
- *   `message`, `params`, etc.).
+ *   invalid, `errors` is the ajv 8 error array (each entry has `instancePath`,
+ *   `message`, `params`, etc. — ajv 6 called the path `dataPath`).
  */
 function validate(config, cwd = process.cwd()) {
   const validator = getValidator(cwd);
@@ -119,7 +119,8 @@ function write(cwd, config) {
   const { valid, errors } = validate(config, cwd);
   if (!valid) {
     const summary = errors
-      .map((e) => `${e.dataPath || '(root)'} ${e.message}`)
+      // ajv 8 reports instancePath; dataPath is ajv 6's name for it (#3304).
+      .map((e) => `${e.instancePath || e.dataPath || '(root)'} ${e.message}`)
       .join('; ');
     throw new Error(`framework-config.json validation failed: ${summary}`);
   }
@@ -223,7 +224,7 @@ function writeXSession(cwd, obj) {
  *
  * @returns {boolean} True when a key was present and has been removed.
  */
-function stripLegacyCrossSessionKey(cwd = process.cwd()) {
+function stripLegacyCrossSessionKey(cwd = process.cwd(), options = {}) {
   let config;
   try {
     config = read(cwd);
@@ -232,8 +233,30 @@ function stripLegacyCrossSessionKey(cwd = process.cwd()) {
   }
   if (!Object.prototype.hasOwnProperty.call(config, 'crossSessionMessaging')) return false;
 
-  const next = { ...config };
-  delete next.crossSessionMessaging;
+  if (typeof options._beforeWrite === 'function') options._beforeWrite();
+  return updateKey(cwd, (fresh) => {
+    if (!Object.prototype.hasOwnProperty.call(fresh, 'crossSessionMessaging')) return null;
+    const next = { ...fresh };
+    delete next.crossSessionMessaging;
+    return next;
+  });
+}
+
+/**
+ * Change one key of framework-config.json against the file as it is NOW
+ * (#3063 item 2). Backfills used to write back the object they read earlier,
+ * so another session's edit landing in between was silently discarded. This
+ * re-reads immediately before the atomic write and hands the fresh object to
+ * `change`, which edits only its own key — or returns null when the fresh
+ * file already says what it wanted, so nothing is written.
+ *
+ * @param {string} cwd - Project root
+ * @param {(fresh: object) => object|null} change
+ * @returns {boolean} True when a write happened.
+ */
+function updateKey(cwd, change) {
+  const next = change(read(cwd));
+  if (next === null) return false;
   write(cwd, next);
   return true;
 }
@@ -263,16 +286,25 @@ function stripLegacyCrossSessionKey(cwd = process.cwd()) {
  *   already present (including as a legacy boolean); `mode` is the effective
  *   normalized mode either way.
  */
-function ensureReviewSweep(cwd = process.cwd()) {
+function ensureReviewSweep(cwd = process.cwd(), options = {}) {
   const { normalizeReviewSweep, DEFAULT_REVIEW_SWEEP_MODE } = require('./prior-art-marker.js');
+  const present = (c) => c.reviewSweep !== undefined && c.reviewSweep !== null;
   const config = read(cwd);
 
-  if (config.reviewSweep !== undefined && config.reviewSweep !== null) {
+  if (present(config)) {
     return { written: false, mode: normalizeReviewSweep(config.reviewSweep) };
   }
 
-  write(cwd, { ...config, reviewSweep: DEFAULT_REVIEW_SWEEP_MODE });
-  return { written: true, mode: DEFAULT_REVIEW_SWEEP_MODE };
+  if (typeof options._beforeWrite === 'function') options._beforeWrite();
+  // A mode another session materialized meanwhile is kept, never overwritten.
+  let kept = null;
+  const written = updateKey(cwd, (fresh) => {
+    if (present(fresh)) { kept = fresh.reviewSweep; return null; }
+    return { ...fresh, reviewSweep: DEFAULT_REVIEW_SWEEP_MODE };
+  });
+  return written
+    ? { written: true, mode: DEFAULT_REVIEW_SWEEP_MODE }
+    : { written: false, mode: normalizeReviewSweep(kept) };
 }
 
 /**

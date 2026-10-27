@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ask-question-shape-schema.json",
+  "title": "AskUserQuestion Shape Schema",
+  "description": "Schema for .claude/metadata/ask-question-shape.json — the limits and correction text .claude/hooks/ask-question-shape-hook.js applies to every AskUserQuestion call (#3233). The hook fails open: absent or malformed data means no block.",
+  "type": "object",
+  "required": ["maxQuestionLength", "maxOptions", "maxHeaderLength", "remedy", "convention"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": {
+      "type": "object",
+      "description": "Human-facing provenance. Never read by the hook.",
+      "additionalProperties": true
+    },
+    "maxQuestionLength": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Longest question text, in characters, the hook lets through. A convention threshold: one sentence."
+    },
+    "maxOptions": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "The tool's own limit on options per question (#3198)."
+    },
+    "maxHeaderLength": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The tool's own limit on header length, in characters (#3198)."
+    },
+    "remedy": {
+      "type": "object",
+      "required": ["singleSelect", "multiSelect"],
+      "properties": {
+        "singleSelect": { "type": "string", "minLength": 1 },
+        "multiSelect": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Must not suggest previews: the tool renders them for single-select questions only."
+        }
+      },
+      "additionalProperties": false
+    },
+    "convention": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Lines appended to every correction: the context-table format and its companions, which the hook cannot check because it never sees text printed before the call."
+    }
+  },
+  "additionalProperties": false
+}

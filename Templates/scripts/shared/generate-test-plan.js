@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Generate a test plan skeleton markdown file from the issues assigned to the current git branch. Auto-detects version from branch name or accepts version parameter. Outputs to Construction/Test-Plans/ directory. Used by /prepare-release test plan generation.
  * @checksum sha256:placeholder
  *
@@ -71,45 +71,61 @@ function getVersion(argVersion) {
 }
 
 /**
+ * Run a command whose output the plan depends on, throwing on failure (#3054
+ * item 10). `exec()` above turns every failure into '', which is right for the
+ * branch and version probes and wrong here: '' read as "no issues" wrote an
+ * empty test plan and exited 0.
+ */
+function execRequired(cmd, what) {
+  try {
+    return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  } catch (error) {
+    const detail = (error.stderr && error.stderr.toString().trim()) || error.message;
+    throw new Error(`${what} failed: ${detail}`);
+  }
+}
+
+/**
  * Get issues assigned to current branch
  * @returns {Array<Object>} Array of issue objects with number, title, body
+ * @throws {Error} When the branch, its issue list or any issue cannot be read,
+ *   or gh pmu's active branch is not the checked-out one.
+ *   A branch with no issues is an empty array; a failure to look is a throw.
  */
 function getBranchIssues() {
   const branch = getCurrentBranch();
   if (!branch) {
-    console.error('Not on a branch');
-    return [];
+    throw new Error('Not on a branch');
   }
 
-  // Use gh pmu to get issues for current branch
-  const output = exec(`gh pmu branch list --json=name,issues`);
-  if (!output) {
-    return [];
-  }
-
+  // `gh pmu branch list` takes no flags; `branch current --json=name,issues`
+  // is the form that exists, and its issues are {number,title,state} objects
+  // rather than bare numbers (#3367).
+  const output = execRequired(`gh pmu branch current --json=name,issues`, 'gh pmu branch current');
+  let current;
   try {
-    const branches = JSON.parse(output);
-    const currentBranchData = branches.find(b => b.name === branch);
-    if (!currentBranchData || !currentBranchData.issues) {
-      return [];
-    }
-
-    // Fetch full issue details for each issue number
-    const issues = [];
-    for (const issueNum of currentBranchData.issues) {
-      const issueData = exec(`gh issue view ${issueNum} --json=number,title,body,labels`);
-      if (issueData) {
-        try {
-          issues.push(JSON.parse(issueData));
-        } catch {
-          // Skip malformed issue data
-        }
-      }
-    }
-    return issues;
-  } catch {
+    current = JSON.parse(output);
+  } catch (err) {
+    throw new Error(`gh pmu branch current returned unparseable output: ${err.message}`);
+  }
+  if (current.name !== branch) {
+    throw new Error(`gh pmu's active branch is ${current.name}, but ${branch} is checked out`);
+  }
+  if (!Array.isArray(current.issues)) {
     return [];
   }
+
+  // Fetch full issue details for each issue number
+  const issues = [];
+  for (const issueNum of current.issues.map(i => i.number)) {
+    const issueData = execRequired(`gh issue view ${issueNum} --json=number,title,body,labels`, `gh issue view ${issueNum}`);
+    try {
+      issues.push(JSON.parse(issueData));
+    } catch (err) {
+      throw new Error(`gh issue view ${issueNum} returned unparseable output: ${err.message}`);
+    }
+  }
+  return issues;
 }
 
 /**
@@ -276,8 +292,14 @@ function main() {
 
   console.log(`Generating test plan for ${version}...`);
 
-  // Get issues from branch
-  const issues = getBranchIssues();
+  // Get issues from branch — a failure to read them writes no plan (#3054 item 10)
+  let issues;
+  try {
+    issues = getBranchIssues();
+  } catch (err) {
+    console.error(`Error: ${err.message}. No test plan was written.`);
+    return 1;
+  }
   console.log(`Found ${issues.length} issue(s) assigned to branch`);
 
   // Generate test plan
@@ -310,6 +332,7 @@ if (require.main === module) {
 
 // Export for testing
 module.exports = {
+  main,
   getVersion,
   getCurrentBranch,
   getBranchIssues,

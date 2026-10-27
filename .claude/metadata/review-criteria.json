@@ -41,6 +41,11 @@
           "autoCheck": "Check for 'Proposed Fix', 'Root Cause Analysis', 'Fix Approach', or solution description section. Treat as missing if section body is under 20 characters or contains placeholder text ('To be documented', 'TBD', '...')"
         },
         {
+          "id": "files-to-modify-declared",
+          "name": "Files to modify declared at top level",
+          "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/declared-scope-check.js — never through a temp file, whose root write would void a concurrent Tier 3 review (#3351); report the status it returns with its evidence; do not re-parse the block here — the helper reuses scope-drift-check.js parseDeclaredScope. pass -> ✅ with the parsed paths as evidence. warn -> ⚠️ naming the problem the evidence states: a header not at top level (off its own line, or inside a list item such as a Steps to Reproduce step — #3239, which concurrency-plan then classified undeclared and sent to the sequential tail), parseDeclaredScope's warning (section found but no backticked paths parsed), or no top-level declaration at all. Step 2a-ii (b) writes the declaration after this evaluation: when it does, re-run the helper on the written body and report that result, naming the repair. Advisory — a warning, never ❌."
+        },
+        {
           "id": "root-cause-identified",
           "name": "Root cause identified",
           "autoCheck": "Does the body state WHY the defect happens — the mechanism: the specific code path, condition or data that produces the wrong behavior — anywhere in Description, Actual Behavior or Proposed Fix? Distinct from proposed-fix-described, which asks WHAT the fix does. ✅ when the mechanism is stated. ✅ also when the body explicitly says the root cause is not yet known and names the investigation that will establish it — at filing time an honest 'unknown' is correct. ⚠️ when the body only restates the symptom. Advisory, never ❌: an unknown root cause must not block the review (#2993)."
@@ -50,6 +55,11 @@
           "name": "Deployment impact assessed",
           "autoCheck": "Check for a 'Deployment Impact' section (or 'Impact: dev-only' / 'Impact: deployed') in the body. Validate the classification against framework-manifest.json deploymentFiles - the authority the issue corpus actually reasons from - together with the Stage 1 / Stage 2 command pipeline and deploy-dist.yml. Values: 'dev-only' = touches nothing that reaches a user project (framework scripts, Proposal/, PRD/, Archive/, tests, CHANGELOG); 'deployed' = touches a path carried by deploymentFiles or emitted by Stage 2, so it reaches user projects on hub update - list the affected areas; 'unknown' = the classification could not be determined and needs a human decision before the issue is worked.",
           "env": "dev"
+        },
+        {
+          "id": "prior-art-checked",
+          "name": "Prior art checked",
+          "autoCheck": "Delegate to decideSweep in .claude/scripts/shared/lib/prior-art-marker.js and report the status it returns; do not re-derive the rule here. The marker itself is the literal '**Prior Art:**' heading defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading; present and complete = pass. Issues created before the cutoff in that helper are not applicable rather than failing. Behavior past that depends on framework-config.json reviewSweep, a 4-mode setting since #2564 (absent = 'recommend'): under 'full' an absent or PARTIAL marker reports fail and runs the Step 2a-iv sweep; under 'recommend' it reports the advisory status 'recommend' and runs NO sweep — this must NOT be reported as fail, because --prior-art is opt-in and rarely passed, so most issues carry no marker and a fail would downgrade nearly every review; under 'flag-only' and 'off' report skip, not fail, which would downgrade every review in a project that opted out."
         }
       ]
     },
@@ -95,10 +105,25 @@
           "autoCheck": "Check for 'Proposed Solution' or solution description section. Treat as missing if section body is under 20 characters or contains placeholder text ('To be documented', 'TBD', '...'). Standalone stories (not from PRD decomposition) benefit from auto-generated solutions."
         },
         {
+          "id": "files-to-modify-declared",
+          "name": "Files to modify declared at top level",
+          "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/declared-scope-check.js — never through a temp file, whose root write would void a concurrent Tier 3 review (#3351); report the status it returns with its evidence; do not re-parse the block here — the helper reuses scope-drift-check.js parseDeclaredScope. pass -> ✅ with the parsed paths as evidence. warn -> ⚠️ naming the problem the evidence states: a header not at top level (off its own line, or inside a list item such as a Steps to Reproduce step — #3239, which concurrency-plan then classified undeclared and sent to the sequential tail), parseDeclaredScope's warning (section found but no backticked paths parsed), or no top-level declaration at all. Step 2a-ii (b) writes the declaration after this evaluation: when it does, re-run the helper on the written body and report that result, naming the repair. Advisory — a warning, never ❌."
+        },
+        {
           "id": "deployment-impact-assessed",
           "name": "Deployment impact assessed",
           "autoCheck": "Check for a 'Deployment Impact' section (or 'Impact: dev-only' / 'Impact: deployed') in the body. Validate the classification against framework-manifest.json deploymentFiles - the authority the issue corpus actually reasons from - together with the Stage 1 / Stage 2 command pipeline and deploy-dist.yml. Values: 'dev-only' = touches nothing that reaches a user project (framework scripts, Proposal/, PRD/, Archive/, tests, CHANGELOG); 'deployed' = touches a path carried by deploymentFiles or emitted by Stage 2, so it reaches user projects on hub update - list the affected areas; 'unknown' = the classification could not be determined and needs a human decision before the issue is worked.",
           "env": "dev"
+        },
+        {
+          "id": "prior-art-checked",
+          "name": "Prior art checked",
+          "autoCheck": "Delegate to decideSweep in .claude/scripts/shared/lib/prior-art-marker.js and report the status it returns; do not re-derive the rule here. The marker itself is the literal '**Prior Art:**' heading defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading; present and complete = pass. Issues created before the cutoff in that helper are not applicable rather than failing. Behavior past that depends on framework-config.json reviewSweep, a 4-mode setting since #2564 (absent = 'recommend'): under 'full' an absent or PARTIAL marker reports fail and runs the Step 2a-iv sweep; under 'recommend' it reports the advisory status 'recommend' and runs NO sweep — this must NOT be reported as fail, because --prior-art is opt-in and rarely passed, so most issues carry no marker and a fail would downgrade nearly every review; under 'flag-only' and 'off' report skip, not fail, which would downgrade every review in a project that opted out."
+        },
+        {
+          "id": "charter-alignment",
+          "name": "Aligned with the charter",
+          "autoCheck": "Pipe the title and story statement on stdin — <title and story statement> | node .claude/scripts/shared/lib/charter-scope.js --command add-story — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning, naming that the story matches no In Scope or Current Focus item. conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the story's own scope section; scope-boundaries covers that."
         }
       ]
     },
@@ -139,6 +164,11 @@
           "id": "construction-context",
           "name": "Construction context discovered",
           "autoCheck": "Grep `Construction/Design-Decisions/` and `Construction/Tech-Debt/` for `Issue #N` patterns matching sub-issue numbers from `gh pmu sub list`. Report discovered files with title, date, and linked issue number. If no matches, report 'No Construction context found'."
+        },
+        {
+          "id": "charter-alignment",
+          "name": "Aligned with the charter",
+          "autoCheck": "Pipe the title and description on stdin — <title and description> | node .claude/scripts/shared/lib/charter-scope.js --command create-backlog — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning, naming that the epic matches no In Scope or Current Focus item. conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the epic's own scope section; scope-boundaries covers that."
         }
       ]
     },
@@ -154,6 +184,11 @@
           "id": "proposed-solution",
           "name": "Proposed solution described",
           "autoCheck": "Check for 'Proposed Solution' or solution description"
+        },
+        {
+          "id": "files-to-modify-declared",
+          "name": "Files to modify declared at top level",
+          "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/declared-scope-check.js — never through a temp file, whose root write would void a concurrent Tier 3 review (#3351); report the status it returns with its evidence; do not re-parse the block here — the helper reuses scope-drift-check.js parseDeclaredScope. pass -> ✅ with the parsed paths as evidence. warn -> ⚠️ naming the problem the evidence states: a header not at top level (off its own line, or inside a list item such as a Steps to Reproduce step — #3239, which concurrency-plan then classified undeclared and sent to the sequential tail), parseDeclaredScope's warning (section found but no backticked paths parsed), or no top-level declaration at all. Step 2a-ii (b) writes the declaration after this evaluation: when it does, re-run the helper on the written body and report that result, naming the repair. Advisory — a warning, never ❌."
         },
         {
           "id": "ac-phase-feasible",
@@ -194,6 +229,11 @@
           "name": "External source attributed",
           "autoCheck": "Find the body's 'External source' field (#3039). Re-read .claude/metadata/external-sources.json from disk and compare the field against every entry's id and url. A non-empty field that names no registry id or url → ❌: the issue adopts something from outside that the registry does not record, so register the source (with its license and relationship) before the issue is worked. A field naming a registry id or url → ✅, citing the matched id. An empty or absent field → ✅: nothing external is claimed, and issues authored before the field existed carry none. Do not judge the license here — tests/reference/external-sources.test.js owns the allowlist.",
           "env": "dev"
+        },
+        {
+          "id": "charter-alignment",
+          "name": "Aligned with the charter",
+          "autoCheck": "Pipe the title, description and proposed solution on stdin — <title, description and proposed solution> | node .claude/scripts/shared/lib/charter-scope.js --command enhancement — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning, naming that the enhancement matches no In Scope or Current Focus item. conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the enhancement's own scope section; scope-boundaries covers that."
         }
       ]
     },
@@ -210,6 +250,11 @@
           "name": "Issue is actionable",
           "overrides": "actionable",
           "autoCheck": "Check for concrete next steps, clear requirements, or defined acceptance criteria"
+        },
+        {
+          "id": "prior-art-checked",
+          "name": "Prior art checked",
+          "autoCheck": "Delegate to decideSweep in .claude/scripts/shared/lib/prior-art-marker.js and report the status it returns; do not re-derive the rule here. The marker itself is the literal '**Prior Art:**' heading defined by .claude/metadata/prior-art-sweep.json bodyFormat.heading; present and complete = pass. Issues created before the cutoff in that helper are not applicable rather than failing. Behavior past that depends on framework-config.json reviewSweep, a 4-mode setting since #2564 (absent = 'recommend'): under 'full' an absent or PARTIAL marker reports fail and runs the Step 2a-iv sweep; under 'recommend' it reports the advisory status 'recommend' and runs NO sweep — this must NOT be reported as fail, because --prior-art is opt-in and rarely passed, so most issues carry no marker and a fail would downgrade nearly every review; under 'flag-only' and 'off' report skip, not fail, which would downgrade every review in a project that opted out."
         }
       ]
     }

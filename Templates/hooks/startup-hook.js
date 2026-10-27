@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -239,11 +239,17 @@ function sweepStaleTempFiles(cwd, info) {
 // Parallel check execution with monotonic staged timeout ladder
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Monotonic milestones from start. The last one is the hook's own kill, and it
-// must land well before the SessionStart harness timeout (60s in
+// When this hook process began (#3299). The harness's 60s clock runs from the
+// spawn, not from runChecksParallel: gatherSessionInfo's synchronous git/gh
+// calls (5s timeout each) come first, so the ladder is measured from here.
+const PROCESS_START = Date.now();
+
+// Monotonic milestones from process start. The last one is the hook's own
+// kill, and it must land well before the SessionStart harness timeout (60s in
 // framework-manifest.json hooksConfig): at 60s the two coincided, the harness
 // killed the hook first, and a hung check left no block and no timeout rows
-// (#3059). 40s leaves 20s to render and print the block.
+// (#3059). Measured from PROCESS_START, 40s leaves 20s to render and print the
+// block whatever the synchronous setup before the checks took (#3299).
 const TIMEOUT_STAGES = [10000, 20000, 30000, 40000];
 
 /** The teardown command a session should run instead of git worktree remove. */
@@ -289,13 +295,14 @@ function formatWorktreesRow(worktrees) {
  *   as { status: 'error', error: 'timeout' }.
  *
  * Uses monotonic timestamps (Date.now()) so a check resolving between
- * deadlines does not desync the warning ladder.
+ * deadlines does not desync the warning ladder. Milestones are measured from
+ * `startTs` — main passes PROCESS_START (#3299) — so time already spent before
+ * the call counts; a milestone already past fires at once.
  *
  * Each check is `{ name, script, args? }`; `args` are appended to the spawned
  * `node script` argv, one entry each (shell: false). Omitted → no extra args (#2907).
  */
-async function runChecksParallel(checks, stages = TIMEOUT_STAGES) {
-  const startTs = Date.now();
+async function runChecksParallel(checks, stages = TIMEOUT_STAGES, startTs = Date.now()) {
   const pending = new Map(); // name → { promise, child, settled, result, resolve }
 
   for (const { name, script, args = [] } of checks) {
@@ -358,7 +365,7 @@ async function runChecksParallel(checks, stages = TIMEOUT_STAGES) {
       } else {
         process.stderr.write(warn(`⚠️  Check(s) still running after ${elapsed}s, extending: ${stillPending.join(', ')}\n`));
       }
-    }, ms);
+    }, Math.max(0, ms - (Date.now() - startTs)));
   });
 
   const results = await Promise.all(Array.from(pending.values()).map((h) => h.promise));
@@ -421,6 +428,9 @@ function renderBlock(info, checkResults, opts = { color: true }) {
         lines.push(`- Config Integrity: ✅ Verified`);
       } else if (r.parsed?.data?.status === 'drift') {
         lines.push(`- Config Integrity: ${e('⚠️ Drift detected — run gh pmu config verify for details')}`);
+      } else if (r.parsed?.data?.status === 'unverified') {
+        // The check could not run — never a drift verdict (#3054 item 8).
+        lines.push(`- Config Integrity: ${e(`⚠️ could not verify — gh pmu config verify ${r.parsed.data.reason}`)}`);
       } else if (r.error === 'timeout') {
         lines.push(`- Config Integrity: ${e('⚠️ check timed out')}`);
       } else if (r.status === 'error') {
@@ -489,6 +499,16 @@ function renderBlock(info, checkResults, opts = { color: true }) {
         lines.push(m.error
           ? `- Dependencies: ${w(`⚠️ runner \`${m.runner}\` could not be probed (${m.error}) — ${needed}`)}`
           : `- Dependencies: ${e(`⚠️ runner \`${m.runner}\` not on PATH — ${needed}`)}`);
+      }
+
+      // #3313: presence of the supply-chain files, independent of the package
+      // state above. Each names its remedy; neither is offered or written here.
+      const supply = dep?.supplyChain;
+      if (supply?.npmrcMissing) {
+        lines.push(`- Supply Chain: ${w('⚠️ no `.npmrc` in the project root — run /charter --refresh to add the npm supply-chain controls')}`);
+      }
+      if (supply?.dependabotMissing) {
+        lines.push(`- Supply Chain: ${w('⚠️ no `.github/dependabot.yml` — run /ci to add the dependabot feature')}`);
       }
     }
     if (r.name === 'task-tools') {
@@ -1230,7 +1250,7 @@ async function main() {
   // Filter to existing scripts (graceful degradation)
   const validChecks = checks.filter((c) => fs.existsSync(path.join(cwd, c.script)));
 
-  const checkResults = validChecks.length > 0 ? await runChecksParallel(validChecks) : [];
+  const checkResults = validChecks.length > 0 ? await runChecksParallel(validChecks, TIMEOUT_STAGES, PROCESS_START) : [];
 
   // #2771: after the ladder resolves, before the block is rendered. After,
   // because the sweep must never delay a check or share their timeout budget;
@@ -1280,6 +1300,7 @@ module.exports = {
   safeExec,
   ANSI,
   TIMEOUT_STAGES,
+  PROCESS_START,
 };
 
 if (require.main === module) {

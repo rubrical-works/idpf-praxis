@@ -37,6 +37,6 @@
   "notes": [
     "findings.userEvaluated is empty [] in solo review mode",
     "type must match the issue type from preamble context",
-    "type drives the review comment header verb in review-finalize.js formatReviewComment(); prd/proposal/test-plan are tracker-shaped and additionally suppress positional AC check-off in review-ac-checkoff.js (#2594)"
+    "type drives the review comment header verb in review-finalize.js formatReviewComment(); prd/proposal/test-plan are tracker-shaped (#2594)"
   ]
 }

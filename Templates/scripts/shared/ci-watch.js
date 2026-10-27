@@ -2,8 +2,8 @@
 // Rubrical Works (c) 2026
 
 /**
- * @framework-script 0.111.0
- * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
+ * @framework-script 0.112.0
+ * @description Monitor GitHub Actions workflow runs by commit SHA with configurable polling intervals (default 60s) and timeout (default 5min, or `--timeout auto` sized from recent job durations). Returns structured JSON with run status, conclusion, and URL. Multiple exit codes for scripting. Used by /done background CI monitoring.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -30,9 +30,11 @@ function parseArgs(argv) {
     case '--sha':
       args.sha = argv[++i];
       break;
-    case '--timeout':
-      args.timeout = parseInt(argv[++i], 10);
+    case '--timeout': {
+      const value = argv[++i];
+      args.timeout = value === 'auto' ? 'auto' : parseInt(value, 10);
       break;
+    }
     case '--poll':
       args.poll = parseInt(argv[++i], 10);
       break;
@@ -46,7 +48,7 @@ function parseArgs(argv) {
   }
 
   if (!args.sha) {
-    args.error = 'Missing required --sha argument. Usage: node ci-watch.js --sha <commit> [--timeout <seconds>] [--poll <seconds>] [--max-wait <seconds>] [--branch <name>]';
+    args.error = 'Missing required --sha argument. Usage: node ci-watch.js --sha <commit> [--timeout <seconds>|auto] [--poll <seconds>] [--max-wait <seconds>] [--branch <name>]';
   }
 
   return args;
@@ -160,6 +162,90 @@ function getFailedSteps(runId, runGh = defaultRunGh) {
   }
 
   return failed;
+}
+
+// --- Timeout Derivation (--timeout auto, #3321) ---
+
+/**
+ * Bounds for `--timeout auto`. The derived timeout is the longest job duration
+ * seen in recent history × `factor`, clamped to [`minSeconds`, `maxSeconds`];
+ * `minSeconds` is also the fallback when history cannot be read.
+ */
+const AUTO_TIMEOUT = Object.freeze({
+  minSeconds: 600,
+  maxSeconds: 1800,
+  factor: 1.5,
+  historyLimit: 50,
+  runsPerWorkflow: 5
+});
+
+/**
+ * Seconds one job ran, from `startedAt` → `completedAt`, or null when either is
+ * missing or the span is not positive (a skipped job carries a zero date).
+ * @param {Object} job - Job from `gh run view --json jobs`
+ * @returns {number|null}
+ */
+function jobDurationSeconds(job) {
+  if (!job || !job.startedAt || !job.completedAt) return null;
+  const seconds = (Date.parse(job.completedAt) - Date.parse(job.startedAt)) / 1000;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+/**
+ * Derive the watch timeout from recent completed runs of the given workflows.
+ *
+ * Each run is measured by its longest job on the latest attempt (`gh run view
+ * --json jobs` reports the latest attempt's jobs), never by the run's
+ * `createdAt` → `updatedAt` span: a re-run stretches that span across the first
+ * attempt, the wait and the re-run, which says nothing about how long CI takes.
+ *
+ * @param {string[]} workflowNames - Names of the runs the watched commit triggered
+ * @param {Function} [runGh] - gh CLI runner (injectable for testing)
+ * @returns {{ seconds: number, source: 'history'|'default', reason?: string,
+ *   longestJobSeconds?: number, runsSampled?: number }}
+ */
+function deriveTimeout(workflowNames, runGh = defaultRunGh) {
+  const fallback = (reason) => ({ seconds: AUTO_TIMEOUT.minSeconds, source: 'default', reason });
+
+  let listed;
+  try {
+    listed = JSON.parse(runGh(`run list --status completed --limit ${AUTO_TIMEOUT.historyLimit} --json databaseId,name`));
+  } catch (err) {
+    return fallback(`run history could not be read: ${err.message}`);
+  }
+  if (!Array.isArray(listed)) return fallback('run history could not be read: unexpected response');
+
+  const wanted = new Set(workflowNames);
+  const perWorkflow = new Map();
+  const sample = [];
+  for (const run of listed) {
+    if (!run || !wanted.has(run.name)) continue;
+    const count = perWorkflow.get(run.name) || 0;
+    if (count >= AUTO_TIMEOUT.runsPerWorkflow) continue;
+    perWorkflow.set(run.name, count + 1);
+    sample.push(run.databaseId);
+  }
+
+  let longest = 0;
+  let runsSampled = 0;
+  for (const runId of sample) {
+    let jobs;
+    try {
+      jobs = JSON.parse(runGh(`run view ${runId} --json jobs`)).jobs || [];
+    } catch {
+      continue;
+    }
+    const durations = jobs.map(jobDurationSeconds).filter((s) => s !== null);
+    if (durations.length === 0) continue;
+    runsSampled += 1;
+    longest = Math.max(longest, ...durations);
+  }
+
+  if (runsSampled === 0) return fallback('no completed job durations in recent run history');
+
+  const seconds = Math.min(AUTO_TIMEOUT.maxSeconds,
+    Math.max(AUTO_TIMEOUT.minSeconds, Math.ceil(longest * AUTO_TIMEOUT.factor)));
+  return { seconds, source: 'history', longestJobSeconds: longest, runsSampled };
 }
 
 // --- Pure Logic Functions ---
@@ -398,13 +484,18 @@ function formatOutput(result) {
  * dropSupersededCancellations; the key is present only when non-empty, so
  * output for a run set with no superseded run is unchanged.
  *
+ * `extra` (#3321) carries envelope-level fields such as `watchTimeout`, merged
+ * after `workflows`; omitted, the output is unchanged.
+ *
  * @param {Array<Object>} results - Array of run result objects
  * @param {Array<Object>} [superseded] - Superseded cancelled runs, each with `supersededBy`
+ * @param {Object} [extra] - Additional top-level envelope fields
  * @returns {string} JSON string with overall conclusion
  */
-function formatMultiOutput(results, superseded = []) {
+function formatMultiOutput(results, superseded = [], extra = {}) {
   const out = { overall: overallConclusion(results), workflows: results };
   if (Array.isArray(superseded) && superseded.length > 0) out.superseded = superseded;
+  Object.assign(out, extra);
   return JSON.stringify(out, null, 2);
 }
 
@@ -518,20 +609,53 @@ function sleep(ms) {
 }
 
 /**
+ * The real clock. Injectable as `clock` so a test can run an 1800-second watch
+ * on virtual time (#3321).
+ */
+const REAL_CLOCK = Object.freeze({ now: () => Date.now(), sleep });
+
+/**
+ * Extend the shared deadline once, for `--timeout auto` only (#3321).
+ *
+ * Applies when a tracked run was still unfinished at the deadline (collected
+ * with the watch's own `timeout` conclusion) and no extension has been used.
+ * The extension is the derived timeout, cut so the watch as a whole never
+ * passes `AUTO_TIMEOUT.maxSeconds`; a derived timeout already at the clamp gets
+ * none. The timed-out runs are dropped from `collected` so the next pass waits
+ * on them again, and the extension is recorded on `watchTimeout.extension`.
+ *
+ * @param {Object|null} watchTimeout - The auto envelope field, or null for a numeric timeout
+ * @param {Map<number, Object>} collected - Results collected so far, by run id
+ * @param {{ at: number }} deadline - The shared deadline, moved in place
+ * @returns {boolean} True when the deadline was extended
+ */
+function extendOnce(watchTimeout, collected, deadline) {
+  if (!watchTimeout || watchTimeout.extension) return false;
+  const unfinished = [...collected.entries()].filter(([, r]) => r.conclusion === 'timeout').map(([id]) => id);
+  if (unfinished.length === 0) return false;
+  const seconds = Math.min(watchTimeout.seconds, AUTO_TIMEOUT.maxSeconds - watchTimeout.seconds);
+  if (seconds <= 0) return false;
+  deadline.at += seconds * 1000;
+  for (const id of unfinished) collected.delete(id);
+  watchTimeout.extension = { seconds, totalSeconds: watchTimeout.seconds + seconds, runIds: unfinished };
+  return true;
+}
+
+/**
  * Phase 1: Wait for runs to appear for a commit
  * @param {string} sha - Commit SHA (should be full 40-char)
- * @param {Object} options - { poll, maxWait, branch, runGh }
+ * @param {Object} options - { poll, maxWait, branch, runGh, clock }
  * @returns {Promise<Array<Object>>} Found runs (may be empty)
  */
-async function waitForRuns(sha, { poll = 10, maxWait = 60, branch, runGh = defaultRunGh } = {}) {
-  const deadline = Date.now() + maxWait * 1000;
+async function waitForRuns(sha, { poll = 10, maxWait = 60, branch, runGh = defaultRunGh, clock = REAL_CLOCK } = {}) {
+  const deadline = clock.now() + maxWait * 1000;
 
-  while (Date.now() < deadline) {
+  while (clock.now() < deadline) {
     const runs = findRuns(sha, runGh, { branch });
     if (runs.length > 0) {
       return runs;
     }
-    await sleep(poll * 1000);
+    await clock.sleep(poll * 1000);
   }
 
   return [];
@@ -540,22 +664,26 @@ async function waitForRuns(sha, { poll = 10, maxWait = 60, branch, runGh = defau
 /**
  * Phase 2: Wait for a specific run to complete
  * @param {number} runId - Run database ID
- * @param {Object} options - { poll, timeout, runGh }
+ * @param {Object} options - { poll, timeout, runGh, clock }
  * @returns {Promise<Object>} Run details when completed, or timeout marker
  */
-async function waitForCompletion(runId, { poll = 15, timeout = 300, runGh = defaultRunGh } = {}) {
-  const deadline = Date.now() + timeout * 1000;
+async function waitForCompletion(runId, { poll = 15, timeout = 300, runGh = defaultRunGh, clock = REAL_CLOCK } = {}) {
+  const deadline = clock.now() + timeout * 1000;
 
-  while (Date.now() < deadline) {
+  while (clock.now() < deadline) {
     const run = getRun(runId, runGh);
     if (run.status === 'completed') {
       return run;
     }
-    await sleep(poll * 1000);
+    await clock.sleep(poll * 1000);
   }
 
-  // Timeout — get whatever state we have
+  // Deadline reached — fetch once more. A run that completed meanwhile, or was
+  // already complete when reached with no time left on the shared deadline
+  // (timeout 0, #3355), keeps its real conclusion; only an unfinished run is
+  // stamped timeout.
   const run = getRun(runId, runGh);
+  if (run.status === 'completed') return run;
   run.conclusion = 'timeout';
   return run;
 }
@@ -595,17 +723,17 @@ function collectResults(run, runGh = defaultRunGh) {
 /**
  * Main watch function — orchestrates all three phases for a single commit
  * @param {string} sha - Commit SHA (short or full)
- * @param {Object} options - { timeout, poll, maxWait, branch, runGh, execCmd }
+ * @param {Object} options - { timeout (seconds or 'auto'), poll, maxWait, branch, runGh, execCmd, clock }
  * @returns {Promise<{ output: string, exitCode: number }>}
  */
-async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = null, runGh = defaultRunGh, execCmd = defaultExecCmd } = {}) {
+async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = null, runGh = defaultRunGh, execCmd = defaultExecCmd, clock = REAL_CLOCK } = {}) {
   // Resolve short SHA to full 40-char for reliable --commit matching
   const fullSha = resolveSha(sha, execCmd);
   // Detect branch for fallback if not explicitly provided
   const effectiveBranch = branch || getCurrentBranch(execCmd);
 
   // Phase 1: Wait for runs to appear
-  const runs = await waitForRuns(fullSha, { poll: 10, maxWait, branch: effectiveBranch, runGh });
+  const runs = await waitForRuns(fullSha, { poll: 10, maxWait, branch: effectiveBranch, runGh, clock });
 
   // Every output path carries `overall` and `workflows` (#2892), so a caller
   // passes stdout unaltered as `ciResult`. The single- and zero-run shapes keep
@@ -614,6 +742,17 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
     const result = { found: false, conclusion: 'no-run-found', overall: 'no-run-found', workflows: [] };
     return { output: formatOutput(result), exitCode: mapExitCode('no-run-found') };
   }
+
+  // `--timeout auto` (#3321): size the deadline from recent job durations of
+  // the workflows this commit triggered. A numeric timeout is used as given,
+  // gets no extension and adds nothing to the envelope.
+  let watchTimeout = null;
+  let timeoutSeconds = timeout;
+  if (timeout === 'auto') {
+    watchTimeout = { ...deriveTimeout([...new Set(runs.map(r => r.name))], runGh), extension: null };
+    timeoutSeconds = watchTimeout.seconds;
+  }
+  const timeoutField = watchTimeout ? { watchTimeout } : {};
 
   // Phase 2 & 3: Wait for each tracked run to complete, collect results, then
   // re-enumerate (#2541).
@@ -630,20 +769,26 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
   // easily as the first. The whole loop stays bounded by `timeout`.
   const tracked = new Map(runs.map(r => [r.databaseId, r]));
   const collected = new Map();
-  const deadline = Date.now() + timeout * 1000;
+  const deadline = { at: clock.now() + timeoutSeconds * 1000 };
 
   for (;;) {
     for (const runId of tracked.keys()) {
       if (collected.has(runId)) continue;
-      const completed = await waitForCompletion(runId, { poll, timeout, runGh });
+      // Each run gets the time left before the shared deadline, not the full
+      // timeout, so the timeout bounds the watch as a whole (#3298).
+      const remaining = Math.max(0, Math.ceil((deadline.at - clock.now()) / 1000));
+      const completed = await waitForCompletion(runId, { poll, timeout: remaining, runGh, clock });
       const listed = tracked.get(runId);
       collected.set(runId, collectResults({ event: listed && listed.event, ...completed }, runGh));
     }
 
     // Past the deadline every tracked run is already resolved (waitForCompletion
     // returns a 'timeout' conclusion rather than hanging), so stopping here
-    // leaves nothing unaccounted for.
-    if (Date.now() >= deadline) break;
+    // leaves nothing unaccounted for — unless the one extension applies.
+    if (clock.now() >= deadline.at) {
+      if (extendOnce(watchTimeout, collected, deadline)) continue;
+      break;
+    }
 
     const fresh = findRuns(fullSha, runGh, { branch: effectiveBranch });
     let discovered = false;
@@ -667,14 +812,14 @@ async function watch(sha, { timeout = 300, poll = 15, maxWait = 60, branch = nul
   if (results.length === 1) {
     const overall = overallConclusion(results);
     return {
-      output: formatOutput({ ...results[0], overall, workflows: results, ...supersededField }),
+      output: formatOutput({ ...results[0], overall, workflows: results, ...supersededField, ...timeoutField }),
       exitCode: mapExitCode(overall)
     };
   }
 
   const overall = overallConclusion(results);
   return {
-    output: formatMultiOutput(results, superseded),
+    output: formatMultiOutput(results, superseded, timeoutField),
     exitCode: mapExitCode(overall)
   };
 }
@@ -724,6 +869,10 @@ module.exports = {
   SUPERSEDING_CONCLUSIONS,
   NON_FAILING_CONCLUSIONS,
   FAILING_CONCLUSIONS,
+  AUTO_TIMEOUT,
+  jobDurationSeconds,
+  deriveTimeout,
+  extendOnce,
   findRuns,
   getRun,
   getFailedSteps,

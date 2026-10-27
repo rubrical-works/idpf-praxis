@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.111.0
+ * @framework-script 0.112.0
  * @description Add selected CI features to a project's GitHub Actions workflows. Applies feature templates with YAML merging, handles confirmation prompts, and provides error recovery. Part of the /ci --add subcommand.
  * @checksum sha256:placeholder
  *
@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 const { loadFeatureRegistry } = require('./ci-list.js');
-const { modifyWorkflow } = require('./ci-modify.js');
+const { modifyWorkflow, validateYaml, createBackup } = require('./ci-modify.js');
 const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
 
 /**
@@ -33,6 +33,7 @@ const FEATURE_TYPE_MAP = {
   'multi-node-versions': 'strategy',
   'paths-ignore': 'trigger',
   'concurrency-groups': 'top-level',
+  'push-pr-dedup': 'top-level',
   'dependency-caching': 'step',
   'dependency-audit': 'step-with-script',
   'dependabot': 'config-files',
@@ -50,7 +51,10 @@ const FEATURE_TYPE_MAP = {
  * Top-level key for features that use addTopLevel operation.
  */
 const TOP_LEVEL_KEY_MAP = {
-  'concurrency-groups': 'concurrency'
+  'concurrency-groups': 'concurrency',
+  // Merged into an existing concurrency mapping, so a github.ref-keyed block
+  // has its group and cancel-in-progress replaced rather than a second added.
+  'push-pr-dedup': 'concurrency'
 };
 
 /**
@@ -76,9 +80,11 @@ function validateFeatureName(featureName) {
  * Check if a feature is already enabled in the workflow files.
  * @param {string} projectDir - Path to project root
  * @param {string} featureId - Feature identifier
+ * @param {string} [fileName] - Check this workflow only (#3370): a feature
+ *   recommended per workflow is enabled per workflow, not project-wide
  * @returns {boolean} True if feature is already enabled
  */
-function isFeatureAlreadyEnabled(projectDir, featureId) {
+function isFeatureAlreadyEnabled(projectDir, featureId, fileName) {
   const registry = loadFeatureRegistry();
   const feature = registry[featureId];
   if (!feature) return false;
@@ -91,7 +97,8 @@ function isFeatureAlreadyEnabled(projectDir, featureId) {
   if (!fs.existsSync(workflowsDir)) return false;
 
   const files = fs.readdirSync(workflowsDir)
-    .filter(f => f.endsWith('.yml') || f.endsWith('.yaml'));
+    .filter(f => f.endsWith('.yml') || f.endsWith('.yaml'))
+    .filter(f => !fileName || f === fileName);
 
   for (const file of files) {
     try {
@@ -202,9 +209,10 @@ function writeConfigFiles(projectDir, featureId) {
  * @param {string} featureId - Feature identifier
  * @param {Object} [options] - Options
  * @param {boolean} [options.skipConfirm] - Skip user confirmation (for testing)
+ * @param {string} [options.file] - Target workflow file name in .github/workflows/ (#3370)
  * @returns {{ success: boolean, message: string, file?: string, feature?: string }}
  */
-function addCIFeature(projectDir, featureId, _options = {}) {
+function addCIFeature(projectDir, featureId, options = {}) {
   // Validate feature name
   const validation = validateFeatureName(featureId);
   if (!validation.valid) {
@@ -214,8 +222,8 @@ function addCIFeature(projectDir, featureId, _options = {}) {
     };
   }
 
-  // Check if already enabled
-  if (isFeatureAlreadyEnabled(projectDir, featureId)) {
+  // Check if already enabled — in the named workflow when there is one (#3370)
+  if (isFeatureAlreadyEnabled(projectDir, featureId, options.file)) {
     return {
       success: false,
       message: `Feature "${featureId}" is already enabled. Use /ci remove first if you want to reconfigure it.`
@@ -226,20 +234,90 @@ function addCIFeature(projectDir, featureId, _options = {}) {
     return writeConfigFiles(projectDir, featureId);
   }
 
-  // Find target workflow file
-  const target = suggestWorkflowForFeature(projectDir, featureId);
-
-  if (target.createNew) {
-    // Create a minimal workflow file
-    const workflowsDir = path.join(projectDir, '.github', 'workflows');
-    fs.mkdirSync(workflowsDir, { recursive: true });
-    const { validateFilename } = require('./lib/input-validation');
-    const safeName = validateFilename(target.suggestedName);
-    const newFile = path.join(workflowsDir, safeName);
-    fs.writeFileSync(newFile, `name: CI\non: push\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n`);
-    target.file = newFile;
+  // Find target workflow file — the caller's, when it names one (#3370): a
+  // recommendation is made for a specific workflow, and the suggestion
+  // heuristic can pick an unrelated one.
+  let target;
+  if (options.file) {
+    const named = resolveTargetFile(projectDir, options.file);
+    if (!named.ok) return { success: false, message: named.message };
+    target = { file: named.file, createNew: false };
+  } else {
+    target = suggestWorkflowForFeature(projectDir, featureId);
   }
 
+  let created = null;
+  if (target.createNew) {
+    created = createMinimalWorkflow(projectDir, target.suggestedName);
+    target.file = created.file;
+  }
+
+  const result = applyFeatureToWorkflow(projectDir, featureId, target);
+  // A feature that fails on the workflow it just created takes it back out
+  // (#3369): the stub is scaffolding for this feature, not the user's file.
+  if (!result.success && created) removeCreated(created);
+  return result;
+}
+
+/**
+ * Resolve a caller-named workflow file inside .github/workflows/.
+ * @param {string} projectDir
+ * @param {string} name - Bare file name, e.g. `ci.yml`
+ * @returns {{ok: true, file: string}|{ok: false, message: string}}
+ */
+function resolveTargetFile(projectDir, name) {
+  const { validateFilename } = require('./lib/input-validation');
+  let safe;
+  try {
+    safe = validateFilename(name);
+  } catch (err) {
+    return { ok: false, message: `Invalid target workflow "${name}": ${err.message}` };
+  }
+  const file = path.join(projectDir, '.github', 'workflows', safe);
+  if (!fs.existsSync(file)) {
+    return { ok: false, message: `Target workflow ${safe} not found in .github/workflows/. No changes were written.` };
+  }
+  return { ok: true, file };
+}
+
+/**
+ * Write the minimal workflow a feature needs when the project has none,
+ * recording which directories this call created so a failure can undo it.
+ * @param {string} projectDir
+ * @param {string} suggestedName
+ * @returns {{file: string, dirs: string[]}} dirs deepest-first
+ */
+function createMinimalWorkflow(projectDir, suggestedName) {
+  const githubDir = path.join(projectDir, '.github');
+  const workflowsDir = path.join(githubDir, 'workflows');
+  const dirs = [workflowsDir, githubDir].filter(d => !fs.existsSync(d));
+  fs.mkdirSync(workflowsDir, { recursive: true });
+  const { validateFilename } = require('./lib/input-validation');
+  const newFile = path.join(workflowsDir, validateFilename(suggestedName));
+  fs.writeFileSync(newFile, `name: CI\non: push\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n`);
+  return { file: newFile, dirs };
+}
+
+/**
+ * Remove a workflow createMinimalWorkflow wrote, and the directories it
+ * created when they are empty again. A directory holding anything else is kept.
+ * @param {{file: string, dirs: string[]}} created
+ */
+function removeCreated({ file, dirs }) {
+  fs.rmSync(file, { force: true });
+  for (const dir of dirs) {
+    try { fs.rmdirSync(dir); } catch (_e) { /* not empty — keep it */ }
+  }
+}
+
+/**
+ * Apply a feature to the resolved target workflow.
+ * @param {string} projectDir
+ * @param {string} featureId
+ * @param {{file: string}} target
+ * @returns {{ success: boolean, message: string, file?: string, feature?: string }}
+ */
+function applyFeatureToWorkflow(projectDir, featureId, target) {
   const registry = loadFeatureRegistry();
   const feature = registry[featureId];
   const featureType = FEATURE_TYPE_MAP[featureId] || 'step';
@@ -272,14 +350,20 @@ function addCIFeature(projectDir, featureId, _options = {}) {
           message: `No jobs found in ${path.basename(target.file)} to modify strategy.`
         };
       }
-      // Parse the template as structured data and apply as job properties
+      // A matrix the job never reads runs one configuration N times, so the
+      // strategy is set together with the job field it varies (#3369).
       const strategyData = yaml.parse(templateYaml);
-      if (strategyData && strategyData.strategy) {
-        operation = { setJobProperty: { job: firstJob, path: ['strategy'], value: strategyData.strategy } };
-      } else {
-        // Fallback: set the whole template as strategy
-        operation = { setJobProperty: { job: firstJob, path: ['strategy'], value: strategyData } };
+      const strategy = strategyData && strategyData.strategy ? strategyData.strategy : strategyData;
+      const wired = editWorkflowDocument(target.file, doc => wireStrategy(doc, firstJob, featureId, strategy));
+      if (!wired.ok) {
+        return { success: false, message: wired.message };
       }
+      return {
+        success: true,
+        message: `Added "${feature.name}" to ${path.basename(target.file)}`,
+        file: target.file,
+        feature: featureId
+      };
     } else if (featureType === 'step-modify') {
       // Modify existing upload-artifact steps in-place
       const modified = modifyUploadArtifactSteps(target.file, featureId, templateYaml);
@@ -343,6 +427,77 @@ function getFirstJobName(filePath) {
 }
 
 /**
+ * Edit a workflow through its YAML document so comments and formatting
+ * survive, then validate, back up and write — the order modifyWorkflow uses
+ * (#3307). Nothing is written when `edit` reports a refusal or no change.
+ * @param {string} filePath - Path to workflow file
+ * @param {(doc: yaml.Document) => {ok: boolean, changed?: boolean, message?: string}} edit
+ * @returns {{ok: boolean, changed: boolean, message?: string}}
+ */
+function editWorkflowDocument(filePath, edit) {
+  const doc = yaml.parseDocument(fs.readFileSync(filePath, 'utf8'));
+  const result = edit(doc);
+  if (!result.ok) return { ok: false, changed: false, message: result.message };
+  if (result.changed === false) return { ok: true, changed: false };
+  const output = doc.toString();
+  validateYaml(output);
+  createBackup(filePath);
+  fs.writeFileSync(filePath, output);
+  return { ok: true, changed: true };
+}
+
+/**
+ * Set a strategy feature's matrix and the job field that consumes it:
+ * runs-on for cross-os-testing, setup-node's node-version for
+ * multi-node-versions (#3369). The template's matrix keys are merged into an
+ * existing strategy, never replacing it, so a second strategy feature keeps
+ * the first's matrix key and the field that reads it (#3390).
+ * @param {yaml.Document} doc
+ * @param {string} job - Job name
+ * @param {string} featureId
+ * @param {object} strategy - Parsed `strategy` mapping from the template
+ * @returns {{ok: boolean, message?: string}}
+ */
+function wireStrategy(doc, job, featureId, strategy) {
+  const existing = doc.getIn(['jobs', job, 'strategy']);
+  const existingMatrix = yaml.isMap(existing) ? existing.get('matrix') : undefined;
+  if ((existing != null && !yaml.isMap(existing)) ||
+      (existingMatrix != null && !yaml.isMap(existingMatrix))) {
+    return {
+      ok: false,
+      message: `Job "${job}" has a strategy matrix that is not a mapping (e.g. an expression), ` +
+        'so its keys cannot be merged. Add the matrix entries by hand, then re-run.'
+    };
+  }
+  if (featureId === 'multi-node-versions') {
+    const steps = doc.getIn(['jobs', job, 'steps']);
+    const setupNode = (steps && steps.items ? steps.items : [])
+      .filter(s => yaml.isMap(s) && /actions\/setup-node/.test(String(s.get('uses') || '')));
+    if (setupNode.length === 0) {
+      return {
+        ok: false,
+        message: `Job "${job}" has no actions/setup-node step, so a node-version matrix would test one version. ` +
+          'Add an actions/setup-node step with node-version: ${{ matrix.node-version }}, then re-run.'
+      };
+    }
+    for (const step of setupNode) step.setIn(['with', 'node-version'], '${{ matrix.node-version }}');
+  }
+  for (const [key, value] of Object.entries(strategy || {})) {
+    if (key === 'matrix' && value && typeof value === 'object') {
+      for (const [axis, values] of Object.entries(value)) {
+        doc.setIn(['jobs', job, 'strategy', 'matrix', axis], values);
+      }
+    } else {
+      doc.setIn(['jobs', job, 'strategy', key], value);
+    }
+  }
+  if (featureId === 'cross-os-testing') {
+    doc.setIn(['jobs', job, 'runs-on'], '${{ matrix.os }}');
+  }
+  return { ok: true };
+}
+
+/**
  * Modify existing upload-artifact steps in a workflow file.
  * For artifact-retention: adds retention-days to with: block.
  * For artifact-conditional-upload: adds if: condition to step.
@@ -352,40 +507,38 @@ function getFirstJobName(filePath) {
  * @returns {boolean} True if modifications were made
  */
 function modifyUploadArtifactSteps(filePath, featureId, templateYaml) {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const parsed = yaml.parse(content);
+  // Edited in place on the document, so comments and formatting survive and
+  // the write is validated and backed up like every modifyWorkflow edit (#3369).
+  const result = editWorkflowDocument(filePath, (doc) => {
+    const jobs = doc.get('jobs');
+    if (!yaml.isMap(jobs)) return { ok: true, changed: false };
 
-  if (!parsed || !parsed.jobs) return false;
+    let changed = false;
+    for (const jobPair of jobs.items) {
+      const steps = yaml.isMap(jobPair.value) ? jobPair.value.get('steps') : null;
+      if (!yaml.isSeq(steps)) continue;
 
-  let modified = false;
+      for (const step of steps.items) {
+        if (!yaml.isMap(step) || !/actions\/upload-artifact/.test(String(step.get('uses') || ''))) continue;
 
-  for (const [_jobName, jobDef] of Object.entries(parsed.jobs)) {
-    if (!jobDef || !Array.isArray(jobDef.steps)) continue;
-
-    for (const step of jobDef.steps) {
-      if (!step || !step.uses || !/actions\/upload-artifact/.test(step.uses)) continue;
-
-      if (featureId === 'artifact-retention') {
-        if (!step.with) step.with = {};
-        if (!step.with['retention-days']) {
-          step.with['retention-days'] = parseInt(templateYaml.match(/\d+/)?.[0] || '1', 10);
-          modified = true;
-        }
-      } else if (featureId === 'artifact-conditional-upload') {
-        if (!step.if) {
-          step.if = templateYaml;
-          modified = true;
+        if (featureId === 'artifact-retention') {
+          if (!step.getIn(['with', 'retention-days'])) {
+            step.setIn(['with', 'retention-days'], parseInt(templateYaml.match(/\d+/)?.[0] || '1', 10));
+            changed = true;
+          }
+        } else if (featureId === 'artifact-conditional-upload') {
+          if (!step.get('if')) {
+            // The template is `if: <expr>`; only the expression is the value (#3369).
+            step.set('if', yaml.parse(templateYaml).if);
+            changed = true;
+          }
         }
       }
     }
-  }
+    return { ok: true, changed };
+  });
 
-  if (modified) {
-    const doc = new yaml.Document(parsed);
-    fs.writeFileSync(filePath, doc.toString());
-  }
-
-  return modified;
+  return result.changed;
 }
 
 // CLI entry point
