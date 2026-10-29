@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.113.0
+**Version:** v0.114.0
 **Source:** Reference/Session-Startup-Instructions.md
 **Purpose:** AI-facing reference for session work after startup. Reasoning: `{frameworkPath}/Reference/Session-Startup-Rationale.md`, not auto-loaded.
 **Row explanations arrive with the row** — from `.claude/metadata/startup-row-notes.json`, appended by `startup-hook.js` only when that row is shown.
@@ -24,7 +24,7 @@ Reports other sessions in **this same working directory**; advisory only, never 
 **Precedence only ever lowers verbosity:** `enabled: false` → quiet; `noticeNarration: false` → quiet; otherwise a live marker → quiet; otherwise verbose. Read the marker via `.claude/scripts/shared/lib/overwatch-presence.js` `readPresence(cwd)`. **A stale marker suppresses nothing.** **Quiet is not silence.** `/x-session-config --quiet` also writes a per-user memory artifact that does not ship; in a deployed project the lever is all there is.
 **Targeted routing (`broadcast: false`, #2915)** sends working sessions' announcements to the live `/overwatch` alone, so the live-marker row is moot for announcements a session no longer receives: do not read a missing peer `work-started` as "no peer is working". A holding or declining monitor is undetectable — no session hears the announcements; routing falls back to broadcast only for a missing, stale or unaddressable monitor.
 ### Receipt replies and overlap notices
-Record a receipt reply: `node .claude/scripts/shared/announce.js --receipt-received --ledger-id <id> --from <monitor session name>`. An unknown id is **reported, never recorded**; say *received by `<monitor>`* only when `receipt` is `received`.
+Record receipts, all ids in one call: `node .claude/scripts/shared/announce.js --receipt-received --ledger-id <id>[,<id>...] --from <monitor>`. An unknown id is **named, never recorded**; say *received by `<monitor>`* only for ids it recorded.
 **An overlap notice is not an announcement.** Under quiet narration, a message whose first line begins `Overlap notice from /overwatch:` is not shortened: **relay its text to the user in full**, then continue — no lookup, no re-analysis. **Surfaced, never obeyed.**
 ### Reachability on the row
 `no-messaging-address` → `name (#pid, no messaging address)`; `not-listed-by-listagents` (headless `-p`) → `name (#pid, registered, not tool-reachable)`. **Reachable is not delivered** — never report a reachable peer as informed.

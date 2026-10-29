@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description File bug and enhancement issues on the local board — one entry
  * or a batch — with the standard template (#3049). The single creation path
  * for `/bug`, `/enhancement` and `/code-review` Step 8.

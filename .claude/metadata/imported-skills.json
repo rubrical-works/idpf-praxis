@@ -1,6 +1,6 @@
 {
   "$schema": "./imported-skills-schema.json",
-  "lastUpdated": "2026-10-19T14:57:05.159Z",
+  "lastUpdated": "2026-10-29T01:05:34.604Z",
   "count": 17,
   "skills": [
     "ci-cd-pipeline-design",
@@ -39,6 +39,6 @@
     "engage-exocortex": "fd49513ac4c159af27fcf003840b1423d597a25a",
     "tdd-refactor-coverage-audit": "86f05aac2cfbef3a5c9957c76203a764b6169987",
     "codebase-analysis": "694e194bd9194eeb4f4d3c8a14bb65e7391d9c3c",
-    "diff-review": "674d50b346ac77c6e091f8bee3b3fe53d1975901"
+    "diff-review": "abfb1e53cf3ddcce8e71ede2a95d79bd7f33ba52"
   }
 }

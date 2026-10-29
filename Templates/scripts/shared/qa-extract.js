@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -422,75 +422,14 @@ function fetchIssue(issueNumber, execFn = execSync) {
   return JSON.parse(raw);
 }
 
-// The `.gh-pmu.json` alias, not the board option name. `gh pmu move --status`
-// resolves the alias to the "QA-Required" column; passing the column label
-// directly is rejected.
-const QA_STATUS_ALIAS = 'qa_required';
+// QA filing lives in lib/qa-issue.js (#3453), the one place a `qa-required`
+// issue is created: sub-issue creation, the separate move to qa_required and
+// the branch placement through assign-branch.js. Re-exported below so callers
+// and tests that import them from here keep working.
+const {
+  QA_STATUS_ALIAS, createSubIssue, setSubIssueStatus, placeSubIssue,
+} = require('./lib/qa-issue.js');
 
-// `gh pmu sub create` accepts no --status flag — verified against gh pmu 1.5.3,
-// whose flags are assignee/body/body-file/inherit-*/label/milestone/parent/
-// project/repo/title. The board status is therefore a discrete move after
-// creation, not an argument to it. Discrete argv for the same reason as
-// createSubIssue: nothing reaches a shell (#2456).
-function setSubIssueStatus(subIssueNumber, execFileFn = execFileSync) {
-  return execFileFn('gh', ['pmu', 'move', String(subIssueNumber), '--status', QA_STATUS_ALIAS],
-    { encoding: 'utf8' });
-}
-
-// Branch assignment is delegated to assign-branch.js rather than issued here as
-// `gh pmu move --branch`. That command is assign-branch's contract; a second
-// caller is how the two drift, and this script has no business owning the
-// branch-field spelling.
-function defaultAssignFn(subIssueNumber, branch) {
-  const { assignToBranch } = require('./assign-branch.js');
-  return assignToBranch(subIssueNumber, branch);
-}
-
-/**
- * Put a freshly-created QA sub-issue where /work and /qa can find it: on the
- * parent's branch, in the qa_required column.
- *
- * Never throws. A placement failure leaves a real sub-issue that is simply less
- * reachable — the pre-#2821 state — and that state must be *reported*, because
- * from the outside it is indistinguishable from a successful run.
- */
-async function placeSubIssue({ subIssueNumber, parentBranch, assignFn = defaultAssignFn, statusFn = setSubIssueStatus }) {
-  const placement = { branch: null, status: null };
-  const warnings = [];
-
-  if (parentBranch) {
-    let assigned = false;
-    let threw = false;
-    try {
-      assigned = await assignFn(subIssueNumber, parentBranch);
-    } catch (e) {
-      threw = true;
-      warnings.push(`#${subIssueNumber} branch assignment to ${parentBranch} threw: ${e.message}`);
-    }
-    // Keyed to `threw`, not to warnings.length: a length test would silently
-    // swallow this warning the moment anything else warns earlier in the
-    // function, which is a defect waiting for the next edit.
-    if (assigned) placement.branch = parentBranch;
-    else if (!threw) warnings.push(`#${subIssueNumber} was not assigned to branch ${parentBranch}`);
-  } else {
-    warnings.push(`#${subIssueNumber} has no parent branch to inherit — left unassigned`);
-  }
-
-  try {
-    statusFn(subIssueNumber);
-    placement.status = QA_STATUS_ALIAS;
-  } catch (e) {
-    warnings.push(`#${subIssueNumber} status not set to ${QA_STATUS_ALIAS}: ${e.message}`);
-  }
-
-  return { placement, warnings };
-}
-
-// Title is `QA: ${acText}` verbatim from unchecked AC lines in (attacker-
-// influenceable) issue bodies. Pass every value as a discrete execFileSync
-// argument so the shell is never a trust boundary — backticks/$()/quotes in
-// the title are inert data, not code (#2456). Do NOT reintroduce a shell
-// string here.
 /**
  * The parent's sub-issues as `{number, title, state}` (#3268), for the retry
  * dedupe in extract(). `gh pmu sub list --json` is a bare boolean flag here.
@@ -499,14 +438,6 @@ function listSubIssues(parentIssue, execFileFn = execFileSync) {
   const raw = execFileFn('gh', ['pmu', 'sub', 'list', String(parentIssue), '--json'], { encoding: 'utf8' });
   const data = JSON.parse(raw);
   return (data.children || []).map((c) => ({ number: c.number, title: c.title, state: c.state }));
-}
-
-function createSubIssue(parentIssue, title, bodyPath, execFileFn = execFileSync) {
-  const args = ['pmu', 'sub', 'create', '--parent', String(parentIssue), '--title', title, '--label', 'qa-required', '-F', bodyPath];
-  const raw = execFileFn('gh', args, { encoding: 'utf8' });
-  const m = raw.match(/#(\d+)/);
-  if (!m) throw new Error(`gh pmu sub create output did not include a sub-issue number:\n${raw}`);
-  return parseInt(m[1], 10);
 }
 
 /**

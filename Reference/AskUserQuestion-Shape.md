@@ -1,5 +1,5 @@
 # AskUserQuestion Shape
-**Version:** v0.113.0
+**Version:** v0.114.0
 **Source:** Reference/AskUserQuestion-Shape.md
 **Purpose:** How a prompt sent through `AskUserQuestion` is laid out. On demand; rule `06-runtime-triggers.md` points here, and every `.claude/hooks/ask-question-shape-hook.js` correction closes with a pointer here (#3233, #3440).
 ## Why
@@ -9,9 +9,11 @@
 2. **The question is one sentence**, naming the decision, not the evidence: `QA #3145: record the verdict?`.
 3. **Long per-option content goes in that option's `preview` — single-select only.** `preview` renders only when `multiSelect` is false; for multi-select keep `description`s short.
 4. **Tool limits:** at most **4 options** per question, `header` at most **12 characters** — over either is rejected as "Invalid tool parameters" without saying which (#3198).
-The hook blocks a question over the length threshold or carrying block content (table row, list items, several paragraphs), and either hard limit; limits in `.claude/metadata/ask-question-shape.json`. Its correction names each violation, the remedy and this document, nothing more (#3440). It cannot see text printed before the call, so the rest is convention, pointed to not enforced.
+The hook blocks only those two hard limits, naming the fix; limits in `.claude/metadata/ask-question-shape.json`. Its correction names each violation, the remedy and this document, nothing more (#3440). It does not check question length or block content (#3463): the tool accepts both, and each block reached the user as a hook error. Rules 1–3 and the rest are convention, pointed to not enforced.
+## Why the hook blocks rather than rewrites
+A rewrite cannot reach the user (#3447). Tested hands-on 2026-10-28 (Claude Code 2.1.312), twice, user watching: a PreToolUse hook returning `permissionDecision: "allow"` with a rewritten-question `updatedInput` showed **no prompt**; the call returned `The user did not answer the questions.` at once. The hooks docs (https://code.claude.com/docs/en/hooks) pair `updatedInput` with `"allow"` for a hook that supplies `answers`, and say nothing on whether a rewritten question is shown. A rewriting hook drops the prompt silently, worse than a visible block.
 ## Templates
-A `/bluf`-shaped brief (#3440): **the question is the conclusion; support goes above it.** Fixed bold-label fields, one clause each; no honest answer → `not stated`, never inferred. `Question:` is the `question` string — one sentence naming the decision, under the `ask-question-shape.json` limit (200 chars); if it will not fit, move a clause up into a field. A hook-owned offer (startup hook) supplies `Question:` verbatim; the model writes only the fields.
+A `/bluf`-shaped brief (#3440): **the question is the conclusion; support goes above it.** Fixed bold-label fields, one clause each; no honest answer → `not stated`, never inferred. `Question:` is the `question` string — one sentence naming the decision, under 200 chars (convention; no hook checks it, #3463); if it will not fit, move a clause up into a field. A hook-owned offer (startup hook) supplies `Question:` verbatim; the model writes only the fields.
 ### Offer
 An action taken on request (reinstall dependencies, fast-forward).
 ```

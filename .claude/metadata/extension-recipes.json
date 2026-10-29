@@ -1,6 +1,6 @@
 {
   "$schema": "./extension-recipes-schema.json",
-  "generatedAt": "2026-10-27T22:01:23.542Z",
+  "generatedAt": "2026-10-29T15:33:20.439Z",
   "version": "1.0.0",
   "categories": {
     "ci": {
@@ -15,14 +15,13 @@
             "pre-tag",
             "post-prepare"
           ],
-          "template": "### Wait for CI\n\n```bash\nnode .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 900\n```\n\n**If CI fails, STOP and report the error.**\n\nCommon failures:\n- Build errors: Check compilation output\n- Test failures: Run tests locally to debug\n- Lint errors: Run linter with --fix",
+          "template": "### Wait for CI\n\n```bash\nnode .claude/scripts/shared/wait-for-ci.js --branch $(git branch --show-current) --timeout 900\n```\n\n**If CI fails, STOP and report the error.**\n\nEvery target runs on the branch being released, so the checked-out branch is the run to wait on. `/prepare-release`'s pre-tag point is deliberately not a target: it runs after the release has merged and `main` is checked out, where the command's own merge-commit gate already waits on the merge commit by SHA. `/prepare-beta`'s pre-tag point is a target — the beta path never leaves its branch.\n\nCommon failures:\n- Build errors: Check compilation output\n- Test failures: Run tests locally to debug\n- Lint errors: Run linter with --fix",
           "prerequisites": [
             "wait-for-ci.js (included with framework)",
             "\"GitHub Actions workflows configured (run /ci to check status)\""
           ],
           "appliesTo": [
             "prepare-release:post-pr-create",
-            "prepare-release:pre-tag",
             "prepare-beta:post-prepare",
             "prepare-beta:pre-tag",
             "merge-branch:post-pr-create"
@@ -35,7 +34,7 @@
             "post-analysis",
             "post-prepare"
           ],
-          "template": "### Check CI Status\n\n```bash\ngh run list --limit 1 --json status,conclusion,name\n```\n\nReport status but do not block workflow.",
+          "template": "### Check CI Status\n\n```bash\ngh run list --branch \"$(git branch --show-current)\" --limit 1 --json status,conclusion,name,headSha\n```\n\nReport status but do not block workflow. The query is scoped to the checked-out branch: without `--branch` (or `--commit`), `gh run list` returns the newest run repo-wide, which may belong to an unrelated branch.",
           "prerequisites": [
             "gh CLI (GitHub CLI)",
             "\"GitHub Actions workflows configured (run /ci to check status)\""
@@ -45,23 +44,6 @@
             "prepare-beta:post-analysis",
             "prepare-release:post-prepare",
             "prepare-beta:post-prepare"
-          ]
-        },
-        {
-          "name": "cross-os-testing",
-          "description": "Run CI tests across Ubuntu, Windows, and macOS using a matrix strategy",
-          "extensionPoints": [
-            "pre-validation",
-            "pre-gate"
-          ],
-          "template": "### Verify Cross-OS CI\n\n```bash\ngh run list --limit 1 --json jobs --jq '.[0].jobs[] | select(.name | test(\"ubuntu|windows|macos\"; \"i\")) | {name, status, conclusion}'\n```\n\nConfirm all OS matrix jobs passed:\n- **Ubuntu:** ✅\n- **Windows:** ✅\n- **macOS:** ✅\n\n**If any OS job failed or is missing, STOP and investigate before continuing.**\n\nCommon cross-OS failures:\n- Path separators: Use `path.join()` instead of string concatenation\n- Case sensitivity: macOS/Windows are case-insensitive, Linux is not\n- Symlinks: Windows requires elevated permissions for symlinks\n- Line endings: Git autocrlf can cause test mismatches on Windows",
-          "prerequisites": [
-            "\"Cross-OS testing enabled in CI: /ci --add cross-os-testing\""
-          ],
-          "appliesTo": [
-            "prepare-release:pre-validation",
-            "prepare-beta:pre-validation",
-            "merge-branch:pre-gate"
           ]
         }
       ]
@@ -98,7 +80,7 @@
             "post-validation",
             "post-prepare"
           ],
-          "template": "### Coverage Report\n\nGenerate coverage report for review:\n\n```bash\n# Example: Generate HTML report\nnyc report --reporter=html --report-dir=coverage\n\n# Example: Upload to Codecov\nbash <(curl -s https://codecov.io/bash)\n```\n\nReport location: `coverage/index.html`",
+          "template": "### Coverage Report\n\nGenerate coverage report for review:\n\n```bash\n# Example: Generate HTML report\nnyc report --reporter=html --report-dir=coverage\n```\n\nReport location: `coverage/index.html`\n\n### Upload to Codecov (optional)\n\nCodecov's Bash uploader is deprecated; uploads go through the Codecov CLI (https://docs.codecov.com/docs/codecov-uploader). Download the binary, verify it, then upload — never pipe a remote script into a shell:\n\n```bash\n# One-time: import Codecov's signing key (key ID ED779869 — compare the fingerprint with the docs)\ncurl -s https://keybase.io/codecovsecops/pgp_keys.asc | gpg --no-default-keyring --keyring trustedkeys.gpg --import\n\ncurl -Os https://cli.codecov.io/latest/linux/codecov\ncurl -Os https://cli.codecov.io/latest/linux/codecov.SHA256SUM\ncurl -Os https://cli.codecov.io/latest/linux/codecov.SHA256SUM.sig\ngpgv codecov.SHA256SUM.sig codecov.SHA256SUM\nshasum -a 256 -c codecov.SHA256SUM\nchmod +x codecov\n\n./codecov upload-process --fail-on-error -f coverage/lcov.info\n```\n\nThe token is read from `CODECOV_TOKEN`. Other platforms use `macos/codecov` or `windows/codecov.exe`; `pip install codecov-cli` installs the same CLI as `codecovcli`. Do not block the release on an upload failure.",
           "prerequisites": [
             "Coverage tool configured",
             "(Optional) Codecov or similar service",
@@ -327,30 +309,6 @@
           ]
         },
         {
-          "name": "eslint-security",
-          "description": "JS vulnerability detection via eslint-plugin-security (eval, unsafe regex, timing attacks)",
-          "extensionPoints": [
-            "post-recommend",
-            "pre-validation",
-            "pre-gate",
-            "post-implementation"
-          ],
-          "template": "### ESLint Security Plugin\n\nInstall and configure `eslint-plugin-security` for JS-specific vulnerability detection:\n\n```bash\nnpm install --save-dev eslint-plugin-security\n```\n\nAdd to `eslint.config.js` (flat config):\n\n```javascript\nimport security from \"eslint-plugin-security\";\n\n// In your config's plugins:\nplugins: { security },\n\n// In your config's rules:\nrules: {\n  \"security/detect-buffer-noassert\": \"error\",\n  \"security/detect-child-process\": \"warn\",\n  \"security/detect-disable-mustache-escape\": \"error\",\n  \"security/detect-eval-with-expression\": \"error\",\n  \"security/detect-new-buffer\": \"error\",\n  \"security/detect-no-csrf-before-method-override\": \"error\",\n  \"security/detect-non-literal-fs-filename\": \"off\",\n  \"security/detect-non-literal-regexp\": \"off\",\n  \"security/detect-non-literal-require\": \"off\",\n  \"security/detect-object-injection\": \"off\",\n  \"security/detect-possible-timing-attacks\": \"warn\",\n  \"security/detect-pseudoRandomBytes\": \"warn\",\n  \"security/detect-unsafe-regex\": \"error\"\n}\n```\n\n**Note:** Four rules are `off` to avoid false positives in Node.js codebases (non-literal fs, require, regexp, object injection). Enable selectively if your codebase can tolerate the noise.\n\n**If security errors are reported, fix before proceeding.**",
-          "prerequisites": [
-            "\"npm install --save-dev eslint-plugin-security\"",
-            "\"ESLint flat config (eslint.config.js)\""
-          ],
-          "appliesTo": [
-            "ci:post-recommend",
-            "prepare-release:pre-validation",
-            "merge-branch:pre-gate",
-            "work:post-implementation"
-          ],
-          "technology": [
-            "node"
-          ]
-        },
-        {
           "name": "semgrep-sast",
           "description": "SAST scanning via Semgrep (OWASP, injection, regex issues) — free for private repos",
           "extensionPoints": [
@@ -384,7 +342,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\ndotnet test\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\ndotnet test\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "\"*.csproj or *.sln\""
           ],
@@ -401,7 +359,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\ngo test ./...\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\ngo test ./...\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "go.mod"
           ],
@@ -421,7 +379,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\ngradle test\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\ngradle test\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "build.gradle"
           ],
@@ -441,7 +399,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\nmvn test\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\nmvn test\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "pom.xml"
           ],
@@ -461,7 +419,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\nnpm test\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\nnpm test\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "package.json with test script"
           ],
@@ -481,7 +439,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\ncomposer test\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\ncomposer test\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "composer.json with phpunit"
           ],
@@ -498,7 +456,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\npytest\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\npytest\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "pytest installed"
           ],
@@ -518,7 +476,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\nbundle exec rspec\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\nbundle exec rspec\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "Gemfile with rspec"
           ],
@@ -538,7 +496,7 @@
             "pre-validation",
             "pre-gate"
           ],
-          "template": "### Run Tests\n\n```bash\ncargo test\n```\n\n**If tests fail, STOP and fix before continuing.**",
+          "template": "### Run Tests\n\nRun the verification set the project declares (`testing.suites[]`, `verificationCommands`, or `testCommand` in `framework-config.json`), so the release is gated on the same commands `/work` sweeps:\n\n```bash\nnode -e \"console.log(JSON.stringify(require('./.claude/scripts/shared/lib/framework-config.js').resolveVerificationCommands(process.cwd())))\"\n```\n\n- `source` is `testing`, `verificationCommands` or `testCommand` → run **every** command in `commands`, in order, and report each result separately. Any failure fails the step.\n- `source` is `unreadable` → **STOP**: `framework-config.json` does not parse; fix it and re-run.\n- `source` is `none` → nothing is declared; run this recipe's fallback:\n\n```bash\ncargo test\n```\n\n**If tests fail, STOP and fix before continuing.**\n\n**Design (#3450):** one recipe per language, each running the project's declared set first and its language command only as a fallback. The per-language recipes stay so `/charter` keeps suggesting them by technology; the declared set comes first so a release is never gated on a different command than the project declares.",
           "prerequisites": [
             "Cargo.toml"
           ],

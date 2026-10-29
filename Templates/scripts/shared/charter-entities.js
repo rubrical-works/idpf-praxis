@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Charter entity extraction and count verification (#3420).
  * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
  * memory, checks the Key Entities counts against disk, and scans charter prose
@@ -536,10 +536,11 @@ function gapBetween(number, matchStart, matchEnd) {
   return 0;
 }
 
+// The one caller skips a falsy entity first, so no guard here (#3446, CodeQL #25).
 function hasQualifiedCount(entity) {
-  const excludes = entity && entity.countSource && entity.countSource.exclude;
+  const excludes = entity.countSource && entity.countSource.exclude;
   if (Array.isArray(excludes) && excludes.length > 0) return true;
-  return Array.isArray(entity && entity.locations)
+  return Array.isArray(entity.locations)
     && entity.locations.some(loc => typeof loc === 'string' && loc.includes('('));
 }
 
@@ -740,7 +741,8 @@ const ENTITIES_FILENAME = 'domain-entities.json';
  */
 function isGeneratedEntitiesFile(file) {
   try {
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    // A re-saved copy may carry a BOM, which JSON.parse rejects (#3439).
+    const data = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
     return data !== null && typeof data === 'object' && data.generatedFrom === 'CHARTER.md';
   } catch (_err) {
     return false;
@@ -764,7 +766,7 @@ function isGeneratedEntitiesFile(file) {
  * reports the deletion as dirty; and every /charter mode.
  *
  * @param {string} projectRoot
- * @returns {{removed: boolean, path: string, reason?: 'not-generated'}}
+ * @returns {{removed: boolean, path: string, reason?: 'not-generated'|'not-regular-file'|'unlink-failed', error?: string}}
  */
 function removeRetiredEntitiesFile(projectRoot) {
   const target = path.join(path.resolve(projectRoot), ENTITIES_FILENAME);
@@ -775,6 +777,10 @@ function removeRetiredEntitiesFile(projectRoot) {
     return { removed: false, path: target };
   }
   if (stat.isDirectory()) return { removed: false, path: target };
+  // A FIFO or device of that name would block the read at session start.
+  if (!stat.isSymbolicLink() && !stat.isFile()) {
+    return { removed: false, path: target, reason: 'not-regular-file' };
+  }
   if (!stat.isSymbolicLink() && !isGeneratedEntitiesFile(target)) {
     return { removed: false, path: target, reason: 'not-generated' };
   }
@@ -782,11 +788,28 @@ function removeRetiredEntitiesFile(projectRoot) {
     fs.unlinkSync(target);
   } catch (err) {
     // A directory junction or link refuses unlink on Windows; rmdir removes
-    // the link and leaves its target alone.
-    if (!stat.isSymbolicLink()) throw err;
-    fs.rmdirSync(target);
+    // the link and leaves its target alone. Any other failure is reported with
+    // the unlink error itself: the cleanup is advisory and must not abort its
+    // caller (#3439).
+    if (!stat.isSymbolicLink() || !linksToDirectory(target)) {
+      return { removed: false, path: target, reason: 'unlink-failed', error: err.code || err.message };
+    }
+    try {
+      fs.rmdirSync(target);
+    } catch (_rmdirErr) {
+      return { removed: false, path: target, reason: 'unlink-failed', error: err.code || err.message };
+    }
   }
   return { removed: true, path: target };
+}
+
+/** True when `link` resolves to a directory; a dangling link does not. */
+function linksToDirectory(link) {
+  try {
+    return fs.statSync(link).isDirectory();
+  } catch (_err) {
+    return false;
+  }
 }
 
 function escapeRegex(str) {

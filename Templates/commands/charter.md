@@ -1,5 +1,5 @@
 ---
-version: "v0.113.0"
+version: "v0.114.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
 argument-hint: "[--update [--register-proj|--deregister-proj|--list-proj]|--refresh [--dry-run]|--testing [--dry-run [--check]] [--sweep-e2e on|off] [--sweep-scope all|touched]] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -317,6 +317,7 @@ Target shape is `TARGET_SHAPE` in that helper (Vision, Tech Stack, In Scope, Key
 | `relocate` | Found nowhere else — moved to its named destination (rationale → `Inception/Scope-Boundaries.md`, history → `Inception/Milestones.md`) |
 | `moved` | An exclusion, moved to the charter's Out of Scope |
 | `removed` | Board and git state — removed, not moved (#2931) |
+**Pinned cuts (#3456):** each cut carries `pinnedBy` — tests whose leading comment block declares `@subject CHARTER.md` and that hold an unescaped string literal (≥ `MIN_PINNED_LITERAL` chars) found in the removed text. Non-empty → report the warning **beside the cut's disposition**, naming each test and literal (`pointer · ⚠ pinned by <test>: "<literal>"`), so the user can decline, retarget the test (e.g. at the Inception/ destination) or accept knowingly. **Advisory:** a pinned cut is still proposed; nothing blocks on it; an empty `pinnedBy` prints nothing.
 You may tighten a capability line further; keep every cut accounted for. **`proposal.audit.unaccounted` must be empty before anything is offered** — a non-empty list is a silent drop; restore it or give it a destination, then re-run.
 **Show the diff** of CHARTER.md and every Inception/ file in `proposal.relocations`, then **ASK USER** to apply. Apply only on confirmation; decline changes nothing. Under `--dry-run` report and stop. No regeneration step: the scope check reads CHARTER.md directly, so an applied change takes effect at once.
 5c. **Re-apply selection against the delta (#2853).** Refresh acts on what *changed*, never the whole declaration.
@@ -333,6 +334,8 @@ This is the only step that clears a pending suite; selection never revisits an a
 - A manifest command **no suite declares** is an **undeclared candidate**, reported and **never written automatically** — a command in CI is evidence, not a decision.
 - **An alias is a difference, not a duplicate.** `npm run e2e` and `npx playwright test` may name one suite two ways; adding the second declares a suite the project does not have.
 - Writes happen **only on confirmation**, to `testing.suites[]` through the helper — **never to `verificationCommands`**, a **read-only comparison** source here (#2850 retired every `/charter` write of it; an existing key is read as legacy by `resolveSuites`).
+- **A difference whose only disagreeing source is the legacy `verificationCommands` key is reported in one line, naming the key as legacy and read-only, and is never offered via `AskUserQuestion` (#3448)** — nothing to decide: refresh never writes it and `resolveSuites` reads it as legacy.
+- **Refresh prompts only for the differences this section names:** an undeclared candidate, an alias, an `e2e` suite with no `sweep`, an `install pending` suite that now installs. Every other difference is reported, not asked.
 **This is the only hook reaching an already-complete charter.** `/charter` with no arguments shows a summary and never re-runs generation, so neither Inception nor Extraction reaches a project past its first session — refresh is where an existing project acquires a declaration, and where drift between the two hand-authored surfaces is caught. Not hypothetical: this repository's `Inception/Test-Strategy.md` and its `framework-config.json` disagreed about what runs, with nothing checking them.
 5f. **Companion table gaps (#3422):** **every run**, prompt for **every empty cell in the companions table, in any column** (Direction, Board, Responsibility, Relationship, …) — from the helper, never by parsing the table here:
 ```javascript

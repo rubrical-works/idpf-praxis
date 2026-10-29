@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Collects development statistics from git history using config-driven
  *   metric definitions. Returns structured JSON for the /idpf-stats command to render.
  * @checksum sha256:placeholder
@@ -146,28 +146,6 @@ function formatLocalISO(d) {
   const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
     `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   return iso + getTzOffset(d);
-}
-
-/**
- * Safely execute a shell command, returning stdout as string.
- * Returns empty string on error.
- *
- * RETAINED for non-metric callers only. Do NOT route a metric probe through
- * this: it collapses failure into '', which every caller then coerces to 0, so
- * a broken probe and a genuine zero become the same number (#2675). Metric
- * probes use runGit()/walkTree(), which report failure as a reason string.
- *
- * @param {string} cmd
- * @param {string} [cwd]
- * @returns {string}
- */
-function exec(cmd, cwd) {
-  try {
-    const result = execSync(cmd, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-    return (typeof result === 'string' ? result : result.toString()).trim();
-  } catch (e) {
-    return '';
-  }
 }
 
 /**
@@ -518,11 +496,6 @@ function computeHours(earliest, latest) {
   const ms = new Date(latest).getTime() - new Date(earliest).getTime();
   const hours = ms / (1000 * 60 * 60);
   return Math.max(hours, 1);
-}
-
-function parseIntSafe(str) {
-  const n = parseInt(str, 10);
-  return isNaN(n) ? 0 : n;
 }
 
 function round2(n) {

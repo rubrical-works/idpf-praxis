@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -242,7 +242,7 @@ function diffReviewSkillPresent(root = process.cwd()) {
  * @param {{issue: number, acceptanceCriteria?: string[], filesToModify?: string[],
  *   range: string, charterPath?: string, noReview?: boolean, skillPresent?: boolean}} input
  */
-function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, charterPath = 'CHARTER.md', noReview = false, skillPresent }) {
+function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, commits = [], charterPath = 'CHARTER.md', noReview = false, skillPresent }) {
   if (noReview) {
     return { tier: 3, skipped: true, reason: 'no-review', message: `Tier 3 skipped for #${issue}: --no-review was passed. Tiers 1–2 still ran.` };
   }
@@ -260,6 +260,8 @@ function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, 
   const treeBeforePath = `.tmp-gate-${issue}-tree-before.txt`;
   const prompt = [
     `You are a code reviewer. Review ONLY the commit range ${range}.`,
+    // Sequential /work (#3457): other issues' commits can sit inside the range.
+    ...(commits.length ? [`Within it, review ONLY #${issue}'s own commits: ${commits.join(', ')} (git show <sha>); changes from any other commit are not under review.`] : []),
     '',
     'Inputs:',
     `- Issue: #${issue}. Acceptance criteria:`,
@@ -632,6 +634,77 @@ function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries
     `  Resume: fix in the kept worktree, then /work ${epic || '<epic>'} --nonstop --concurrent.`,
   ].join('\n');
   return { action: 'halt', issue, worktreeKept: member.worktreePath, findings, report };
+}
+
+/**
+ * Sequential /work's independent review (#3457) — Tier 3 without a worktree.
+ * The range is the issue's own `Refs #N` commits since `base` (the branch's
+ * merge-base), oldest first; other issues' commits can fall inside it, so the
+ * commits are named to the reviewer too. Skips are reported, never passes:
+ * `--no-review`, `workReview` off (or `nonstop-only` outside --nonstop),
+ * no commits to review, and an absent diff-review skill.
+ *
+ * @param {{issue: number, body: string, base: string, git: Function,
+ *   workReview?: string, nonstop?: boolean, noReview?: boolean,
+ *   skillPresent?: boolean, charterPath?: string}} input
+ */
+function planSequentialReview({ issue, body = '', base, git, workReview = 'always', nonstop = false, noReview = false, skillPresent, charterPath = 'CHARTER.md' } = {}) {
+  const skip = (reason, message) => ({ tier: 3, skipped: true, reason, message });
+  if (noReview) return skip('no-review', `Review skipped for #${issue}: --no-review was passed.`);
+  if (workReview === 'off') return skip('work-review-off', `Review skipped for #${issue}: framework-config.json workReview is off.`);
+  if (workReview === 'nonstop-only' && !nonstop) return skip('work-review-nonstop-only', `Review skipped for #${issue}: workReview is nonstop-only and this run is not --nonstop.`);
+  const { issueRefGrepPattern } = require('./issue-ref-match.js');
+  const commits = String(git(['log', '--reverse', `--grep=${issueRefGrepPattern(issue)}`, '--format=%H', `${base}..HEAD`]) || '')
+    .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!commits.length) return skip('no-commits', `Review skipped for #${issue}: no Refs #${issue} commits since ${base}, so there is nothing to review.`);
+  const filesToModify = scopeDrift.parseDeclaredScope(body).paths;
+  const range = `${commits[0]}~1..${commits[commits.length - 1]}`;
+  const tier3 = planTier3({
+    issue, acceptanceCriteria: extractAcceptanceCriteria(body).items.map((i) => i.text), filesToModify,
+    range, commits, charterPath, skillPresent,
+  });
+  if (tier3.skipped) return skip(tier3.reason, `Review skipped for #${issue}: the diff-review skill is not installed.`);
+  return { ...tier3, range, commits, runPaths: filesToModify };
+}
+
+/** The review's comment on the issue (#3457): verdict and every finding. */
+function formatReviewComment({ issue, tier3, fixCycles = 0 }) {
+  const lines = [`## Work Review — #${issue}`, '', `Verdict: **${tier3.verdict}**${fixCycles > 0 ? ` (after ${fixCycles} fix cycle${fixCycles === 1 ? '' : 's'})` : ''}`];
+  const findings = findingLines(null, tier3);
+  if (findings.length) lines.push('', '### Findings', ...findings);
+  return lines.join('\n');
+}
+
+/**
+ * What sequential /work does with the review (#3457), on the gate's terms:
+ * pass/warn → `proceed`, with the findings comment to post; a first fail →
+ * `fix` (one fix cycle, then a re-review); a second fail → `halt` before
+ * in_review. A reviewer-process failure re-reviews once without spending the
+ * fix cycle, then halts on the reviewer (#3222). A skip proceeds, reported.
+ */
+function decideReviewOutcome({ issue, tier3, fixCycles = 0, reviewRetries = 0 } = {}) {
+  if (!tier3 || tier3.skipped) {
+    return { action: 'proceed', issue, skipped: true, reason: tier3 && tier3.reason, comment: null, report: (tier3 && tier3.message) || `Review skipped for #${issue}.` };
+  }
+  if (tier3.verdict === 'pass' || tier3.verdict === 'warn') {
+    return { action: 'proceed', issue, verdict: tier3.verdict, fixCycles, comment: { issue, body: formatReviewComment({ issue, tier3, fixCycles }) } };
+  }
+  const findings = findingLines(null, tier3);
+  if (isReviewerProcessFailure(tier3)) {
+    if (reviewRetries === 0) return { action: 're-review', issue, fixCycles, reviewRetry: 1, error: tier3.error, findings };
+    return {
+      action: 'halt', issue, attributedTo: 'reviewer', findings,
+      report: [`Halted before in_review: the reviewer for #${issue} failed twice (${tier3.error}) — a reviewer-process failure, not a finding in #${issue}'s code; the fix cycle was not spent on it.`, ...findings.map((l) => `  ${l}`)].join('\n'),
+    };
+  }
+  if (fixCycles === 0) {
+    const message = [`Work Review findings for #${issue} — fix cycle 1 of 1`, ...findings, `Fix each in a \`Refs #${issue} — <what>\` commit, re-run the sweep, then re-review; a second fail halts before in_review.`].join('\n');
+    return { action: 'fix', issue, fixCycle: 1, rereview: true, findings, message };
+  }
+  return {
+    action: 'halt', issue, findings,
+    report: [`Halted before in_review: the review of #${issue} failed again after one fix cycle.`, '  Findings (file:line):', ...findings.map((l) => `  ${l}`), `  Resume: fix, commit Refs #${issue}, then /work ${issue}.`].join('\n'),
+  };
 }
 
 /**
@@ -1138,6 +1211,8 @@ const USAGE = [
   'Usage: node .claude/scripts/shared/lib/merge-back-gate.js <subcommand> [options]',
   '  tier1       --issue N --branch B --worktree P --tracker-tip SHA [--body-file F] [--out F]',
   '  tier3-plan  --issue N --tracker-tip SHA --branch B [--body-file F] [--no-review]',
+  '  review-plan --issue N [--base SHA] [--body-file F] [--no-review] [--nonstop] — sequential /work (#3457): the issue\'s Refs #N commits since the branch base, or the reported skip',
+  '  review-outcome --issue N --tier3 F --tree-before F --tree-before-sha SHA [--body-file F] [--fix-cycles N] [--review-retries N] [--post-comment]',
   '  tree-snapshot --out F [--clear F ...]',
   '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...] [--post-comment]',
   '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...] [--body-file N=F ...] — with two or more members, fails before merging when they share a path outside their declared scope',
@@ -1149,7 +1224,7 @@ const USAGE = [
 ].join('\n');
 
 const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own', '--file']);
-const BOOLEAN = new Set(['--no-review', '--resumed', '--post-comment', '--keep-tier1', '--tier1-only']);
+const BOOLEAN = new Set(['--no-review', '--resumed', '--post-comment', '--keep-tier1', '--tier1-only', '--nonstop']);
 
 /** `<subcommand> --flag value ...` → `{sub, opts}`; repeatable flags collect arrays. */
 function parseCliArgs(argv) {
@@ -1359,6 +1434,52 @@ function runCli(argv, seams = {}) {
     return { code: 0, envelope: { ok: true, subcommand: sub, tier3, ...decision } };
   }
 
+  if (sub === 'review-plan') {
+    const miss = requireOpts(opts, ['--issue']);
+    if (miss) return fail(miss);
+    const issue = num(opts['--issue']);
+    let base = opts['--base'];
+    if (!base) {
+      const r = require('./branch-diff.js').resolveBranchBase({ cwd: root });
+      if (!r.ok) return fail(`cannot resolve the branch base: ${r.error || r.reason || 'unknown'} — pass --base SHA`, 1);
+      base = r.sha;
+    }
+    const workReview = require('./framework-config.js').resolveWorkReview(root);
+    const review = planSequentialReview({
+      issue, body: bodyOf(issue, bodyFileMap(opts['--body-file'], issue)), base, git,
+      workReview: workReview.mode, nonstop: !!opts['--nonstop'], noReview: !!opts['--no-review'], skillPresent: diffReviewSkillPresent(root),
+    });
+    return { code: 0, envelope: { ok: true, subcommand: sub, workReview, base, review } };
+  }
+
+  if (sub === 'review-outcome') {
+    const miss = requireOpts(opts, ['--issue', '--tier3', '--tree-before', '--tree-before-sha']);
+    if (miss) return fail(miss);
+    const issue = num(opts['--issue']);
+    const fs = require('fs');
+    const out = path.resolve(root, opts['--tier3']);
+    const exists = fs.existsSync(out);
+    const treeBefore = fs.readFileSync(path.resolve(root, opts['--tree-before']), 'utf8');
+    // The issue's declared scope is the run (#3263): another session's write
+    // outside it during the review is reported, never failed.
+    const runPaths = scopeDrift.parseDeclaredScope(bodyOf(issue, bodyFileMap(opts['--body-file'], issue))).paths;
+    const tier3 = evaluateTier3({
+      issue, outputPath: opts['--tier3'], exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
+      treeBefore, treeBeforeIntact: sha256(treeBefore) === String(opts['--tree-before-sha']).toLowerCase(),
+      treeAfter: git(TREE_STATUS_ARGS), root, ...(runPaths.length ? { runPaths } : {}),
+    });
+    const decision = decideReviewOutcome({ issue, tier3, fixCycles: num(opts['--fix-cycles']) || 0, reviewRetries: num(opts['--review-retries']) || 0 });
+    if (opts['--post-comment'] && decision.comment) {
+      try {
+        const posted = postComment({ issue, body: decision.comment.body, root, ghExec: seams.ghExec || cliGhExec });
+        return { code: 0, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted } };
+      } catch (e) {
+        return { code: 1, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted: null, postError: String(e.stderr || e.message).trim() } };
+      }
+    }
+    return { code: decision.action === 'halt' ? 1 : 0, envelope: { ok: true, subcommand: sub, tier3, ...decision } };
+  }
+
   if (sub === 'tree-snapshot') {
     // Taken before the Tier 3 reviewer spawns (#3204); `outcome --tree-before`
     // compares the tree after the review against it.
@@ -1517,6 +1638,9 @@ module.exports = {
   memberBase,
   buildTier2,
   planTier3,
+  planSequentialReview,
+  decideReviewOutcome,
+  formatReviewComment,
   parseReview,
   checkReviewerTree,
   HOST_WRITTEN_PATHS,

@@ -2,21 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ask-question-shape-schema.json",
   "title": "AskUserQuestion Shape Schema",
-  "description": "Schema for .claude/metadata/ask-question-shape.json — the limits and correction text .claude/hooks/ask-question-shape-hook.js applies to every AskUserQuestion call (#3233). The hook fails open: absent or malformed data means no block.",
+  "description": "Schema for .claude/metadata/ask-question-shape.json — the tool's hard limits and the correction text .claude/hooks/ask-question-shape-hook.js applies to every AskUserQuestion call (#3233, #3463). The hook fails open: absent or malformed data means no block.",
   "type": "object",
-  "required": ["maxQuestionLength", "maxOptions", "maxHeaderLength", "remedy", "pointer"],
+  "required": [
+    "maxOptions",
+    "maxHeaderLength",
+    "remedy",
+    "pointer"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
-    "version": { "type": "integer", "minimum": 1 },
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
     "_meta": {
       "type": "object",
       "description": "Human-facing provenance. Never read by the hook.",
       "additionalProperties": true
-    },
-    "maxQuestionLength": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Longest question text, in characters, the hook lets through. A convention threshold: one sentence."
     },
     "maxOptions": {
       "type": "integer",
@@ -30,13 +35,20 @@
     },
     "remedy": {
       "type": "object",
-      "required": ["singleSelect", "multiSelect"],
+      "required": [
+        "header",
+        "options"
+      ],
       "properties": {
-        "singleSelect": { "type": "string", "minLength": 1 },
-        "multiSelect": {
+        "header": {
           "type": "string",
           "minLength": 1,
-          "description": "Must not suggest previews: the tool renders them for single-select questions only."
+          "description": "Remedy for a header over maxHeaderLength (#3452). {maxHeaderLength} is replaced with the limit."
+        },
+        "options": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Remedy for more than maxOptions options (#3452). {maxOptions} is replaced with the limit."
         }
       },
       "additionalProperties": false

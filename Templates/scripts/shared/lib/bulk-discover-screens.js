@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * Bulk-discover screens from project source for /catalog-screens --init.
  *
  * Scans Svelte/React/Vue source. Auto-detects kind from path patterns:
@@ -160,7 +160,6 @@ function resolveImport(resolved, fileToName) {
  */
 function writePlaceholderSpec(projectRoot, canonicalSpec, { name, kind, source }) {
   const abs = path.resolve(projectRoot, canonicalSpec);
-  if (fs.existsSync(abs)) return;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   const spec = {
     screenName: name,
@@ -171,7 +170,13 @@ function writePlaceholderSpec(projectRoot, canonicalSpec, { name, kind, source }
     elements: [],
     placeholder: true
   };
-  fs.writeFileSync(abs, JSON.stringify(spec, null, 2) + '\n', 'utf8');
+  // Exclusive create (#3446, CodeQL js/file-system-race): an existing spec is
+  // never overwritten, including one written after a separate existence check.
+  try {
+    fs.writeFileSync(abs, JSON.stringify(spec, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+  }
 }
 
 function discoverScreens(projectRoot) {

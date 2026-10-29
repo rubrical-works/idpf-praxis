@@ -29,7 +29,7 @@
       "pattern": "→ GATE: release\\b",
       "meaning": "The condition resolves during /prepare-release.",
       "precedent": "#2508",
-      "closure": "Checked when the owning release step runs; if one is still open at /done, say so rather than checking it."
+      "closure": "Checked when the owning release step runs; if one is still open at /done, say so rather than checking it. A check that runs after the release deploys has no such step, so /done hands it off (#3453): when every unchecked box of an In review issue carries this marker, /done offers to file one standalone qa-required QA issue per criterion through .claude/scripts/shared/lib/qa-issue.js (status qa_required, no branch tracker), checks the box as `- [x] <criterion> → GATE: release → QA: #N` and closes the issue; the QA issue carries the check past the release."
     }
   ],
   "recognizedGateTokens": ["review", "release"],

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Charter shape analysis for the /charter --refresh shape step (#3418).
  * @checksum sha256:placeholder
  *
@@ -30,6 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { parseCharterSections } = require('./charter-scope');
+const { escapeRegExp } = require('./input-validation');
 
 /**
  * The shape the step targets — the sections CommandsSrc/charter.md defines
@@ -58,10 +59,14 @@ const HISTORY_RE = /\b(shipped|released|delivered|landed|merged|completed in|inc
 // status word with any digit elsewhere on the line is not: "v0.113.0 in
 // progress" names a release, and its digits are a version, not a count (#3429).
 // A date part ("2026-10-24") or an issue reference ("#3247") is not a count
-// either: '-', '#', '/' and ':' neighbors rule a number out (#3437).
+// either: '-', '#', '/' and ':' neighbors rule a number out (#3437). The one
+// ':' a count may follow is the status word's own ("Backlog:14"), which the
+// status branch consumes itself, so that branch's count drops ':' from its
+// lookbehind (#3442).
 const COUNT = String.raw`(?<![\w.#/:-])\d+(?![\w.\-/:])`;
+const LABELED_COUNT = String.raw`(?<![\w.#/-])\d+(?![\w.\-/:])`;
 const BOARD_STATUS = 'backlog|in progress|in review|ready|done|open issues?';
-const BOARD_RE = new RegExp(String.raw`\b(${BOARD_STATUS})\b\s*[:(]?\s*${COUNT}|${COUNT}\s+(issues?|open|in progress|in review|ready|done|stories|bugs)\b`, 'i');
+const BOARD_RE = new RegExp(String.raw`\b(${BOARD_STATUS})\b\s*[:(]?\s*${LABELED_COUNT}|${COUNT}\s+(issues?|open|in progress|in review|ready|done|stories|bugs)\b`, 'i');
 
 /** Release history: a history verb, or a date beside a version. */
 function isHistory(line) {
@@ -247,7 +252,9 @@ function normalize(text) {
  * at "Hooks, e.g" (#3429).
  */
 const ABBREVIATIONS = ['e.g', 'i.e', 'etc', 'vs', 'cf', 'incl', 'approx', 'viz', 'esp'];
-const NOT_ABBREVIATION = ABBREVIATIONS.map((a) => `(?<!\\b${a.replace(/\./g, '\\.')}\\.)`).join('');
+// Full escape (#3446, CodeQL js/incomplete-sanitization): escaping only `.`
+// was correct for today's list but not for an entry with another metacharacter.
+const NOT_ABBREVIATION = ABBREVIATIONS.map((a) => `(?<!\\b${escapeRegExp(a)}\\.)`).join('');
 const SENTENCE_BREAK = new RegExp(`${NOT_ABBREVIATION}(?<=[.!?])\\s+`, 'i');
 const CLAUSE_BREAK = new RegExp(`${NOT_ABBREVIATION}(?<=[.!?;])\\s+`, 'i');
 
@@ -285,7 +292,7 @@ function homed(cut, sources) {
  * The text with each balanced top-level parenthetical removed, `onAside`
  * called with its content (#3437): "Sync engine (local cache (IndexedDB) and
  * merge)" is one aside, not an inner "IndexedDB". An empty `()` attached to a
- * word — an unbackticked call, `init()` — is left in place; any other empty
+ * word or a code span — an unbackticked call, `init()`, or `` `init`() `` — is left in place; any other empty
  * aside is dropped. An unbalanced `(` leaves the rest of the text as it is.
  * @param {string} text - code spans already masked
  * @param {(inner: string) => void} onAside
@@ -304,7 +311,9 @@ function extractAsides(text, onAside) {
     }
     if (j >= text.length) return out + text.slice(i);
     const inner = text.slice(i + 1, j);
-    if (!inner.trim() && i > 0 && /\w/.test(text[i - 1])) {
+    // A masked code span ends in its \u0000 placeholder, so `init`() is
+    // attached too (#3442).
+    if (!inner.trim() && i > 0 && /[\w\u0000]/.test(text[i - 1])) {
       out += text.slice(i, j + 1);
     } else {
       out = out.replace(/\s+$/, '');
@@ -516,30 +525,193 @@ const HOME_SOURCES = ['CHANGELOG.md', 'PRD', 'Construction/Design-Decisions', 'P
  * Read every markdown file under HOME_SOURCES (directories recursively).
  * Missing paths are skipped. Returns [{path, content}] with root-relative,
  * forward-slash paths.
+ *
+ * No path is looked up before it is read (#3446, CodeQL js/file-system-race):
+ * a directory is listed directly, ENOTDIR means it is a file, and a file
+ * that vanishes before its read is skipped like one that never existed.
  */
 function gatherSources(root) {
   const out = [];
   const visit = (rel) => {
     const abs = path.join(root, rel);
-    let stat;
-    try { stat = fs.statSync(abs); } catch (_e) { return; }
-    if (stat.isDirectory()) {
-      for (const name of fs.readdirSync(abs).sort()) visit(path.posix.join(rel, name));
-    } else if (/\.md$/i.test(rel)) {
-      out.push({ path: rel, content: fs.readFileSync(abs, 'utf8') });
+    let names;
+    try {
+      names = fs.readdirSync(abs);
+    } catch (err) {
+      if (err.code !== 'ENOTDIR') return;
+      if (!/\.md$/i.test(rel)) return;
+      try {
+        out.push({ path: rel, content: fs.readFileSync(abs, 'utf8') });
+      } catch (readErr) {
+        if (readErr.code !== 'ENOENT') throw readErr;
+      }
+      return;
     }
+    for (const name of names.sort()) visit(path.posix.join(rel, name));
   };
   for (const rel of HOME_SOURCES) visit(rel);
   return out;
 }
 
 /**
+ * Contract tests that pin CHARTER.md text (#3456). A cut the proposal calls
+ * harmless can remove a string a test asserts, and the project learned that
+ * only from a red CI run after the commit. A test declares its non-code
+ * subject with `@subject` in its leading comment block — the grammar
+ * `Reference/Contract-Test-Classification.md` states, read here directly:
+ * the skill that owns its reader is copied into a project, so a deployed
+ * shared script cannot assume it is present.
+ */
+const PIN_SUBJECT = 'CHARTER.md';
+/** Shorter literals ('utf8', 'x') occur by chance in prose; only longer ones pin. */
+const MIN_PINNED_LITERAL = 8;
+const TEST_FILE_RE = /(\.(test|spec)\.[cm]?[jt]sx?$)|(_test\.(go|py|rb)$)|(^test_.*\.py$)|(_spec\.rb$)/i;
+const TEST_DIR_RE = /^(tests?|__tests__|spec)$/i;
+const CODE_EXT_RE = /\.([cm]?[jt]sx?|py|rb|go|java|kt|cs|php|rs|swift)$/i;
+const SKIP_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', 'build', 'out', 'vendor', '.next', 'target', '.venv', 'venv', '__pycache__']);
+const MAX_TEST_BYTES = 512 * 1024;
+
+/** The comments before the first line of code: `//`, `/* … *\/` and `#` lines. */
+function leadingCommentBlock(text) {
+  const lines = String(text).replace(/^#!.*\n/, '').split(/\r?\n/);
+  const block = [];
+  let inBlock = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (inBlock) {
+      block.push(t);
+      if (t.includes('*/')) inBlock = false;
+      continue;
+    }
+    if (!t) continue;
+    if (t.startsWith('//') || t.startsWith('#')) { block.push(t); continue; }
+    if (t.startsWith('/*')) { block.push(t); inBlock = !t.includes('*/', 2); continue; }
+    break;
+  }
+  return block.join('\n');
+}
+
+function declaresSubject(text, subject = PIN_SUBJECT) {
+  const re = /@subject\s+(\S+)/g;
+  let m;
+  while ((m = re.exec(leadingCommentBlock(text)))) {
+    if (m[1].replace(/^\.\//, '') === subject) return true;
+  }
+  return false;
+}
+
+const ESCAPES = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', 0: '\0' };
+
+/** One escape sequence at `s[i]` (the char after `\`): [value, chars consumed]. */
+function unescapeAt(s, i) {
+  const c = s[i];
+  if (c === 'u' && /^[0-9a-f]{4}/i.test(s.slice(i + 1, i + 5))) return [String.fromCharCode(parseInt(s.slice(i + 1, i + 5), 16)), 5];
+  if (c === 'x' && /^[0-9a-f]{2}/i.test(s.slice(i + 1, i + 3))) return [String.fromCharCode(parseInt(s.slice(i + 1, i + 3), 16)), 3];
+  return [ESCAPES[c] !== undefined ? ESCAPES[c] : c, 1];
+}
+
+/**
+ * Every string literal in a test file, unescaped — `'…'`, `"…"` and the static
+ * parts of `` `…` `` — skipping comments, so an apostrophe in prose opens no
+ * string. `#` starts a comment only in the languages where it does.
+ */
+function stringLiterals(text, { hashComments = false } = {}) {
+  const s = String(text);
+  const out = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c === '/' && s[i + 1] === '*') { const end = s.indexOf('*/', i + 2); i = end === -1 ? s.length : end + 2; continue; }
+    if (c === '#' && hashComments) { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c !== "'" && c !== '"' && c !== '`') { i++; continue; }
+    let value = '';
+    i++;
+    while (i < s.length && s[i] !== c) {
+      if (s[i] === '\\') { const [v, n] = unescapeAt(s, i + 1); value += v; i += 1 + n; continue; }
+      if (c === '`' && s[i] === '$' && s[i + 1] === '{') {
+        // An interpolation ends one static part; its expression is skipped.
+        out.push(value);
+        value = '';
+        let depth = 0;
+        for (i += 1; i < s.length; i++) {
+          if (s[i] === '{') depth++;
+          else if (s[i] === '}' && --depth === 0) { i++; break; }
+        }
+        continue;
+      }
+      if (c !== '`' && s[i] === '\n') break; // an unterminated quote is not a literal
+      value += s[i++];
+    }
+    i++;
+    out.push(value);
+  }
+  return out.filter((v) => v.trim().length >= MIN_PINNED_LITERAL);
+}
+
+/**
+ * Test files under `root` whose leading comment block declares
+ * `@subject CHARTER.md`, with their string literals. A file is a test by name
+ * (`*.test.js`, `test_*.py`, …) or by a code file inside a test directory.
+ * Symlinked directories are not followed: in a hub-installed project they
+ * lead into the shared hub. Read with no prior lookup, as gatherSources is.
+ * @returns {Array<{path: string, literals: string[]}>}
+ */
+function findPinningTests(root) {
+  const out = [];
+  const visit = (rel, inTestDir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const childRel = rel ? path.posix.join(rel, e.name) : e.name;
+      if (e.isDirectory()) {
+        if (!SKIP_DIRS.has(e.name)) visit(childRel, inTestDir || TEST_DIR_RE.test(e.name));
+        continue;
+      }
+      if (!e.isFile() || !CODE_EXT_RE.test(e.name)) continue;
+      if (!TEST_FILE_RE.test(e.name) && !inTestDir) continue;
+      let content;
+      try {
+        content = fs.readFileSync(path.join(root, childRel), 'utf8');
+      } catch {
+        continue;
+      }
+      if (content.length > MAX_TEST_BYTES || !declaresSubject(content)) continue;
+      out.push({ path: childRel, literals: stringLiterals(content, { hashComments: /\.(py|rb)$/i.test(e.name) }) });
+    }
+  };
+  visit('', false);
+  return out;
+}
+
+/** The literals of each pinning test that occur within the text a cut removes. */
+function pinnedBy(cut, tests) {
+  const removed = String(cut.text || '');
+  const hits = [];
+  for (const t of tests) {
+    // A literal pinning the whole sentence keeps its full stop; a cut may not.
+    const literals = [...new Set(t.literals.filter((l) => removed.includes(l) || removed.includes(l.replace(/[\s.;:,]+$/, ''))))];
+    if (literals.length) hits.push({ test: t.path, literals });
+  }
+  return hits;
+}
+
+/**
  * The full proposal for a project root: cuts with dispositions, the
- * relocation plan, and the removal audit. Writes nothing.
+ * relocation plan, and the removal audit. Every cut carries `pinnedBy` — the
+ * contract tests holding a string it removes (#3456), empty when none.
+ * Advisory: a pinned cut is still proposed. Writes nothing.
  */
 function proposeForRoot(root, text) {
   const sources = gatherSources(root);
-  const { proposed, cuts } = proposeShape(text, { sources });
+  const shaped = proposeShape(text, { sources });
+  const { proposed } = shaped;
+  const tests = findPinningTests(root);
+  const cuts = shaped.cuts.map((c) => ({ ...c, pinnedBy: pinnedBy(c, tests) }));
   const existing = {};
   for (const dest of Object.values(RELOCATION_TARGETS)) {
     const abs = path.join(root, dest);
@@ -571,6 +743,11 @@ module.exports = {
   latestGitTag,
   gatherSources,
   proposeForRoot,
+  findPinningTests,
+  stringLiterals,
+  leadingCommentBlock,
+  PIN_SUBJECT,
+  MIN_PINNED_LITERAL,
   HOME_SOURCES,
   wordCount,
   exclusionPhrase,

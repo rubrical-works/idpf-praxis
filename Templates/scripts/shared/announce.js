@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
@@ -745,9 +745,37 @@ function recordReceipt({ ledgerId, from, cwd } = {}) {
   };
 }
 
+/**
+ * Record several receipt replies from one monitor in one call (#3455), with
+ * ONE summary line naming every id recorded and every id refused. Each id goes
+ * through recordReceipt's contract: an unknown id is named, never recorded,
+ * and fails the call — the ids beside it are still recorded.
+ */
+function recordReceipts({ ledgerIds, from, cwd } = {}) {
+  const ids = Array.isArray(ledgerIds) ? ledgerIds : [];
+  const sender = from || 'the overwatch';
+  if (ids.length === 0) {
+    return { ok: false, recorded: [], refused: [], line: 'Receipt NOT recorded: no --ledger-id given.' };
+  }
+  const recorded = [];
+  const refused = [];
+  for (const id of ids) {
+    const updated = ledger.updateReceipt(id, { from }, { cwd });
+    if (updated.ok) recorded.push(id);
+    else refused.push({ id, error: /^No ledger (entry|to update)/.test(updated.error) ? 'no ledger entry' : updated.error });
+  }
+  const count = (n) => (n === 1 ? 'Receipt' : 'Receipts');
+  let line = `${count(recorded.length)} recorded from ${sender}: ${recorded.length}`;
+  if (recorded.length > 0) line += ` (${recorded.join(', ')})`;
+  if (refused.length > 0) {
+    line += `; NOT recorded: ${refused.length} (${refused.map((r) => `${r.id} — ${r.error}`).join(', ')})`;
+  }
+  return { ok: refused.length === 0, recorded, refused, line };
+}
+
 function parseArgs(argv) {
   const out = {
-    event: null, issue: null, dispatchResult: null, ledgerId: null, receiptReceived: false, from: null,
+    event: null, issue: null, dispatchResult: null, ledgerId: null, ledgerIds: [], receiptReceived: false, from: null,
     detail: null, force: false, schema: false, branch: null, tag: null, unrecognizedFlags: [],
     issues: null, outcome: null, runUrl: null, ciResultFile: null,
   };
@@ -756,7 +784,12 @@ function parseArgs(argv) {
     if (a === '--event' && argv[i + 1]) out.event = argv[++i];
     else if (a === '--issue' && argv[i + 1]) out.issue = parseInt(argv[++i], 10);
     else if (a === '--dispatch-result' && argv[i + 1]) out.dispatchResult = argv[++i];
-    else if (a === '--ledger-id' && argv[i + 1]) out.ledgerId = argv[++i];
+    // Repeatable and comma-separated for a batch of receipts (#3455);
+    // `ledgerId` stays the first, the one --dispatch-result closes out.
+    else if (a === '--ledger-id' && argv[i + 1]) {
+      out.ledgerIds.push(...argv[++i].split(',').map((s) => s.trim()).filter(Boolean));
+      if (out.ledgerId === null) out.ledgerId = out.ledgerIds[0] || null;
+    }
     else if (a === '--receipt-received') out.receiptReceived = true;
     else if (a === '--from' && argv[i + 1]) out.from = argv[++i];
     else if (a === '--detail' && argv[i + 1]) out.detail = argv[++i];
@@ -849,7 +882,7 @@ function main() {
         'announce.js --event ci-terminal --issues <N,N,...> --outcome armed|armed-degraded|skipped-no-workflows|skipped-paths-ignore [--run-url <url>]',
         'announce.js --event ci-resolved --issues <N,N,...> --ci-result-file <path to ci-watch.js stdout, unaltered>',
         'announce.js --dispatch-result sent|failed|skipped --ledger-id <id> [--detail "<text>"]',
-        'announce.js --receipt-received --ledger-id <id> [--from <monitor session name>]   (a /overwatch receipt reply arrived for that announcement)',
+        'announce.js --receipt-received --ledger-id <id>[,<id>...] [--ledger-id <id>...] [--from <monitor session name>]   (/overwatch receipt replies arrived; prints one summary line, exit 1 when any id is unknown)',
       ],
       envelope: {
         ok: 'boolean',
@@ -874,8 +907,11 @@ function main() {
   }
 
   if (args.receiptReceived) {
-    const result = recordReceipt({ ledgerId: args.ledgerId, from: args.from });
-    process.stdout.write(JSON.stringify({ ...result, unrecognizedFlags: args.unrecognizedFlags }, null, 2) + '\n');
+    // One line, not an envelope (#3455): nothing in it is for the user to act on.
+    const result = recordReceipts({ ledgerIds: args.ledgerIds, from: args.from });
+    let line = result.line;
+    if (args.unrecognizedFlags.length > 0) line += `; unrecognized flag(s) ignored: ${args.unrecognizedFlags.join(', ')}`;
+    process.stdout.write(`${line}\n`);
     process.exit(result.ok ? 0 : 1);
   }
 
@@ -932,5 +968,6 @@ module.exports = {
   compose,
   closeDispatch,
   recordReceipt,
+  recordReceipts,
   parseArgs,
 };

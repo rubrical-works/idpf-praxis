@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -35,6 +35,9 @@ const CONFIG_FILENAME = 'framework-config.json';
  * enum by `framework-config.test.js`, so the two cannot drift.
  */
 const VERIFICATION_MODES = Object.freeze(['automated-tests', 'host-process']);
+// /work's independent diff-review before In review (#3457). Absent = 'always'.
+const WORK_REVIEW_MODES = Object.freeze(['always', 'nonstop-only', 'off']);
+const DEFAULT_WORK_REVIEW = 'always';
 
 /**
  * The mode an undeclared project gets. Strict by construction: the carve-out
@@ -374,6 +377,36 @@ function resolveVerificationModeDetail(cwd = process.cwd()) {
 }
 
 /**
+ * When /work runs the independent diff-review before In review (#3457).
+ *
+ * `always` (the default when the key is absent) reviews every issue;
+ * `nonstop-only` reviews only under --nonstop; `off` never reviews. An
+ * unrecognized value or an unreadable config resolves to the default and says
+ * why, so a typo never silently turns the review off.
+ *
+ * @param {string} [cwd]
+ * @returns {{ mode: string, source: string, ignored?: *, warning?: string }}
+ */
+function resolveWorkReview(cwd = process.cwd()) {
+  let config;
+  try {
+    config = read(cwd);
+  } catch (err) {
+    if (!fs.existsSync(path.join(cwd, CONFIG_FILENAME))) return { mode: DEFAULT_WORK_REVIEW, source: 'default' };
+    return { mode: DEFAULT_WORK_REVIEW, source: 'default', warning: `workReview resolved to ${DEFAULT_WORK_REVIEW}: ${err.message}` };
+  }
+  const declared = config && config.workReview;
+  if (declared === undefined) return { mode: DEFAULT_WORK_REVIEW, source: 'default' };
+  if (WORK_REVIEW_MODES.includes(declared)) return { mode: declared, source: CONFIG_FILENAME };
+  return {
+    mode: DEFAULT_WORK_REVIEW,
+    source: 'default',
+    ignored: declared,
+    warning: `workReview ${JSON.stringify(declared)} is not one of ${WORK_REVIEW_MODES.join(', ')}; resolved to ${DEFAULT_WORK_REVIEW}.`,
+  };
+}
+
+/**
  * The ordered verification commands /work Step 4f must run (#2733).
  *
  * Reader half of the `verificationCommands` key, with `testCommand` as the
@@ -568,6 +601,8 @@ module.exports = {
   resolveVerificationMode,
   resolveVerificationModeDetail,
   resolveVerificationCommands,
+  resolveWorkReview,
+  WORK_REVIEW_MODES,
   resolveTmpCleanup,
   resolveReviewExpansion,
   DEFAULT_REVIEW_EXPANSION_CAP,

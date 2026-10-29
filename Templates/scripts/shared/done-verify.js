@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Analyze commits referencing an issue to detect hallucinated or incomplete work. Examines diffs for comment-only changes, EOF-only appends, and suspect patterns (e.g., TODO placeholders, empty function bodies). Parallelizes per-commit and per-file git operations for performance. Used by /done verification phase.
  * @checksum sha256:placeholder
  *
@@ -266,7 +266,8 @@ async function getCommitStat(hash) {
  * form reads it the same way.
  */
 function splitNumstat(output) {
-    return String(output || '').split(output && output.includes('\0') ? '\0' : '\n')
+    // The one caller passes a non-empty string, so no falsy guard (#3446, CodeQL #22).
+    return output.split(output.includes('\0') ? '\0' : '\n')
         .map((rec) => rec.replace(/^\n+/, ''))
         .filter(Boolean);
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Compute the Files Changed section for a /work issue by scanning commits that
  * reference the issue ("Refs #N"), classifying each file via lib/classify-changed-files.js,
  * and emitting a formatted markdown section to stdout. Empty output when no commits match
@@ -10,12 +10,13 @@
  * Extracted from /work Step 4c (#2318).
  */
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { formatFilesChanged } = require('./lib/classify-changed-files');
 const { issueRefGrepPattern, parseNameStatusLine } = require('./lib/issue-ref-match.js');
 
-// The base is interpolated into a shell string (#3290), so only a hex SHA may
-// reach it — anything else could carry `$(...)` or a backtick.
+// Only a hex SHA may be a base (#3290). git now runs with an argument array
+// (#3446), so no shell sees it; the check stays so a non-SHA range is refused
+// before git is asked to resolve it.
 const SHA_PATTERN = /^[0-9a-fA-F]{4,40}$/;
 
 function parseArgs(argv) {
@@ -33,7 +34,7 @@ function parseArgs(argv) {
   return out;
 }
 
-function readGitLog(issueNumber, execFn = execSync, base = null) {
+function readGitLog(issueNumber, execFn = execFileSync, base = null) {
   if (base && !SHA_PATTERN.test(base)) {
     throw new Error(`base "${base}" is not a commit SHA`);
   }
@@ -42,13 +43,16 @@ function readGitLog(issueNumber, execFn = execSync, base = null) {
   // that scope-drift-check then consumes as declared scope.
   // Range-bounded (#3267): `base..HEAD` keeps a reopened issue's released
   // commits out of this run's Files Changed.
-  const range = base ? ` ${base}..HEAD` : '';
-  return execFn(
+  const args = [
     // core.quotePath=false (#3382): a non-ASCII name arrives literal; what
     // git still quotes is undone by parseNameStatusLine.
-    `git -c core.quotePath=false log --name-status --grep="${issueRefGrepPattern(issueNumber)}" --pretty=format:""${range}`,
-    { encoding: 'utf8' }
-  );
+    '-c', 'core.quotePath=false',
+    'log', '--name-status',
+    `--grep=${issueRefGrepPattern(issueNumber)}`,
+    '--pretty=format:',
+  ];
+  if (base) args.push(`${base}..HEAD`);
+  return execFn('git', args, { encoding: 'utf8' });
 }
 
 /**
@@ -84,7 +88,7 @@ function dedupeNameStatus(raw) {
   return [...byPath.entries()].map(([p, s]) => `${s}\t${p}`).join('\n');
 }
 
-function run(issueNumber, execFn = execSync, base = null) {
+function run(issueNumber, execFn = execFileSync, base = null) {
   const raw = readGitLog(issueNumber, execFn, base);
   if (!raw || !raw.trim()) return '';
   return formatFilesChanged(dedupeNameStatus(raw));
@@ -101,7 +105,7 @@ function main() {
     if (!base) {
       process.stderr.write('Warning: no base branch resolved; Files Changed covers every Refs commit in history, not only this branch (#3267).\n');
     }
-    const out = run(args.issue, execSync, base);
+    const out = run(args.issue, execFileSync, base);
     if (out) process.stdout.write(out + '\n');
     process.exit(0);
   } catch (e) {

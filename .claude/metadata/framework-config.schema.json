@@ -415,6 +415,15 @@
       },
       "deprecated": true
     },
+    "workReview": {
+      "type": "string",
+      "enum": [
+        "always",
+        "nonstop-only",
+        "off"
+      ],
+      "description": "When /work runs the independent diff-review of an issue's Refs #N commits before the in_review move (#3457). `always` (the default when the key is ABSENT) reviews every issue; `nonstop-only` reviews only under --nonstop; `off` never reviews. `--no-review` skips it for one run in any mode. Read through framework-config.js resolveWorkReview(); an unrecognized value resolves to `always` with a warning."
+    },
     "verificationMode": {
       "type": "string",
       "enum": [

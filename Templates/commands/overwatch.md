@@ -1,5 +1,5 @@
 ---
-version: "v0.113.0"
+version: "v0.114.0"
 description: Dedicate a session to observing cross-session IDPF activity.
 argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -112,7 +112,7 @@ const d = decideReceipt({ text: inbound.text, from: inbound.fromName, event: cla
 | `receipt-reply` | A receipt reply — never replied to |
 | `no-sender` | No address to reply to |
 | `no-text` | Nothing usable |
-**Never a gate:** nothing waits, nothing retries, a failed `SendMessage` is reported and the tick continues. The sender records it (`announce.js --receipt-received --ledger-id <id>`); the monitor keeps no receipt state.
+**Never a gate:** nothing waits, nothing retries, a failed `SendMessage` is reported and the tick continues. The sender records them, all ids in one call (`announce.js --receipt-received --ledger-id <id>[,<id>...]`); the monitor keeps no receipt state.
 ### Step 4: Correlate and Report
 Compare announced against landed. Finding kinds, severities and rationales are **data** — re-read `.claude/metadata/overwatch-signals.json` from disk at use (rule `01-anti-hallucination.md`).
 **Re-validate before reporting.** Observations go stale inside one tick: an issue read as `in_review` can be `Done` ninety seconds later, closed by a session that never announced it. Re-check any issue state a finding rests on immediately before reporting, and say so when it could not be re-confirmed.

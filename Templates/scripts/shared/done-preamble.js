@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -116,6 +116,9 @@ function parseArgs(args) {
 
   const forceMove = args.includes('--force-move');
   const yes = args.includes('--yes');
+  // --release-handoff performs the post-release gate hand-off (#3453); only
+  // carried when given, so existing envelopes are unchanged.
+  const releaseHandoff = args.includes('--release-handoff');
   const hasAll = args.includes('--all');
 
   // --all conflicts with --issue/--issues
@@ -140,6 +143,7 @@ function parseArgs(args) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: "${raw}". Must be a positive integer.` } };
     }
     const result = { mode: 'single', issues: [num], forceMove };
+    if (releaseHandoff) result.releaseHandoff = true;
     if (yes) result.yes = true;
     return result;
   }
@@ -155,6 +159,7 @@ function parseArgs(args) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue numbers in: "${raw}".` } };
     }
     const result = { mode: 'batch', issues: nums, forceMove };
+    if (releaseHandoff) result.releaseHandoff = true;
     if (yes) result.yes = true;
     return result;
   }
@@ -558,6 +563,133 @@ async function moveToDone(issueNum) {
  * @param {{ forceMove?: boolean }} options
  * @returns {Promise<object>} JSON envelope
  */
+// ─── Post-release gate hand-off (#3453) ───
+//
+// A `→ GATE: release` criterion whose check can only run after the release
+// deploys has no step that can check it: /prepare-release closes the branch
+// tracker (moving every open sub-issue to Backlog) before the tag push that
+// starts the deploy. When an issue's only unchecked boxes are such gates,
+// /done hands each to a standalone QA issue — off the tracker, in qa_required
+// — checks the box with a pointer to it, and lets the issue close. Detection
+// runs before any `gh pmu move`, so a `.gh-pmu.json` `checkboxGateMarkers`
+// that lets the move accept gate lines can never skip the hand-off.
+
+const GATE_MARKERS_PATH = path.join(__dirname, '..', '..', 'metadata', 'ac-gate-markers.json');
+const QA_CONFIG_PATH = path.join(__dirname, 'lib', 'qa-config.json');
+
+function releaseGatePattern(markersPath = GATE_MARKERS_PATH) {
+  const markers = JSON.parse(fs.readFileSync(markersPath, 'utf8')).markers || [];
+  const release = markers.find((m) => m.id === 'gate-release');
+  if (!release) throw new Error('ac-gate-markers.json has no gate-release marker');
+  return new RegExp(release.pattern);
+}
+
+/**
+ * Whether an issue body can be handed off: every unchecked checkbox line
+ * carries `→ GATE: release`. Any other unchecked line — plain work, an open
+ * `→ QA: #N` gate, a `→ GATE: review` — blocks, so the move refuses it as
+ * before. Checkboxes are read by lib/checkbox-scan.js — line-start, outside
+ * code fences — the way `gh pmu move` counts them.
+ * @param {string} body
+ * @returns {{eligible: boolean, gated: Array<{line: string, criterion: string}>, blocking: string[]}}
+ */
+function classifyReleaseGates(body, markersPath = GATE_MARKERS_PATH) {
+  const { scanCheckboxes } = require('./lib/checkbox-scan.js');
+  const pattern = releaseGatePattern(markersPath);
+  const text = String(body || '').replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const gated = [];
+  const blocking = [];
+  for (const box of scanCheckboxes(text)) {
+    if (box.checked) continue;
+    const line = lines[box.line];
+    if (pattern.test(box.text)) {
+      gated.push({ line, criterion: box.text.replace(/\s*→ GATE: release\s*$/, '').trim() });
+    } else {
+      blocking.push(line.trim());
+    }
+  }
+  return { eligible: gated.length > 0 && blocking.length === 0, gated, blocking };
+}
+
+/** The body with each handed-off box checked and pointed at its QA issue. */
+function applyReleaseHandoff(body, handoffs) {
+  let out = String(body || '').replace(/\r\n/g, '\n');
+  for (const { line, qaNumber } of handoffs) {
+    const rewritten = `${line.replace('[ ]', '[x]').replace(/\s+$/, '')} → QA: #${qaNumber}`;
+    out = out.split('\n').map((l) => (l === line ? rewritten : l)).join('\n');
+  }
+  return out;
+}
+
+/** The QA issue body, in the same template /work Step 4a files. */
+function buildHandoffQaBody({ parent, parentTitle, criterion }, configPath = QA_CONFIG_PATH) {
+  const template = JSON.parse(fs.readFileSync(configPath, 'utf8')).bodyTemplate;
+  const steps = [
+    `1. After the release that ships #${parent} has deployed, check: ${criterion}`,
+    '2. Record the evidence (run or scan URL, output) in a comment on this issue.',
+    `3. Close with \`/qa\` once it holds. #${parent} was closed by \`/done\` with this check handed off (post-release gate, #3453).`,
+  ].join('\n');
+  return template
+    .replace('{acDescription}', criterion)
+    .replace('{parentIssue}', String(parent))
+    .replace('{parentTitle}', parentTitle || '')
+    .replace('{steps}', steps)
+    .replace('{expectedResult}', `${criterion} — holds after the release deploys.`);
+}
+
+async function defaultWriteBody(issueNum, body) {
+  const tmp = `.tmp-${issueNum}.md`;
+  fs.writeFileSync(tmp, body);
+  try {
+    await execAsync(`gh pmu edit ${issueNum} -F ${tmp}`, EXEC_OPTS);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+/**
+ * File one standalone QA issue per gated criterion, then rewrite the parent's
+ * boxes. A filing failure stops the run; the boxes already filed are still
+ * rewritten, so no QA issue is left without the pointer that explains it.
+ */
+async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defaultWriteBody } = {}) {
+  const classified = classifyReleaseGates(issue.body);
+  if (!classified.eligible) {
+    return {
+      ok: false,
+      handedOff: [],
+      error: { code: 'NOT_RELEASE_GATED', message: `#${issueNum} has unchecked criteria that are not post-release gates`, blocking: classified.blocking },
+    };
+  }
+  const file = fileQaFn || require('./lib/qa-issue.js').fileQaIssue;
+  const handedOff = [];
+  const lines = [];
+  let failure = null;
+  for (const { line, criterion } of classified.gated) {
+    const bodyPath = `.tmp-qa-body-${require('crypto').randomBytes(4).toString('hex')}.md`;
+    fs.writeFileSync(bodyPath, buildHandoffQaBody({ parent: issueNum, parentTitle: issue.title, criterion }));
+    let r;
+    try {
+      r = await file({ title: `QA: ${criterion}`, bodyPath });
+    } finally {
+      fs.rmSync(bodyPath, { force: true });
+    }
+    if (!r || !r.ok) {
+      failure = { code: 'QA_FILING_FAILED', message: `QA issue for "${criterion}" was not filed: ${(r && r.error) || 'unknown error'}` };
+      break;
+    }
+    handedOff.push({ criterion, qaNumber: r.number, status: r.status });
+    lines.push({ line, qaNumber: r.number });
+  }
+  let body = issue.body;
+  if (lines.length) {
+    body = applyReleaseHandoff(issue.body, lines);
+    await writeBodyFn(issueNum, body);
+  }
+  return failure ? { ok: false, handedOff, body, error: failure } : { ok: true, handedOff, body };
+}
+
 async function runSingleIssue(issueNum, options = {}) {
   const warnings = [];
   let roundTrips = 0;
@@ -646,6 +778,31 @@ async function runSingleIssue(issueNum, options = {}) {
     }
   }
 
+  // 6a. Post-release gate hand-off (#3453), before any move. Offered by
+  // default; performed with --release-handoff, after which the rewritten body
+  // has no unchecked box and the move below proceeds.
+  let releaseHandoff = null;
+  const isEpicIssue = (dataResult.issue.labels || []).some(l => l.name === 'epic');
+  const gates0 = isEpicIssue ? { eligible: false, gated: [] } : classifyReleaseGates(dataResult.issue.body);
+  if (gates0.eligible && !options.releaseHandoff) {
+    const context = { issue: dataResult.issue, status: dataResult.status, ci: gatherCiData(), tracker: resolveTracker(), trackerLinked: false };
+    if (nextSteps) context.nextSteps = nextSteps;
+    const gates = { movedToDone: false, releaseHandoff: { offered: true, criteria: gates0.gated.map((g) => g.criterion) } };
+    const envelope = attachDiffVerification(buildSuccessEnvelope(context, gates, warnings), diffVerification);
+    envelope.roundTrips = roundTrips;
+    return envelope;
+  }
+  if (gates0.eligible && options.releaseHandoff) {
+    const deps = options.deps || {};
+    const handoff = await runReleaseHandoff(issueNum, { issue: dataResult.issue, fileQaFn: deps.fileQaFn, writeBodyFn: deps.writeBodyFn });
+    roundTrips += handoff.handedOff.length + (handoff.handedOff.length ? 1 : 0);
+    if (!handoff.ok) {
+      return buildErrorEnvelope([{ ...handoff.error, handedOff: handoff.handedOff }]);
+    }
+    dataResult.issue.body = handoff.body;
+    releaseHandoff = { offered: false, handedOff: handoff.handedOff };
+  }
+
   // 7. Conditional move to done — epic guard (#2367): skip auto-move when the
   // issue has the `epic` label so the /done command spec's epic flow can
   // process sub-issues first, then close the epic explicitly. The end state
@@ -707,6 +864,9 @@ async function runSingleIssue(issueNum, options = {}) {
   };
   if (moveSkip.skippedReason) {
     gates.skippedReason = moveSkip.skippedReason;
+  }
+  if (releaseHandoff) {
+    gates.releaseHandoff = releaseHandoff;
   }
 
   const envelope = attachDiffVerification(buildSuccessEnvelope(context, gates, warnings), diffVerification);
@@ -848,7 +1008,7 @@ async function main() {
   }
 
   if (parsed.mode === 'single') {
-    const result = await runSingleIssue(parsed.issues[0], { forceMove: parsed.forceMove });
+    const result = await runSingleIssue(parsed.issues[0], { forceMove: parsed.forceMove, releaseHandoff: parsed.releaseHandoff });
     if (parsed.yes) result.yes = true;
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
@@ -859,7 +1019,7 @@ async function main() {
     // Batch mode: process each issue sequentially (order matters for side effects)
     const results = [];
     for (const num of parsed.issues) {
-      results.push(await runSingleIssue(num, { forceMove: parsed.forceMove }));
+      results.push(await runSingleIssue(num, { forceMove: parsed.forceMove, releaseHandoff: parsed.releaseHandoff }));
     }
     const envelope = buildBatchEnvelope(parsed.issues, results);
     if (parsed.yes) envelope.yes = true;
@@ -883,7 +1043,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  applyReleaseHandoff,
   attachDiffVerification,
+  buildHandoffQaBody,
+  classifyReleaseGates,
+  runReleaseHandoff,
   buildBatchEnvelope,
   classifyError,
   execSafe,

@@ -1,26 +1,24 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * ask-question-shape-hook.js
  *
- * PreToolUse hook (matcher: AskUserQuestion) that blocks a question shaped to
- * be unreadable (#3233). Claude Code renders question text in bold, so context
- * stuffed into the question becomes a wall of bold text; the context belongs
- * in markdown printed before the call.
+ * PreToolUse hook (matcher: AskUserQuestion) that blocks a call over the
+ * tool's own hard limits (#3233, #3463): more than `maxOptions` options, or a
+ * `header` over `maxHeaderLength` characters (#3198). The tool rejects both
+ * as "Invalid tool parameters" without saying which, so the hook blocks first
+ * and names the fix.
  *
- * Blocks, per question:
- *   - text longer than `maxQuestionLength`;
- *   - block content: a markdown table row, a list item, or several paragraphs;
- *   - more than `maxOptions` options or a `header` over `maxHeaderLength`
- *     characters — the tool's own hard limits (#3198), which it rejects
- *     as "Invalid tool parameters" without saying which.
- * The correction names each offending question and the remedy, which branches
- * on `multiSelect`: previews render for single-select questions only, so a
- * multi-select correction never suggests them. It closes with one line
- * pointing to Reference/AskUserQuestion-Shape.md, which carries the
- * convention the hook cannot check (it never sees text printed before the
- * call); the convention itself is not restated (#3440).
+ * It does not block question length or block content (a table, list items,
+ * several paragraphs) — not since #3463. Those were convention: the tool
+ * accepts them, and every such block surfaced to the user as a hook error.
+ * The convention (context printed first as markdown, a one-sentence
+ * question, previews) lives in Reference/AskUserQuestion-Shape.md, which the
+ * correction's closing pointer names.
+ *
+ * The correction names each offending question and the remedy for each kind
+ * of problem, each once (#3452), then the pointer (#3440).
  *
  * Block shape: `{decision: 'block', reason}` on stdout, exit 0 — the shape the
  * #3233 hands-on probe confirmed reaches the model.
@@ -52,33 +50,34 @@ function loadRules() {
 /** True when the rules carry every field the checks need. */
 function usable(rules) {
   return !!rules
-    && Number.isInteger(rules.maxQuestionLength)
     && Number.isInteger(rules.maxOptions)
     && Number.isInteger(rules.maxHeaderLength)
-    && rules.remedy && typeof rules.remedy.singleSelect === 'string' && typeof rules.remedy.multiSelect === 'string'
+    && rules.remedy && typeof rules.remedy.header === 'string' && typeof rules.remedy.options === 'string'
     && typeof rules.pointer === 'string' && rules.pointer.length > 0;
 }
 
 /**
- * Everything wrong with one question, as short phrases.
- * @returns {string[]}
+ * Every hard limit one question exceeds, as short phrases, each tagged with
+ * the kind of fix it needs (#3452).
+ * @returns {{text: string, kind: 'options'|'header'}[]}
  */
 function problemsWith(question, rules) {
   const problems = [];
-  const text = typeof question.question === 'string' ? question.question : '';
-  if (text.length > rules.maxQuestionLength) {
-    problems.push(`its text is ${text.length} characters (limit ${rules.maxQuestionLength})`);
-  }
-  if (/\n\s*\n/.test(text)) problems.push('it has several paragraphs');
-  if (/^\s*\|.*\|\s*$/m.test(text)) problems.push('it contains a markdown table');
-  if (/^\s*(?:[-*+]|\d+[.)])\s+\S/m.test(text)) problems.push('it contains list items');
   if (Array.isArray(question.options) && question.options.length > rules.maxOptions) {
-    problems.push(`it has ${question.options.length} options (the tool accepts at most ${rules.maxOptions} options)`);
+    problems.push({ kind: 'options', text: `it has ${question.options.length} options (the tool accepts at most ${rules.maxOptions} options)` });
   }
   if (typeof question.header === 'string' && question.header.length > rules.maxHeaderLength) {
-    problems.push(`its header "${question.header}" is ${question.header.length} characters (the tool accepts at most ${rules.maxHeaderLength} characters)`);
+    problems.push({ kind: 'header', text: `its header "${question.header}" is ${question.header.length} characters (the tool accepts at most ${rules.maxHeaderLength} characters)` });
   }
   return problems;
+}
+
+/** The remedies for one question's problems, each kind once, in kind order. */
+function remediesFor(problems, rules) {
+  const fill = (s) => s.replace(/\{maxHeaderLength\}/g, rules.maxHeaderLength).replace(/\{maxOptions\}/g, rules.maxOptions);
+  return ['options', 'header']
+    .filter((k) => problems.some((p) => p.kind === k))
+    .map((k) => fill(rules.remedy[k]));
 }
 
 /**
@@ -103,15 +102,14 @@ function respond(rawInput, rules) {
     if (!question || typeof question !== 'object') return;
     const problems = problemsWith(question, rules);
     if (problems.length === 0) return;
-    const remedy = question.multiSelect === true ? rules.remedy.multiSelect : rules.remedy.singleSelect;
-    findings.push(`Question ${i + 1} ("${String(question.header || '').slice(0, 40)}"): ${problems.join('; ')}. ${remedy}`);
+    const remedies = remediesFor(problems, rules).join(' ');
+    findings.push(`Question ${i + 1} ("${String(question.header || '').slice(0, 40)}"): ${problems.map((p) => p.text).join('; ')}. ${remedies}`);
   });
   if (findings.length === 0) return SILENT;
 
-  // Findings, their remedy and one pointer — never the whole convention (#3440):
-  // restating it made a single violated limit read as a style guide.
+  // Findings, their remedy and one pointer — never the whole convention (#3440).
   const reason = [
-    'AskUserQuestion blocked: the question text renders in bold, so it must be one short sentence (ask-question-shape.json).',
+    'AskUserQuestion blocked: the call exceeds a limit the tool itself enforces (ask-question-shape.json).',
     ...findings,
     rules.pointer,
   ].join('\n');

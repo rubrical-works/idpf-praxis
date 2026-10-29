@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Does integrating the upstream need a framework or skills upgrade
  *   on this machine? (#3033). Compares the upstream framework-config.json
  *   (`git show @{upstream}:framework-config.json`) with the local one:

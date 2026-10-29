@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * idpf-measure.js
  *
  * CLI for `/idpf-measure` (#2794). Binds the three helpers together:
@@ -88,7 +88,8 @@ function run(argv, opts) {
   const unknown = args.filter((a) => a.startsWith('--') && !MODES.includes(a));
 
   if (modes.length === 0) {
-    return fail('NO_MODE', 'One of --start, --stop, --report or --schema is required.');
+    // Built from MODES (#3415): a hand-written list omitted --reset.
+    return fail('NO_MODE', `One of ${MODES.slice(0, -1).join(', ')} or ${MODES[MODES.length - 1]} is required.`);
   }
   if (modes.length > 1) {
     return fail('MULTIPLE_MODES', `Exactly one mode may be given; received ${modes.join(', ')}.`);
@@ -137,6 +138,15 @@ function run(argv, opts) {
         `A stale marker from pid ${existing.pid} was replaced (${existing.reason}). `
         + 'A previous session ended without --stop.'
       );
+    } else if (existing.reason === 'identity-unavailable') {
+      // readMarker reports this marker inactive, so the FOREIGN_MARKER guard
+      // passes it (#3415); warn as --stop does rather than replace it silently.
+      warnings.push(
+        'The previous marker carries no session identity (CLAUDE_PID was unavailable when '
+        + 'collection was armed), so it could not be shown not to belong to another live '
+        + 'session. Re-arming; if a concurrent session armed it, its collected events have '
+        + 'been discarded.'
+      );
     }
 
     let w;
@@ -145,16 +155,53 @@ function run(argv, opts) {
     } catch (e) {
       // An unparseable settings.local.json is refused, not overwritten (#3059);
       // anything else (an I/O error) is not a parse problem and says so (#3295).
-      return fail(e.code === 'SETTINGS_UNPARSEABLE' ? 'SETTINGS_UNPARSEABLE' : 'SETTINGS_WRITE_FAILED', e.message);
+      const r = fail(e.code === 'SETTINGS_UNPARSEABLE' ? 'SETTINGS_UNPARSEABLE' : 'SETTINGS_WRITE_FAILED', e.message);
+      r.warnings = warnings; // the log is already reset; keep what was said about it
+      return r;
     }
-    const m = marker.writeMarker(root, { spawnMs, env });
-
-    // The wiring backup rides in the marker so --stop can restore verbatim
-    // rather than re-serializing, which is byte-for-byte only by luck.
-    const stored = Object.assign({}, m, {
-      settings: { created: w.created, previousRaw: w.previousRaw, wiredRaw: w.wiredRaw },
-    });
-    fs.writeFileSync(marker.markerPath(root), JSON.stringify(stored, null, 2) + '\n');
+    const backup = { created: w.created, previousRaw: w.previousRaw, wiredRaw: w.wiredRaw };
+    // Held so a failed write can put the previous marker back: it may carry an
+    // earlier --start's settings backup, which --stop needs for an already-wired tap.
+    let previousMarker = null;
+    try {
+      previousMarker = fs.readFileSync(marker.markerPath(root), 'utf8');
+    } catch (_) {
+      // No previous marker.
+    }
+    let stored;
+    try {
+      const m = marker.writeMarker(root, { spawnMs, env });
+      // The wiring backup rides in the marker so --stop can restore verbatim
+      // rather than re-serializing, which is byte-for-byte only by luck.
+      stored = Object.assign({}, m, { settings: backup });
+      fs.writeFileSync(marker.markerPath(root), JSON.stringify(stored, null, 2) + '\n');
+    } catch (e) {
+      // A tap left wired with no marker has no backup for --stop to restore
+      // (#3415), so undo the wiring this --start added and say how it went. A
+      // tap that was already wired is not ours to remove.
+      const restored = w.alreadyWired ? { restored: 'left-wired' } : wiring.unwire(root, backup);
+      // Put the marker back as it was, never just delete it: deleting would drop
+      // a previous marker's settings backup along with any partial write.
+      let markerState = previousMarker === null ? 'absent' : 'restored';
+      try {
+        if (previousMarker === null) fs.unlinkSync(marker.markerPath(root));
+        else fs.writeFileSync(marker.markerPath(root), previousMarker);
+      } catch (err) {
+        if (previousMarker !== null || err.code !== 'ENOENT') markerState = 'unknown';
+      }
+      const r = fail(
+        'MARKER_WRITE_FAILED',
+        `The collection marker could not be written (${e.message}), so collection was not armed. `
+        + `Settings: ${restored.restored}${restored.reason ? ` (${restored.reason})` : ''}. `
+        + `Previous marker: ${markerState}.`
+      );
+      r.wiring = { restored: restored.restored, ...(restored.reason ? { reason: restored.reason } : {}) };
+      r.marker = { previous: markerState };
+      // The log is already reset, so the warnings raised before the failure
+      // still describe what happened (fail() starts them empty).
+      r.warnings = warnings;
+      return r;
+    }
 
     if (w.alreadyWired) warnings.push('The tap was already wired; --start left it as it was.');
 

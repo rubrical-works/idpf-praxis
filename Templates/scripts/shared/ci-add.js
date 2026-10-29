@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Add selected CI features to a project's GitHub Actions workflows. Applies feature templates with YAML merging, handles confirmation prompts, and provides error recovery. Part of the /ci --add subcommand.
  * @checksum sha256:placeholder
  *
@@ -153,15 +153,35 @@ function copyFeatureScript(projectDir, relTarget) {
   const source = available.source;
   const target = path.join(projectDir, ...relTarget.split('/'));
   const body = fs.readFileSync(source, 'utf8');
-  if (fs.existsSync(target)) {
+  if (!writeIfAbsent(target, body)) {
     if (fs.readFileSync(target, 'utf8') === body) {
       return { ok: true, message: ` (${relTarget} already current)` };
     }
     return { ok: true, message: ` (${relTarget} differs from the framework copy and was left as is)` };
   }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, body);
   return { ok: true, message: ` and copied ${relTarget}` };
+}
+
+/**
+ * Create `target` with `body` only if no file is there (#3446).
+ *
+ * The exclusive `wx` flag makes the existence test and the write one
+ * operation, so a file created between a separate check and the write can
+ * never be overwritten (CodeQL js/file-system-race).
+ *
+ * @param {string} target Absolute path.
+ * @param {string} body File contents.
+ * @returns {boolean} true when written, false when a file already existed.
+ */
+function writeIfAbsent(target, body) {
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  try {
+    fs.writeFileSync(target, body, { flag: 'wx' });
+    return true;
+  } catch (err) {
+    if (err.code === 'EEXIST') return false;
+    throw err;
+  }
 }
 
 /**
@@ -198,13 +218,8 @@ function writeConfigFiles(projectDir, featureId) {
   for (const [rel, body] of plan) {
     if (!rel || typeof body !== 'string') continue;
     const target = path.join(projectDir, ...rel.split('/'));
-    if (fs.existsSync(target)) {
-      left.push(rel);
-      continue;
-    }
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, body);
-    written.push(rel);
+    if (writeIfAbsent(target, body)) written.push(rel);
+    else left.push(rel);
   }
   const parts = [];
   if (written.length) parts.push(`wrote ${written.join(' and ')}`);

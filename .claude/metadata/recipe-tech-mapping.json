@@ -4,7 +4,7 @@
   "description": "Maps tech stack indicators to relevant extension recipes for /charter suggestions",
   "techMappings": {
     "package.json": {
-      "recipes": ["nodejs-tests", "dependency-audit", "eslint-security"],
+      "recipes": ["nodejs-tests", "dependency-audit"],
       "description": "Node.js project"
     },
     "go.mod": {
@@ -121,7 +121,7 @@
     "ci": {
       "description": "CI/CD integration recipes",
       "indicators": [".github/workflows/", ".gitlab-ci.yml", ".circleci/", "azure-pipelines.yml", "Jenkinsfile"],
-      "recipes": ["ci-gate-before-merge", "cross-os-testing"]
+      "recipes": ["ci-gate-before-merge"]
     },
     "coverage": {
       "description": "Test coverage recipes",

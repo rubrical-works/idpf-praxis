@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -1257,9 +1257,11 @@ function runRecordSpawnCli(argv) {
   }
   const missing = ['--ledger', '--issue', '--branch', '--worktree'].filter((k) => !opts[k]);
   if (missing.length) return { code: 1, envelope: { ok: false, error: `missing ${missing.join(', ')}` } };
+  // Read directly, ENOENT meaning first use (#3446, CodeQL js/file-system-race):
+  // an existence check first could miss a ledger and replace it with an empty one.
   let ledger = { members: [] };
-  if (fs.existsSync(opts['--ledger'])) {
-    try { ledger = JSON.parse(fs.readFileSync(opts['--ledger'], 'utf8')); } catch (e) {
+  try { ledger = JSON.parse(fs.readFileSync(opts['--ledger'], 'utf8')); } catch (e) {
+    if (e.code !== 'ENOENT') {
       return { code: 1, envelope: { ok: false, error: `cannot read run ledger ${opts['--ledger']}: ${e.message}` } };
     }
   }

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  *
  * Mechanics for `/x-session-config` (#2702) — the project-level cross-session
  * messaging config editor.
@@ -41,7 +41,6 @@ const path = require('path');
 const cfgHelper = require('./lib/framework-config.js');
 const { helpEnvelope } = require('./lib/command-args.js');
 const {
-  resolveCrossSessionConfig,
   readCrossSessionConfig,
   inspectXSessionFile,
   formatEffectiveState,
@@ -278,15 +277,23 @@ function writeMemoryArtifact(cwd) {
   }
 }
 
-/** Remove the artifact and its pointer line. Never throws; absent is success. */
+/**
+ * Remove the artifact and its pointer line. Never throws; absent is success.
+ *
+ * No existence check first (#3446, CodeQL js/file-system-race): each operation
+ * is attempted and ENOENT counts as absent, so a file that vanishes between a
+ * check and its use is not reported as a failure.
+ */
 function removeMemoryArtifact(cwd) {
   const paths = memoryPaths(cwd);
+  const absentOk = (fn) => {
+    try { return fn(); } catch (err) { if (err.code !== 'ENOENT') throw err; return null; }
+  };
   try {
-    if (fs.existsSync(paths.artifact)) fs.unlinkSync(paths.artifact);
-    if (fs.existsSync(paths.index)) {
-      const kept = fs.readFileSync(paths.index, 'utf8')
-        .split('\n')
-        .filter((line) => !line.includes(MEMORY_ARTEFACT));
+    absentOk(() => fs.unlinkSync(paths.artifact));
+    const index = absentOk(() => fs.readFileSync(paths.index, 'utf8'));
+    if (index !== null) {
+      const kept = index.split('\n').filter((line) => !line.includes(MEMORY_ARTEFACT));
       fs.writeFileSync(paths.index, kept.join('\n'));
     }
     return { ok: true, error: null };
@@ -657,6 +664,9 @@ function run({ cwd = process.cwd(), argv = [], routingProbe } = {}) {
     source: state.source,
     envOverride: state.envOverride,
     migrated,
+    // A failed strip, reported (#3446, CodeQL #11): the message was built and
+    // then dropped, so the failure was silent. null when nothing failed.
+    migrationError,
     errors: [],
     // Reported, never fatal: ok stays true even when this failed. The config
     // write above already succeeded, and failing the command afterwards would

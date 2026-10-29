@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -42,12 +42,19 @@
 
 const fs = require('fs');
 const path = require('path');
+const { runGitContended } = require('./merge-driver-config.js');
 
-// Outside the .tmp- namespace (#3063): the startup scratch sweep collects
-// every .tmp-* file after 24h, so a long /work run lost its gate decisions.
+// Outside the working tree (#3455): a file change display picked the in-tree
+// ledger up and printed raw rows into the transcript. Relative to the git
+// COMMON dir, which every worktree of the project shares — a linked
+// worktree's own `.git` is per-worktree, and would split the ledger.
+const GIT_LEDGER_PATH = 'idpf/announce-ledger.jsonl';
+// The working-tree path: the fallback where there is no git repository, and
+// read as legacy in one (#3455). Outside the .tmp- namespace (#3063): the
+// startup scratch sweep collects every .tmp-* file after 24h.
 const LEDGER_FILENAME = '.claude/.announce-ledger.jsonl';
-// The pre-#3063 name, still read for one release and folded into the new
-// file by the first update.
+// The pre-#3063 name, still read. Never folded into the current file: an
+// update is an appended row (#3346).
 const LEGACY_LEDGER_FILENAME = '.tmp-announce-ledger.jsonl';
 
 /**
@@ -150,7 +157,23 @@ const NOT_DISPATCHED = Object.freeze(['pending', 'failed']);
  */
 const COMPOSITION_STATES = Object.freeze(['pending', 'skipped']);
 
+/**
+ * Where the ledger is written: under the git common dir, or in the working
+ * tree when `cwd` is in no git repository. Resolved per call — never cached,
+ * so a directory that becomes a repository is not held to the fallback. A
+ * spawn error (a missing `cwd`, no git) is the no-repository case.
+ */
 function ledgerPath(cwd = process.cwd()) {
+  const common = runGitContended(['rev-parse', '--git-common-dir'], cwd);
+  if (common && !common.error && common.status === 0 && common.stdout) {
+    // Relative to `cwd` from a main checkout, absolute from a linked worktree.
+    return path.join(path.resolve(cwd, common.stdout), GIT_LEDGER_PATH);
+  }
+  return workingTreeLedgerPath(cwd);
+}
+
+/** The pre-#3455 location, and the no-repository fallback. */
+function workingTreeLedgerPath(cwd = process.cwd()) {
   return path.join(cwd, LEDGER_FILENAME);
 }
 
@@ -328,12 +351,17 @@ function record(entry, options = {}) {
 function readLedger(options = {}) {
   const cwd = options.cwd || process.cwd();
   const file = ledgerPath(cwd);
+  // `path` names the file rows are written to; legacy files are read beside it.
   const includeRecordOnly = options.includeRecordOnly === true;
   const empty = { entries: [], malformed: 0, exists: false, path: file };
   let raw = '';
   try {
-    // Legacy rows first: they were written before any row under the new name.
-    const present = [legacyLedgerPath(cwd), file].filter((p) => fs.existsSync(p));
+    // Legacy rows first, oldest location first: they were written before any
+    // row under the current path. The working-tree file is legacy only when
+    // the ledger has moved under the git common dir (#3455); with no
+    // repository it IS the ledger, and is read once.
+    const sources = [legacyLedgerPath(cwd), workingTreeLedgerPath(cwd), file];
+    const present = [...new Set(sources)].filter((p) => fs.existsSync(p));
     if (present.length === 0) return empty;
     raw = present.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
   } catch (err) {
@@ -580,6 +608,7 @@ function reconcile({ entries, issues, workEnabled = false } = {}) {
 }
 
 module.exports = {
+  GIT_LEDGER_PATH,
   LEDGER_FILENAME,
   LEGACY_LEDGER_FILENAME,
   TRACKED_EVENTS,
@@ -591,6 +620,7 @@ module.exports = {
   OPENER,
   CLOSER,
   ledgerPath,
+  workingTreeLedgerPath,
   normalizeSessionPid,
   record,
   readLedger,

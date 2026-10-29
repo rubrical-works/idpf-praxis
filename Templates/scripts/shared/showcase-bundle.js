@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  *
  * Living Style Guide showcase bundle generator (#2430 AC1.1.1, #2431 AC1.2.1-1.2.4).
  *

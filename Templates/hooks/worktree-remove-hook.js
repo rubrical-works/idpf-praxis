@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * worktree-remove-hook.js — WorktreeRemove hook (#3187)
  *
  * The counterpart of worktree-create-hook.js. Once a project installs a

@@ -30,7 +30,7 @@
  * Host, alternatives and the AC-8 reasoning:
  * Construction/Design-Decisions/2026-08-30-upstream-push-monitor-host-and-push-window.md
  *
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * Refs #2667
  */
 
@@ -45,7 +45,6 @@ const {
 
 const CONFIG_RELATIVE = '.claude/metadata/upstream-monitor.json';
 const SYNC_HELPER_RELATIVE = '.claude/scripts/shared/branch-sync-check.js';
-const FRAMEWORK_CONFIG_RELATIVE = 'framework-config.json';
 
 /** Repo root, derived from this file's location (…/.claude/scripts/shared). */
 function repoRoot() {

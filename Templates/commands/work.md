@@ -1,7 +1,7 @@
 ---
-version: "v0.113.0"
+version: "v0.114.0"
 description: Start working on issues with validation and automatic task extraction, using the IDPF framework.
-argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--concurrent [--agents N] [--no-review]] | --status <status> [--help]"
+argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--no-review] [--concurrent [--agents N]] | --status <status> [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -27,7 +27,7 @@ copyright: "Rubrical Works (c) 2026"
 | `--reopen` | No | Work an issue already In review or Done: move it back to `in_progress`. Without it `/work` refuses it (`ALREADY_IN_REVIEW`/`ALREADY_DONE`), moving nothing |
 | `--concurrent` | No | Epic/branch tracker: run file-disjoint sub-issues at once in framework-owned worktrees, grouped by the `**Depends on:**` graph, each merged back through the Merge-Back Review Gate (see Concurrent Mode) |
 | `--agents N` | No | Cap on agents of any kind at once — implementers, reviewers and fix cycles share it — and on unit-test concurrency (default 3; requires `--concurrent`) |
-| `--no-review` | No | Skip the gate's Tier 3 independent reviewer; Tiers 1–2 still run and the skip is reported (requires `--concurrent`) |
+| `--no-review` | No | Skip the independent review this run, in every mode: Step 4g's review, or the gate's Tier 3 under `--concurrent` (Tiers 1–2 still run); the skip is reported |
 | `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
 
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js work`, report its output, and STOP.
@@ -75,7 +75,7 @@ Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. Fast-for
 |---|---|---|
 | `--concurrent` | **One STOP per group** after merge-back, every member `in_review`; tail STOPs per member | Group report, then per member |
 | `--nonstop --concurrent` | **No STOP**, **no fixed groups** — rolling schedule: a member starts when a slot frees and every member it depends on has merged back; the parent advances it with `concurrent-orchestration.js next-steps`; a lone runnable member, none running, is worked inline — no worktree, agent or merge-back | Per member as it reaches `in_review`; nonstop summary last, repeating any leftover-worktree report |
-**Fallback:** a plan with **zero groups** runs exactly as sequential and says why. **Default unchanged:** without `--concurrent` nothing here applies; `--agents` or `--no-review` alone is reported as ignored. Rules: `.claude/rules/08-work-execution.md` Steps 2c, 3, 6a; `Reference/work-execution-conditional.md` §§ 2c, 6a.
+**Fallback:** a plan with **zero groups** runs exactly as sequential and says why. **Default unchanged:** without `--concurrent` nothing here applies; `--agents` alone is reported as ignored; `--no-review` alone skips the Step 4g review. Rules: `.claude/rules/08-work-execution.md` Steps 2c, 3, 6a; `Reference/work-execution-conditional.md` §§ 2c, 6a.
 
 ---
 ## Review-State Gate

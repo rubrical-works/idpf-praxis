@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description The argument rule for deployed commands (#3030): main input
  *   (prose, issue numbers, a single name) is typed bare and every other option
  *   is a `--flag`. Holds the table of bare forms the rule replaced, each

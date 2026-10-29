@@ -3,7 +3,7 @@
 /**
  * Section-scoped loading of /work's conditional bodies (#3325).
  *
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  *
  * Rule 08 Step 1d used to read all of `Reference/work-execution-conditional.md`
  * for any epic, branch tracker, `--nonstop`, `--concurrent` or multi-issue run.
@@ -42,6 +42,9 @@ const SECTIONS = [
   { id: '2c', applies: (s) => tree(s) && !!s.nonstop },
   { id: '3', applies: (s) => tree(s) && !!s.concurrent },
   { id: '4f', applies: (s) => tree(s) && !!s.nonstop },
+  // Step 4g runs for every issue (#3457); a shape Step 1d loads carries it, and
+  // a single standard issue reads it with --section 4g.
+  { id: '4g', applies: (s) => tree(s) || (s.selection || 0) >= 2 },
   { id: '6', applies: (s) => tree(s) && (!!s.nonstop || !!s.concurrent) },
   { id: '6a', applies: (s) => tree(s) && !!s.nonstop },
 ];
@@ -118,7 +121,7 @@ function loadSections(shape, opts = {}) {
 
 function parseArgs(argv) {
   const shape = { type: 'standard' };
-  const opts = { json: false, file: null };
+  const opts = { json: false, file: null, section: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--type') shape.type = argv[++i];
@@ -127,6 +130,7 @@ function parseArgs(argv) {
     else if (a === '--selection') shape.selection = Number(argv[++i]);
     else if (a === '--json') opts.json = true;
     else if (a === '--file') opts.file = argv[++i];
+    else if (a === '--section') opts.section = argv[++i];
   }
   return { shape, opts };
 }
@@ -136,6 +140,21 @@ function main(argv) {
   if (!['epic', 'branch', 'standard'].includes(shape.type)) {
     process.stderr.write(`--type must be epic, branch or standard (got ${shape.type})\n`);
     return 2;
+  }
+  if (opts.section) {
+    let parsed;
+    try {
+      parsed = parseSections(fs.readFileSync(opts.file || resolveConditionalFile(), 'utf8'));
+    } catch (e) {
+      process.stderr.write(`Cannot read the conditional file: ${e.message}\n`);
+      return 1;
+    }
+    if (parsed[opts.section] === undefined) {
+      process.stderr.write(`No section ${opts.section} in the conditional file (have: ${Object.keys(parsed).join(', ')})\n`);
+      return 2;
+    }
+    process.stdout.write(parsed[opts.section]);
+    return 0;
   }
   let result;
   try {

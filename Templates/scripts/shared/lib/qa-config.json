@@ -52,5 +52,5 @@
   "fixturesTemplate": "\n\n### Fixtures\n{fixtures}",
   "subIssueCommand": "gh pmu sub create --parent $ISSUE --title \"QA: [AC description]\" --label qa-required -F .tmp-qa-body-$ISSUE.md; then place it (#2821): branch via assign-branch.js assignToBranch(<sub>, <parent branch>), never gh pmu move --branch here; then gh pmu move <sub> --status qa_required. The status is a separate step because gh pmu sub create accepts no --status flag.",
   "annotationFormat": "- [ ] {acText} → QA: #{subIssueNumber}",
-  "closurePath": "Option A (config wins, #2472): the '- [ ]' box is an open QA gate. The parent moves to in_review via the Step 4b QA force-exception and stays there until all QA sub-issues are closed and their AC boxes are checked; only then can the parent reach done."
+  "closurePath": "Option A (config wins, #2472): the '- [ ]' box is an open QA gate. The parent moves to in_review via the Step 4b QA force-exception and stays there until all QA sub-issues are closed and their AC boxes are checked; only then can the parent reach done. One exception (#3453): a `→ GATE: release` box that /done hands off to a standalone QA issue is checked as `- [x] … → GATE: release → QA: #N` and its parent closes while that QA issue stays open — the check runs after the release deploys, and no release step can tick it. Every other `→ QA: #N` box keeps Option A."
 }

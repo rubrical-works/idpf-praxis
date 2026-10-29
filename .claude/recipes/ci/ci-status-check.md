@@ -17,7 +17,7 @@ prerequisites:
 ### Check CI Status
 
 ```bash
-gh run list --limit 1 --json status,conclusion,name
+gh run list --branch "$(git branch --show-current)" --limit 1 --json status,conclusion,name,headSha
 ```
 
-Report status but do not block workflow.
+Report status but do not block workflow. The query is scoped to the checked-out branch: without `--branch` (or `--commit`), `gh run list` returns the newest run repo-wide, which may belong to an unrelated branch.

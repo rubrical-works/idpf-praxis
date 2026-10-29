@@ -1,5 +1,5 @@
 ---
-version: "v0.113.0"
+version: "v0.114.0"
 description: Run a comprehensive code review with manifest-driven incremental tracking, using the IDPF framework.
 argument-hint: "[--full] [--status] [--scope <globs>] [--diff [<base>]] [--batch <N>] [--with <domains>] [--suggest] [--help]"
 copyright: "Rubrical Works (c) 2026"

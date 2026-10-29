@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Analyze a project and generate CI improvement recommendations based on detected languages, test tooling, deployment targets, and deprecated action versions. Produces structured recommendation objects consumed by ci-recommend-ui.js and ci-apply.js.
  * @checksum sha256:placeholder
  *
@@ -188,11 +188,13 @@ function inventoryWorkflows(projectDir) {
  * A run step that looks like a test command. Named (#3424) so the
  * paths-ignore offer, the trigger-scope classifier and the per-push
  * duplicate check share one definition of "has a test step". Matched as a
- * whole token (#3438) — `test` bounded by anything but a letter or digit, so
- * `test:unit`, `unit-test` and `test_all.sh` count and `latest` and `attest`
- * do not — plus the runners whose names end in "test".
+ * token starting at a boundary (#3438) — `test` preceded by anything but a
+ * letter or digit, so `test:unit`, `unit-test` and `test_all.sh` count and
+ * `latest` and `attest` do not; a word suffix is part of the name (#3441), so
+ * `testall`, `test2` and `testing` count — plus the runners whose names end
+ * in "test".
  */
-const TEST_COMMAND = /(?:^|[^a-z0-9])(?:tests?|jest|vitest|pytest|unittest|nextest|ctest|gotestsum)(?:$|[^a-z0-9])/i;
+const TEST_COMMAND = /(?:^|[^a-z0-9])(?:test\w*|jest|vitest|pytest|unittest|nextest|ctest|gotestsum)(?:$|[^a-z0-9])/i;
 
 /** @param {object} step @returns {boolean} */
 function isTestStep(step) {
@@ -252,7 +254,7 @@ function expandMatrix(matrix) {
     }
   }
   if (combos.length === 0) combos = [{}];
-  return { legs: combos.length, combos, unresolved };
+  return { legs: combos.length, combos, unresolved, axes: [...axisNames] };
 }
 
 /**
@@ -782,15 +784,20 @@ function substituteMatrix(line, combo, sharded, env = {}) {
  * by their non-shard values, and a group is one full run only when it covers
  * every shard the job declares — so an `exclude` that drops some shards from
  * one group leaves that group a partial run, never rounded up to a full one.
+ * Grouping uses the declared matrix axes (#3441): a key an `include:` entry
+ * adds to some legs is not an axis and must not split one shard set in two.
+ * An include-only matrix declares no axes, so every key of its entries is one.
  * @param {object[]} legs - the combinations running this command
  * @param {object[]} all - every combination of the job
  * @param {string[]} sharded - shard axes
+ * @param {string[]} [axes] - declared matrix axes (`expandMatrix().axes`)
  * @returns {number}
  */
-function fullRunsOf(legs, all, sharded) {
+function fullRunsOf(legs, all, sharded, axes = []) {
   if (!sharded.length) return legs.length;
   const shardOf = (c) => JSON.stringify(sharded.map((a) => c[a]));
-  const restOf = (c) => JSON.stringify(Object.keys(c).filter((a) => !sharded.includes(a)).sort().map((a) => [a, c[a]]));
+  const groupKeys = (c) => (axes.length ? axes : Object.keys(c)).filter((a) => !sharded.includes(a)).sort();
+  const restOf = (c) => JSON.stringify(groupKeys(c).map((a) => [a, c[a]]));
   const required = new Set(all.map(shardOf));
   const groups = new Map();
   for (const c of legs) {
@@ -889,7 +896,7 @@ function inventoryPushJobs(projectDir, options = {}) {
             byCommand.get(command).push(c);
           }
           for (const [command, legs] of byCommand) {
-            const fullRuns = fullRunsOf(legs, m.combos, sharded);
+            const fullRuns = fullRunsOf(legs, m.combos, sharded, m.axes);
             // A value the analysis cannot resolve is unknown: reported, never
             // counted toward a duplicate (#3438).
             if (isExpression(command) || isExpression(stepDir(step))) {

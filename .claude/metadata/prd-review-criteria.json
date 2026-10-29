@@ -195,7 +195,7 @@
       "id": "decomposition",
       "name": "Problem decomposition",
       "question": "Does the PRD adequately decompose the problem — are the epics/stories the right granularity for this scope?",
-      "header": "Decomposition",
+      "header": "Breakdown",
       "options": [
         { "label": "Well decomposed ✅", "description": "Stories are right-sized, epics group logically, nothing missing" },
         { "label": "Minor issues ⚠️", "description": "Some stories too large or grouping could improve" },

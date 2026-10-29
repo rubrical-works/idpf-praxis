@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
@@ -406,6 +406,9 @@ function schema() {
     return {
         script: 'wait-for-ci.js',
         arguments: ['--branch <name>', '--commit <sha> | --sha <sha>', '--timeout <seconds>', '--schema'],
+        modes: [
+            { mode: '--pr-tested --pr <branch> --sha <merge commit>', meaning: 'Decide whether /prepare-release Step 4.4a may skip its post-merge wait (#3444). Prints {path: skip|wait, reason, runId, runs, workflows}; exits 0 on either path, 1 on bad arguments. Waits nothing.' }
+        ],
         exitCodes: [
             { code: EXIT_CODES.SUCCESS,         name: 'SUCCESS',         meaning: 'CI passed for the selected run.',                                                    ruleAction: 'continue' },
             { code: EXIT_CODES.FAILURE,         name: 'FAILURE',         meaning: 'CI failed, bad arguments, or gh unavailable after retries.',                          ruleAction: 'STOP' },
@@ -420,6 +423,8 @@ async function run(argv = [], deps = {}) {
     const fetchRuns = deps.fetchRuns || defaultFetchRuns;
     const fetchRun = deps.fetchRun || defaultFetchRun;
     const wait = deps.sleep || sleep;
+
+    if (argv[0] === '--pr-tested') return runPrTested(argv, deps);
 
     if (argv.includes('--schema')) {
         if (argv.some(a => a !== '--schema')) {
@@ -679,6 +684,177 @@ function defaultFetchRun(runId, deps = {}) {
     return JSON.parse(runJson);
 }
 
+// --- Post-merge skip decision (#3444) ---
+//
+// /prepare-release Step 4.4a waits on main's merge commit. When main did not
+// move between the PR run and the merge, that commit's tree is the tree the
+// pull_request runs already passed, so the wait re-tests it. These functions
+// decide, from evidence, whether the PR runs already cover every workflow the
+// merge commit will trigger. Every gap resolves to `wait`, the existing gate.
+
+/** Glob for a GitHub Actions branch filter: `*` stays in one segment, `**` crosses. */
+function branchGlobMatches(pattern, branch) {
+    const p = String(pattern);
+    if (p.startsWith('!')) return false;
+    const re = p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
+    return new RegExp(`^${re}$`).test(branch);
+}
+
+/**
+ * Whether one `on:` entry triggers for a branch. A map with only tag filters
+ * is a tag trigger; `branches` must match; `branches-ignore` must not.
+ */
+function eventTriggersBranch(config, branch) {
+    if (config === null || config === undefined || typeof config !== 'object') return true;
+    const list = (v) => (Array.isArray(v) ? v : (v === undefined ? null : [v]));
+    const branches = list(config.branches);
+    const ignore = list(config['branches-ignore']);
+    if (!branches && !ignore && (config.tags || config['tags-ignore'])) return false;
+    if (branches) return branches.some((b) => branchGlobMatches(b, branch));
+    if (ignore) return !ignore.some((b) => branchGlobMatches(b, branch));
+    return true;
+}
+
+/**
+ * Read a workflow file's `on:` and say whether it runs on a push to `branch`
+ * and on pull_request into it. Throws on a file that does not parse — the
+ * caller turns that into `wait`.
+ *
+ * @param {string} text - workflow YAML
+ * @param {string} branch - default branch
+ * @returns {{push: boolean, pullRequest: boolean}}
+ */
+function workflowTriggers(text, branch) {
+    const yaml = require('yaml');
+    const doc = yaml.parse(text) || {};
+    const on = doc.on !== undefined ? doc.on : doc[true];
+    let events = {};
+    if (typeof on === 'string') events = { [on]: null };
+    else if (Array.isArray(on)) events = Object.fromEntries(on.map((e) => [e, null]));
+    else if (on && typeof on === 'object') events = on;
+    const has = (name) => Object.prototype.hasOwnProperty.call(events, name);
+    return {
+        push: has('push') && eventTriggersBranch(events.push, branch),
+        pullRequest: has('pull_request') && eventTriggersBranch(events.pull_request, branch),
+    };
+}
+
+/**
+ * Decide whether Step 4.4a may skip its post-merge wait (#3444). Pure: every
+ * input was gathered by gatherPostMergeEvidence() or a test.
+ *
+ * Workflows pair with runs by workflow id (`workflowDatabaseId`), never by
+ * name — downstream projects name workflows freely, two may share a name,
+ * and one may have none.
+ *
+ * @returns {{path: 'skip'|'wait', reason: string, runId: number|null, runs: object[], workflows: string[]}}
+ */
+function decidePostMergeSkip(input) {
+    const wait = (reason, extra = {}) => ({ path: 'wait', reason, runId: null, runs: [], workflows: [], ...extra });
+    const { mergeSha, prMergeSha, mergeTree, prHeadSha, prHeadTree, defaultBranch, workflows, prRuns, errors = [] } = input || {};
+
+    if (errors.length) return wait(`lookup failed: ${errors.join('; ')}`);
+    if (!mergeSha || !prMergeSha || !prHeadSha) return wait('lookup failed: merge commit or PR head SHA unknown');
+    if (mergeSha !== prMergeSha) return wait(`main moved after the merge: MERGE_SHA ${mergeSha} is not the PR's merge commit ${prMergeSha}`);
+    if (!mergeTree || !prHeadTree) return wait('lookup failed: a tree could not be resolved');
+    if (mergeTree !== prHeadTree) return wait(`merge commit tree ${mergeTree} differs from the PR head tree ${prHeadTree}; the PR runs did not test this tree`);
+    if (!Array.isArray(workflows)) return wait('lookup failed: workflow list unavailable');
+    if (!Array.isArray(prRuns)) return wait('lookup failed: pull_request runs unavailable');
+
+    const onPush = [];
+    for (const wf of workflows) {
+        let t;
+        try { t = workflowTriggers(wf.text, defaultBranch); } catch (e) {
+            return wait(`lookup failed: ${wf.path} could not be parsed (${e.message})`);
+        }
+        if (!t.push) continue;
+        if (!t.pullRequest) {
+            return wait(`${wf.path} runs on push to ${defaultBranch} but not on pull_request, so no PR run covers it`, { workflows: [wf.path] });
+        }
+        onPush.push(wf);
+    }
+    if (onPush.length === 0) return wait(`no workflow runs on push to ${defaultBranch}; nothing for a PR run to stand in for`);
+
+    const runs = [];
+    for (const wf of onPush) {
+        const candidates = prRuns.filter((r) => r.workflowDatabaseId === wf.id && r.event === 'pull_request' && r.headSha === prHeadSha);
+        const ok = candidates.find((r) => r.status === 'completed' && r.conclusion === 'success');
+        if (!ok) return wait(`no successful pull_request run of ${wf.path} on PR head ${prHeadSha}`, { workflows: [wf.path] });
+        const skipped = (ok.jobs || []).filter((j) => j.conclusion === 'skipped').map((j) => j.name);
+        if (skipped.length) {
+            return wait(`${wf.path} PR run ${ok.databaseId} skipped job(s) ${skipped.join(', ')}, which a push run may execute`, { workflows: [wf.path] });
+        }
+        runs.push({ workflow: wf.path, runId: ok.databaseId, url: ok.url });
+    }
+    return {
+        path: 'skip',
+        reason: `merge commit ${mergeSha} has the PR-tested tree ${mergeTree}; every push-triggered workflow passed on pull_request for ${prHeadSha}`,
+        runId: runs[0].runId,
+        runs,
+        workflows: runs.map((r) => r.workflow),
+    };
+}
+
+/**
+ * Gather decidePostMergeSkip()'s inputs with gh and git, through
+ * execFileSync and argument arrays (no shell). A failed call is recorded in
+ * `errors` rather than thrown, so the decision reports it as the reason.
+ */
+function gatherPostMergeEvidence({ pr, mergeSha }, deps = {}) {
+    const exec = deps.execFileSync || require('child_process').execFileSync;
+    // stderr piped: an expected miss (a workflow absent from the merged tree)
+    // must not print git's "fatal:" line above the envelope.
+    const call = (file, args) => String(exec(file, args, { encoding: 'utf8', timeout: GH_CALL_TIMEOUT, stdio: ['pipe', 'pipe', 'pipe'] }));
+    const out = { mergeSha, prMergeSha: null, mergeTree: null, prHeadSha: null, prHeadTree: null, defaultBranch: null, workflows: null, prRuns: null, errors: [] };
+    try {
+        const view = JSON.parse(call('gh', ['pr', 'view', pr, '--json', 'headRefOid,mergeCommit']));
+        out.prHeadSha = view.headRefOid || null;
+        out.prMergeSha = (view.mergeCommit && view.mergeCommit.oid) || null;
+        out.mergeTree = call('git', ['rev-parse', `${mergeSha}^{tree}`]).trim();
+        out.prHeadTree = call('git', ['rev-parse', `${out.prHeadSha}^{tree}`]).trim();
+        out.defaultBranch = call('gh', ['repo', 'view', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name']).trim();
+        const listed = JSON.parse(call('gh', ['api', 'repos/{owner}/{repo}/actions/workflows', '--paginate'])).workflows || [];
+        out.workflows = [];
+        for (const wf of listed) {
+            if (wf.state && wf.state !== 'active') continue;
+            let text;
+            try { text = call('git', ['show', `${mergeSha}:${wf.path}`]); } catch { continue; } // absent from the merged tree: it cannot run on it
+            out.workflows.push({ id: wf.id, path: wf.path, text });
+        }
+        out.prRuns = JSON.parse(call('gh', ['run', 'list', '--commit', out.prHeadSha, '--event', 'pull_request', '--limit', '50',
+            '--json', 'databaseId,workflowDatabaseId,event,headSha,status,conclusion,url']));
+        for (const r of out.prRuns) {
+            if (r.status === 'completed' && r.conclusion === 'success') {
+                r.jobs = JSON.parse(call('gh', ['run', 'view', String(r.databaseId), '--json', 'jobs'])).jobs || [];
+            }
+        }
+    } catch (e) {
+        out.errors.push(String(e.message || e).split('\n')[0]);
+    }
+    return out;
+}
+
+/** `--pr-tested --pr <branch> --sha <MERGE_SHA>`: print the decision envelope, exit 0. */
+function runPrTested(argv, deps = {}) {
+    const opts = {};
+    for (let i = 0; i < argv.length; i++) {
+        const a = argv[i];
+        if (a === '--pr-tested') continue;
+        if ((a === '--pr' || a === '--sha') && argv[i + 1] && !argv[i + 1].startsWith('--')) opts[a] = argv[++i];
+        else {
+            console.log(JSON.stringify({ success: false, message: `Unknown or incomplete argument: ${a}`, data: { status: 'bad_arguments' } }));
+            return EXIT_CODES.FAILURE;
+        }
+    }
+    if (!opts['--pr'] || !opts['--sha']) {
+        console.log(JSON.stringify({ success: false, message: '--pr-tested requires --pr <branch> and --sha <merge commit>', data: { status: 'bad_arguments' } }));
+        return EXIT_CODES.FAILURE;
+    }
+    const evidence = gatherPostMergeEvidence({ pr: opts['--pr'], mergeSha: opts['--sha'] }, deps);
+    console.log(JSON.stringify(decidePostMergeSkip(evidence), null, 2));
+    return EXIT_CODES.SUCCESS;
+}
+
 // --- Module Guard ---
 
 if (require.main === module) {
@@ -697,6 +873,9 @@ module.exports = {
     needsTrackedRecheck,
     selectRun,
     decideVerdict,
+    decidePostMergeSkip,
+    workflowTriggers,
+    gatherPostMergeEvidence,
     matchesFilter,
     isNonExecuting,
     NON_EXECUTING_CONCLUSIONS,

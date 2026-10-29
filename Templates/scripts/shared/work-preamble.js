@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.113.0
+ * @framework-script 0.114.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -236,15 +236,10 @@ function parseArgs(args) {
       });
     }
   }
-  // #3269. --no-review skips the Merge-Back Review Gate's Tier 3; like
-  // --agents it only means something under --concurrent.
+  // --no-review skips the independent review: the Merge-Back Review Gate's
+  // Tier 3 under --concurrent (#3269), sequential /work's review otherwise
+  // (#3457) — so it applies in every mode and is never reported as ignored.
   const hasNoReview = args.includes('--no-review');
-  if (hasNoReview && !hasConcurrent) {
-    parseWarnings.push({
-      code: 'NO_REVIEW_IGNORED',
-      message: '--no-review has no effect without --concurrent; ignored.'
-    });
-  }
 
   // The modifier flags attach identically to every mode. One place, so a
   // flag added later cannot be carried by two modes and dropped by the third
@@ -255,7 +250,7 @@ function parseArgs(args) {
     if (hasNonstop) result.nonstop = true;
     if (hasReopen) result.reopen = true;
     if (hasConcurrent) result.concurrent = true;
-    if (hasConcurrent && hasNoReview) result.noReview = true;
+    if (hasNoReview) result.noReview = true;
     if (maxAgents !== undefined) {
       result.maxAgents = maxAgents;
       result.maxAgentsSource = 'flag';
@@ -1650,7 +1645,8 @@ async function runSingleIssue(issueNum, options) {
     tracker,
     framework: frameworkConfig.framework,
     frameworkPath: frameworkConfig.frameworkPath,
-    ...(options && options.wait ? { wait: true } : {})
+    ...(options && options.wait ? { wait: true } : {}),
+    ...(options && options.noReview ? { noReview: true } : {})
   };
 
   // 4a. Redirect types return BEFORE any work is loaded or any status moved
@@ -2094,7 +2090,8 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
     tracker: shared.tracker,
     framework: shared.framework,
     frameworkPath: shared.frameworkPath,
-    ...(options && options.wait ? { wait: true } : {})
+    ...(options && options.wait ? { wait: true } : {}),
+    ...(options && options.noReview ? { noReview: true } : {})
   };
   const gates = { assigned: assignGate, movedToInProgress: false, alreadyInProgress: false, prdTrackerMoved: false };
 
@@ -2214,7 +2211,7 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason } — zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review (with --concurrent) turns every Tier 3 reviewer spawn into a review-skip step; without --concurrent it is reported as NO_REVIEW_IGNORED. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE.'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason } — zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE.'
     },
     gates: {
       name: 'gates',
