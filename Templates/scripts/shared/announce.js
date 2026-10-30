@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
@@ -485,6 +485,7 @@ function composeBranchOperation({ name, resolved, issue, branch, tag, peers, cwd
   if (!recorded.ok) {
     warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); its dispatch cannot be audited.`);
   }
+  relayLedgerWarning(recorded, warnings);
   if (recorded.ok && announcement && typeof announcement.text === 'string' && announcement.text) {
     announcement.text = appendLedgerId(announcement.text, recorded.id);
   }
@@ -541,6 +542,7 @@ function composePush({ name, resolved, issues, outcome, runUrl, ciResult, peers,
     } else {
       announcement.text = appendLedgerId(announcement.text, recorded.id);
     }
+    relayLedgerWarning(recorded, warnings);
   }
 
   return {
@@ -556,6 +558,11 @@ function composePush({ name, resolved, issues, outcome, runUrl, ciResult, peers,
       : 'Nothing was composed, so there is no dispatch outcome to record.'),
     warnings,
   };
+}
+
+/** A ledger row written to the working-tree fallback after a git failure (#3475). */
+function relayLedgerWarning(recorded, warnings) {
+  if (recorded && recorded.ledgerWarning) warnings.push(recorded.ledgerWarning);
 }
 
 function compose({ event, issue, issues, peers, cwd, commits: supplied, force = false, labelAssigned, routing: suppliedRouting, env = process.env, branch, tag, outcome, runUrl, ciResult } = {}) {
@@ -681,6 +688,7 @@ function compose({ event, issue, issues, peers, cwd, commits: supplied, force = 
   if (!recorded.ok) {
     warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); pairing cannot be audited for this event.`);
   }
+  relayLedgerWarning(recorded, warnings);
 
   // #2922: stamp the composed text with its ledger id, at the END of the first
   // line, so a /overwatch receipt reply can name the entry it received and

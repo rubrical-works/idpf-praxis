@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * derived-artifacts.js — Read and validate the `concurrency` block of
  * framework-config.json (#3118, PRD Concurrent-Work Story 1.1)
  *

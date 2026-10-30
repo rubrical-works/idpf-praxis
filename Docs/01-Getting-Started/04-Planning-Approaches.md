@@ -308,7 +308,7 @@ Charter checks run inside the commands that create work, not on every message:
 | `/proposal`, `/enhancement` | The title and description, against in-scope and out-of-scope items |
 | `/add-story` | The story, against out-of-scope items only |
 
-Work that matches the charter proceeds without interruption. Work that matches nothing in the charter is shown to you for confirmation, and work that matches an out-of-scope item is flagged with options to resolve it. You can skip the check for a session by saying so, or turn it off for the project with a `.no-charter-enforcement` file.
+Work that matches the charter proceeds without interruption. Work that matches nothing in the charter is shown to you for confirmation, and work that matches an out-of-scope item is flagged with options to resolve it. When the same work matches more in-scope and current-focus items than out-of-scope ones, it is shown as possibly misaligned for confirmation rather than flagged as a conflict; a tie still counts as a conflict. You can skip the check for a session by saying so, or turn it off for the project with a `.no-charter-enforcement` file.
 
 The charter acts as a **guardrail**, not a gate — it guides both approaches toward project goals.
 

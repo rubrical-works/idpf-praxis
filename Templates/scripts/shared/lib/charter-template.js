@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description The one rule deciding whether CHARTER.md is an unfilled template (#2893).
  * Consulted by the startup hook, the /charter spec and Charter-Enforcement.md.
  * @checksum sha256:placeholder
@@ -21,35 +21,59 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 
 /**
- * An unfilled placeholder: a single- or double-braced token starting with a
- * letter and holding only letters, digits, spaces, hyphens and underscores.
- * Covers `{Describe the project vision}`, `{project-name}` and `{{VISION}}`.
- * A leading quote, digit or space does not match, so inline JSON such as
- * `{"enabled": true}` is not a placeholder.
+ * The charter contract (#3481): what a valid CHARTER.md is, as data. This
+ * module and charter-shape.js / charter-entities.js read their constants from
+ * it rather than restating them, so a downstream implementation checking
+ * itself against cases[] checks against the rule the framework runs on.
+ */
+const CONTRACT_PATH = path.join(__dirname, '..', '..', '..', 'metadata', 'charter-contract.json');
+const CONTRACT = JSON.parse(fs.readFileSync(CONTRACT_PATH, 'utf8'));
+
+/** @returns {object} the parsed charter contract */
+function loadCharterContract() {
+  return CONTRACT;
+}
+
+const escapeChar = (c) => c.replace(/[\\^$.*+?()[\]{}|-]/g, '\\$&');
+
+/**
+ * An unfilled placeholder, per `placeholder.pattern`: a single- or
+ * double-braced token starting with a letter. Covers
+ * `{Describe the project vision}`, `{project-name}` and `{{VISION}}`; inline
+ * JSON such as `{"enabled": true}` does not match.
  *
  * Exported without the `g` flag: a global regex keeps `lastIndex` between
  * `.test()` calls, so a consumer testing two charters with it would get
  * alternating answers. The global copy used for matching stays private.
  */
-const PLACEHOLDER_PATTERN = /\{\{?[A-Za-z][A-Za-z0-9 _-]*\}\}?/;
+const PLACEHOLDER_PATTERN = new RegExp(CONTRACT.placeholder.pattern);
 const PLACEHOLDER_PATTERN_ALL = new RegExp(PLACEHOLDER_PATTERN.source, 'g');
 
 /** Prose marker the startup hook already honored; kept so no template regresses. */
-const TODO_MARKER = /TODO: Fill in/i;
+const TODO_MARKER = new RegExp(CONTRACT.placeholder.todoMarker.pattern, CONTRACT.placeholder.todoMarker.flags || '');
+
+const { codeExclusion } = CONTRACT.placeholder;
+const FENCE_RE = new RegExp(
+  '^\\s*(' + codeExclusion.fenceChars.map((c) => `${escapeChar(c)}{${codeExclusion.fenceMinLength},}`).join('|') + ')'
+);
+const INLINE = escapeChar(codeExclusion.inlineCodeChar);
+const INLINE_CODE_RE = new RegExp(`(${INLINE}+)[^${INLINE}]*?\\1`, 'g');
 
 /**
- * Remove fenced code blocks and inline code spans. Braces there are literal
- * content — JSON examples, path conventions like `{frameworkPath}/` — never
- * placeholders (#689's edge case).
+ * Remove fenced code blocks and inline code spans, per
+ * `placeholder.codeExclusion`. Braces there are literal content — JSON
+ * examples, path conventions like `{frameworkPath}/` — never placeholders
+ * (#689's edge case).
  */
 function stripCode(content) {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const kept = [];
   let fence = null;
   for (const line of lines) {
-    const marker = line.match(/^\s*(`{3,}|~{3,})/);
+    const marker = line.match(FENCE_RE);
     if (fence) {
       if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length) fence = null;
       continue;
@@ -58,7 +82,7 @@ function stripCode(content) {
       fence = marker[1];
       continue;
     }
-    kept.push(line.replace(/(`+)[^`]*?\1/g, ''));
+    kept.push(line.replace(INLINE_CODE_RE, ''));
   }
   return kept.join('\n');
 }
@@ -103,6 +127,7 @@ function classifyCharterFile(filePath) {
 }
 
 module.exports = {
+  loadCharterContract,
   PLACEHOLDER_PATTERN,
   TODO_MARKER,
   stripCode,

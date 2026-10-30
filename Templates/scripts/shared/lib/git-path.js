@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * git-path.js — Undo git's C-style quoting of a path (#3382).
  *
  * git wraps a path holding a quote, a backslash or a control character in

@@ -1,5 +1,5 @@
 ---
-version: "v0.114.0"
+version: "v0.115.0"
 description: Evaluate tests for charter alignment and functional authenticity, using the IDPF framework.
 argument-hint: "[--full] [--status] [--help]"
 copyright: "Rubrical Works (c) 2026"

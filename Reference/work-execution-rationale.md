@@ -1,5 +1,5 @@
 # /work Execution Rule — Rationale
-**Version:** v0.114.0
+**Version:** v0.115.0
 **Source:** Reference/work-execution-rationale.md
 The reasoning behind decisions `Reference/work-execution.md` (rule 08) directs without re-arguing (#3248). Nothing auto-loads this file; rule 03's On-Demand Documentation Loading table names it for a session questioning a `/work` directive. It ships with every other `Reference/` document and is never registered under `deploymentFiles.rules`. Each section names the rule step it explains.
 ## Execution Instructions: why the task-tools degradation is announced (#2593)

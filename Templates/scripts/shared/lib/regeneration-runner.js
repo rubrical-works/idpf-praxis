@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * regeneration-runner.js — Post-merge regeneration of derived artifacts and
  * verification of recomputed values (#3120, PRD Concurrent-Work Story 1.3)
  *

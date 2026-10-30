@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * worktree-teardown.js — Non-destructive teardown of a framework worktree
  * (#3124, PRD Concurrent-Work Story 1.7)
  *

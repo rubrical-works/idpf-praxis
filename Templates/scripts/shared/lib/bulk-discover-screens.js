@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * Bulk-discover screens from project source for /catalog-screens --init.
  *
  * Scans Svelte/React/Vue source. Auto-detects kind from path patterns:

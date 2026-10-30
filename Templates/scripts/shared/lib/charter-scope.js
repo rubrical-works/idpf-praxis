@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description Charter scope check shared by the commands that create work (#3001).
  * @checksum sha256:placeholder
  *
@@ -177,8 +177,14 @@ function checkScope(opts = {}) {
     for (const m of matchItems(opts.text, lists[list], { outOfScope: list === 'outOfScope' })) matchedItems.push({ list, ...m });
   }
 
+  // #3479: an Out of Scope match outweighed by in-charter matches — strictly
+  // more In Scope and Current Focus items than Out of Scope ones — names an
+  // out-of-scope concept rather than proposing out-of-scope work, and is a
+  // possibly-misaligned warning; the Out of Scope items stay in matchedItems.
+  const outOfScope = matchedItems.filter((m) => m.list === 'outOfScope').length;
+  const inCharter = matchedItems.length - outOfScope;
   let alignment;
-  if (matchedItems.some((m) => m.list === 'outOfScope')) alignment = 'conflicts';
+  if (outOfScope) alignment = inCharter > outOfScope ? 'possibly-misaligned' : 'conflicts';
   else if (matchedItems.length || !data.depths[depth].lists.includes('inScope')) alignment = 'aligned';
   else alignment = 'possibly-misaligned';
 

@@ -1,5 +1,5 @@
 ---
-version: "v0.114.0"
+version: "v0.115.0"
 allowed-tools: Bash, AskUserQuestion
 description: Reconcile the current branch with its upstream after analyzing the divergence, using the IDPF framework.
 argument-hint: "[--help]"

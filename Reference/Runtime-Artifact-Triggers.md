@@ -1,5 +1,5 @@
 # Runtime Artifact Triggers
-**Version:** v0.114.0
+**Version:** v0.115.0
 **Key Principle:** Offer, don't force: offer to document decisions, plans and procedures as they arise; any can be declined.
 On a match, offer once: *"I noticed you [made a decision/etc.]. Would you like me to document this in [artifact location]? (yes/no)"*. Templates: `.claude/scripts/shared/lib/doc-templates.json` `templates`, keyed below — re-read from disk on acceptance.
 | Artifact | Triggers | Offer | Template key |

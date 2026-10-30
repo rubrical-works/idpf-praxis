@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.114.0",
+  "version": "0.115.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -171,7 +171,7 @@
     "imported-skills.json",
     "external-sources.json",
     "external-sources-schema.json",
-    "GENERATED.md",
+    "GENERATED.txt",
     "startup.log",
     "crash.log",
     ".command-cache.json"
@@ -928,6 +928,16 @@
           "name": "charter-enforcement-schema",
           "source": ".claude/metadata/charter-enforcement-schema.json",
           "description": "JSON schema (Draft 2020-12) for charter-enforcement.json (#3001)"
+        },
+        {
+          "name": "charter-contract",
+          "source": ".claude/metadata/charter-contract.json",
+          "description": "What a valid CHARTER.md is: title, required sections, Key Entities table, placeholder rule, shape thresholds and the cases[] conformance suite, read by the charter helpers (#3481)"
+        },
+        {
+          "name": "charter-contract-schema",
+          "source": ".claude/metadata/charter-contract-schema.json",
+          "description": "JSON schema (Draft 2020-12) for charter-contract.json (#3481)"
         },
         {
           "name": "ci-features",

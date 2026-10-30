@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description Check branch sync status with upstream. Detects behind, ahead,
  *   diverged, and no-upstream states, and reports the post-fetch upstream tip.
  *   On diverged, derives the analysis a person needs to pick a recovery path

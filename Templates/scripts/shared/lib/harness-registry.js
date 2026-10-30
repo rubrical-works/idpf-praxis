@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * harness-registry.js — merge the shipped harness registry with a project's
  * local one (#2848).
  *

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -162,14 +162,43 @@ const COMPOSITION_STATES = Object.freeze(['pending', 'skipped']);
  * tree when `cwd` is in no git repository. Resolved per call — never cached,
  * so a directory that becomes a repository is not held to the fallback. A
  * spawn error (a missing `cwd`, no git) is the no-repository case.
+ *
+ * Any other rev-parse failure still falls back — a transient one should not
+ * lose the row — but says so (#3475): it recreates the in-tree file #3455
+ * moved away from, so `warning` names the path and the git error, and
+ * announce.js relays it. `git` is a test seam for the runner.
+ * @returns {{path: string, warning: string|null}}
  */
-function ledgerPath(cwd = process.cwd()) {
-  const common = runGitContended(['rev-parse', '--git-common-dir'], cwd);
+function resolveLedgerPath(cwd = process.cwd(), { git } = {}) {
+  const common = runGitContended(['rev-parse', '--git-common-dir'], cwd, undefined, git);
   if (common && !common.error && common.status === 0 && common.stdout) {
     // Relative to `cwd` from a main checkout, absolute from a linked worktree.
-    return path.join(path.resolve(cwd, common.stdout), GIT_LEDGER_PATH);
+    return { path: path.join(path.resolve(cwd, common.stdout), GIT_LEDGER_PATH), warning: null };
   }
-  return workingTreeLedgerPath(cwd);
+  const fallback = workingTreeLedgerPath(cwd);
+  // No repository is decided from the filesystem, not git's stderr, whose
+  // wording is localized; only ENOENT (no git, missing cwd) is a spawn error
+  // meaning the same — a timeout (ETIMEDOUT) is a transient failure.
+  const spawnMissing = common && common.error && common.error.code === 'ENOENT';
+  if (spawnMissing || !insideGitCheckout(cwd)) return { path: fallback, warning: null };
+  const reason = common && common.error ? common.error.message : String((common && common.stderr) || '').trim().split(/\r?\n/)[0];
+  const detail = reason || `exit ${common && common.status}`;
+  return { path: fallback, warning: `Ledger written to the working-tree fallback ${fallback}: git rev-parse --git-common-dir failed (${detail}).` };
+}
+
+/** Whether `cwd` or an ancestor holds a `.git` entry — a directory or a worktree's file. */
+function insideGitCheckout(cwd) {
+  let dir = path.resolve(cwd);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, '.git'))) return true;
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
+
+function ledgerPath(cwd = process.cwd(), opts) {
+  return resolveLedgerPath(cwd, opts).path;
 }
 
 /** The pre-#3455 location, and the no-repository fallback. */
@@ -324,10 +353,10 @@ function record(entry, options = {}) {
       if (typeof entry.decision === 'string') row.decision = entry.decision;
     }
 
-    const file = ledgerPath(options.cwd || process.cwd());
+    const { path: file, warning } = resolveLedgerPath(options.cwd || process.cwd(), { git: options._git });
     ensureLedgerDir(file);
     fs.appendFileSync(file, `${JSON.stringify(row)}\n`, 'utf8');
-    return { ok: true, id: row.id, entry: row };
+    return warning ? { ok: true, id: row.id, entry: row, ledgerWarning: warning } : { ok: true, id: row.id, entry: row };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
   }
@@ -620,6 +649,7 @@ module.exports = {
   OPENER,
   CLOSER,
   ledgerPath,
+  resolveLedgerPath,
   workingTreeLedgerPath,
   normalizeSessionPid,
   record,

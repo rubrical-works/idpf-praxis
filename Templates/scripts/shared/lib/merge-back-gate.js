@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *

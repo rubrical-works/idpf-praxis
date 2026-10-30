@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description Charter entity extraction and count verification (#3420).
  * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
  * memory, checks the Key Entities counts against disk, and scans charter prose
@@ -15,17 +15,23 @@ const fs = require('fs');
 const path = require('path');
 const { computeFenceMask } = require('./lib/checkbox-scan.js');
 const { parseCompanionTable } = require('./lib/companion-projects.js');
+const { loadCharterContract } = require('./lib/charter-template.js');
+const { escapeRegExp } = require('./lib/input-validation.js');
+
+/** The Key Entities section heading, regex-escaped, from the charter contract (#3481). */
+const KEY_ENTITIES_HEADING = escapeRegExp(loadCharterContract().keyEntities.heading);
 
 /**
  * Extract entities from a Key Entities markdown table.
  */
 function extractEntities(content) {
   const entities = {};
-  // Find the Key Entities section and extract the table
-  let sectionMatch = content.match(/##\s+Key Entities[^\n]*\n([\s\S]*?)(?=\n##\s)/);
+  // Find the Key Entities section (heading from the charter contract, #3481)
+  // and extract the table
+  let sectionMatch = content.match(new RegExp(String.raw`##\s+${KEY_ENTITIES_HEADING}[^\n]*\n([\s\S]*?)(?=\n##\s)`));
   // Fallback: Key Entities is the last section
   if (!sectionMatch) {
-    sectionMatch = content.match(/##\s+Key Entities[^\n]*\n([\s\S]*)/);
+    sectionMatch = content.match(new RegExp(String.raw`##\s+${KEY_ENTITIES_HEADING}[^\n]*\n([\s\S]*)`));
   }
   if (!sectionMatch) return entities;
   const tableLines = sectionMatch[1].split('\n').filter(l => l.startsWith('|'));
@@ -521,12 +527,6 @@ function deriveMatchForms(name) {
 }
 
 /**
- * True when this entity's count carries a qualifier the naive counting rule in
- * verifyEntityCounts() does not honor — declared exclusions, or a location
- * annotated with a parenthetical (".js only", per-directory subtotals). Such
- * entities can report a disk mismatch that is an artifact, not drift.
- */
-/**
  * Character gap between an integer and a matched entity name on one line.
  * Zero when they overlap.
  */
@@ -536,7 +536,14 @@ function gapBetween(number, matchStart, matchEnd) {
   return 0;
 }
 
-// The one caller skips a falsy entity first, so no guard here (#3446, CodeQL #25).
+/**
+ * True when this entity's count carries a qualifier the naive counting rule in
+ * verifyEntityCounts() does not honor — declared exclusions, or a location
+ * annotated with a parenthetical (".js only", per-directory subtotals). Such
+ * entities can report a disk mismatch that is an artifact, not drift.
+ *
+ * The one caller skips a falsy entity first, so no guard here (#3446, CodeQL #25).
+ */
 function hasQualifiedCount(entity) {
   const excludes = entity.countSource && entity.countSource.exclude;
   if (Array.isArray(excludes) && excludes.length > 0) return true;

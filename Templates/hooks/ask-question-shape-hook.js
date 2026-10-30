@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * ask-question-shape-hook.js
  *
  * PreToolUse hook (matcher: AskUserQuestion) that blocks a call over the

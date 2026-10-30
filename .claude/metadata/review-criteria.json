@@ -123,7 +123,7 @@
         {
           "id": "charter-alignment",
           "name": "Aligned with the charter",
-          "autoCheck": "Pipe the title and story statement on stdin — <title and story statement> | node .claude/scripts/shared/lib/charter-scope.js --command add-story — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning, naming that the story matches no In Scope or Current Focus item. conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the story's own scope section; scope-boundaries covers that."
+          "autoCheck": "Pipe the title and story statement on stdin — <title and story statement> | node .claude/scripts/shared/lib/charter-scope.js --command add-story — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the story matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the story's own scope section; scope-boundaries covers that."
         }
       ]
     },
@@ -168,7 +168,7 @@
         {
           "id": "charter-alignment",
           "name": "Aligned with the charter",
-          "autoCheck": "Pipe the title and description on stdin — <title and description> | node .claude/scripts/shared/lib/charter-scope.js --command create-backlog — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning, naming that the epic matches no In Scope or Current Focus item. conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the epic's own scope section; scope-boundaries covers that."
+          "autoCheck": "Pipe the title and description on stdin — <title and description> | node .claude/scripts/shared/lib/charter-scope.js --command create-backlog — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the epic matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the epic's own scope section; scope-boundaries covers that."
         }
       ]
     },
@@ -233,7 +233,7 @@
         {
           "id": "charter-alignment",
           "name": "Aligned with the charter",
-          "autoCheck": "Pipe the title, description and proposed solution on stdin — <title, description and proposed solution> | node .claude/scripts/shared/lib/charter-scope.js --command enhancement — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning, naming that the enhancement matches no In Scope or Current Focus item. conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the enhancement's own scope section; scope-boundaries covers that."
+          "autoCheck": "Pipe the title, description and proposed solution on stdin — <title, description and proposed solution> | node .claude/scripts/shared/lib/charter-scope.js --command enhancement — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the enhancement matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the enhancement's own scope section; scope-boundaries covers that."
         }
       ]
     },

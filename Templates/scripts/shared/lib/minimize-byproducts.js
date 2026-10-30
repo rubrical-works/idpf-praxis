@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * minimize-byproducts.js — Name the files a minimized source drags into a
  * change, so a review can declare them up front (#3275).
  *

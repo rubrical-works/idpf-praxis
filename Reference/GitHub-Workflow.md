@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.114.0
+**Version:** v0.115.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions. Reasoning: `{frameworkPath}/Reference/GitHub-Workflow-Rationale.md` (not auto-loaded).
 ## Project Configuration

@@ -1,0 +1,165 @@
+{
+  "$schema": "./charter-contract-schema.json",
+  "description": "What a valid CHARTER.md is, as data (#3481). The framework's charter helpers read their constants from here; cases[] is the conformance suite a downstream implementation of the placeholder rule runs to show it agrees.",
+  "version": 1,
+  "title": {
+    "pattern": "^# Project Charter: \\S.*$",
+    "form": "# Project Charter: {name}"
+  },
+  "requiredSections": ["Vision", "Tech Stack", "In Scope", "Key Entities", "Current Focus", "Out of Scope"],
+  "keyEntities": {
+    "heading": "Key Entities",
+    "tableHeader": ["Entity", "Count", "Location"]
+  },
+  "placeholder": {
+    "pattern": "\\{\\{?[A-Za-z][A-Za-z0-9 _-]*\\}\\}?",
+    "todoMarker": { "pattern": "TODO: Fill in", "flags": "i" },
+    "codeExclusion": {
+      "lineEndings": "crlf-to-lf",
+      "fenceChars": ["`", "~"],
+      "fenceMinLength": 3,
+      "fenceClose": "A line whose leading run (after optional whitespace) is the opening fence's character, at least as long as the opening run, closes the fence. Every line from the opening fence to its close, both included, is removed. An unclosed fence removes the rest of the document.",
+      "inlineCodeChar": "`",
+      "inlineCode": "Outside fences, a run of N backticks, then text (possibly empty) containing no backtick, then N backticks, form one span, matched left to right; the span is removed. Spans never cross a line."
+    }
+  },
+  "shapeThresholds": {
+    "inScopeBulletWords": 25
+  },
+  "cases": [
+    {
+      "id": "inline-code-braces-not-placeholder",
+      "description": "Braces inside an inline code span are literal content: a path convention is not a placeholder. Praxis Hub Manager getCharterStatus strips no code and reads this as Pending.",
+      "content": "## Tech Stack\n- Framework files live under `{frameworkPath}/Templates/`\n",
+      "expected": {
+        "template": false,
+        "placeholders": []
+      }
+    },
+    {
+      "id": "underscore-placeholder",
+      "description": "An underscore is allowed inside a placeholder. Praxis Hub Manager getCharterStatus omits _ from its pattern and reads this as Active.",
+      "content": "## Tech Stack\n- API key: {API_KEY}\n",
+      "expected": {
+        "template": true,
+        "placeholders": [
+          "{API_KEY}"
+        ]
+      }
+    },
+    {
+      "id": "todo-marker",
+      "description": "The TODO marker alone makes a charter a template, matched case-insensitively. Praxis Hub Manager getCharterStatus has no TODO marker and reads this as Active.",
+      "content": "## Vision\ntodo: fill in the vision\n",
+      "expected": {
+        "template": true,
+        "placeholders": []
+      }
+    },
+    {
+      "id": "todo-marker-in-code",
+      "description": "A TODO marker inside inline code is literal content.",
+      "content": "## Vision\nThe template says `TODO: Fill in` until /charter runs.\n",
+      "expected": {
+        "template": false,
+        "placeholders": []
+      }
+    },
+    {
+      "id": "fenced-backtick-code",
+      "description": "A backtick-fenced block is removed, opening and closing lines included.",
+      "content": "## Tech Stack\n```json\n{Placeholder Inside Fence}\n```\n",
+      "expected": {
+        "template": false,
+        "placeholders": []
+      }
+    },
+    {
+      "id": "fenced-tilde-code",
+      "description": "A tilde fence is removed too, and a shorter or different-character run inside it does not close it.",
+      "content": "~~~~\n{Still Code}\n~~~\n```\n{Still Code}\n~~~~\n{Outside}\n",
+      "expected": {
+        "template": true,
+        "placeholders": [
+          "{Outside}"
+        ]
+      }
+    },
+    {
+      "id": "unclosed-fence",
+      "description": "An unclosed fence removes the rest of the document.",
+      "content": "## Vision\n{Before}\n```\n{After}\n",
+      "expected": {
+        "template": true,
+        "placeholders": [
+          "{Before}"
+        ]
+      }
+    },
+    {
+      "id": "inline-code-double-brace",
+      "description": "A double-braced token inside a double-backtick span is literal content; one outside code is a placeholder.",
+      "content": "Stamp ``0.115.0`` at build; vision: {{VISION}}\n",
+      "expected": {
+        "template": true,
+        "placeholders": [
+          "{{VISION}}"
+        ]
+      }
+    },
+    {
+      "id": "json-brace-not-placeholder",
+      "description": "Inline JSON is not a placeholder: a leading quote, digit or space does not match.",
+      "content": "## Tech Stack\n- Config: {\"enabled\": true}, {1st}, { spaced }\n",
+      "expected": {
+        "template": false,
+        "placeholders": []
+      }
+    },
+    {
+      "id": "kebab-and-double-brace",
+      "description": "Lowercase-kebab and double-braced upper-snake tokens are both placeholders, listed in document order.",
+      "content": "# Project Charter: {project-name}\n\n## Vision\n{{VISION}}\n",
+      "expected": {
+        "template": true,
+        "placeholders": [
+          "{project-name}",
+          "{{VISION}}"
+        ]
+      }
+    },
+    {
+      "id": "crlf-line-endings",
+      "description": "CRLF line endings are normalized before fences are found.",
+      "content": "```\r\n{Inside}\r\n```\r\n## Vision\r\nFilled.\r\n",
+      "expected": {
+        "template": false,
+        "placeholders": []
+      }
+    },
+    {
+      "id": "filled-charter",
+      "description": "A filled charter in contract shape is not a template.",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nA recipe sharing site.\n\n## Key Entities\n| Entity | Count | Location |\n|---|---|---|\n| Recipes | TBD | `data/` |\n",
+      "expected": {
+        "template": false,
+        "placeholders": []
+      }
+    },
+    {
+      "id": "phm-bootstrap-stub",
+      "description": "The bootstrap CHARTER.md Praxis Hub Manager writes (tests/fixtures/phm-charter-template.json, rendered for gh-project-mgmt) is a template with five placeholders.",
+      "content": "# Project Charter\n\n> This file triggers the `/charter` command on first session.\n> Replace this content with your project charter.\n\n## Project: gh-project-mgmt\n\n### Vision\n{Describe the project vision}\n\n### Goals\n- {Goal 1}\n- {Goal 2}\n\n### Tech Stack\n- {Technology 1}\n- {Technology 2}\n",
+      "expected": {
+        "template": true,
+        "placeholders": [
+          "{Describe the project vision}",
+          "{Goal 1}",
+          "{Goal 2}",
+          "{Technology 1}",
+          "{Technology 2}"
+        ]
+      }
+    }
+  ]
+}

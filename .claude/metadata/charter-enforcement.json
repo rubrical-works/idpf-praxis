@@ -16,8 +16,8 @@
   },
   "alignment": {
     "aligned": { "description": "The work matches an in-scope or current-focus item, or (quick depth) matches no out-of-scope item", "action": "Proceed without interruption", "ask": false },
-    "possibly-misaligned": { "description": "The work matches no charter item, in scope or out", "action": "Ask the user to confirm", "ask": true },
-    "conflicts": { "description": "The work matches an out-of-scope item", "action": "Flag the conflict and offer the resolution options", "ask": true }
+    "possibly-misaligned": { "description": "The work matches no charter item, in scope or out; or it matches Out of Scope items but strictly more In Scope and Current Focus items (#3479)", "action": "Ask the user to confirm", "ask": true },
+    "conflicts": { "description": "The work matches an out-of-scope item, and no more In Scope and Current Focus items than Out of Scope ones", "action": "Flag the conflict and offer the resolution options", "ask": true }
   },
   "resolutionOptions": [
     { "id": "expand", "label": "Expand charter scope", "action": "Follow expansionFlow, then continue with the original work" },

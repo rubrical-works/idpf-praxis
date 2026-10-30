@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description Charter shape analysis for the /charter --refresh shape step (#3418).
  * @checksum sha256:placeholder
  *
@@ -31,17 +31,17 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { parseCharterSections } = require('./charter-scope');
 const { escapeRegExp } = require('./input-validation');
+const { loadCharterContract } = require('./charter-template');
 
 /**
- * The shape the step targets — the sections CommandsSrc/charter.md defines
- * today. One declared place, so a change of target shape (#2937) is one edit.
+ * The shape the step targets — the charter contract's `requiredSections`
+ * (#3481). One declared place, so a change of target shape (#2937) is one edit
+ * to the contract.
  */
-const TARGET_SHAPE = ['Vision', 'Tech Stack', 'In Scope', 'Key Entities', 'Current Focus', 'Out of Scope'];
+const TARGET_SHAPE = [...loadCharterContract().requiredSections];
 
-/** Declared thresholds. A one-line capability rarely needs more than this. */
-const SHAPE_THRESHOLDS = {
-  inScopeBulletWords: 25,
-};
+/** Declared thresholds, from the contract. A one-line capability rarely needs more. */
+const SHAPE_THRESHOLDS = { ...loadCharterContract().shapeThresholds };
 
 /**
  * Phrases that state an exclusion. "not" alone is deliberately absent: it is
@@ -570,6 +570,14 @@ const TEST_DIR_RE = /^(tests?|__tests__|spec)$/i;
 const CODE_EXT_RE = /\.([cm]?[jt]sx?|py|rb|go|java|kt|cs|php|rs|swift)$/i;
 const SKIP_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', 'build', 'out', 'vendor', '.next', 'target', '.venv', 'venv', '__pycache__']);
 const MAX_TEST_BYTES = 512 * 1024;
+/**
+ * Files the pinning walk examines before it stops (#3474). It runs on every
+ * --propose over the whole project tree; past the cap the proposal says the
+ * walk was truncated rather than reading on without bound.
+ */
+const MAX_PINNING_WALK_FILES = 20000;
+/** Scratch and worktree copies (`.tmp-wt-*`) hold duplicates of the project's tests (#3474). */
+const SCRATCH_DIR_PREFIX = '.tmp-';
 
 /** The comments before the first line of code: `//`, `/* … *\/` and `#` lines. */
 function leadingCommentBlock(text) {
@@ -646,7 +654,14 @@ function stringLiterals(text, { hashComments = false } = {}) {
     i++;
     out.push(value);
   }
-  return out.filter((v) => v.trim().length >= MIN_PINNED_LITERAL);
+  // Measured after stripping what pinnedBy() strips (#3474): '........' is
+  // eight characters but strips to '', and every cut includes ''.
+  return out.filter((v) => stripTrailing(v).trim().length >= MIN_PINNED_LITERAL);
+}
+
+/** Trailing whitespace and sentence punctuation, which a cut may not carry. */
+function stripTrailing(literal) {
+  return literal.replace(/[\s.;:,]+$/, '');
 }
 
 /**
@@ -655,10 +670,16 @@ function stringLiterals(text, { hashComments = false } = {}) {
  * (`*.test.js`, `test_*.py`, …) or by a code file inside a test directory.
  * Symlinked directories are not followed: in a hub-installed project they
  * lead into the shared hub. Read with no prior lookup, as gatherSources is.
- * @returns {Array<{path: string, literals: string[]}>}
+ * `.tmp-*` directories are skipped, and the walk stops after `maxFiles` files
+ * (#3474), reporting `truncated`.
+ * @param {string} root
+ * @param {{maxFiles?: number}} [opts]
+ * @returns {{tests: Array<{path: string, literals: string[]}>, truncated: boolean}}
  */
-function findPinningTests(root) {
+function walkPinningTests(root, { maxFiles = MAX_PINNING_WALK_FILES } = {}) {
   const out = [];
+  let seen = 0;
+  let truncated = false;
   const visit = (rel, inTestDir) => {
     let entries;
     try {
@@ -667,12 +688,15 @@ function findPinningTests(root) {
       return;
     }
     for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (truncated) return;
       const childRel = rel ? path.posix.join(rel, e.name) : e.name;
       if (e.isDirectory()) {
-        if (!SKIP_DIRS.has(e.name)) visit(childRel, inTestDir || TEST_DIR_RE.test(e.name));
+        if (!SKIP_DIRS.has(e.name) && !e.name.startsWith(SCRATCH_DIR_PREFIX)) visit(childRel, inTestDir || TEST_DIR_RE.test(e.name));
         continue;
       }
-      if (!e.isFile() || !CODE_EXT_RE.test(e.name)) continue;
+      if (!e.isFile()) continue;
+      if (++seen > maxFiles) { truncated = true; return; }
+      if (!CODE_EXT_RE.test(e.name)) continue;
       if (!TEST_FILE_RE.test(e.name) && !inTestDir) continue;
       let content;
       try {
@@ -685,7 +709,12 @@ function findPinningTests(root) {
     }
   };
   visit('', false);
-  return out;
+  return { tests: out, truncated };
+}
+
+/** The pinning tests alone: walkPinningTests() without the truncation flag. */
+function findPinningTests(root, opts) {
+  return walkPinningTests(root, opts).tests;
 }
 
 /** The literals of each pinning test that occur within the text a cut removes. */
@@ -694,7 +723,7 @@ function pinnedBy(cut, tests) {
   const hits = [];
   for (const t of tests) {
     // A literal pinning the whole sentence keeps its full stop; a cut may not.
-    const literals = [...new Set(t.literals.filter((l) => removed.includes(l) || removed.includes(l.replace(/[\s.;:,]+$/, ''))))];
+    const literals = [...new Set(t.literals.filter((l) => removed.includes(l) || removed.includes(stripTrailing(l))))];
     if (literals.length) hits.push({ test: t.path, literals });
   }
   return hits;
@@ -705,12 +734,14 @@ function pinnedBy(cut, tests) {
  * relocation plan, and the removal audit. Every cut carries `pinnedBy` — the
  * contract tests holding a string it removes (#3456), empty when none.
  * Advisory: a pinned cut is still proposed. Writes nothing.
+ * `pinningWalkTruncated` says the pinning walk hit its cap (#3474), so a
+ * test past it was not read and an empty `pinnedBy` is not a clean bill.
  */
-function proposeForRoot(root, text) {
+function proposeForRoot(root, text, { maxPinningWalkFiles } = {}) {
   const sources = gatherSources(root);
   const shaped = proposeShape(text, { sources });
   const { proposed } = shaped;
-  const tests = findPinningTests(root);
+  const { tests, truncated: pinningWalkTruncated } = walkPinningTests(root, { maxFiles: maxPinningWalkFiles });
   const cuts = shaped.cuts.map((c) => ({ ...c, pinnedBy: pinnedBy(c, tests) }));
   const existing = {};
   for (const dest of Object.values(RELOCATION_TARGETS)) {
@@ -720,7 +751,7 @@ function proposeForRoot(root, text) {
   const relocations = planRelocations(cuts, existing);
   const destinations = { ...existing, ...relocations };
   for (const s of sources) if (!(s.path in destinations)) destinations[s.path] = s.content;
-  return { proposed, cuts, relocations, audit: auditRemovals({ before: text, after: proposed, cuts, destinations }) };
+  return { proposed, cuts, relocations, audit: auditRemovals({ before: text, after: proposed, cuts, destinations }), pinningWalkTruncated };
 }
 
 function parseArgs(argv) {
@@ -748,6 +779,7 @@ module.exports = {
   leadingCommentBlock,
   PIN_SUBJECT,
   MIN_PINNED_LITERAL,
+  MAX_PINNING_WALK_FILES,
   HOME_SOURCES,
   wordCount,
   exclusionPhrase,

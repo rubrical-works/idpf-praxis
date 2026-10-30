@@ -1,5 +1,5 @@
 # Review Execution Rule
-**Version:** v0.114.0
+**Version:** v0.115.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` (hybrid shell + rule). The shells `.claude/commands/review-issue.md` and `.claude/commands/resolve-review.md` carry arguments, prerequisites and error handling; this rule carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks.** The three retired points live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.

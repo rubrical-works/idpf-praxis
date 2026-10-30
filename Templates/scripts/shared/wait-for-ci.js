@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
@@ -692,11 +692,25 @@ function defaultFetchRun(runId, deps = {}) {
 // decide, from evidence, whether the PR runs already cover every workflow the
 // merge commit will trigger. Every gap resolves to `wait`, the existing gate.
 
+/**
+ * A branch filter this check does not evaluate (#3472). `+` and `[...]` carry
+ * meaning in a GitHub filter; read as literals they decided "[mM]ain" does not
+ * trigger on main. Rather than re-implement GitHub's matcher, the decision
+ * waits and names the pattern.
+ */
+class UnsupportedBranchPattern extends Error {
+    constructor(pattern) {
+        super(`branch filter '${pattern}' uses + or [...], which this check does not evaluate`);
+        this.pattern = pattern;
+    }
+}
+
 /** Glob for a GitHub Actions branch filter: `*` stays in one segment, `**` crosses. */
 function branchGlobMatches(pattern, branch) {
     const p = String(pattern);
+    if (/[+[\]]/.test(p)) throw new UnsupportedBranchPattern(p);
     if (p.startsWith('!')) return false;
-    const re = p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
+    const re = p.replace(/[.^${}()|\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
     return new RegExp(`^${re}$`).test(branch);
 }
 
@@ -765,6 +779,7 @@ function decidePostMergeSkip(input) {
     for (const wf of workflows) {
         let t;
         try { t = workflowTriggers(wf.text, defaultBranch); } catch (e) {
+            if (e instanceof UnsupportedBranchPattern) return wait(`${wf.path}: ${e.message}`, { workflows: [wf.path] });
             return wait(`lookup failed: ${wf.path} could not be parsed (${e.message})`);
         }
         if (!t.push) continue;
@@ -796,6 +811,33 @@ function decidePostMergeSkip(input) {
 }
 
 /**
+ * Split `gh api --paginate` output into its pages (#3472): gh prints one JSON
+ * document per page, back to back, so a single JSON.parse throws past the
+ * first page. Tracks string state so a brace inside a value does not split.
+ * @param {string} text
+ * @returns {object[]} one parsed document per page
+ * @throws {SyntaxError} on a truncated or malformed document
+ */
+function parseJsonPages(text) {
+    const pages = [];
+    let depth = 0, inString = false, escaped = false, start = -1;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (ch === '\\') escaped = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') inString = true;
+        else if (ch === '{' || ch === '[') { if (depth++ === 0) start = i; }
+        else if (ch === '}' || ch === ']') { if (--depth === 0) pages.push(JSON.parse(text.slice(start, i + 1))); }
+    }
+    if (depth !== 0 || inString) throw new SyntaxError('Unexpected end of JSON input in a paginated gh api response');
+    return pages;
+}
+
+/**
  * Gather decidePostMergeSkip()'s inputs with gh and git, through
  * execFileSync and argument arrays (no shell). A failed call is recorded in
  * `errors` rather than thrown, so the decision reports it as the reason.
@@ -813,7 +855,8 @@ function gatherPostMergeEvidence({ pr, mergeSha }, deps = {}) {
         out.mergeTree = call('git', ['rev-parse', `${mergeSha}^{tree}`]).trim();
         out.prHeadTree = call('git', ['rev-parse', `${out.prHeadSha}^{tree}`]).trim();
         out.defaultBranch = call('gh', ['repo', 'view', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name']).trim();
-        const listed = JSON.parse(call('gh', ['api', 'repos/{owner}/{repo}/actions/workflows', '--paginate'])).workflows || [];
+        const listed = parseJsonPages(call('gh', ['api', 'repos/{owner}/{repo}/actions/workflows', '--paginate']))
+            .flatMap((page) => page.workflows || []);
         out.workflows = [];
         for (const wf of listed) {
             if (wf.state && wf.state !== 'active') continue;
@@ -836,21 +879,32 @@ function gatherPostMergeEvidence({ pr, mergeSha }, deps = {}) {
 
 /** `--pr-tested --pr <branch> --sha <MERGE_SHA>`: print the decision envelope, exit 0. */
 function runPrTested(argv, deps = {}) {
+    const badArguments = (message) => {
+        console.log(JSON.stringify({ success: false, message, data: { status: 'bad_arguments' } }));
+        return EXIT_CODES.FAILURE;
+    };
     const opts = {};
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--pr-tested') continue;
-        if ((a === '--pr' || a === '--sha') && argv[i + 1] && !argv[i + 1].startsWith('--')) opts[a] = argv[++i];
-        else {
-            console.log(JSON.stringify({ success: false, message: `Unknown or incomplete argument: ${a}`, data: { status: 'bad_arguments' } }));
-            return EXIT_CODES.FAILURE;
-        }
+        // --flag=value as parseArgs() accepts it (#3472).
+        const eq = a.startsWith('--') ? a.indexOf('=') : -1;
+        const name = eq === -1 ? a : a.slice(0, eq);
+        let value = eq === -1 ? null : a.slice(eq + 1);
+        if ((name === '--pr' || name === '--sha') && value === null && argv[i + 1] && !argv[i + 1].startsWith('--')) value = argv[++i];
+        if ((name === '--pr' || name === '--sha') && value) opts[name] = value;
+        else return badArguments(`Unknown or incomplete argument: ${a}`);
     }
-    if (!opts['--pr'] || !opts['--sha']) {
-        console.log(JSON.stringify({ success: false, message: '--pr-tested requires --pr <branch> and --sha <merge commit>', data: { status: 'bad_arguments' } }));
-        return EXIT_CODES.FAILURE;
+    if (!opts['--pr'] || !opts['--sha']) return badArguments('--pr-tested requires --pr <branch> and --sha <merge commit>');
+    // An abbreviated merge SHA never equals mergeCommit.oid, which read as
+    // "main moved after the merge" (#3472); expand it as --commit is (#3165).
+    let mergeSha;
+    try {
+        mergeSha = resolveCommit(opts['--sha'], deps);
+    } catch (e) {
+        return badArguments(e.message);
     }
-    const evidence = gatherPostMergeEvidence({ pr: opts['--pr'], mergeSha: opts['--sha'] }, deps);
+    const evidence = gatherPostMergeEvidence({ pr: opts['--pr'], mergeSha }, deps);
     console.log(JSON.stringify(decidePostMergeSkip(evidence), null, 2));
     return EXIT_CODES.SUCCESS;
 }
@@ -876,6 +930,7 @@ module.exports = {
     decidePostMergeSkip,
     workflowTriggers,
     gatherPostMergeEvidence,
+    parseJsonPages,
     matchesFilter,
     isNonExecuting,
     NON_EXECUTING_CONCLUSIONS,

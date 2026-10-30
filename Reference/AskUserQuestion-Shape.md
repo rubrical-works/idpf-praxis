@@ -1,5 +1,5 @@
 # AskUserQuestion Shape
-**Version:** v0.114.0
+**Version:** v0.115.0
 **Source:** Reference/AskUserQuestion-Shape.md
 **Purpose:** How a prompt sent through `AskUserQuestion` is laid out. On demand; rule `06-runtime-triggers.md` points here, and every `.claude/hooks/ask-question-shape-hook.js` correction closes with a pointer here (#3233, #3440).
 ## Why

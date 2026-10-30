@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * @description `--help` for a deployed command (#3030): resolve the command's
  *   docs URL from the single base in `.claude/metadata/command-docs.json` and
  *   open it in the default browser through `openBrowserCrossPlatform`

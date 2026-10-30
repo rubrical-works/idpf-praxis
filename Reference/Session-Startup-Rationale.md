@@ -1,5 +1,5 @@
 # Session Startup Instructions — Rationale
-**Version:** v0.114.0
+**Version:** v0.115.0
 **Source:** Reference/Session-Startup-Rationale.md
 The reasoning behind decisions `Reference/Session-Startup-Instructions.md` (rule 03) directs without re-arguing (#3251). Nothing auto-loads this file; rule 03's On-Demand Documentation Loading table names it for a session questioning a startup directive. Peer-messaging reasoning lives in `Reference/Cross-Session-Messaging.md`. It ships with every other `Reference/` document and is never registered under `deploymentFiles.rules`.
 ## Row explanations: why their loss after compaction is accepted (#2995)

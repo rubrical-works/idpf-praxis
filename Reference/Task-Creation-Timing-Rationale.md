@@ -1,5 +1,5 @@
 # Task Creation Timing — Rationale
-**Version:** v0.114.0
+**Version:** v0.115.0
 **Source:** Reference/Task-Creation-Timing-Rationale.md
 **Purpose:** Reasoning and measurements behind rule 07 (`Reference/Task-Creation-Timing.md`), moved out of the always-on rule in #2998. **Not a rule** — never auto-loaded, never registered under `deploymentFiles.rules`; ships as an ordinary `Reference/` document.
 ## Why "single batch" names emission explicitly

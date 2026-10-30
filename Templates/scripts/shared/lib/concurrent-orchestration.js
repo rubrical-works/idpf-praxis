@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.114.0
+ * @framework-script 0.115.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
