@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * worktree-create-hook.js — WorktreeCreate hook (#3122, PRD Concurrent-Work
  * Story 1.5)
  *

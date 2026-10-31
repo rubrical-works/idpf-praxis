@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.115.0",
+  "version": "0.116.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -580,6 +580,7 @@
           "idpf-measure.js",
           "json-merge-driver.js",
           "log-changed-files.js",
+          "merge-pr.js",
           "mockup-ac-generator.js",
           "mockup-detect-framework.js",
           "mockup-element-extractor.js",
@@ -641,7 +642,9 @@
           "charter-template.js",
           "checkbox-scan.js",
           "classify-changed-files.js",
+          "code-review-findings-schema.json",
           "code-review-manifest-schema.json",
+          "code-review-shards.js",
           "command-args.js",
           "companion-projects.js",
           "concurrency-plan.js",
@@ -682,6 +685,7 @@
           "harness-registry.js",
           "hook-heartbeat.js",
           "input-validation.js",
+          "issue-duplicates.js",
           "issue-ref-match.js",
           "issue-type.js",
           "load-review-extensions.js",

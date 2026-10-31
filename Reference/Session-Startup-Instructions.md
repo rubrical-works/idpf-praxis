@@ -1,5 +1,5 @@
 # Session Startup Instructions
-**Version:** v0.115.0
+**Version:** v0.116.0
 **Source:** Reference/Session-Startup-Instructions.md
 **Purpose:** AI-facing reference for session work after startup. Reasoning: `{frameworkPath}/Reference/Session-Startup-Rationale.md`, not auto-loaded.
 **Row explanations arrive with the row** — from `.claude/metadata/startup-row-notes.json`, appended by `startup-hook.js` only when that row is shown.

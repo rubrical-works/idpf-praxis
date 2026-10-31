@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description Charter shape analysis for the /charter --refresh shape step (#3418).
  * @checksum sha256:placeholder
  *

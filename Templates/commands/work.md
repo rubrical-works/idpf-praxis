@@ -1,5 +1,5 @@
 ---
-version: "v0.115.0"
+version: "v0.116.0"
 description: Start working on issues with validation and automatic task extraction, using the IDPF framework.
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--no-review] [--concurrent [--agents N]] | --status <status> [--help]"
 copyright: "Rubrical Works (c) 2026"

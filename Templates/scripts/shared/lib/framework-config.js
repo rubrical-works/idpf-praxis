@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -38,6 +38,8 @@ const VERIFICATION_MODES = Object.freeze(['automated-tests', 'host-process']);
 // /work's independent diff-review before In review (#3457). Absent = 'always'.
 const WORK_REVIEW_MODES = Object.freeze(['always', 'nonstop-only', 'off']);
 const DEFAULT_WORK_REVIEW = 'always';
+const TEST_PLAN_GATE_CONFIRMATION_MODES = Object.freeze(['always', 'when-blocked']);
+const DEFAULT_TEST_PLAN_GATE_CONFIRMATION = 'always';
 
 /**
  * The mode an undeclared project gets. Strict by construction: the carve-out
@@ -407,6 +409,39 @@ function resolveWorkReview(cwd = process.cwd()) {
 }
 
 /**
+ * Whether /review-test-plan Step 5a asks before writing passing gates (#3494).
+ *
+ * `always` (the default when the key is absent) confirms every checkable gate
+ * before it is written, which is the behavior before this setting existed.
+ * `when-blocked` writes gates that are checkable and autoCheckable without a
+ * prompt; an autoCheckable: false gate and a blocked gate still prompt. An
+ * unrecognized value or an unreadable config resolves to the default and says
+ * why, so a typo never silently drops the confirmation.
+ *
+ * @param {string} [cwd]
+ * @returns {{ mode: string, source: string, ignored?: *, warning?: string }}
+ */
+function resolveTestPlanGateConfirmation(cwd = process.cwd()) {
+  const fallback = DEFAULT_TEST_PLAN_GATE_CONFIRMATION;
+  let config;
+  try {
+    config = read(cwd);
+  } catch (err) {
+    if (!fs.existsSync(path.join(cwd, CONFIG_FILENAME))) return { mode: fallback, source: 'default' };
+    return { mode: fallback, source: 'default', warning: `testPlanGateConfirmation resolved to ${fallback}: ${err.message}` };
+  }
+  const declared = config && config.testPlanGateConfirmation;
+  if (declared === undefined) return { mode: fallback, source: 'default' };
+  if (TEST_PLAN_GATE_CONFIRMATION_MODES.includes(declared)) return { mode: declared, source: CONFIG_FILENAME };
+  return {
+    mode: fallback,
+    source: 'default',
+    ignored: declared,
+    warning: `testPlanGateConfirmation ${JSON.stringify(declared)} is not one of ${TEST_PLAN_GATE_CONFIRMATION_MODES.join(', ')}; resolved to ${fallback}.`,
+  };
+}
+
+/**
  * The ordered verification commands /work Step 4f must run (#2733).
  *
  * Reader half of the `verificationCommands` key, with `testCommand` as the
@@ -603,6 +638,8 @@ module.exports = {
   resolveVerificationCommands,
   resolveWorkReview,
   WORK_REVIEW_MODES,
+  resolveTestPlanGateConfirmation,
+  TEST_PLAN_GATE_CONFIRMATION_MODES,
   resolveTmpCleanup,
   resolveReviewExpansion,
   DEFAULT_REVIEW_EXPANSION_CAP,

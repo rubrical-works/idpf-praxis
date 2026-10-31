@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
  * @checksum sha256:placeholder
  *
@@ -66,28 +66,6 @@ const REVIEW_EVENTS = Object.freeze({
 });
 
 /**
- * The events this script composes.
- *
- * Narrow by design, and widened once, deliberately (#2871). #2790 kept it to
- * the /work pair on the grounds that the review and CI events have different
- * payloads and pairing rules, and that a wider surface "would be a wrapper
- * with nothing to add". The payload half stands — the review events carry no
- * commits, so nothing here derives any for them, and they are recorded to the
- * ledger as record-only entries rather than paired. The "nothing to add" half
- * did not hold for the review events: what they gain is the seam #2790 made,
- * moving event selection out of prose — the `--force` suppression of
- * `review-started` and the `labelAssigned` → verdict mapping.
- *
- * The push group joined in #2972, and the "nothing to add" argument that kept
- * it out turned out to be wrong. This script derives none of the push-group
- * payloads: the issue set comes from `deriveAnnouncementIssues`, and the CI
- * result from `ci-watch.js`, both passed in unchanged. What it does add is the
- * part that was missing. Composed by `/done` directly, the push group never
- * received targeted routing (#2915), so every peer heard three messages per
- * push, and it never reached the ledger, so no receipt reply could be recorded
- * against it.
- */
-/**
  * `/done`'s push group (#2972). Routed like the work events. No
  * `FORCED_REASONS` entry, unlike #2960: a push changes only the remote copy of
  * a branch every session here already shares, so no peer's footing moves. The
@@ -120,6 +98,28 @@ const BRANCH_EVENTS = Object.freeze({
 /** Branch events that push a tag, so they cannot be composed without one. */
 const TAGGED_BRANCH_EVENTS = Object.freeze(['beta-starting', 'release-starting']);
 
+/**
+ * The events this script composes.
+ *
+ * Narrow by design, and widened once, deliberately (#2871). #2790 kept it to
+ * the /work pair on the grounds that the review and CI events have different
+ * payloads and pairing rules, and that a wider surface "would be a wrapper
+ * with nothing to add". The payload half stands — the review events carry no
+ * commits, so nothing here derives any for them, and they are recorded to the
+ * ledger as record-only entries rather than paired. The "nothing to add" half
+ * did not hold for the review events: what they gain is the seam #2790 made,
+ * moving event selection out of prose — the `--force` suppression of
+ * `review-started` and the `labelAssigned` → verdict mapping.
+ *
+ * The push group joined in #2972, and the "nothing to add" argument that kept
+ * it out turned out to be wrong. This script derives none of the push-group
+ * payloads: the issue set comes from `deriveAnnouncementIssues`, and the CI
+ * result from `ci-watch.js`, both passed in unchanged. What it does add is the
+ * part that was missing. Composed by `/done` directly, the push group never
+ * received targeted routing (#2915), so every peer heard three messages per
+ * push, and it never reached the ledger, so no receipt reply could be recorded
+ * against it.
+ */
 const SUPPORTED = Object.freeze({ ...WORK_EVENTS, ...REVIEW_EVENTS, ...BRANCH_EVENTS, ...PUSH_EVENTS });
 
 const hasOwn = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
@@ -360,20 +360,6 @@ function suppressedResult({ event, issue, reason, warnings }) {
 }
 
 /**
- * Derive, verify, compose and record — one call, so none of the four can be
- * skipped independently of the others.
- *
- * That coupling is the design. The recording is what makes AC3 answerable
- * after the fact, and a recording step the caller could omit separately would
- * fail exactly when the announcement step failed, which is the case it exists
- * to detect.
- *
- * `labelAssigned` replaces `event` for the review verdict (#2871): the caller
- * passes what finalize returned and this picks the event. Passing both is
- * refused — accepting an event beside the label would hand the choice back to
- * the caller. `force` suppresses `review-started` only.
- */
-/**
  * The routing inputs for this working directory (#2915): the resolved
  * `broadcast` lever and the overwatch presence reading. Read here, not in
  * peer-announce.js, which stays pure. Any failure resolves to broadcast — the
@@ -565,6 +551,20 @@ function relayLedgerWarning(recorded, warnings) {
   if (recorded && recorded.ledgerWarning) warnings.push(recorded.ledgerWarning);
 }
 
+/**
+ * Derive, verify, compose and record — one call, so none of the four can be
+ * skipped independently of the others.
+ *
+ * That coupling is the design. The recording is what makes AC3 answerable
+ * after the fact, and a recording step the caller could omit separately would
+ * fail exactly when the announcement step failed, which is the case it exists
+ * to detect.
+ *
+ * `labelAssigned` replaces `event` for the review verdict (#2871): the caller
+ * passes what finalize returned and this picks the event. Passing both is
+ * refused — accepting an event beside the label would hand the choice back to
+ * the caller. `force` suppresses `review-started` only.
+ */
 function compose({ event, issue, issues, peers, cwd, commits: supplied, force = false, labelAssigned, routing: suppliedRouting, env = process.env, branch, tag, outcome, runUrl, ciResult } = {}) {
   const warnings = [];
   const hasLabel = labelAssigned !== undefined;
@@ -729,10 +729,12 @@ function closeDispatch({ ledgerId, result, detail, cwd } = {}) {
   if (!updated.ok) {
     return { ok: false, error: updated.error, report: `Dispatch outcome NOT recorded: ${updated.error}` };
   }
+  const warnings = [];
+  relayLedgerWarning(updated, warnings);
   const report = result === 'failed'
     ? `Peer announcement dispatch FAILED and was recorded${detail ? ` (${detail})` : ''}. Work continues — the channel is advisory.`
     : `Peer announcement dispatch recorded as ${result}.`;
-  return { ok: true, report };
+  return { ok: true, report, warnings };
 }
 
 /**
@@ -763,14 +765,17 @@ function recordReceipts({ ledgerIds, from, cwd } = {}) {
   const ids = Array.isArray(ledgerIds) ? ledgerIds : [];
   const sender = from || 'the overwatch';
   if (ids.length === 0) {
-    return { ok: false, recorded: [], refused: [], line: 'Receipt NOT recorded: no --ledger-id given.' };
+    return { ok: false, recorded: [], refused: [], warnings: [], line: 'Receipt NOT recorded: no --ledger-id given.' };
   }
   const recorded = [];
   const refused = [];
+  const warnings = [];
   for (const id of ids) {
     const updated = ledger.updateReceipt(id, { from }, { cwd });
     if (updated.ok) recorded.push(id);
     else refused.push({ id, error: /^No ledger (entry|to update)/.test(updated.error) ? 'no ledger entry' : updated.error });
+    // One fallback, one warning: every id in the batch resolves the same path.
+    if (updated.ledgerWarning && !warnings.includes(updated.ledgerWarning)) warnings.push(updated.ledgerWarning);
   }
   const count = (n) => (n === 1 ? 'Receipt' : 'Receipts');
   let line = `${count(recorded.length)} recorded from ${sender}: ${recorded.length}`;
@@ -778,7 +783,8 @@ function recordReceipts({ ledgerIds, from, cwd } = {}) {
   if (refused.length > 0) {
     line += `; NOT recorded: ${refused.length} (${refused.map((r) => `${r.id} — ${r.error}`).join(', ')})`;
   }
-  return { ok: refused.length === 0, recorded, refused, line };
+  if (warnings.length > 0) line += `; ${warnings.join('; ')}`;
+  return { ok: refused.length === 0, recorded, refused, warnings, line };
 }
 
 function parseArgs(argv) {

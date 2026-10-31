@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description Charter scope check shared by the commands that create work (#3001).
  * @checksum sha256:placeholder
  *

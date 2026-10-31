@@ -24,10 +24,12 @@
     "title": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pattern", "form"],
+      "required": ["pattern", "form", "role"],
       "properties": {
         "pattern": { "type": "string", "minLength": 1, "description": "Regular expression line 1 of CHARTER.md must match." },
-        "form": { "type": "string", "description": "The title as written in the /charter spec, {name} standing for the project name." }
+        "form": { "type": "string", "description": "The title as written in the /charter spec, {name} standing for the project name." },
+        "role": { "const": "generation", "description": "The title's role (#3515): a generation requirement only — what /charter writes and line 1 must match — never an input to the filled/unfilled decision, which the placeholder rule alone makes." },
+        "description": { "type": "string", "description": "The stated role, in prose, for a downstream consumer." }
       }
     },
     "requiredSections": {

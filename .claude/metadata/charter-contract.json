@@ -4,7 +4,9 @@
   "version": 1,
   "title": {
     "pattern": "^# Project Charter: \\S.*$",
-    "form": "# Project Charter: {name}"
+    "form": "# Project Charter: {name}",
+    "role": "generation",
+    "description": "A generation requirement only: what /charter writes on line 1 of a new CHARTER.md, title.form with {name} as the project name, and what line 1 must match. It is not an input to the filled/unfilled decision: a charter is a template only by the placeholder rule, so a filled charter with any other title is filled (cases[] filled-charter-nonconforming-title). A consumer deciding whether a charter is filled must not test the title."
   },
   "requiredSections": ["Vision", "Tech Stack", "In Scope", "Key Entities", "Current Focus", "Out of Scope"],
   "keyEntities": {
@@ -99,7 +101,7 @@
     {
       "id": "inline-code-double-brace",
       "description": "A double-braced token inside a double-backtick span is literal content; one outside code is a placeholder.",
-      "content": "Stamp ``0.115.0`` at build; vision: {{VISION}}\n",
+      "content": "Stamp ``0.116.0`` at build; vision: {{VISION}}\n",
       "expected": {
         "template": true,
         "placeholders": [
@@ -148,7 +150,23 @@
     },
     {
       "id": "phm-bootstrap-stub",
-      "description": "The bootstrap CHARTER.md Praxis Hub Manager writes (tests/fixtures/phm-charter-template.json, rendered for gh-project-mgmt) is a template with five placeholders.",
+      "description": "The bootstrap CHARTER.md Praxis Hub Manager writes for a hub root carrying this contract (tests/fixtures/phm-charter-template.json, rendered for gh-project-mgmt at px-manager deeb459b): the title form, then every requiredSections entry as an H2 holding {Fill in <Section>}. A template with six placeholders, in document order.",
+      "content": "# Project Charter: gh-project-mgmt\n\n> This file triggers the `/charter` command on first session.\n> Replace this content with your project charter.\n\n## Vision\n{Fill in Vision}\n\n## Tech Stack\n{Fill in Tech Stack}\n\n## In Scope\n{Fill in In Scope}\n\n## Key Entities\n{Fill in Key Entities}\n\n## Current Focus\n{Fill in Current Focus}\n\n## Out of Scope\n{Fill in Out of Scope}\n",
+      "expected": {
+        "template": true,
+        "placeholders": [
+          "{Fill in Vision}",
+          "{Fill in Tech Stack}",
+          "{Fill in In Scope}",
+          "{Fill in Key Entities}",
+          "{Fill in Current Focus}",
+          "{Fill in Out of Scope}"
+        ]
+      }
+    },
+    {
+      "id": "phm-bootstrap-stub-legacy",
+      "description": "The bootstrap CHARTER.md Praxis Hub Manager still writes for a hub root that predates this contract (legacyStub() at px-manager deeb459b), kept because installs on such a root receive it. A template with five placeholders.",
       "content": "# Project Charter\n\n> This file triggers the `/charter` command on first session.\n> Replace this content with your project charter.\n\n## Project: gh-project-mgmt\n\n### Vision\n{Describe the project vision}\n\n### Goals\n- {Goal 1}\n- {Goal 2}\n\n### Tech Stack\n- {Technology 1}\n- {Technology 2}\n",
       "expected": {
         "template": true,
@@ -159,6 +177,15 @@
           "{Technology 1}",
           "{Technology 2}"
         ]
+      }
+    },
+    {
+      "id": "filled-charter-nonconforming-title",
+      "description": "A filled charter whose title does not match title.pattern (the shape of an older Praxis Hub Manager stub, filled in) is filled: the title is a generation requirement, not an input to the filled/unfilled decision (#3515).",
+      "content": "# Project Charter\n\n## Project: gh-project-mgmt\n\n## Vision\nTrack issues across repositories from one board.\n\n## Tech Stack\n- Go\n- GraphQL\n\n## In Scope\nBoard sync and sub-issue tracking.\n",
+      "expected": {
+        "template": false,
+        "placeholders": []
       }
     }
   ]

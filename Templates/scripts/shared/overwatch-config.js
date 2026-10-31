@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  *
  * `/overwatch` per-project configuration (#2957): the resolver for
  * `.claude/.overwatch/config.json`, and the mechanics of `/overwatch --on`,

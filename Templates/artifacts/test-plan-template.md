@@ -12,7 +12,7 @@
 |-------|-------|-----------|
 | Unit | Individual functions/components | {from Test-Strategy.md → Framework → Unit Tests} |
 | Integration | Cross-component flows | {from Test-Strategy.md → Framework → Integration} |
-| E2E | Critical user journeys | {from Test-Strategy.md → Framework → E2E, or "TBD"} |
+| E2E | Critical user journeys | {from `framework-config.json` `testing.suites[]` → the gate e2e suite: `full` (suite `id`); else Test-Strategy.md → Framework → E2E, or "TBD"} |
 
 ## Epic Test Coverage
 

@@ -1,5 +1,5 @@
 ---
-version: "v0.115.0"
+version: "v0.116.0"
 description: Create GitHub epics and stories from a PRD, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -288,6 +288,21 @@ test('{criterion 1} rejects invalid input', () => {
 - [ ] Boundary values
 - [ ] Error recovery
 ```
+
+#### E2E Test Cases (#3490)
+
+For a story derived from a `User journey: yes` PRD story (a gate e2e suite was declared at `/create-prd`), add after the unit tests:
+
+```markdown
+#### E2E Test Cases
+
+**Suite:** `{suite id}` — `{full}`
+
+- [ ] {journey} — happy path end to end
+- [ ] {journey} — the error path the user can reach
+```
+
+and add `- [ ] E2E test passes (suite {suite id})` to the Definition of Done below. No gate e2e suite declared, or a `User journey: no` story: nothing E2E-specific is added.
 
 #### Definition of Done Extension
 

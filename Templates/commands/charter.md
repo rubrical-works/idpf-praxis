@@ -1,5 +1,5 @@
 ---
-version: "v0.115.0"
+version: "v0.116.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
 argument-hint: "[--update [--register-proj|--deregister-proj|--list-proj]|--refresh [--dry-run]|--testing [--dry-run [--check]] [--sweep-e2e on|off] [--sweep-scope all|touched]] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -268,7 +268,7 @@ What review mode should be used for this project?
 | Active domains? | framework-config.json → activeDomains |
 **Process:**
 1. Create lifecycle dirs: `mkdir -p Inception Construction/Test-Plans Construction/Design-Decisions Construction/Tech-Debt Construction/Reports/Daily-Logs Construction/Reports/Stats Transition`
-2. Generate CHARTER.md (Vision, Tech Stack, In Scope, Status: Draft). **Required (#2379):** title exactly `# Project Charter: {name}`; include `## Key Entities` table `| Entity | Count | Location |` with ≥1 row (use `TBD` for unknown Count). Missing section → `/charter --refresh` count verification has nothing to check.
+2. Generate CHARTER.md (Vision, Tech Stack, In Scope, Status: Draft). **Required (#2379):** title from `.claude/metadata/charter-contract.json` `title` block (#3515) — `title.form` with `{name}` = the `name` answer, line 1 matching `title.pattern`; read from the contract, never memory. A generation requirement only (`title.role`), never an input to whether a charter is filled; include `## Key Entities` table `| Entity | Count | Location |` with ≥1 row (use `TBD` for unknown Count). Missing section → `/charter --refresh` count verification has nothing to check.
 3. Generate Inception/ artifacts (Charter-Details, Tech-Stack, Scope-Boundaries, Constraints, Architecture, Test-Strategy, Milestones) — **in intent voice per the Artifact voice rule at the head of Inception Mode.** `Tech-Stack.md` is sourced from the Q3 answer alone.
 4. Construction/ structure with .gitkeep and README.md
 5. Transition/ artifacts (Deployment-Guide, Runbook, User-Documentation)
@@ -304,7 +304,7 @@ const { extractEntities, verifyEntityCounts } = require('.claude/scripts/shared/
 const entities = extractEntities(fs.readFileSync('CHARTER.md', 'utf8'));
 const results = verifyEntityCounts(entities);
 ```
-Each result carries a **tri-state** `match` (#2597): `true` confirmed, `false` a real disagreement, `null` no count derived; `resolved: false` names the third case, `unresolved[]` one `{location, reason}` per unreadable location. **Report mismatches and unverifiable entities separately** — an unresolvable entity is an absence of evidence, not drift: `⚠️ {entity}: charter says {charterCount}, found {actualCount} on disk`; `❓ {entity}: count not verified — {unresolved[].location}: {unresolved[].reason}`. **Only `match: false` feeds the consent prompt.** Ask before updating charter counts; **never auto-modify the charter without consent**, never offer to rewrite a count from an unresolved result (`actualCount` is `null` — rule 01 Claim Labeling). Then run **Out-of-Table Count Reconciliation** (below) — `verifyEntityCounts()` sees only the Key Entities table, so prose counts need their own pass (#2636). Report `"Count verification: {N} entities checked, {M} mismatches, {U} unverifiable"` — the unverifiable tally is unconditional. **#2379:** CHARTER.md keeps its `# Project Charter: {name}` title and `## Key Entities` table; no table → report nothing to verify.
+Each result carries a **tri-state** `match` (#2597): `true` confirmed, `false` a real disagreement, `null` no count derived; `resolved: false` names the third case, `unresolved[]` one `{location, reason}` per unreadable location. **Report mismatches and unverifiable entities separately** — an unresolvable entity is an absence of evidence, not drift: `⚠️ {entity}: charter says {charterCount}, found {actualCount} on disk`; `❓ {entity}: count not verified — {unresolved[].location}: {unresolved[].reason}`. **Only `match: false` feeds the consent prompt.** Ask before updating charter counts; **never auto-modify the charter without consent**, never offer to rewrite a count from an unresolved result (`actualCount` is `null` — rule 01 Claim Labeling). Then run **Out-of-Table Count Reconciliation** (below) — `verifyEntityCounts()` sees only the Key Entities table, so prose counts need their own pass (#2636). Report `"Count verification: {N} entities checked, {M} mismatches, {U} unverifiable"` — the unverifiable tally is unconditional. **#2379:** CHARTER.md keeps its contract title (`title.form`, matching `title.pattern`) and `## Key Entities` table; no table → report nothing to verify.
 5b. **Charter shape (#3418)** — bring an over-grown CHARTER.md back to summary shape. Measure, then propose; never write before consent:
 ```bash
 node .claude/scripts/shared/lib/charter-shape.js --propose

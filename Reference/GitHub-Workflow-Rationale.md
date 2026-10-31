@@ -1,5 +1,5 @@
 # GitHub Workflow Integration — Rationale
-**Version:** v0.115.0
+**Version:** v0.116.0
 **Source:** Reference/GitHub-Workflow-Rationale.md
 The reasoning behind decisions `Reference/GitHub-Workflow.md` (rule 02) directs without re-arguing (#3252). Nothing auto-loads this file; rule 02 names it. It ships with every other `Reference/` document and is never registered under `deploymentFiles.rules`.
 ## Pre-Work Status Gate (#2483)

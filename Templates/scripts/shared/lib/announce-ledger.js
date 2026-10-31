@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -72,16 +72,6 @@ const CLOSER = 'work-completed';
 const TRACKED_EVENTS = Object.freeze([OPENER, CLOSER]);
 
 /**
- * Events recorded for attribution but never reconciled (#2871).
- *
- * `Construction/Design-Decisions/2026-09-06-announcement-integrity-seams.md`
- * declined one ledger reconciling every event, for the reason given above
- * TRACKED_EVENTS, and that decision stands: these are NOT added to it. What the
- * review events needed was the record — whether an announcement was composed
- * and what became of its send — not a pairing verdict with a meaning of
- * "paired" that does not fit them.
- */
-/**
  * Branch-operation notices (#2960): `/merge-branch`, `/prepare-beta`,
  * `/prepare-release` and `/destroy-branch` announce before their first
  * irreversible step. Record-only and non-pairing, like the review events: a
@@ -121,6 +111,16 @@ const PUSH_EVENTS = Object.freeze([
  */
 const GATE_EVENTS = Object.freeze(['work-invocation', 'gate-decision']);
 
+/**
+ * Events recorded for attribution but never reconciled (#2871).
+ *
+ * `Construction/Design-Decisions/2026-09-06-announcement-integrity-seams.md`
+ * declined one ledger reconciling every event, for the reason given above
+ * TRACKED_EVENTS, and that decision stands: these are NOT added to it. What the
+ * review events needed was the record — whether an announcement was composed
+ * and what became of its send — not a pairing verdict with a meaning of
+ * "paired" that does not fit them.
+ */
 const RECORD_ONLY_EVENTS = Object.freeze([
   'review-started',
   'review-passed',
@@ -240,9 +240,12 @@ const UPDATE_EVENTS = Object.freeze([DISPATCH_UPDATE, RECEIPT_UPDATE]);
 /** Append one update row; `beforeWrite` is a test seam for the interleaving case. */
 function appendUpdate(row, options = {}) {
   if (typeof options._beforeWrite === 'function') options._beforeWrite();
-  const file = ledgerPath(options.cwd || process.cwd());
+  // resolveLedgerPath, not ledgerPath: a working-tree fallback after a git
+  // failure is reported on the update paths too, as record() reports it (#3485).
+  const { path: file, warning } = resolveLedgerPath(options.cwd || process.cwd(), { git: options._git });
   ensureLedgerDir(file);
   fs.appendFileSync(file, `${JSON.stringify({ id: newId(), ts: new Date().toISOString(), ...row })}\n`, 'utf8');
+  return { warning };
 }
 
 /** Apply one update row to the entry it references. */
@@ -271,17 +274,6 @@ function normalizeIssues(issues) {
 }
 
 /**
- * Append one composed announcement.
- *
- * Records `dispatch: 'pending'` — composed is not dispatched, and the two must
- * not collapse. An entry that never reaches `sent` is precisely AC3's failure
- * mode, so the initial state has to be the pessimistic one; starting at 'sent'
- * would make a swallowed dispatch failure indistinguishable from a success.
- *
- * Never throws. This is called from inside the Step 3 gate sequence and the
- * Step 6 STOP sequence, neither of which an advisory record may abort.
- */
-/**
  * The owning session's pid, or `null` when the caller could not identify one
  * (#2896).
  *
@@ -299,6 +291,17 @@ function normalizeSessionPid(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+/**
+ * Append one composed announcement.
+ *
+ * Records `dispatch: 'pending'` — composed is not dispatched, and the two must
+ * not collapse. An entry that never reaches `sent` is precisely AC3's failure
+ * mode, so the initial state has to be the pessimistic one; starting at 'sent'
+ * would make a swallowed dispatch failure indistinguishable from a success.
+ *
+ * Never throws. This is called from inside the Step 3 gate sequence and the
+ * Step 6 STOP sequence, neither of which an advisory record may abort.
+ */
 function record(entry, options = {}) {
   try {
     const event = entry && entry.event;
@@ -450,8 +453,8 @@ function updateDispatch(id, outcome = {}, options = {}) {
   const row = { event: DISPATCH_UPDATE, ref: id, dispatch: result };
   if (outcome.detail !== undefined) row.detail = outcome.detail;
   try {
-    appendUpdate(row, options);
-    return { ok: true, id };
+    const { warning } = appendUpdate(row, options);
+    return warning ? { ok: true, id, ledgerWarning: warning } : { ok: true, id };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
   }
@@ -472,43 +475,18 @@ function updateReceipt(id, details = {}, options = {}) {
   if (!entries.some((e) => e.id === id)) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
 
   try {
-    appendUpdate({
+    const { warning } = appendUpdate({
       event: RECEIPT_UPDATE,
       ref: id,
       receiptFrom: typeof details.from === 'string' && details.from.trim() !== '' ? details.from.trim() : null,
       receiptAt: new Date().toISOString(),
     }, options);
-    return { ok: true, id };
+    return warning ? { ok: true, id, ledgerWarning: warning } : { ok: true, id };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
   }
 }
 
-/**
- * Reconcile openers against closers for a known set of issues.
- *
- * FOUR outcomes, and collapsing any two of them is what makes an audit useless:
- *
- *   paired         both events recorded — the expected state
- *   missingOpener  a closer with no opener. THE OBSERVED DEFECT (#1165)
- *   missingCloser  an opener with no closer. The run halted, or was still
- *                  going — reported, but a different problem
- *   unrecorded     neither event recorded. NOT a defect: the channel may be
- *                  off, or the run may predate this ledger. Calling it a
- *                  dropped opener would make the audit cry wolf on every
- *                  project that never enabled messaging
- *
- * `undispatched` is the orthogonal axis and answers AC3 after the fact: an
- * entry composed but left `pending`, or explicitly `failed`, went nowhere.
- * That is a sender-side fact the sender can state, unlike delivery.
- *
- * Tracked events only, whatever it is handed (#2871): a record-only review
- * entry left `pending` would otherwise surface as an undispatched /work
- * announcement, and the audit would change without its caller changing.
- *
- * Never throws — the caller is `nonstop-audit.js`, whose other two audits must
- * still render if this one cannot.
- */
 /**
  * Mark the start of one /work invocation on `root` for this session (#3271).
  * Gate decisions recorded after it belong to this invocation.
@@ -557,6 +535,31 @@ function invocationWindow({ entries, root, sessionPid = null }) {
   return start === -1 ? [] : mine.slice(start + 1);
 }
 
+/**
+ * Reconcile openers against closers for a known set of issues.
+ *
+ * FOUR outcomes, and collapsing any two of them is what makes an audit useless:
+ *
+ *   paired         both events recorded — the expected state
+ *   missingOpener  a closer with no opener. THE OBSERVED DEFECT (#1165)
+ *   missingCloser  an opener with no closer. The run halted, or was still
+ *                  going — reported, but a different problem
+ *   unrecorded     neither event recorded. NOT a defect: the channel may be
+ *                  off, or the run may predate this ledger. Calling it a
+ *                  dropped opener would make the audit cry wolf on every
+ *                  project that never enabled messaging
+ *
+ * `undispatched` is the orthogonal axis and answers AC3 after the fact: an
+ * entry composed but left `pending`, or explicitly `failed`, went nowhere.
+ * That is a sender-side fact the sender can state, unlike delivery.
+ *
+ * Tracked events only, whatever it is handed (#2871): a record-only review
+ * entry left `pending` would otherwise surface as an undispatched /work
+ * announcement, and the audit would change without its caller changing.
+ *
+ * Never throws — the caller is `nonstop-audit.js`, whose other two audits must
+ * still render if this one cannot.
+ */
 function reconcile({ entries, issues, workEnabled = false } = {}) {
   const list = (Array.isArray(entries) ? entries : [])
     .filter((e) => e && TRACKED_EVENTS.includes(e.event));

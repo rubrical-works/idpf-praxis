@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description Session-start charter health check (#3423). Verifies Key Entities and prose counts with charter-entities.js and charter shape with charter-shape.js, and emits a row only on a finding, naming /charter --refresh. Read-only and advisory: never writes CHARTER.md, never prompts.
  * @checksum sha256:placeholder
  *

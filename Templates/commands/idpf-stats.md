@@ -1,5 +1,5 @@
 ---
-version: "v0.115.0"
+version: "v0.116.0"
 description: Generate an IDPF session statistics report with development velocity metrics.
 argument-hint: "[--daily-log [prose]] [--today] [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repos /path/a,/path/b] [--repos-edit] [--save] [--help]"
 copyright: "Rubrical Works (c) 2026"

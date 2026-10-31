@@ -424,6 +424,14 @@
       ],
       "description": "When /work runs the independent diff-review of an issue's Refs #N commits before the in_review move (#3457). `always` (the default when the key is ABSENT) reviews every issue; `nonstop-only` reviews only under --nonstop; `off` never reviews. `--no-review` skips it for one run in any mode. Read through framework-config.js resolveWorkReview(); an unrecognized value resolves to `always` with a warning."
     },
+    "testPlanGateConfirmation": {
+      "type": "string",
+      "enum": [
+        "always",
+        "when-blocked"
+      ],
+      "description": "Whether /review-test-plan Step 5a asks before writing passing approval gates (#3494). `always` (the default when the key is ABSENT) confirms every checkable gate before it is written. `when-blocked` writes every gate that is checkable and autoCheckable: true to both surfaces without a prompt, recording it in ## Approval Decisions as auto-checked; an autoCheckable: false gate still gets the confirmation prompt and a blocked gate still gets the risk prompt. Read through framework-config.js resolveTestPlanGateConfirmation(); an unrecognized value resolves to `always` with a warning."
+    },
     "verificationMode": {
       "type": "string",
       "enum": [

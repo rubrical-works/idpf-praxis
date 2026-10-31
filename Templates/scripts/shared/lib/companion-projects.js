@@ -17,7 +17,7 @@
  * projects from the hub framework root, so an undeclared external `require`
  * would throw MODULE_NOT_FOUND at module load.
  *
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * Refs #2665
  */
 

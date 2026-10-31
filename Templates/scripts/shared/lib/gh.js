@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description GitHub CLI wrapper with retry logic, transient-error detection, and safe exec helpers. Exports ghExec(), ghQuery(), isTransientError(), and related utilities. Used by most preamble and workflow scripts.
  * @checksum sha256:placeholder
  *
@@ -15,13 +15,28 @@ const { validateBranchName, validateRepo, validateTag, validateRunId } = require
 const { execTimed } = require('./exec');
 
 /**
- * Check if an error message indicates a transient HTTP error (5xx)
+ * Server-side failure wording that is transient whatever its HTTP status
+ * (#3491). A GraphQL server error arrives as HTTP 200 with an `errors` body,
+ * so the 5xx test alone classed it permanent and nothing retried it.
+ * Validation failures — not mergeable, head modified, required checks,
+ * conflicts — match none of these and stay permanent.
+ */
+const TRANSIENT_PATTERNS = Object.freeze([
+    /HTTP 5\d{2}/,
+    /Something went wrong while executing your query/i,
+    /\b(Bad Gateway|Service Unavailable|Gateway Time-?out)\b/i,
+]);
+
+/**
+ * Check if an error message indicates a transient server-side failure: an
+ * HTTP 5xx, a GraphQL server error, or gateway/timeout wording (#3491). A
+ * local exec timeout (ETIMEDOUT) is decided by the caller, never here (#2469).
  * @param {string} message - Error message to check
  * @returns {boolean} True if transient error
  */
 function isTransientError(message) {
-    // Match HTTP 5xx errors (502, 503, 504, etc.)
-    return /HTTP 5\d{2}/.test(message);
+    const text = String(message || '');
+    return TRANSIENT_PATTERNS.some((re) => re.test(text));
 }
 
 /**
@@ -220,6 +235,7 @@ function getTagTriggeredRun(tag, repo) {
 
 module.exports = {
     exec,
+    isTransientError,
     execJson,
     getLatestRun,
     getRuns,

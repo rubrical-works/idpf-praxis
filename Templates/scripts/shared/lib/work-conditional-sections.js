@@ -3,7 +3,7 @@
 /**
  * Section-scoped loading of /work's conditional bodies (#3325).
  *
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  *
  * Rule 08 Step 1d used to read all of `Reference/work-execution-conditional.md`
  * for any epic, branch tracker, `--nonstop`, `--concurrent` or multi-issue run.

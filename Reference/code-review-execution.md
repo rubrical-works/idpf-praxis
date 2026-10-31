@@ -1,5 +1,5 @@
 # /code-review Execution Reference
-**Version:** v0.115.0
+**Version:** v0.116.0
 **Source:** Reference/code-review-execution.md
 `/code-review` Workflow (Steps 2–12), hoisted out of the shell (#3230) on the `/work` (#2368) / `/review-issue` (#2737) shell + execution-reference pattern. The shell `CommandsSrc/code-review.md` keeps Prerequisites, Arguments, Step 1 parsing, Error Handling and closing cleanup.
 **Why a file, not a command call.** Skill does not return; a file is executed inline in the same turn and the caller continues — so `/prepare-release` and `/prepare-beta` run the diff review from their Branch Diff Review Gate (§ Release Review Gate) instead of asking for a second command.
@@ -96,8 +96,16 @@ Read each queued file; record per finding:
 **Severity:** High=security/correctness bug; Medium=maintainability/convention; Low=style/naming; Info=suggestion.
 `--with`: after standard review apply domain criteria, tag with domain; may escalate, never downgrade.
 **`--diff`:** whole file still read. `classifyFindingRange(ranges, file, startLine, endLine)` from `branch-diff.js`: range **entirely outside** the branch's changed ranges → tag `pre-existing`; inside/overlapping → `introduced`. Tag, never suppress.
+**Inline by default.** Without `--agents`, the main session reads and reviews every queued file itself and spawns no Agent.
+**`--agents N` — the reviewer split (#3167):**
+1. **Partition:** `partitionQueue(files, N)` (`.claude/scripts/shared/lib/code-review-shards.js`), files as `{ path, lines }` → at most N non-empty shards, by directory, balanced by line count, each file in exactly one.
+2. **Spawn:** the parent spawns at most N read-only reviewer Agents in one message, as parallel calls. Type `general-purpose` instructed read-only, never writing (Step 6 reads whole files; `Explore` reads excerpts) — a request parameter, replaceable by a dedicated reviewer type. Each receives its shard's files, the Step 5 criteria, the Step 5c domain questions when `--with` is active, and the `--diff` changed ranges for its files when `--diff` is active — context only.
+3. **Result:** one JSON document per `.claude/scripts/shared/lib/code-review-findings-schema.json` — `filesReviewed[]` + `findings[]` (Step 6 fields). No `introduced`/`pre-existing` tag: the schema has no field for it; Read, Glob, Grep suffice.
+4. **Merge:** `mergeShardResults(shards, results, { ranges, cwd })` (`ranges` only under `--diff`) → `{ findings, reviewed, unreviewed, rejected }`. Rejects a schema-invalid result, a finding outside its shard, a line range past the file's end (each under `rejected`); under `--diff` assigns every `diffTag` with `classifyFindingRange()`, overwriting a reviewer's. A shard with no valid result (failed, empty, invalid) → all its files `unreviewed`, as is any shard file missing from `filesReviewed`. Report each `rejected`; never repair a result by hand.
+5. The merged findings are Step 6's findings for Steps 7–11.
+**Only the parent writes `.code-review-manifest.json`.** Reviewers write nothing; Steps 2, 4, 8–11 stay in the parent. A file in `unreviewed` is never set `approved`: Step 10 leaves its prior entry, or none; Steps 9 and 11 name it.
 ### Step 7: Batch Mode Support
-`--batch N`: limit N per invocation, save manifest, report progress.
+`--batch N`: limit N per invocation, save manifest, report progress. With `--agents N`: batch bounds files per invocation, agents bounds reviewers at once.
 ### Step 8: Issue Creation
 **MANDATORY:** All issue creation goes through `.claude/scripts/shared/file-issue.js` (the `/bug`/`/enhancement` path). Never raw `gh pmu create` or `gh issue create` — no template or priority handling; the bare form files off the board.
 **One turn for the whole batch (#3049).** Do **not** invoke `/bug`/`/enhancement` per finding: `Skill` does not return and `/bug` STOPs, so a loop files one issue per turn (rule 02).
@@ -113,11 +121,12 @@ Read each queued file; record per finding:
 | medium, low | `p2` |
 
 1. Present findings summary
-2. `AskUserQuestion`: per finding, per group, or skip
-3. Group findings sharing a root cause into one entry
-4. Write approved entries — `{type, title, priority, fields, labels, source: {file}}`, `fields` from the finding (description, actual behavior, proposed fix/solution, acceptance criteria) — to `.tmp-code-review-queue-{random}.json` (suffix shelled out, `05-windows-shell.md`), **enqueue**: `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json --enqueue <that file>`; `rm` it
-5. **File the queue** same turn: `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json` — files every unfiled entry, rewrites the manifest after each, appends each number to its `source.file`'s `issueRefs`
-6. Report each result (number + priority, or error). Relay `gatesNotApplied` once — `verificationGate`/`phaseFeasibility` are judged by `/bug`/`/enhancement`; `/review-issue` a filing to apply them
+2. Group findings sharing a root cause into one entry
+3. **Duplicate check (#3516):** write candidate entries — `{type, title, priority, fields, labels, source: {file, lines, severity, diffTag}}` — to `.tmp-code-review-entries-{random}.json` (suffix shelled out); run `node .claude/scripts/shared/file-issue.js --check-duplicates <that file> --manifest .code-review-manifest.json`. It runs `.claude/scripts/shared/lib/issue-duplicates.js` (read-only search of open `bug`/`enhancement` issues, scored on file path, the file's `issueRefs`, title terms) — the script decides, never inline judgment. Results: `new`, `duplicate`, `related`, `unchecked`, with reasons. **Failed search** (exit 1): report `searchError`; every entry `unchecked`, filed normally — never treated as `new`. Closed issues not searched.
+4. `AskUserQuestion`: per finding, per group, or skip — each entry shown as `new`, `duplicate-of #N`, `related-to #N` or `unchecked` with reasons, **before anything is filed or edited**; the user confirms or overrides. A confirmed duplicate widening the matched issue's scope: show the `Files to modify:` paths and ACs to add; add only those confirmed.
+5. Write approved entries — `fields` from the finding (description, actual behavior, proposed fix/solution, acceptance criteria) — to `.tmp-code-review-queue-{random}.json` (`05-windows-shell.md`). Confirmed duplicate: `duplicateOf: {issue: N, files?, acceptanceCriteria?}` + `review: {date, baseSha}`; related: `relatedTo: N`. **Enqueue**: `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json --enqueue <that file>`; `rm` both
+6. **File the queue** same turn: `node .claude/scripts/shared/file-issue.js --manifest .code-review-manifest.json` — files every unfiled entry, rewrites the manifest after each, appends each number to its `source.file`'s `issueRefs`. `duplicateOf` **files no issue**: comments file, line range, severity, diff tag, review date and base SHA on the matched issue; confirmed scope additions edit its body via the body-file flow (`gh pmu view --body-stdout` → `gh pmu edit -F`); marked `updated`, number into `issueRefs`. `relatedTo` files with a `Related to #N` line
+7. Report each result (number + priority, `updated #N`, or error). Relay `gatesNotApplied` once — `verificationGate`/`phaseFeasibility` are judged by `/bug`/`/enhancement`; `/review-issue` a filing to apply them
 Exit 1 = an entry failed: stays `failed`, re-offered by the next Step 2; never re-file a `filed` entry by hand. **A partial failure does not end the review:** reported, left `failed`; Steps 9–10 still run, the record written with only filed numbers in `issues`.
 **Skipping every filing is a complete answer:** `issues` is `[]`; severity counts still come from Step 6's tags — the gate reads counts, not filings.
 **Info-level findings** reported but not offered as issues.
@@ -128,7 +137,8 @@ gh issue edit $ISSUE --add-label=security-finding
 ```
 All security findings ✅ → do not apply.
 ### Step 9: Structured Report
-Save to `Construction/Code-Reviews/YYYY-MM-DD-report.md` (create dir) **after** issue creation: summary, findings by severity with issue #s, per-file status, aggregate statistics. Each finding: `Issue: #1234` or `No issue` (info). Add an **Issues Created** section.
+Save to `Construction/Code-Reviews/YYYY-MM-DD-report.md` (create dir) **after** issue creation: summary, findings by severity with issue #s, per-file status, aggregate statistics. Each finding: `Issue: #1234`, `Updated: #1234` (confirmed duplicate) or `No issue` (info). Add an **Issues Created** section and an **Issues Updated** section — issues updated instead of filed (`none` if none).
+**`--agents`:** an **Unreviewed files** section lists every `unreviewed` file with its shard's `rejected` reason, and every rejected finding — not read, never reported clean.
 **`--diff`:** open with base ref, its SHA and range reviewed (`<baseSha>..HEAD`, + `working tree` when `workingTreeIncluded`); mark `pre-existing` findings.
 ### Step 10: Manifest Update
 1. Write `.code-review-manifest.json`
@@ -136,8 +146,8 @@ Save to `Construction/Code-Reviews/YYYY-MM-DD-report.md` (create dir) **after** 
 3. Status: no findings→`approved`, findings→`flagged`
 4. Record `reviewedAt`, `findingCount`
 5. Record `domains` when `--with` active (merge, not replace)
-6. Preserve skipped; remove deleted
-7. **`--diff` only:** write `lastDiffReview`, **replacing** any previous: `baseRef`, `baseSha` (Step 3 `base`), `headSha` (`git rev-parse HEAD`), `reviewedAt` (ISO), `workingTreeIncluded`, `filesReviewed`, `findings.introduced` + `findings.preExisting` (`{high, medium, low, info}` from Step 6 tags), `issues` (Step 8 numbers, `[]` if none), `domains` when `--with`. Shape: `lastDiffReview` in the manifest schema; complete and current to this run — the consumer owns the policy.
+6. Preserve skipped; remove deleted. **`--agents`:** an `unreviewed` file keeps its prior entry, or none — never `approved`/`flagged` by this run
+7. **`--diff` only:** write `lastDiffReview`, **replacing** any previous: `baseRef`, `baseSha` (Step 3 `base`), `headSha` (`git rev-parse HEAD`), `reviewedAt` (ISO), `workingTreeIncluded`, `filesReviewed`, `findings.introduced` + `findings.preExisting` (`{high, medium, low, info}` from Step 6 tags), `issues` (Step 8 filed numbers, `[]` if none), `updatedIssues` (issues updated in place of a duplicate, `[]` if none, #3516), `domains` when `--with`. Shape: `lastDiffReview` in the manifest schema; complete and current to this run — the consumer owns the policy.
 ### Step 10a: Commit Review Output (`--diff` only, #3183)
 Commit this run's output so the review leaves a clean tree. § Release Review Gate decides freshness with `reviewRecordFreshness` (`branch-diff.js`): a commit changing only review output (`.code-review-manifest.json`, `Construction/Code-Reviews/**`) keeps the record current; `headSha` stays the reviewed commit.
 - **Default branch** (resolved as Step 3) → do not commit; report `Review output not committed: <branch> is the default branch. Commit it from a working branch.` → Step 11.
@@ -157,11 +167,12 @@ Code Review Complete
 Files reviewed: N
 Findings: X (H high, M medium, L low, I info)
 Issues created: Y
+Issues updated: U
 Report: Construction/Code-Reviews/YYYY-MM-DD-report.md
 Manifest: .code-review-manifest.json updated
 Next: Run --status to see cumulative progress
 ```
-**`--diff`:** add `Base: <ref> (<sha>), range <sha>..HEAD[ + working tree]` and `Pre-existing: P` after Findings; `Committed: <sha>` or Step 10a's skip/failure reason after Manifest. **Inline:** omit the `Next:` line; the gate's report follows.
+**`--agents`:** add `Reviewers: N, Unreviewed: U` after Files, naming each unreviewed file. **`--diff`:** add `Base: <ref> (<sha>), range <sha>..HEAD[ + working tree]` and `Pre-existing: P` after Findings; `Committed: <sha>` or Step 10a's skip/failure reason after Manifest. **Inline:** omit the `Next:` line; the gate's report follows.
 ### Step 12: Hand Back
 **Standalone:** return to the shell's closing cleanup (prunes and STOPs); nothing pruned here, so the prune runs once.
 **Inline:** this is the inline review's closing cleanup; the prune is **part of** it — unconditional, every path incl. an early end:
@@ -173,7 +184,7 @@ Then return to § Release Review Gate at its re-check; the review does not stop 
 ## Release Review Gate
 Branch Diff Review Gate of `/prepare-release` and `/prepare-beta` (each Step 2.1), stated once so they cannot drift (#3230). Each keeps its heading, `--skip-review` handling, a pointer here and its unreadable-file STOP, passing `<command>` = `prepare-release` or `prepare-beta` (named by every STOP message below).
 Refuses a release or beta whose branch carries an unreviewed change or an introduced high-severity finding. Runs in Phase 2, before Phase 3 edits any version file or CHANGELOG and before any tag.
-**The record.** Reads `lastDiffReview` from `.code-review-manifest.json` (fields per Step 10 item 7). Format unchanged by #3230 (older records read alike, accepted when fresh). Missing `headSha`, `findings.introduced` or `findings.preExisting` → treated as missing: `reviewRecordFreshness` checks only `headSha`, so the gate checks the count objects itself — never passes on a partial record.
+**The record.** Reads `lastDiffReview` from `.code-review-manifest.json` (fields per Step 10 item 7; absent `updatedIssues` = none). Format unchanged by #3230 (older records read alike, accepted when fresh). Missing `headSha`, `findings.introduced` or `findings.preExisting` → treated as missing: `reviewRecordFreshness` checks only `headSha`, so the gate checks the count objects itself — never passes on a partial record.
 **Freshness rule — decided by `reviewRecordFreshness({ cwd, record })` from `.claude/scripts/shared/lib/branch-diff.js` (#3183); never re-derive it.** Current when `headSha` = `git rev-parse HEAD`, or every commit since `headSha` changes only review output (`.code-review-manifest.json`, `Construction/Code-Reviews/**` — so Step 10a does not stale it); **and** no uncommitted change outside review output, or `workingTreeIncluded` is `true`. Otherwise stale; the helper's `reason` and `offending` paths say why. Reviewed uncommitted source goes stale once committed — deliberate: paths, not content.
 **Why inline, with no `Skill` call.** Skill does not return, so the gate would never reach its re-check (why #3115's gate could only STOP). It executes § `/code-review` — Workflow of this file in the same turn and continues.
 **First, resolve base + changed-file set** with `changedFilesSinceBase({ cwd })` from `.claude/scripts/shared/lib/branch-diff.js` (it calls `resolveBranchBase`): nearest merge-base with the default branch (release or beta feature branch alike). Decides empty diff and unresolvable base without a record and fixes the inline review's base, so the two cannot disagree on the branch.
@@ -190,7 +201,7 @@ Refuses a release or beta whose branch carries an unreviewed change or an introd
   - **Accept** → execute § `/code-review` — Workflow, Steps 2–12, inline with `--diff <ref>` (`<ref>` = the gate's resolved base) — no `Skill` call, no other flag. It runs its Step 8 (filing, one `AskUserQuestion`), Step 10 (`lastDiffReview`), Step 10a (commit); Step 12 prunes only its `code-review:` tasks and hands back here.
   - **Decline** → **STOP**: `Run /code-review --diff, then re-run /<command>.`
   - **After the inline run** → re-read `.code-review-manifest.json` from disk, re-apply the partial-record check and `reviewRecordFreshness`. Still missing/stale → **STOP** with `Branch diff review still stale after the inline run (<reason>). Run /code-review --diff, then re-run /<command>.` — never loop or retry. Fresh → severity policy, record source `inline run this invocation`.
-- `findings.introduced.high` > 0 → **STOP**, naming filed `issues` and introduced counts; `findings.preExisting` counts reported alongside, never block.
+- `findings.introduced.high` > 0 → **STOP**, naming filed `issues`, updated `updatedIssues` and introduced counts; `findings.preExisting` counts reported alongside, never block.
 - `findings.introduced.medium` > 0 and `findings.introduced.high` = 0 → **ASK USER** via `AskUserQuestion`: continue, or stop to address them. Findings table (issue, file, title) first; options `1.Continue`, `2.Stop to address them`; question `<M> introduced medium findings: continue the release?`; previews: *Continue* → proceed, findings filed; *Stop to address them* → STOP before any version file is edited.
 - Only `low`/`info` counts in `findings.introduced`, or none → report the counts and continue.
 
@@ -200,9 +211,10 @@ Review gate: base <ref> (<baseSha>), range <baseSha>..HEAD[ + working tree]
   Record: inline run this invocation | already fresh (reviewed <reviewedAt>)
   Introduced: H high, M medium, L low, I info · Pre-existing: H high, M medium, L low, I info
   Issues filed: #N, #N | none
+  Issues updated: #N, #N | none
 ```
 **During an inline run:**
-- Step 8 approvals are filed via `file-issue.js` same turn; numbers go to `lastDiffReview.issues` and the gate report. Skipping all filings files nothing; counts still drive the policy. A partial failure is reported, entries left `failed`; the record is still written and evaluated.
+- Step 8 approvals are filed via `file-issue.js` same turn; numbers go to `lastDiffReview.issues` and the gate report; updated duplicates go to `lastDiffReview.updatedIssues`, own line. Skipping all filings files nothing; counts still drive the policy. A partial failure is reported, entries left `failed`; the record is still written and evaluated.
 - Uncommitted source changes → Step 3 reviews the working tree too; record carries `workingTreeIncluded: true`, fresh on re-check.
 - Failed Step 10a commit → reported verbatim, no retry; record accepted only if `workingTreeIncluded` is `true` or the tree is otherwise clean (`reviewRecordFreshness` enforces it) — else **STOP** as stale.
 - Step 10a commits on the checked-out branch: `/prepare-release` creates its release branch from `main` at Pre-Checks (before Phase 2), so never `main`; `/prepare-beta` refuses `main` at its Pre-Check, so there no inline review runs and nothing is committed.

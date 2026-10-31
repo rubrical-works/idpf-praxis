@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "The result one /code-review reviewer Agent returns for its shard under --agents N (#3167). Validated by lib/code-review-shards.js mergeShardResults(). Carries the Step 6 table fields per finding and the files the reviewer actually read. The introduced/pre-existing tag under --diff is assigned by the parent at merge, so it is deliberately not a field here.",
+  "type": "object",
+  "required": ["filesReviewed", "findings"],
+  "properties": {
+    "filesReviewed": {
+      "type": "array",
+      "description": "Paths of the shard's files this reviewer read in full. A shard file missing from this list is reported unreviewed and never marked approved.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "findings": {
+      "type": "array",
+      "description": "One entry per Step 6 finding.",
+      "items": {
+        "type": "object",
+        "required": ["path", "startLine", "endLine", "category", "severity", "description", "recommendation"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "description": "Relative path of a file in this reviewer's shard." },
+          "startLine": { "type": "integer", "minimum": 1 },
+          "endLine": { "type": "integer", "minimum": 1 },
+          "category": { "type": "string", "minLength": 1, "description": "correctness, security, maintainability, naming, error-handling, documentation, or a --with domain name." },
+          "severity": { "type": "string", "enum": ["high", "medium", "low", "info"] },
+          "description": { "type": "string", "minLength": 1 },
+          "recommendation": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

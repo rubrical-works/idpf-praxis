@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(). Used by /review-prd and /review-test-plan.
  * @checksum sha256:placeholder
  *
@@ -320,10 +320,18 @@ const defaultIo = {
  * revert the Reviews marker it wrote. The ordering IS the invariant, so it is
  * asserted as an ordering in the tests rather than merely described here.
  *
+ * `only` (#3494) restricts the write to the named gate ids — the gates the
+ * user confirmed plus any testPlanGateConfirmation wrote unasked — so a
+ * declined prompt never writes a checkable gate it covered. Absent, every
+ * checkable gate is written, as before.
+ *
  * Never closes the issue. Closure stays with /done.
  */
-function applyApprovalGateCheckOff({ issue, planPath, gateMap, rollup, io = defaultIo }) {
+function applyApprovalGateCheckOff({ issue, planPath, gateMap, rollup, io = defaultIo, only }) {
   const checkable = checkableIds(rollup);
+  if (Array.isArray(only)) {
+    for (const id of [...checkable]) if (!only.includes(id)) checkable.delete(id);
+  }
   const out = { ok: true, issueChecked: 0, planChecked: 0, unresolvable: [] };
 
   const issueBody = io.readIssueBody(issue);
@@ -353,13 +361,33 @@ function applyApprovalGateCheckOff({ issue, planPath, gateMap, rollup, io = defa
   return out;
 }
 
+/** The recorded response for a gate written unasked under the setting (#3494). */
+const AUTO_CHECKED_RESPONSE = 'auto-checked (testPlanGateConfirmation: when-blocked)';
+
+/**
+ * The gates /review-test-plan Step 5a writes without a confirmation prompt
+ * (#3494): under `when-blocked`, every gate that is checkable AND declares
+ * autoCheckable: true. Any other mode returns none, so every checkable gate is
+ * confirmed. An autoCheckable: false gate is never returned — it rests on a
+ * reading of prose and always needs a human.
+ *
+ * @param {object} rollup - computeApprovalGates() output
+ * @param {string} mode - resolveTestPlanGateConfirmation().mode
+ * @returns {string[]} gate ids, in rollup order
+ */
+function autoWritableGateIds(rollup, mode) {
+  if (mode !== 'when-blocked') return [];
+  const gates = rollup && Array.isArray(rollup.gates) ? rollup.gates : [];
+  return gates.filter((g) => g.checkable === true && g.autoCheckable === true).map((g) => g.id);
+}
+
 /**
  * Render the `## Approval Decisions` section for the approval issue BODY.
  *
  * In the body rather than only a comment, so /resolve-review and /done can read
  * it back — a comment is not part of the state those commands parse.
  */
-function renderApprovalDecisions(gateMap, rollup, responses = {}) {
+function renderApprovalDecisions(gateMap, rollup, responses = {}, { autoChecked = [] } = {}) {
   const declared = gateMap && Array.isArray(gateMap.gates) ? gateMap.gates : [];
   const byId = new Map(
     (rollup && Array.isArray(rollup.gates) ? rollup.gates : []).map((g) => [g.id, g])
@@ -390,10 +418,17 @@ function renderApprovalDecisions(gateMap, rollup, responses = {}) {
     }
     // Verbatim: the reviewer's own words are the record, and paraphrasing a
     // risk acceptance is how an accepted risk becomes an approved gate.
-    const response = Object.prototype.hasOwnProperty.call(responses, g.id)
-      ? responses[g.id]
-      : '(not recorded)';
-    lines.push('- **Response:** ' + response);
+    // An automatic write names the setting and says it was not a user answer
+    // (#3494), so it can never be read back as a human approval.
+    if (autoChecked.includes(g.id)) {
+      lines.push('- **Response:** ' + AUTO_CHECKED_RESPONSE);
+      lines.push('- **Decided by:** the testPlanGateConfirmation setting, not a user answer');
+    } else {
+      const response = Object.prototype.hasOwnProperty.call(responses, g.id)
+        ? responses[g.id]
+        : '(not recorded)';
+      lines.push('- **Response:** ' + response);
+    }
     lines.push('');
   }
   return lines.join('\n');
@@ -434,5 +469,7 @@ module.exports = {
   resolveApprovalGates,
   applyApprovalGateCheckOff,
   renderApprovalDecisions,
+  autoWritableGateIds,
+  AUTO_CHECKED_RESPONSE,
   APPROVAL_HEADINGS,
 };

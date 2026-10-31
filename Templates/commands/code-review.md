@@ -1,7 +1,7 @@
 ---
-version: "v0.115.0"
+version: "v0.116.0"
 description: Run a comprehensive code review with manifest-driven incremental tracking, using the IDPF framework.
-argument-hint: "[--full] [--status] [--scope <globs>] [--diff [<base>]] [--batch <N>] [--with <domains>] [--suggest] [--help]"
+argument-hint: "[--full] [--status] [--scope <globs>] [--diff [<base>]] [--batch <N>] [--agents <N>] [--with <domains>] [--suggest] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -20,6 +20,7 @@ Methodical charter-aligned code review with manifest-driven incremental tracking
 | `--scope <globs>` | Comma-separated file patterns to limit scope |
 | `--diff [<base>]` | Files changed since merge-base with the default branch (or `<base>`), plus uncommitted. Combines with every flag |
 | `--batch <N>` | Review N files then stop |
+| `--agents <N>` | Split Step 6 across at most N read-only reviewer subagents at once; parent merges and alone writes the manifest. Absent → inline. With `--batch`: batch bounds files, agents bounds concurrency |
 | `--with <domains>` | Comma-sep domain extensions or `all` |
 | `--suggest` | Recommend domains (mutually exclusive with `--with`) |
 | `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
@@ -31,7 +32,7 @@ Combinable: `--scope "src/**/*.js" --batch 10 --with security`, `--diff --with s
 **REQUIRED:** Workflow in `{frameworkPath}/Reference/code-review-execution.md` (on demand, not a rule); its § Execution Instructions defines tasks (one per numbered step, prefix `code-review:`) and compaction resume. Add tasks for Steps 1 and 13.
 ## Execution Logic
 ### Step 1: Parse Arguments
-Accept: none, `--full`, `--status`, `--scope "globs"`, `--diff [<base>]` (base = next token not starting `--`), `--batch N`, `--with`, `--suggest`. `--suggest` and `--with` mutually exclusive → error+STOP. Invalid → error+STOP.
+Accept: none, `--full`, `--status`, `--scope "globs"`, `--diff [<base>]` (base = next token not starting `--`), `--batch N`, `--agents N`, `--with`, `--suggest`. `--agents` takes a positive integer; a non-integer or zero value is an invalid argument: report `--agents requires a positive integer, got <value>.` → STOP. `--suggest` and `--with` mutually exclusive → error+STOP. Invalid → error+STOP.
 ### Steps 2–12: Review Workflow
 Read and execute `{frameworkPath}/Reference/code-review-execution.md` § `/code-review` — Workflow, Steps 2–12, with Step 1's arguments (discovery, per-file review, `file-issue.js` filing, report, manifest + `lastDiffReview`, `--diff` commit, summary). Where it says *end the review*, continue at Step 13.
 If the file cannot be read, report its path and STOP: `Could not read {frameworkPath}/Reference/code-review-execution.md; /code-review cannot run without it.` Never review from memory.
@@ -57,6 +58,7 @@ The prune is **part of** this step, and this step is **numbered**, so an unprune
 | `--with` unknown domain | Warn with list, skip |
 | `--with` registry missing | Warn, fallback standard |
 | `--with` criteria missing | Skip domain, warn |
+| `--agents` not a positive integer | "`--agents requires a positive integer, got <value>.`" → STOP |
 | `--suggest`+`--with` | "`--suggest` and `--with` are mutually exclusive." → STOP |
 | `domain-signals.json` missing | Warn, skip filtering |
 | All domains filtered | "All requested domains filtered — falling back to standard review only" |

@@ -371,6 +371,8 @@ Where `#42` is the proposal's tracking issue.
 7. Moves the proposal to `Proposal/Implemented/`
 8. Creates a PRD tracking issue (labeled `prd`)
 
+If your project declares a gate e2e suite in `testing.suites[]` (chosen during `/charter` harness selection), each story is marked as a user journey or not, and every user-journey story gets an acceptance criterion requiring an E2E test in that suite; `/create-backlog` then adds E2E test cases to those stories. Without a gate e2e suite, nothing E2E-specific is added.
+
 **What it creates:**
 ```
 PRD/Dark-Mode-Support/
@@ -397,6 +399,8 @@ Review the **PRD before the test plan**. The test plan is derived from the PRD's
 ```
 
 The **test plan approval issue** (labeled `test-plan` + `approval-required`) is the final gate — `/create-backlog` will not proceed until it is closed. This is an approval gate issue, not a work item: close it by checking its checklist boxes and moving it to `done` directly (no `/work` needed).
+
+When the review is approvable, `/review-test-plan` offers to check the gates its findings support — asking first, by default. A project can set `testPlanGateConfirmation: "when-blocked"` in `framework-config.json` to have passing auto-checkable gates written without that prompt; they are recorded as decided by the setting, and any gate that needs a human or is blocked is still asked about. Closing the approval issue stays with you.
 
 Test plans still expose PRD gaps concretely — a vague requirement like "preserve existing configuration" looks fine in a PRD until you try to write test cases for it: preserve what exactly? Comments? Ordering? Anchors? When `/review-test-plan` surfaces a gap like that, the review is recorded against the reviewed PRD, and you loop back: fix the PRD, `/review-prd #55 --force`, then re-run `/review-test-plan #56 --force`. The order protects the approval from being taken against requirements that then change; it does not prevent the test plan from improving them.
 
@@ -617,7 +621,7 @@ All three levels of review are valid. The depth of your review is a quality mult
 
 ### Phase 4: Git Operations
 - Creates a PR to `main`
-- You approve and merge the PR
+- You approve and merge the PR — the merge retries transient GitHub failures and falls back to the REST API; a real refusal (conflict, required check) stops the release
 - Shows the close preview again (work may have moved since the start), then closes the branch tracker issue
 - Tags the release on `main` (e.g., `v1.0.0`)
 - Pushes the tag

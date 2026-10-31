@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
@@ -715,6 +715,25 @@ function branchGlobMatches(pattern, branch) {
 }
 
 /**
+ * Whether any pattern in a filter list matches. Supported patterns are tried
+ * first, so a match decides regardless of list order (#3484); only when none
+ * matches does an unsupported pattern throw, since it might have.
+ */
+function anyBranchMatches(patterns, branch) {
+    let unsupported = null;
+    for (const p of patterns) {
+        try {
+            if (branchGlobMatches(p, branch)) return true;
+        } catch (e) {
+            if (!(e instanceof UnsupportedBranchPattern)) throw e;
+            if (!unsupported) unsupported = e;
+        }
+    }
+    if (unsupported) throw unsupported;
+    return false;
+}
+
+/**
  * Whether one `on:` entry triggers for a branch. A map with only tag filters
  * is a tag trigger; `branches` must match; `branches-ignore` must not.
  */
@@ -724,9 +743,31 @@ function eventTriggersBranch(config, branch) {
     const branches = list(config.branches);
     const ignore = list(config['branches-ignore']);
     if (!branches && !ignore && (config.tags || config['tags-ignore'])) return false;
-    if (branches) return branches.some((b) => branchGlobMatches(b, branch));
-    if (ignore) return !ignore.some((b) => branchGlobMatches(b, branch));
+    if (branches) return anyBranchMatches(branches, branch);
+    if (ignore) return !anyBranchMatches(ignore, branch);
     return true;
+}
+
+/**
+ * Parse a workflow file's `on:` into an event map (string and list forms
+ * become keys with a null config). Throws on a file that does not parse.
+ *
+ * @param {string} text - workflow YAML
+ * @returns {object} event name → config
+ */
+function workflowEvents(text) {
+    const yaml = require('yaml');
+    const doc = yaml.parse(text) || {};
+    const on = doc.on !== undefined ? doc.on : doc[true];
+    if (typeof on === 'string') return { [on]: null };
+    if (Array.isArray(on)) return Object.fromEntries(on.map((e) => [e, null]));
+    if (on && typeof on === 'object') return on;
+    return {};
+}
+
+/** Whether an event map triggers `name` for `branch`. */
+function eventTriggers(events, name, branch) {
+    return Object.prototype.hasOwnProperty.call(events, name) && eventTriggersBranch(events[name], branch);
 }
 
 /**
@@ -739,17 +780,10 @@ function eventTriggersBranch(config, branch) {
  * @returns {{push: boolean, pullRequest: boolean}}
  */
 function workflowTriggers(text, branch) {
-    const yaml = require('yaml');
-    const doc = yaml.parse(text) || {};
-    const on = doc.on !== undefined ? doc.on : doc[true];
-    let events = {};
-    if (typeof on === 'string') events = { [on]: null };
-    else if (Array.isArray(on)) events = Object.fromEntries(on.map((e) => [e, null]));
-    else if (on && typeof on === 'object') events = on;
-    const has = (name) => Object.prototype.hasOwnProperty.call(events, name);
+    const events = workflowEvents(text);
     return {
-        push: has('push') && eventTriggersBranch(events.push, branch),
-        pullRequest: has('pull_request') && eventTriggersBranch(events.pull_request, branch),
+        push: eventTriggers(events, 'push', branch),
+        pullRequest: eventTriggers(events, 'pull_request', branch),
     };
 }
 
@@ -777,13 +811,21 @@ function decidePostMergeSkip(input) {
 
     const onPush = [];
     for (const wf of workflows) {
-        let t;
-        try { t = workflowTriggers(wf.text, defaultBranch); } catch (e) {
-            if (e instanceof UnsupportedBranchPattern) return wait(`${wf.path}: ${e.message}`, { workflows: [wf.path] });
+        let events;
+        try { events = workflowEvents(wf.text); } catch (e) {
             return wait(`lookup failed: ${wf.path} could not be parsed (${e.message})`);
         }
-        if (!t.push) continue;
-        if (!t.pullRequest) {
+        // Push first: a workflow that never runs on push to the default branch
+        // needs no PR run, so its pull_request filter is never read (#3484).
+        let pullRequest;
+        try {
+            if (!eventTriggers(events, 'push', defaultBranch)) continue;
+            pullRequest = eventTriggers(events, 'pull_request', defaultBranch);
+        } catch (e) {
+            if (e instanceof UnsupportedBranchPattern) return wait(`${wf.path}: ${e.message}`, { workflows: [wf.path] });
+            return wait(`lookup failed: ${wf.path} triggers could not be evaluated (${e.message})`);
+        }
+        if (!pullRequest) {
             return wait(`${wf.path} runs on push to ${defaultBranch} but not on pull_request, so no PR run covers it`, { workflows: [wf.path] });
         }
         onPush.push(wf);

@@ -1,5 +1,5 @@
 ---
-version: "v0.115.0"
+version: "v0.116.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
 argument-hint: "[epic-number] (e.g., 42 or #42) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -149,12 +149,13 @@ N/A
 
 **Relevant Skills renders `N/A` when skills ARE configured (#2817).** The section used to emit the whole `projectSkills` array into every story; there is no relevance filter here or in `/create-backlog`, so all stories got the same list — ten identical copies in a ten-story epic — and the name was a misnomer, the content being project-wide. It was also a third copy: the session lists available skills, and `/work` loads TDD skills from `.claude/skills/tdd-process/tdd-checklist.json`, not the story body. The unconfigured branch stays: it is the only actionable half.
 **E2E — the source is `framework-config.json` `testing.suites[]`, the suite whose `role` is `e2e` (#2851).** **This inverts the #2817 instruction that stood here**, which named `Inception/Test-Strategy.md` as the only source and forbade a `framework-config.json` key. That was right while the prose artifact was the only declaration; since #2849 the config carries `testing.suites[]` and since #2851 the Framework table is **rendered from it**, so reading the prose means reading a view and calling it the source. The reason is recorded rather than the rule deleted, because nothing else stops it being reinstated. `Inception/Test-Strategy.md` remains **corroboration** when the config declares nothing. Three states, and the last two stay distinguishable:
-| `Inception/Test-Strategy.md` | Emit |
+| `testing.suites[]` (via `framework-config.js`, #3490) | Emit |
 |---|---|
-| Framework table has an E2E row | The framework named there, verbatim |
-| File exists, no E2E row | `N/A` |
-| File absent | `Not consulted — no Inception/Test-Strategy.md` |
-`N/A` asserts the file was read and declared no E2E framework; a project with no Inception artifact consulted nothing, so `N/A` there claims a reading that never happened. Neither state may invent a framework name.
+| A gate e2e suite (`role: "e2e"`, `execution` absent or `"gate"`) | Its `full` command and `id`, verbatim |
+| Only a `manual-only` e2e record (none applicable, or install pending) | `N/A` |
+| No e2e suite declared | `Not declared — no e2e suite in testing.suites[]` |
+
+`N/A` asserts the declaration was read and holds no gate e2e suite; with no e2e suite declared at all nothing says either way, so `N/A` there would claim a reading never consulted — and no state may invent a framework name. `Inception/Test-Strategy.md` stays corroboration only. **This repository is the worked case for `N/A`:** its `testing.suites[]` holds only the `manual-only` records `none-javascript-e2e` and `none-typescript-e2e`.
 **Both sections obey the atomic contract rather than being exempt.** Each can legitimately have nothing to say and each still renders, with `N/A`, exactly as `Files to modify:` does. Naming them as exceptions trades one rule for a rule plus a list of what it does not cover.
 **Step 3: Link to parent epic**
 ```bash

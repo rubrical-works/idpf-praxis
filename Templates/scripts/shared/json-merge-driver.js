@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * @description JSON-aware git merge driver for accumulator files (#3119, PRD
  * Concurrent-Work Story 1.2). Registered as `merge.json-merge.driver` by
  * lib/merge-driver-config.js and named per path in .gitattributes

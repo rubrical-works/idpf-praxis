@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.115.0
+**Version:** v0.116.0
 **Source:** Reference/work-execution.md (dev-preserve variant)
 Auto-loaded execution rule for `/work` — hybrid shell + auto-loaded rule architecture. Shell `.claude/commands/work.md` covers arguments/prereqs/errors; this rule covers the Workflow. Two companions are read on demand, never auto-loaded: `{frameworkPath}/Reference/work-execution-conditional.md` (bodies that fire only for an epic, a branch tracker, `--nonstop`, `--concurrent` or a multi-issue selection — loaded at Step 1d) and `{frameworkPath}/Reference/work-execution-rationale.md` (why each directive is as it is — read when questioning one).
 ## Execution Instructions
@@ -162,7 +162,7 @@ Runs before Step 4c and Step 5 so its commit is logged and gated. Applies identi
 ```bash
 node .claude/scripts/framework/register-helper.js <path-to-helper> [--gated]
 ```
-Pass `--gated` when the helper should be wrapped in an `enableGitHubWorkflow` closure in `constants.js`; omit it for a plain string entry. **Idempotent** — safe to re-run after a partial manual edit. It edits `framework-manifest.json`, `.claude/scripts/framework/constants.js` and `CHARTER.md` — each enforced by CI — and **reports** rather than writes the helper's `@framework-script v0.115.0` JSDoc line: that is authored content, still yours to add before committing everything together with the helper (`Refs #$ISSUE`). Why a script: rationale file § Step 4e.
+Pass `--gated` when the helper should be wrapped in an `enableGitHubWorkflow` closure in `constants.js`; omit it for a plain string entry. **Idempotent** — safe to re-run after a partial manual edit. It edits `framework-manifest.json`, `.claude/scripts/framework/constants.js` and `CHARTER.md` — each enforced by CI — and **reports** rather than writes the helper's `@framework-script v0.116.0` JSDoc line: that is authored content, still yours to add before committing everything together with the helper (`Refs #$ISSUE`). Why a script: rationale file § Step 4e.
 Runs before Step 4c and Step 5 so the registrar's edits are gated in the same pass. Applies identically in default and `--nonstop` modes.
 <!-- FRAMEWORK-ONLY-END -->
 #### Step 4c: Log Changed Files to Issue Body (with state-drift gate)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.115.0
+ * @framework-script 0.116.0
  * declared-scope-check.js — Back the `files-to-modify-declared` review
  * criterion: is the issue's `Files to modify:` declaration at top level, and
  * does it parse to paths? (#3279)
