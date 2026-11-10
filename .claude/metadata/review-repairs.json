@@ -1,0 +1,91 @@
+{
+  "$schema": "./review-repairs-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Repairable review criteria, keyed by criterion id (#3544). Replaces the hardcoded AUTO_FIXABLE_CRITERIA list in review-format.js. Read by .claude/scripts/shared/lib/review-repair.js for both /review-issue (pre-finalize repairs) and /resolve-review (Pass 1 auto-fix).",
+    "preFinalize": "true: /review-issue writes the repair into the body before Step 3 finalize, without a prompt, when the finding carries a concrete fix. false: /resolve-review Pass 2 asks for it, after finalize, carrying the entry as the finding's repair { kind, description } to shape the Accept suggestion preview — the fix needs content only the user can approve (repro steps, a proposed solution) (#3548).",
+    "types": "Issue types the entry applies to.",
+    "modes": "Review modes the entry applies to (review-mode-criteria.json modes).",
+    "env": "dev: applies only in the framework dev repo, matching the criterion's own env (CommandsSrc/ present). Absent: everywhere."
+  },
+  "repairs": {
+    "deployment-impact-assessed": {
+      "kind": "deployment-impact",
+      "preFinalize": true,
+      "types": ["bug", "enhancement", "story"],
+      "modes": ["solo", "team", "enterprise"],
+      "env": "dev",
+      "description": "Write **Deployment Impact:** dev-only | deployed (areas), derived from **Files to modify:** against framework-manifest.json deploymentFiles (review-repair.js deriveDeploymentImpact). No repair when any path cannot be classified."
+    },
+    "depends-on-valid": {
+      "kind": "depends-on-line",
+      "preFinalize": true,
+      "types": ["story"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Write the **Depends on:** line the review stated exactly, e.g. **Depends on:** #12, #14."
+    },
+    "priority-set": {
+      "kind": "priority",
+      "preFinalize": true,
+      "types": ["bug", "enhancement", "story", "epic", "generic"],
+      "modes": ["team", "enterprise"],
+      "description": "Set the board priority the review named: gh pmu move <N> --priority <p0|p1|p2>."
+    },
+    "title-clear": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["bug", "enhancement", "story", "epic", "generic"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Reword the title; /resolve-review previews it."
+    },
+    "ac-present": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["bug", "enhancement", "story", "epic", "generic"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Add an acceptance-criteria skeleton; /resolve-review Step 1b applies."
+    },
+    "ac-present-testable": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["bug", "enhancement", "story", "epic", "generic"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Add or sharpen acceptance criteria; /resolve-review Step 1b applies."
+    },
+    "repro-steps": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["bug"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Add reproduction steps; /resolve-review previews them."
+    },
+    "expected-actual": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["bug"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Add expected vs actual behavior; /resolve-review previews it."
+    },
+    "environment-info": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["bug"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Add environment details; /resolve-review previews them."
+    },
+    "proposed-fix-described": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["bug"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Describe the proposed fix; /resolve-review previews it."
+    },
+    "proposed-solution": {
+      "kind": "model-authored",
+      "preFinalize": false,
+      "types": ["enhancement", "story"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Describe the proposed solution; /resolve-review previews it."
+    }
+  }
+}

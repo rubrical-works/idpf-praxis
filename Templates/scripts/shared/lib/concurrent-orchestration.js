@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -41,7 +41,9 @@
  *
  * Pure over its inputs: no gh, no git, no disk — except the CLIs at the
  * bottom (`next-steps`, `replan`, `record-spawn`, `record-regenerated`), which
- * read and write the run's state and ledger files.
+ * read and write the run's state and ledger files. The specialist, domains and
+ * frameworkPath a brief carries arrive resolved, as `briefContext` (#3561): the
+ * caller reads framework-config.json once per run, never this module.
  */
 
 /** Steps the parent owns, by the ids rule 08 uses. */
@@ -93,9 +95,14 @@ const STEP_INSTRUCTION_EXEMPT = Object.freeze({
  * `{{unswept}}` are pre-rendered flag lists.
  */
 const MEMBER_TEMPLATES = Object.freeze({
+  // #3502: a spawn step's onReturn names this; {{n}} is the step's issue.
+  'member-result': "Before #{{n}}'s merge-back: node .claude/scripts/shared/lib/subagent-result.js validate --role idpf-implementer --file .tmp-gate-{{n}}-member.json. "
+    + "ok: false → #{{n}}'s error: hold its merge-back, keep its brief for a re-spawn; siblings continue.",
+  // #3500: applies to every spawn step of the run.
+  'spawn-not-found': require('./subagent-fallback.js').withFallback({ subagent_type: 'idpf-implementer' }).onNotFound,
   'gate-tier1': `Run \`${GATE_CLI} tier1 --issue {{n}} --branch <#{{n}}'s wt/* branch> --worktree <#{{n}}'s worktree path> --tracker-tip {{tip}} --out .tmp-gate-{{n}}-tier1.json\` — it writes the Tier 1 document itself (#3225); record the sha256 its envelope's out reports, and do not redirect stdout into that file. Exit 1 is a Tier 1 failure: carry it to the outcome step, never merge past it.`,
   'gate-tier2': 'Read every file in .tmp-gate-{{n}}-tier1.json tier2.files, file by file, against #{{n}}\'s acceptance criteria, as tier2.instruction says. Record the read as pass or fail with the file and line of anything no AC asks for; the direct-work exemption never applies.',
-  'gate-tier3': `Run \`${GATE_CLI} tier3-plan --issue {{n}} --tracker-tip {{tip}} --branch <#{{n}}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` (it clears an earlier review) and record its sha256, then spawn the reviewer Agent in slot {{slot}} with tier3.request.prompt exactly — never the implementer's summary. The reviewer writes its own review to .tmp-gate-{{n}}-tier3.json (#3204); never re-word it. \`outcome --post-comment\` posts the comment; write no root file. A change in the running members' \`runPaths\` but this member's review, snapshot or a sibling's gate files fails Tier 3 (#3220); one outside is reported as \`external\`, not failed.`,
+  'gate-tier3': `Run \`${GATE_CLI} tier3-plan --issue {{n}} --tracker-tip {{tip}} --branch <#{{n}}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` (it clears an earlier review) and record its sha256, then spawn the reviewer Agent in slot {{slot}} as tier3.request.subagent_type with tier3.request.prompt exactly (not found → tier3.request.onNotFound) — never the implementer's summary. The reviewer writes its own review to .tmp-gate-{{n}}-tier3.json (#3204); never re-word it. \`outcome --post-comment\` posts the comment; write no root file. A change in the running members' \`runPaths\` but this member's review, snapshot or a sibling's gate files fails Tier 3 (#3220); one outside is reported as \`external\`, not failed.`,
   'gate-outcome': `Run \`${GATE_CLI} outcome --issue {{n}} --worktree <#{{n}}'s worktree path> --branch <#{{n}}'s wt/* branch> --tier1 .tmp-gate-{{n}}-tier1.json --tier1-sha <sha256 from #{{n}}'s tier1 --out envelope> --tier3 .tmp-gate-{{n}}-tier3.json --tree-before .tmp-gate-{{n}}-tree-before.txt --tree-before-sha <sha256 from #{{n}}'s tree-snapshot envelope>{{siblings}}{{unswept}} --post-comment\` (\`--no-review\` for the three Tier 3 flags when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — decideOutcome decides. action merge → it posted the comment: report posted.url (postError → re-run; never a file); send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when the decision carries outsideContract (#3226), first report those paths and clear them — remove or restore what this run wrote; a path another session is editing is cleared by waiting for that session to settle it, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` again, re-spawn the reviewer in slot {{slot}} with the same tier3.request.prompt, then re-run this outcome with the new sha and \`--review-retries 1\` (a second one halts, attributed to the reviewer); halt → print report: the --nonstop halt, worktree kept, #{{n}} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
 });
 
@@ -112,6 +119,9 @@ function instructionOf(step, templates = MEMBER_TEMPLATES) {
   const params = step.params || {};
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => (params[k] === undefined || params[k] === null ? '' : String(params[k])));
 }
+
+/** A run step carries the not-found step as a template, emitted once per run (#3280, #3500). */
+const stripFallback = ({ onNotFound: _onNotFound, ...request }) => request;
 
 const titleOf = (members, n) => (members[n] && members[n].title) || `#${n}`;
 const acsOf = (members, n) => (members[n] && Array.isArray(members[n].acceptanceCriteria) ? members[n].acceptanceCriteria : []);
@@ -137,10 +147,15 @@ const briefDataOf = (members, n) => {
  * @param {{issue: number, title?: string, acceptanceCriteria?: string[], tddChecklist?: object|null, root?: string}} input
  * @returns {string}
  */
-function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist, root, description = '', proposedSolution = '', declaredScope = [] } = {}) {
+function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist, root, description = '', proposedSolution = '', declaredScope = [], briefContext = null } = {}) {
   const skillsRoot = root ? `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/.claude/skills/` : null;
   const resolveSkills = (line) => (skillsRoot ? line.replace(/(^|[\s`'"(])\.claude\/skills\//g, `$1${skillsRoot}`) : line);
   const lines = [`## Work #${issue}: ${title || `#${issue}`}`, ''];
+
+  // Specialist, domains and absolute frameworkPath (#3501): a member gets no
+  // SessionStart context. The caller resolves them once per run and passes
+  // the rendered lines in `briefContext` (#3561) — no disk read here.
+  if (briefContext && Array.isArray(briefContext.lines)) lines.push(...briefContext.lines, '');
 
   // The approach and scope the issue was reviewed with (#3203). Without them a
   // member implements from AC text alone, and Tier 1 then enforces a declared
@@ -183,17 +198,16 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
   }
   lines.push('');
 
-  lines.push('### Commit contract');
-  lines.push('- Commit per AC: do not start the next AC until the previous deliverable is committed.');
-  lines.push(`- Message: \`Refs #${issue} — <what this commit implements>\`. Never \`Fixes\`, \`Closes\` or \`Resolves\`.`);
-  lines.push('- Work only in this worktree. Run the tests scoped to the files you touch.');
-  lines.push('');
-
-  lines.push('### Owned by the parent — do not do these');
-  lines.push('- Do not push, merge or rebase.');
-  lines.push('- Do not run `gh pmu move` or edit the issue body; the parent moves the issue and checks the boxes.');
-  lines.push('- Do not send peer announcements.');
-  lines.push('- Report: the commits you made, each AC with how it was verified, and anything left unfinished.');
+  // The constant contract — commit rules, what the parent owns, the result
+  // format — lives in the idpf-implementer definition (#3502). The brief names
+  // only what is specific to this member, plus where to read the definition
+  // when the member runs as a general-purpose fallback (#3500).
+  const rootPrefix = root ? `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/` : '';
+  lines.push('### Role and result');
+  lines.push('- You are `idpf-implementer`: your commit contract, what the parent owns and your result format are in that definition. '
+    + `If you were spawned without it (a general-purpose fallback), read \`${rootPrefix}.claude/agents/idpf/idpf-implementer.md\` first and follow it.`);
+  lines.push(`- Commit message: \`Refs #${issue} — <what this commit implements>\`.`);
+  lines.push(`- Result file: \`${rootPrefix}.tmp-gate-${issue}-member.json\`.`);
   return lines.join('\n');
 }
 
@@ -217,17 +231,19 @@ function briefPathOf(root, issue) {
  *
  * @returns {{description: string, isolation: 'worktree', prompt: string, briefPath?: string}}
  */
-function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope, briefPath } = {}) {
-  const base = { description: `Work #${issue}: ${title || `#${issue}`}`, isolation: 'worktree' };
+function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope, briefPath, briefContext } = {}) {
+  const base = { description: `Work #${issue}: ${title || `#${issue}`}`, subagent_type: 'idpf-implementer', isolation: 'worktree' };
+  // A typed request carries the parent's fallback step (#3500).
+  const { withFallback } = require('./subagent-fallback.js');
   if (briefPath) {
-    return {
+    return withFallback({
       ...base,
-      prompt: `You are implementing #${issue} in this worktree. Read your full brief first, from ${briefPath} by that absolute path, `
-        + 'and follow it exactly: it carries the acceptance criteria, the declared scope, the TDD cycle, the commit contract and what the parent owns.',
+      // Short on purpose: it is repeated per spawn in the run envelope (#3280).
+      prompt: `Implement #${issue} in this worktree: read your brief at ${briefPath} first and follow it.`,
       briefPath,
-    };
+    });
   }
-  return { ...base, prompt: buildMemberBrief({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope }) };
+  return withFallback({ ...base, prompt: buildMemberBrief({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope, briefContext }) });
 }
 
 /**
@@ -236,12 +252,12 @@ function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, roo
  *
  * @returns {Array<{issue: number, path: string, text: string}>}
  */
-function memberBriefs({ plan = {}, members = {}, tddChecklist = null, root } = {}) {
+function memberBriefs({ plan = {}, members = {}, tddChecklist = null, root, briefContext = null } = {}) {
   const groups = Array.isArray(plan.groups) ? plan.groups : [];
   return groups.flat().map((n) => ({
     issue: n,
     path: briefPathOf(root, n),
-    text: buildMemberBrief({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n) }),
+    text: buildMemberBrief({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n), briefContext }),
   }));
 }
 
@@ -353,7 +369,7 @@ function extractBriefSections(body) {
  * @param {{plan?: {groups?: number[][], tail?: Array<{number: number}>},
  *   members?: Object<number, {title?: string, acceptanceCriteria?: string[]}>,
  *   nonstop?: boolean, tddChecklist?: object|null, noReview?: boolean, root?: string|null,
- *   inlineBriefs?: boolean}} [input]
+ *   inlineBriefs?: boolean, briefContext?: {lines: string[], notice: string|null}|null}} [input]
  *   `noReview` (`--no-review`) replaces each Tier 3 reviewer spawn with a
  *   reported skip; Tiers 1–2 still run. `root` is the parent checkout, passed
  *   into each member's brief so skill paths resolve outside the worktree (#3162);
@@ -362,12 +378,17 @@ function extractBriefSections(body) {
  *   written. `reviewStopped` and `notStarted` are the run-time decisions the
  *   `replan` CLI records; `stateFile` names that run-state file, so each
  *   review gate and spawn says how to re-plan after its decision (#3269).
- * @returns {{steps: object[], total: number, templates: Object<string, string>}}
+ *   `briefContext` is the run's resolved project context (#3561) —
+ *   specialist-resolver.js `resolveBriefContext()` plus its rendered `lines`
+ *   — which every member brief carries; absent, briefs carry no context block.
+ * @returns {{steps: object[], total: number, templates: Object<string, string>, specialistNotice: string|null}}
+ *   `specialistNotice` is `briefContext.notice` (#3501): set when no project
+ *   specialist could be used, for the parent to report once for the run.
  *   Each step has `kind` and `owner`; per-issue steps carry `issue` and,
  *   inside a group, `group` (1-based). Implementer and reviewer spawns carry
  *   the member's `slot` (1-based within its group).
  */
-function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = null, noReview = false, reviewStopped = [], notStarted = [], root = null, inlineBriefs = false, stateFile = null, ledgerFile = null } = {}) {
+function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = null, noReview = false, reviewStopped = [], notStarted = [], root = null, inlineBriefs = false, stateFile = null, ledgerFile = null, briefContext = null } = {}) {
   const groups = Array.isArray(plan.groups) ? plan.groups : [];
   const tail = (Array.isArray(plan.tail) ? plan.tail : []).map((t) => t.number);
   // #3264: members a resumed run found already merged on the tracker.
@@ -378,6 +399,9 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
   const steps = [];
   // The per-member gate templates ride with any run that has a group (#3280).
   const runTemplates = () => (groups.length > 0 ? { ...MEMBER_TEMPLATES } : {});
+  // A specialist that could not be used is reported once for the run (#3501),
+  // from the context the caller resolved (#3561) — never a disk read here.
+  const specialistNotice = briefContext && briefContext.notice ? briefContext.notice : null;
   // Members that reached in_review, in order; its length is the processed count.
   const swept = [];
   // Under --nonstop every halt after an earlier group's in_review moves names
@@ -472,15 +496,16 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
           merged: [], unmerged: [...planned.filter((n) => !failedCreation.has(n)), ...laterGroups], tailNotStarted: tail, worktreesKept: [],
         }),
       });
-      return { steps, total, templates: runTemplates() };
+      return { steps, total, templates: runTemplates(), specialistNotice };
     }
     for (const n of groupMembers) for (const id of PRE_WORK.slice(1)) step(id, n, { group });
     groupMembers.forEach((n, j) => {
       steps.push({
         kind: 'spawn', step: 'spawn', owner: 'parent', issue: n, group, slot: j + 1,
-        request: buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n), ...(root && !inlineBriefs ? { briefPath: briefPathOf(root, n) } : {}) }),
+        request: stripFallback(buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, briefContext, ...briefDataOf(members, n), ...(root && !inlineBriefs ? { briefPath: briefPathOf(root, n) } : {}) })),
         ...(stateFile ? { onFailure: `If #${n}'s worktree cannot be created, run ${replan(`--not-started ${n}[=<half-made worktree path>]`)} and continue from #${n}'s not-started step in the steps it prints.` } : {}),
         ...(ledgerFile ? { onSpawned: spawnRecord(ledgerFile, n) } : {}),
+        onReturn: 'member-result',
       });
       step('3', n, { group, inGroup: true });
     });
@@ -566,7 +591,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     }
     for (const n of groupMembers) finish(n, group, 'post');
     // #3360: every sibling outcome ran before the group's merge-back, so each
-    // member's four scratch files go once the group is reported. Default mode
+    // member's five scratch files go once the group is reported. Default mode
     // only: under --nonstop the preamble runs groups on the rolling schedule
     // (nextSteps), which emits its own cleanup.
     if (!nonstop) {
@@ -591,7 +616,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
   if (nonstop && total > 0) {
     steps.push({ kind: 'summary', step: '6', owner: 'parent', processed: swept.length, repeats: groups.length > 0 ? ['leftover-worktrees'] : [] });
   }
-  return { steps, total, templates: runTemplates() };
+  return { steps, total, templates: runTemplates(), specialistNotice };
 }
 
 /**
@@ -797,8 +822,9 @@ function nextSteps(runState = {}) {
     }
     steps.push({
       kind: 'spawn', step: 'spawn', owner: 'parent', issue: n, slot,
-      request: buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, ...briefDataOf(members, n), ...(root && !runState.inlineBriefs ? { briefPath: briefPathOf(root, n) } : {}) }),
+      request: stripFallback(buildSpawnRequest({ issue: n, title: titleOf(members, n), acceptanceCriteria: acsOf(members, n), tddChecklist, root, briefContext: runState.briefContext || null, ...briefDataOf(members, n), ...(root && !runState.inlineBriefs ? { briefPath: briefPathOf(root, n) } : {}) })),
       ...(runState.ledgerFile ? { onSpawned: spawnRecord(runState.ledgerFile, n) } : {}),
+      onReturn: 'member-result',
       ...(runState.stateFile ? { onFailure: `If #${n}'s worktree cannot be created, run ${report(`--not-started ${n}[=<half-made worktree path>]`)} — it halts the run — and execute the steps it prints.` } : {}),
     });
     steps.push({ kind: 'step', step: '3', owner: 'member', issue: n, suiteScope: 'worktree-parallel' });
@@ -862,11 +888,11 @@ const list = (nums) => (nums.length ? nums.map((n) => `#${n}`).join(', ') : 'non
 /**
  * A member's scratch-file cleanup step (#3360), once it is merged and In
  * review: `merge-back-gate.js clear-member`, the guarded remover. `mode`
- * 'all' removes its three gate files and its brief; 'keep-tier1' keeps the
- * tier1 file for the running members in `holders`, whose outcome may name
- * this member as --sibling and read that file for its scope; 'tier1-only'
- * removes it once they have all merged. `--ledger` lets clear-member keep all
- * four when teardown kept the member's worktree.
+ * 'all' removes its three gate files, its brief and its result file (#3558);
+ * 'keep-tier1' keeps the tier1 file for the running members in `holders`,
+ * whose outcome may name this member as --sibling and read that file for its
+ * scope; 'tier1-only' removes it once they have all merged. `--ledger` lets
+ * clear-member keep all five when teardown kept the member's worktree.
  */
 function memberClear(n, { mode = 'all', ledgerFile = null, holders = [], where = {} } = {}) {
   const args = ['clear-member', '--issue', String(n), ...(ledgerFile ? ['--ledger', ledgerFile] : []),

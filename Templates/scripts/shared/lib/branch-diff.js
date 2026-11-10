@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Branch diff helpers. Exports BASE_REF_CANDIDATES, resolveBranchBase(), changedFilesSinceBase() and classifyFindingRange() and reviewRecordFreshness() — the one definition of "what this branch changed" shared by /code-review --diff and announce.js.
  * @checksum sha256:placeholder
  *
@@ -361,7 +361,45 @@ function reviewRecordFreshness(options = {}) {
   return result(true, headSha === head ? 'head-matches' : 'review-output-only', { changedSince });
 }
 
+const REVIEWERS = ['subagent:idpf-code-reviewer', 'subagent:general-purpose', 'inline'];
+
+/**
+ * How the Release Review Gate reads a lastDiffReview record beyond freshness
+ * (#3506). `partial` is the gate's own check — headSha and both count objects
+ * — and ignores the newer optional fields, so a record written before them is
+ * not partial. A missing `reviewer` reads as `inline`; a missing `unreviewed`
+ * reads as empty. A non-empty `unreviewed` stops the gate, naming the files: a
+ * freshness check compares SHAs, not coverage, so it cannot see them.
+ *
+ * @param {object|null} record
+ * @returns {{partial: boolean, reviewer: string, unreviewed: string[], stop: boolean, stopMessage: string|null}}
+ */
+function gateRecordCheck(record) {
+  const r = record || {};
+  const f = r.findings || {};
+  const partial = !(typeof r.headSha === 'string' && r.headSha) || !f.introduced || !f.preExisting;
+  const reviewer = REVIEWERS.includes(r.reviewer) ? r.reviewer : 'inline';
+  // Absent is a record from before the field: empty. Present but not an array
+  // is malformed coverage, which must stop rather than read as "all read".
+  const malformed = r.unreviewed !== undefined && !Array.isArray(r.unreviewed);
+  const unreviewed = Array.isArray(r.unreviewed) ? r.unreviewed.filter((p) => typeof p === 'string') : [];
+  const stop = malformed || unreviewed.length > 0;
+  let stopMessage = null;
+  if (malformed) stopMessage = 'Branch diff review record\'s unreviewed is malformed (not a list of paths), so its coverage is unknown. Re-run /code-review --diff, then re-run the release.';
+  else if (stop) stopMessage = `Branch diff review left ${unreviewed.length} file(s) unreviewed: ${unreviewed.join(', ')}. Re-run /code-review --diff to review them, then re-run the release.`;
+  return { partial, reviewer, unreviewed, stop, stopMessage };
+}
+
+/** The gate report's Record line, naming the reviewer (#3506). */
+function formatRecordLine({ source, record }) {
+  const reviewer = gateRecordCheck(record).reviewer;
+  const what = source === 'already fresh' ? `already fresh (reviewed ${(record && record.reviewedAt) || 'unknown'})` : source;
+  return `Record: ${what} · reviewer: ${reviewer}`;
+}
+
 module.exports = {
+  gateRecordCheck,
+  formatRecordLine,
   BASE_REF_CANDIDATES,
   resolveBranchBase,
   changedFilesSinceBase,

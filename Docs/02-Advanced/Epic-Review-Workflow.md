@@ -44,24 +44,26 @@ Placeholder detection treats sections as missing if body is under 20 characters 
 
 ## Review Is Now Load-Bearing for `/work`
 
-Running `/review-issue` on an epic used to be advisory — nothing downstream checked whether it had happened. `/work` now checks review state at two moments.
+Running `/review-issue` on an epic used to be advisory — nothing downstream checked whether it had happened. `/work` now requires a clean review before work starts, and checks review state at two moments.
 
-**Once, up front, over the whole tree.** Before the first sub-issue is worked, `/work` on an epic classifies the epic itself plus every child it will process, and raises **one** question covering all of them. If any member has never been reviewed it offers `/review-issue`; if any carries unresolved findings it offers `/resolve-review`; both in the same question when both apply. Accepting means work does not begin. Declining proceeds with the whole run and writes a note into the epic body recording the decision. That note is a record, not a suppression: the next `/work` on the same epic asks again, because a sub-issue added later or findings raised after the decline would otherwise never be surfaced.
+**Once, up front, over the whole tree.** Before the first sub-issue is worked, `/work` on an epic classifies the epic itself plus every child it will process. Members that were never reviewed, or that changed since their review, are reviewed by `/work` itself — it tells you how many first, then runs each review through one `idpf-issue-reviewer` agent, moving no status while it does. A failed review stops the run; it is never counted as clean. What is left is the members carrying unresolved findings, and for those `/work` raises **one** question: resolve them now (it hands off to `/resolve-review` naming every one of them and stops, so you re-run `/work` once they are clean) or stop. No answer proceeds past unresolved findings; only `--unreviewed` waives the requirement, and the run report names each waived issue and its state.
 
-The same up-front gate runs for a branch tracker under `--nonstop` (the tracker itself is not classified, since nothing reviews a branch tracker, and no note is written because the tracker body is machine-parsed) and for any set of issues typed on one `/work` line. A typed selection of two or more also offers a third answer: proceed with the clean members only, dropping the flagged ones. Removing one hand-typed number from a list is an ordinary answer; removing a sub-issue from an epic is not, which is why the epic form does not offer it.
+The same up-front gate runs for a branch tracker under `--nonstop` (the tracker itself is not reviewed, since nothing reviews a branch tracker) and for any set of issues typed on one `/work` line. A typed selection of two or more also offers a third answer: exclude the members with findings and proceed with the rest, reporting which were dropped. Removing one hand-typed number from a list is an ordinary answer; removing a sub-issue from an epic is not, which is why the epic form does not offer it.
 
-**Again, per issue, as its turn begins.** Each sub-issue is classified independently when reached. A member the up-front question already decided is not asked about twice in the same run; a member that question never saw (added mid-run, or reached after a compaction) is caught here.
+**Again, per issue, as its turn begins.** Each sub-issue is classified independently when reached. A member the up-front gate already decided is not asked about twice in the same run; a member that gate never saw (added mid-run, or reached after a compaction) is caught here.
 
-| Review state | Single interactive issue | Epic, branch tracker, or batch | `--nonstop` |
-|---|---|---|---|
-| Never reviewed | Stops and offers `/review-issue #N` | Warns and proceeds | Warns and proceeds |
-| Reviewed, findings unresolved | Stops and offers `/resolve-review #N` | Stops and offers `/resolve-review #N` | **Halts** |
-| Reviewed clean | Proceeds | Proceeds | Proceeds |
-| Indeterminate | Proceeds | Proceeds | Proceeds |
+| Review state | Single issue, epic, branch tracker, or batch | `--nonstop` |
+|---|---|---|
+| Never reviewed, or changed since review | `/work` reviews it first, then acts on the result | `/work` reviews it first, then acts on the result |
+| Reviewed, findings unresolved | Stops and offers `/resolve-review #N` | **Halts** |
+| Reviewed clean | Proceeds | Proceeds |
+| Indeterminate | Proceeds | Proceeds |
 
-Two asymmetries in the per-issue table are deliberate. **Never-reviewed only warns per sub-issue** because that is the normal state of sub-issues `/create-backlog` has just created — halting there would stop nearly every epic run on its first sub-issue, whereas one question up front about the whole tree is not that interruption, which is why the tree-wide gate can afford to ask. **Unresolved findings halt under `--nonstop`** because working an issue whose criteria a reviewer already flagged is the same class of problem as a failing test, which `--nonstop` also halts on.
+**Why the review is required, not advised.** The review is what writes the `**Files to modify:**` declaration into each issue, and later steps depend on it: scope-drift detection during implementation, and the file-overlap planning behind `--concurrent`. Working an unreviewed issue leaves those steps with nothing to check against. **Unresolved findings halt under `--nonstop`** because working an issue whose criteria a reviewer already flagged is the same class of problem as a failing test, which `--nonstop` also halts on.
 
-The gate reads signals the review subsystem already writes — the `reviewed` / `pending` labels and the `**Reviews:** N` body marker this cascade produces. There is no separate state to maintain. Declining the offer changes nothing: no label, no status move, no body edit. Review stays advisory; the gate only makes its absence visible at the one moment it is still cheap to fix.
+`--unreviewed` is not `--no-review`. `--unreviewed` waives this gate — the review of the *issue* before work. `--no-review` skips the independent review of the *finished commits* before In review.
+
+The gate reads signals the review subsystem already writes — the `reviewed` / `pending` labels and the `**Reviews:** N` body marker this cascade produces. There is no separate state to maintain.
 
 An unreadable body, a contradictory `reviewed`+`pending` pair, or a `gh` outage all classify as *indeterminate*, and the gate proceeds. That is a deliberate fail-open — blocking would let an outage stop all work, and prompting on issues the classifier cannot read would train you to dismiss the gate.
 

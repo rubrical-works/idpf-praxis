@@ -1,7 +1,7 @@
 ---
-version: "v0.116.0"
+version: "v0.117.0"
 description: Start working on issues with validation and automatic task extraction, using the IDPF framework.
-argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--no-review] [--concurrent [--agents N]] | --status <status> [--help]"
+argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--no-review] [--unreviewed] [--concurrent [--agents N]] | --status <status> [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -28,6 +28,7 @@ copyright: "Rubrical Works (c) 2026"
 | `--concurrent` | No | Epic/branch tracker: run file-disjoint sub-issues at once in framework-owned worktrees, grouped by the `**Depends on:**` graph, each merged back through the Merge-Back Review Gate (see Concurrent Mode) |
 | `--agents N` | No | Cap on agents of any kind at once — implementers, reviewers and fix cycles share it — and on unit-test concurrency (default 3; requires `--concurrent`) |
 | `--no-review` | No | Skip the independent review this run, in every mode: Step 4g's review, or the gate's Tier 3 under `--concurrent` (Tiers 1–2 still run); the skip is reported |
+| `--unreviewed` | No | Waive the clean-review requirement this run (never reviewed, changed since review, or unresolved findings); each waived issue and its state is reported. Not `--no-review` |
 | `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
 
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js work`, report its output, and STOP.
@@ -79,14 +80,14 @@ Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. Fast-for
 
 ---
 ## Review-State Gate
-Before the first acceptance criterion of an issue is worked — and independently for each sub-issue of an epic or branch tracker — `/work` classifies that issue's review state via `review-state.js` and acts:
-- **Never reviewed** → STOP, offer `/review-issue #N`. Batch, epic, branch tracker, `--nonstop`: warn and proceed.
-- **Reviewed, findings unresolved** → STOP, offer `/resolve-review #N`. `--nonstop` **halts on `findings-pending`** per its existing failure semantics.
+Before the first acceptance criterion of an issue is worked — and independently for each sub-issue of an epic or branch tracker — `/work` classifies that issue's review state via `review-state.js` and acts — a clean review is required (#3537):
+- **Never reviewed, or changed since review** → `/work` reviews it first through one `idpf-issue-reviewer` agent, always `--step-wise`, no status move. Reviewed → continue; findings → as below; a failed review stops the issue.
+- **Reviewed, findings unresolved** → STOP, offer `/resolve-review #N`; accepting hands off, status unchanged. `--nonstop` **halts on `findings-pending`** per its existing failure semantics.
 - **Reviewed clean, or indeterminate** → proceed without prompting.
 
-**Declining proceeds to work unchanged** — the gate mutates nothing on decline: no label change, no status move, no body edit. Review stays advisory; the gate only makes its absence visible at the one moment it is still free to fix. Full state matrix and rationale: `.claude/rules/08-work-execution.md` Step 3.
+**Declining STOPs too** — only `--unreviewed` waives the requirement, naming each waived issue and its state. The review writes the `**Files to modify:**` declaration scope drift and `--concurrent` planning depend on. Full state matrix and rationale: `.claude/rules/08-work-execution.md` Step 3.
 
-**On an epic (#2748), a branch tracker under `--nonstop` (#2749), or a non-epic selection of 1..N issues (#2750), a second gate runs first.** For a selection — `/work 44`, `/work 44 47 68`, `/work --status ready` — every member is classified up front and one question covers the whole selection; at N ≥ 2 it also offers proceeding with the clean members only, reporting which were dropped, and at N = 1 that option is absent because it would proceed with nothing. Step 2b-ii classifies **every** issue the run will process — the processable set, with `in_review`/`done` members and the preamble's `skipped[]` removed — before the first sub-issue is worked, and raises **one** question covering all of them: `/review-issue` for members never reviewed, `/resolve-review` for members with unresolved findings, both in the same question when both apply. Accepting means work does not begin. The per-sub-issue gate above still runs and does not re-prompt for a member Step 2b-ii already decided; it remains the safeguard for a sub-issue added after that step ran, or a run resumed after compaction into the middle of the set. Every other shape — epic, batch, single issue, branch tracker without `--nonstop` — is unchanged. Decision helper: `.claude/scripts/shared/lib/branch-review-gate.js`.
+**On an epic (#2748), a branch tracker under `--nonstop` (#2749), or a non-epic selection of 1..N issues (#2750), a second gate runs first.** For a selection — `/work 44`, `/work 44 47 68`, `/work --status ready` — every member is classified up front and one question covers the whole selection; at N ≥ 2 it also offers proceeding with the clean members only, reporting which were dropped, and at N = 1 that option is absent because it would proceed with nothing. Step 2b-ii classifies **every** issue the run will process — the processable set, with `in_review`/`done` members and the preamble's `skipped[]` removed — before the first sub-issue is worked, reviews the unreviewed members first, saying how many before any review runs, then raises **one** question for those with unresolved findings: resolve now (hand off to `/resolve-review`), stop, or — a selection only — exclude them. The per-sub-issue gate above still runs and does not re-prompt for a member Step 2b-ii already decided; it remains the safeguard for a sub-issue added after that step ran, or a run resumed after compaction into the middle of the set. Every other shape — epic, batch, single issue, branch tracker without `--nonstop` — is unchanged. Decision helper: `.claude/scripts/shared/lib/branch-review-gate.js`.
 
 ---
 ## Peer Announcements (#2662)

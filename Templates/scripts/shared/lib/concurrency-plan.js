@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * concurrency-plan.js — Disjointness over declared scope, and the
  * `--concurrent` grouping plan (#3126, PRD Concurrent-Work Story 1.9)
  *

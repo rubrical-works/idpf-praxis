@@ -8,6 +8,104 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.117.0] - 2026-11-10
+
+The framework now ships its own agent definitions for the subagents it spawns, each with a fixed set
+of tools and a result the parent validates before using it. `/work` makes sure an issue has a
+current review before work starts, and runs that review itself when the issue has none or its body
+changed since the last one. `/review-issue` checks an issue's file, issue and command references
+with a script, gives every acceptance criterion a verdict, repairs findings that have one obvious
+fix, and resolves pending findings once inline before re-reviewing. The release diff review always
+runs in separate reviewer subagents given only the facts of the change.
+
+**Upgrade notes:**
+
+- **`/work` requires a current review (#3537).** An issue that was never reviewed, or whose body
+  changed after its review, is reviewed before its first acceptance criterion; pending findings stop
+  the run with an offer of `/resolve-review`. `--unreviewed` waives this, and the run report names
+  each waived issue. `--no-review` keeps its meaning (the independent diff review).
+
+- **Stale reviews (#3543).** A review now records a hash of the issue body. Issues reviewed before
+  this release carry no hash and are reported with a warning, not treated as stale.
+
+- **`/review-issue` resolves once inline (#3545).** A review that ends `pending` runs one resolve
+  pass and one re-review in the same invocation; `--step-wise` keeps the previous stop at `pending`.
+
+- **Agent definitions (#3495, #3509).** Four definitions ship in `.claude/agents/idpf/`
+  (`deploymentFiles.agents`). Projects need Praxis Hub Manager support for the `idpf/` junction
+  (px-manager#1576); until then each spawn falls back to `general-purpose` and reports that it did
+  (#3500).
+
+- **New scripts and metadata.** `issue-reviewer-brief.js`, `resolve-precheck.js`,
+  `review-body-hash.js`, `review-references.js`, `review-repair.js`, `subagent-fallback.js`,
+  `subagent-result.js`, `review-repairs.json` (with its schema), `implementer-result-schema.json` and
+  `issue-reviewer-result-schema.json` are part of the hub install.
+
+### Added
+
+- Framework agent definitions `idpf-implementer`, `idpf-diff-reviewer`, `idpf-issue-reviewer` and
+  `idpf-code-reviewer`, with a definition contract enforced by tests (#3497, #3498, #3502, #3503,
+  #3504) and an agent architecture reference (#3496)
+- Result schemas validated by `subagent-result.js` before the parent uses a subagent's result
+  (#3499); a reported `general-purpose` fallback when a type is absent (#3500)
+- Every subagent brief carries the specialist, domains and an absolute `frameworkPath` (#3501)
+- `/work` reviews a never-reviewed or stale-reviewed issue itself through `idpf-issue-reviewer`
+  before work begins, and accepts `--unreviewed` (#3537)
+- `review-state.js` classifies `stale-reviewed` when the issue body changed after its review;
+  `review-finalize.js` records the body hash (#3543)
+- `/review-issue` `references-valid` criterion: paths, `#N` issues, `/commands` and schemas checked by
+  `review-references.js` (#3540)
+- `/review-issue` records a verdict for every acceptance criterion; finalize rejects a review that
+  misses one (#3541)
+- `/review-issue` Step 2a-vi repairs findings with a deterministic fix before finalize, listed in the
+  review comment with before and after (#3544)
+- `/review-issue` Step 3c: one inline resolve pass and one re-review when a review ends `pending`
+  (#3545)
+- `/resolve-review` Step 3b pre-check over its own edits before the re-review, including stale
+  mentions of a reference the edit removed (#3542, #3546)
+- `mockups-server.js --no-listing` turns off directory listing (#3533)
+- `/prepare-release` checklist re-runs the subagent task-tool probe on a Claude Code minor-version
+  change (#3512)
+
+### Changed
+
+- The Release Review Gate always splits the diff review across `idpf-code-reviewer` shards with
+  author-free briefs (#3505, #3513); the review record names its reviewer and any files left unread
+  (#3506)
+- The Step 4g and Merge-Back Tier 3 diff reviewer and the issue-reviewer instructions were settled by
+  measured comparison (#3507, #3508)
+- Branch and `/create-backlog` review gates treat `stale-reviewed` like `never-reviewed` (#3543)
+- `resolve-preamble` puts content repairs in `needsUserInput`, not `autoFixable` (#3548)
+- `review-references` reports a `/command` proposed by an open issue as proposed, not missing (#3547)
+- One deployment path table serves both the changelog generator and the Deployment Impact repair
+  (#3565)
+- Concurrent run briefs receive their brief context from the caller instead of reading it from disk
+  (#3561); `resolve-precheck` reuses the issue states `checkReferences` already resolved (#3563)
+- `/overwatch` bug delegation no longer depends on the `framework-dev` agent (#3511)
+- Documentation for the changed commands
+
+### Fixed
+
+- `assign-branch` batched moves report why a move failed (#3525); the backlog listing groups by
+  label and prints the current argument form (#3556)
+- `file-issue.js` adds new paths to a table-format `Files to modify:` list correctly (#3523)
+- `/resolve-review` names its Step 4 re-review with `--force --step-wise` (#3549)
+- `paths-ac-generator.js` no longer skips paths that no existing acceptance criterion covers, or short
+  paths that share a word or two with one (#3539, #3562)
+- `follow-redirects` updated to 1.16.2 for GHSA-mrwp-f3q8-3g9p (#3535)
+- `constants.js` installs the four review helpers that need gated modules behind the same gate (#3566)
+- The `/create-backlog` review gate no longer passes a stale-reviewed PRD whose reviewed box is
+  checked (#3557)
+- A declined tree review gate no longer marks a reviewed epic stale (#3552)
+- `merge-back-gate`: `review-plan` honors `--root` (#3560), a sibling member's result file is not
+  flagged as outside the contract (#3559), and `clear-member` removes the member result file (#3558)
+- `review-preamble` reports unrecognized flags (#3555) and re-reviews a stale-reviewed issue instead
+  of exiting early (#3554)
+- `review-repair` no longer throws on a repairs entry missing its types or modes (#3564)
+- The `tree-review-gate` header describes the body-hash read (#3553)
+
+Release test plan: `Construction/Test-Plans/v0.117.0-release-test-plan.md`.
+
 ## [0.116.0] - 2026-10-30
 
 `/code-review` now checks each finding against open bugs and enhancements before filing it, and
@@ -3465,7 +3563,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.116.0` now substituted in start scripts
+- **Start script version injection** (#1956) — Added `.cmd` and `.sh` to `deploy-dist.yml` version injection step; `v0.117.0` now substituted in start scripts
 - **create-backlog priority consistency** (#1962) — Added explicit `--priority` flags to epic and story creation with documented derivation rules
 
 ---
@@ -3758,7 +3856,7 @@ else is a fix, a rule correction, or documentation.
 ### Fixed
 
 - **Test step references** updated after #1729 renumber, new commands registered (#1729)
-- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.116.0` placeholder)
+- **`code-path-discovery.zip`** — rebuilt with version substitution (was containing `v0.117.0` placeholder)
 - **Orphaned files** — removed 2 orphaned docs files from `.min-mirror/` and temp file from `code-path-discovery/`
 
 ---
@@ -4129,13 +4227,13 @@ else is a fix, a rule correction, or documentation.
 
 ### Fixed
 
-- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.116.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
-- **generate-test-plan.js**: Handle `v0.116.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
-- **audit.js**: Skip version mismatch check when manifest uses `v0.116.0` placeholder in dev environment (#1479)
+- **framework-manifest.json version placeholder**: Replace hardcoded version with `v0.117.0` placeholder, matching the deployment pattern used by all other framework files (#1479)
+- **generate-test-plan.js**: Handle `v0.117.0` placeholder gracefully by falling through to `vX.Y.Z` default (#1479)
+- **audit.js**: Skip version mismatch check when manifest uses `v0.117.0` placeholder in dev environment (#1479)
 
 ### Added
 
-- Manifest version validation test accepting both semver and `v0.116.0` placeholder (#1479)
+- Manifest version validation test accepting both semver and `v0.117.0` placeholder (#1479)
 
 ---
 
@@ -4833,15 +4931,15 @@ else is a fix, a rule correction, or documentation.
 ## [0.34.2] - 2026-01-29
 
 ### Fixed
-- **#1059** - Skills retain v0.116.0 placeholder after packaging
+- **#1059** - Skills retain v0.117.0 placeholder after packaging
   - Added version substitution to `/minimize-files` Step 5 (sed replacement during packaging)
   - Added MAINTENANCE.md auto-generation to `/minimize-files` Step 6
-  - Added v0.116.0 detection check to `/skill-validate` (Check 2.6)
+  - Added v0.117.0 detection check to `/skill-validate` (Check 2.6)
   - Fixed `validate-helpers.js` to validate against actual directories (removed hardcoded values)
   - All 25 skill packages now contain actual version numbers
 
 - **#1092** - Standardize skill version format to YAML frontmatter
-  - Updated all 25 skill source files to use `version: "v0.116.0"` in YAML frontmatter
+  - Updated all 25 skill source files to use `version: "v0.117.0"` in YAML frontmatter
   - Removed `**Version:**` lines from skill bodies
   - Fixed 2 malformed skills (anti-pattern-analysis, uml-generation) with proper frontmatter structure
   - All skills now have consistent frontmatter: `name`, `description`, `version`, `license`
@@ -5001,7 +5099,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Changed
 - **#1019** - Standardized JS versioning with `@framework-script` tag
-  - All 52 framework JS files now use `@framework-script v0.116.0` pattern
+  - All 52 framework JS files now use `@framework-script v0.117.0` pattern
   - Added regression test to catch future non-compliant JS files
   - Replaces inconsistent `// **Version:** X.X.X` comments
 - Updated skill counts in documentation (22 → 25)
@@ -5109,7 +5207,7 @@ else is a fix, a rule correction, or documentation.
 - Moved CI wait and release notes from user extension to core steps in `/prepare-release`
 
 ### Fixed
-- **#951** - Replace hardcoded versions with `v0.116.0` placeholder
+- **#951** - Replace hardcoded versions with `v0.117.0` placeholder
 - **#956** - Clarify proposal acceptance criteria placement in documentation
 - `gh pmu sub list --json` flag usage (boolean flag, not field selector)
 - Workflow scripts: explicit JSON fields and safe parsing
@@ -5140,8 +5238,8 @@ else is a fix, a rule correction, or documentation.
   - Renamed category in `framework-manifest.json` to match filesystem path
   - Updated `deployment.js` to use consistent category name
   - Fixes "Untracked - File not in manifest" audit errors for lib files
-- **#933** - v0.116.0 tokens in 12 script files
-  - Replaced hardcoded version numbers with `v0.116.0` placeholder
+- **#933** - v0.117.0 tokens in 12 script files
+  - Replaced hardcoded version numbers with `v0.117.0` placeholder
   - Enables automatic version stamping during deployment
   - Affected: analyze-commits.js, recommend-version.js, wait-for-ci.js, and 9 others
 - **#934** - Audit scope detection for non-IDPF projects
@@ -5282,7 +5380,7 @@ else is a fix, a rule correction, or documentation.
 - **#889** - Replaced deprecated `--release` flag with `--branch` in `assign-branch.js`
   - Updated to use current gh-pmu API before deprecation period ends
 - **#900** - Fixed stale `frameworkVersion` in `framework-config.json`
-  - Changed hardcoded version to `v0.116.0` placeholder
+  - Changed hardcoded version to `v0.117.0` placeholder
   - Added self-hosted config update step to `/prepare-release` Phase 3
 - **#899** - Standardized GitHub release page formatting
   - `update-release-notes.js` now transforms CHANGELOG to formatted release pages
@@ -5322,7 +5420,7 @@ else is a fix, a rule correction, or documentation.
 ## [0.26.1] - 2026-01-17
 
 ### Fixed
-- **#887** - `framework-manifest.json` now uses `v0.116.0` placeholder for proper version injection during deployment
+- **#887** - `framework-manifest.json` now uses `v0.117.0` placeholder for proper version injection during deployment
   - Root cause of `fetch-updates.js` version verification failures on Windows
 
 ---
@@ -5399,10 +5497,10 @@ else is a fix, a rule correction, or documentation.
   - Priority distribution validation for generated backlogs
 - **#847** - Tag format standardization
   - Commands now use versionless `<!-- EXTENSIBLE -->` / `<!-- MANAGED -->`
-  - Frontmatter uses `v0.116.0` placeholder instead of hardcoded versions
+  - Frontmatter uses `v0.117.0` placeholder instead of hardcoded versions
   - Installer regex updated for backward compatibility
 - **#840** - PRD directory structure: `PRD/Active/` and `PRD/Implemented/`
-- **#821** - README-DIST.md now uses `v0.116.0` placeholder
+- **#821** - README-DIST.md now uses `v0.117.0` placeholder
 
 ### Removed
 - **#842** - Deprecated IDPF-PRD framework removed
@@ -5519,7 +5617,7 @@ else is a fix, a rule correction, or documentation.
 
 ### Infrastructure
 - **minimize-config.json** - Removed overly broad "Merge" pattern that excluded merge-branch.md
-- **Rules rebuild from minimized sources** - All rules now use v0.116.0 placeholder
+- **Rules rebuild from minimized sources** - All rules now use v0.117.0 placeholder
 
 ---
 
@@ -5567,7 +5665,7 @@ else is a fix, a rule correction, or documentation.
 ### Internal
 - Integrated extensibility.js into deployment workflow
 - Lowered coverage thresholds to match actual coverage
-- Restored v0.116.0 placeholders to 209 framework source files
+- Restored v0.117.0 placeholders to 209 framework source files
 
 ---
 
@@ -5635,12 +5733,12 @@ else is a fix, a rule correction, or documentation.
 ## [0.20.1] - 2026-01-02
 
 ### Fixed
-- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.116.0` placeholder in `Templates/framework-manifest.json`
+- **Version placeholder handling** - `parseManifest()` now correctly handles `v0.117.0` placeholder in `Templates/framework-manifest.json`
 - **Skill count documentation** - Updated skill count from 21 to 22 across all documentation (Framework-Overview.md, Framework-Summary.md, Framework-Skills.md, README.md) to include `promote-to-prd` skill
 
 ### Changed
 - **Installer charter support** - Charter feature files (Charter-Enforcement.md, Runtime-Artifact-Triggers.md) now deployed by installer
-- **Version placeholder standardized** - All version tokens now use `v0.116.0` format for consistent replacement
+- **Version placeholder standardized** - All version tokens now use `v0.117.0` format for consistent replacement
 
 ---
 
@@ -5709,7 +5807,7 @@ else is a fix, a rule correction, or documentation.
 - **`gh pmu --body-file` flags** (#620) - Documented `-F/--body-file` support across `gh pmu create`, `gh pmu view`, and `gh pmu edit` commands
 
 ### Fixed
-- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.116.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
+- **Template version placeholders** (#627) - Fixed 35+ Template files missing `v0.117.0` placeholder. Commands, scripts, and shell scripts now properly receive version during installation.
 - **Release branch prefix** (#625) - Fixed `/open-release` incorrectly prefixing branch names with `release/release/`
 
 ---

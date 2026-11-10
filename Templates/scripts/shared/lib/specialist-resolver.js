@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * Domain specialist resolution — shared by the startup hook and
  * /change-domain-expert.
  *
@@ -160,8 +160,73 @@ function resolveSpecialist({ cwd, frameworkPath = '.', domainSpecialist }) {
   };
 }
 
+const toPosix = (p) => String(p).replace(/\\/g, '/');
+
+/**
+ * The project context every framework subagent brief carries (#3501). A
+ * subagent receives no SessionStart output, so the specialist, the domains and
+ * the framework root it would have been told about are handed over here.
+ *
+ * Read from `framework-config.json` on every call — at spawn time — so a
+ * /change-domain-expert switch reaches the next brief with nothing
+ * regenerated. The specialist goes through resolveSpecialist(), the same
+ * allowlist the startup hook applies; its file is never read here, only its
+ * path is handed on with a Read directive.
+ *
+ * @param {{root: string}} opts  the project root (the parent checkout, never a worktree)
+ * @returns {{frameworkPath: string, specialist: {status: string, name: string, path: string|null},
+ *            domains: string[], notice: string|null}}
+ */
+function resolveBriefContext({ root }) {
+  const configPath = path.join(root, 'framework-config.json');
+  const parsed = fs.existsSync(configPath) ? readJson(configPath) : {};
+  // A config that exists but does not parse to an object is reported as such,
+  // never as "not configured": a corrupt file must not pass for a choice.
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      frameworkPath: toPosix(path.resolve(root)),
+      specialist: { status: 'config-unreadable', name: '', path: null },
+      domains: [],
+      notice: `framework-config.json could not be read at ${toPosix(configPath)} — subagents this run ran without a specialist and with no domains.`,
+    };
+  }
+  const config = parsed;
+  const frameworkPath = typeof config.frameworkPath === 'string' && config.frameworkPath ? config.frameworkPath : '.';
+  const absFramework = path.resolve(root, frameworkPath);
+  const r = resolveSpecialist({ cwd: root, frameworkPath, domainSpecialist: config.domainSpecialist });
+  const loaded = r.status === 'loaded';
+  const specialist = { status: r.status, name: r.name, path: loaded ? toPosix(path.resolve(r.path)) : null };
+  const domains = Array.isArray(config.activeDomains) ? config.activeDomains.filter((d) => typeof d === 'string') : [];
+
+  let notice = null;
+  if (!loaded) {
+    const why = r.status === 'none'
+      ? 'No domain specialist is configured'
+      : r.status === 'announce-only'
+        ? `"${r.name}" is announce-only (no specialist file)`
+        : `The "${r.name}" specialist could not be loaded${r.warning ? ` (${r.warning})` : ''}`;
+    notice = `${why} — subagents this run ran without one.`;
+  }
+  return { frameworkPath: toPosix(absFramework), specialist, domains, notice };
+}
+
+/** The brief lines for a resolved context — the same wording in every role's brief. */
+function briefContextLines(ctx) {
+  const lines = ['### Project context', `- frameworkPath: \`${ctx.frameworkPath}\` — resolve every \`{frameworkPath}/\` path against it.`];
+  if (ctx.specialist.path) {
+    lines.push(`- Specialist: \`${ctx.specialist.name}\` — Read \`${ctx.specialist.path}\` before starting, and apply it.`);
+  } else {
+    const why = { none: 'not configured', 'config-unreadable': 'config unreadable' }[ctx.specialist.status] || ctx.specialist.status;
+    lines.push(`- Specialist: none (${why}) — work without one, and say so in your result.`);
+  }
+  lines.push(`- Domains: ${ctx.domains.length ? ctx.domains.join(', ') : 'none'}`);
+  return lines;
+}
+
 module.exports = {
   resolveSpecialist,
+  resolveBriefContext,
+  briefContextLines,
   isSafeSpecialistName,
   SPECIALIST_DIRS,
 };

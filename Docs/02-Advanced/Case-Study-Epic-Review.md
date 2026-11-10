@@ -162,6 +162,8 @@ Issues #1609, #1611–#1614, and #1616 received no annotations — they're leaf 
 
 After confirming the change, `/resolve-review` updated the 4 sub-issue bodies and re-ran `/review-issue 1608` automatically.
 
+> **Since this case study (v0.117.0):** body-modifying changes like these are no longer auto-fixes. `/resolve-review` asks for each one in its user-input pass — Accept suggestion / Provide alternative / Skip, with the exact body change shown in the preview — and runs a pre-check over the edited body before re-reviewing once with `--force --step-wise`. An interactive `/review-issue` that ends with findings now runs that resolve pass and one re-review itself, so a separate `/resolve-review` is needed only when findings remain.
+
 ---
 
 ## Review #2: Confirmation

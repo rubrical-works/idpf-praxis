@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "implementer-result-schema.json",
+  "title": "idpf-implementer result",
+  "description": "The JSON result one idpf-implementer instance returns for its member issue (#3499, PRD #3493). The parent validates it with .claude/scripts/shared/lib/subagent-result.js before it enters the Merge-Back Review Gate or a member report; a result failing validation, an empty reply or an errored Agent call is that instance's error, never a guessed outcome. Role contract: Reference/Agent-Architecture.md.",
+  "type": "object",
+  "required": ["issue", "commits", "acVerification", "unfinished", "docJudgment"],
+  "additionalProperties": false,
+  "properties": {
+    "issue": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The member issue this instance implemented."
+    },
+    "commits": {
+      "type": "array",
+      "description": "The Refs #N commits the instance made in its worktree, oldest first. Empty when it committed nothing — the parent's Tier 1 check then reports it.",
+      "items": {
+        "type": "object",
+        "required": ["sha", "subject"],
+        "additionalProperties": false,
+        "properties": {
+          "sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+          "subject": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "acVerification": {
+      "type": "array",
+      "description": "One entry per acceptance criterion: whether the instance verified it against the files, with the evidence. Every criterion carries exactly one status (rule 01, Claim Labeling).",
+      "items": {
+        "type": "object",
+        "required": ["criterion", "status", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "enum": ["verified", "unverifiable", "skipped"] },
+          "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "unfinished": {
+      "type": "array",
+      "description": "Work the instance did not finish, each item stated so the parent can report it. An empty array is the claim that nothing was left.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "docJudgment": {
+      "type": "string",
+      "pattern": "^\\*\\*Doc judgment:\\*\\* .+",
+      "description": "The /work Step 3b line, verbatim as it would be written into the issue body: `**Doc judgment:** none — <reason>` or `**Doc judgment:** <path>`."
+    }
+  }
+}

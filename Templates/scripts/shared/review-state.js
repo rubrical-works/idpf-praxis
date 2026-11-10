@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Classify an issue's review state for the /work review-state gate (#2577).
- * Returns exactly one of never-reviewed, findings-pending, reviewed-clean, or indeterminate,
+ * Returns exactly one of never-reviewed, findings-pending, reviewed-clean, stale-reviewed (#3543) or indeterminate,
  * reading the two signals the review subsystem already writes: the reviewed/pending labels
  * from review-finalize.js determineLabel(), and the `**Reviews:** N` body marker from
  * updateBodyReviewCount(). Emits a JSON verdict on stdout. Exits 0 on any classification
@@ -16,14 +16,19 @@
 const { execTimed } = require('./lib/exec.js');
 const { REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
 
+const { computeReviewHash, readReviewHash } = require('./lib/review-body-hash.js');
+
 /**
- * The four verdicts. Exactly one is returned per classification — the caller's
+ * The five verdicts. Exactly one is returned per classification — the caller's
  * behavior matrix in the /work review-state gate is keyed on these values.
+ * `stale-reviewed` (#3543): a `reviewed` label whose recorded body hash no
+ * longer matches the body — the issue was rewritten after its review.
  */
 const STATES = {
   NEVER_REVIEWED: 'never-reviewed',
   FINDINGS_PENDING: 'findings-pending',
   REVIEWED_CLEAN: 'reviewed-clean',
+  STALE_REVIEWED: 'stale-reviewed',
   INDETERMINATE: 'indeterminate'
 };
 
@@ -131,10 +136,27 @@ function classifyReviewState(issue) {
         signals
       };
     }
+    // The body hash the review recorded (#3543). A mismatch means the body was
+    // rewritten after the review — new criteria, a changed design — which the
+    // label alone cannot show. No marker is a review from before the hash
+    // existed: reviewed-clean with an `unhashed` warning, so every existing
+    // issue does not turn stale at once.
+    const recorded = readReviewHash(issue.body);
+    const hashMatches = recorded === null ? null : recorded === computeReviewHash(issue.body);
+    const hashed = { ...signals, hashRecorded: recorded !== null, hashMatches };
+    if (hashMatches === false) {
+      return {
+        state: STATES.STALE_REVIEWED,
+        reason: 'Label `reviewed`, but the body has changed since the review recorded its hash — re-review before work.',
+        signals: hashed,
+        warnings: []
+      };
+    }
     return {
       state: STATES.REVIEWED_CLEAN,
       reason: 'Label `reviewed` — a review completed with no unresolved findings.',
-      signals
+      signals: hashed,
+      warnings: recorded === null ? ['unhashed'] : []
     };
   }
 
@@ -194,7 +216,7 @@ function run(issueNumber, execFn = execTimed) {
     state: verdict.state,
     reason: verdict.reason,
     signals: verdict.signals,
-    warnings
+    warnings: [...warnings, ...(verdict.warnings || [])]
   };
 }
 

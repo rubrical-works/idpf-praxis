@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -226,6 +226,12 @@ function buildTier2({ issue, files = [], acceptanceCriteria = [] }) {
 
 const SKILL_DIR = path.join('.claude', 'skills', 'diff-review');
 
+/** The project's resolved domain ids and absolute frameworkPath for the Tier 3 prompt (#3501), read at plan time. */
+function projectContext(root = process.cwd()) {
+  const ctx = require('./specialist-resolver.js').resolveBriefContext({ root });
+  return { domains: ctx.domains, frameworkPath: ctx.frameworkPath };
+}
+
 /** Whether the `diff-review` skill is installed under `root`. */
 function diffReviewSkillPresent(root = process.cwd()) {
   const fs = require('fs');
@@ -242,7 +248,7 @@ function diffReviewSkillPresent(root = process.cwd()) {
  * @param {{issue: number, acceptanceCriteria?: string[], filesToModify?: string[],
  *   range: string, charterPath?: string, noReview?: boolean, skillPresent?: boolean}} input
  */
-function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, commits = [], charterPath = 'CHARTER.md', noReview = false, skillPresent }) {
+function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, commits = [], charterPath = 'CHARTER.md', noReview = false, skillPresent, domains = [], frameworkPath }) {
   if (noReview) {
     return { tier: 3, skipped: true, reason: 'no-review', message: `Tier 3 skipped for #${issue}: --no-review was passed. Tiers 1–2 still ran.` };
   }
@@ -268,7 +274,8 @@ function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, 
     ...(acceptanceCriteria.length ? acceptanceCriteria.map((ac) => `  - [ ] ${ac}`) : ['  (none declared)']),
     `  Files to modify: ${filesToModify.length ? filesToModify.join(', ') : '(none declared)'}`,
     `- Charter: ${charterPath}`,
-    '- Domain ids: none',
+    `- Domain ids: ${domains.length ? domains.join(', ') : 'none'}`,
+    ...(frameworkPath ? [`- frameworkPath: ${frameworkPath}`] : []),
     '',
     "Not inputs: you have not been given the implementer's summary, and you must not",
     'ask for it or infer one from commit messages. Judge the diff against the',
@@ -291,7 +298,10 @@ function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, 
     skipped: false,
     outputPath,
     treeBeforePath,
-    request: { description: `Review #${issue}`, writes: [outputPath], prompt },
+    // A typed request carries the parent's fallback step (#3500).
+    // idpf-diff-reviewer since #3507's comparison passed (Construction/Design-
+    // Decisions/2026-11-01-diff-reviewer-comparison.md); Step 4g and Tier 3 share it.
+    request: require('./subagent-fallback.js').withFallback({ description: `Review #${issue}`, subagent_type: 'idpf-diff-reviewer', writes: [outputPath], prompt }),
   };
 }
 
@@ -331,8 +341,12 @@ const GATE_FILE = /^\.tmp-gate-[^/]+$/;
  */
 const SCRATCH_FILE = /^\.tmp-(?:gate|brief|rolling|concurrent)-[^/\\]+$/;
 
-/** A member's four scratch files (#3360): its three gate files, then its brief. */
-const memberScratch = (n) => [`.tmp-gate-${n}-tier1.json`, `.tmp-gate-${n}-tier3.json`, `.tmp-gate-${n}-tree-before.txt`, `.tmp-brief-${n}.md`];
+/**
+ * A member's five scratch files (#3360, #3558): its three gate files, its
+ * brief, then the result file the implementer writes at the root. tier1 stays
+ * first — `--tier1-only` and `--keep-tier1` slice on that position.
+ */
+const memberScratch = (n) => [`.tmp-gate-${n}-tier1.json`, `.tmp-gate-${n}-tier3.json`, `.tmp-gate-${n}-tree-before.txt`, `.tmp-brief-${n}.md`, `.tmp-gate-${n}-member.json`];
 
 /**
  * Remove a run's scratch files (#3360) — the one remover, so no step names a
@@ -420,7 +434,9 @@ function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-
   const lines = (s) => String(s).split(/\r?\n/).filter((l) => l.trim() !== '');
   const prior = new Set(lines(before));
   const allowed = new Set([outputPath, `.tmp-gate-${issue}-tree-before.txt`]);
-  for (const m of siblings) for (const f of ['tier1.json', 'tier3.json', 'tree-before.txt']) allowed.add(`.tmp-gate-${m}-${f}`);
+  // #3559: member.json too — a sibling still running writes its result file at
+  // the root during this member's Tier 3 window.
+  for (const m of siblings) for (const f of ['tier1.json', 'tier3.json', 'tree-before.txt', 'member.json']) allowed.add(`.tmp-gate-${m}-${f}`);
   const changed = [...new Set(lines(after).filter((l) => !prior.has(l)).map(porcelainPath).filter((p) => !allowed.has(p)))].sort();
   // #3263: a path the host itself writes (a permission grant) is not the
   // reviewer's. With the run's paths given, a change outside them is another
@@ -486,31 +502,11 @@ function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, ex
  */
 function parseReview(text, { issue, schema, root = process.cwd() } = {}) {
   const fail = (errors) => ({ tier: 3, skipped: false, ok: false, verdict: null, findings: [], errors });
-  let doc;
-  try {
-    doc = JSON.parse(String(text).trim());
-  } catch (e) {
-    return fail([`Reviewer output is not one JSON document: ${e.message}`]);
-  }
-
-  let outputSchema = schema;
-  if (!outputSchema) {
-    try {
-      outputSchema = JSON.parse(require('fs').readFileSync(path.join(root, SKILL_DIR, 'output-schema.json'), 'utf8'));
-    } catch (e) {
-      return fail([`Cannot read the diff-review output schema: ${e.message}`]);
-    }
-  }
-  const Ajv = require('ajv');
-  const ajv = new Ajv({ allErrors: true, strict: false });
-  // The draft-07 meta-schema id is Ajv's default dialect; compiling with it
-  // named would make Ajv look the meta-schema up rather than use its own.
-  const body = { ...outputSchema };
-  delete body.$schema;
-  const validate = ajv.compile(body);
-  if (!validate(doc)) {
-    return fail(validate.errors.map((e) => `${e.instancePath || '(root)'} ${e.message}`));
-  }
+  // One validator for every framework role's return (#3499): an empty reply,
+  // prose, or a schema-invalid document is this reviewer's error.
+  const checked = require('./subagent-result.js').validateResult({ role: 'idpf-diff-reviewer', text, schema, root });
+  if (!checked.ok) return fail(checked.errors);
+  const doc = checked.result;
   if (doc.issue !== issue) {
     return fail([`Review is of #${doc.issue}, not #${issue}.`]);
   }
@@ -648,7 +644,7 @@ function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries
  *   workReview?: string, nonstop?: boolean, noReview?: boolean,
  *   skillPresent?: boolean, charterPath?: string}} input
  */
-function planSequentialReview({ issue, body = '', base, git, workReview = 'always', nonstop = false, noReview = false, skillPresent, charterPath = 'CHARTER.md' } = {}) {
+function planSequentialReview({ issue, body = '', base, git, workReview = 'always', nonstop = false, noReview = false, skillPresent, charterPath = 'CHARTER.md', root = process.cwd() } = {}) {
   const skip = (reason, message) => ({ tier: 3, skipped: true, reason, message });
   if (noReview) return skip('no-review', `Review skipped for #${issue}: --no-review was passed.`);
   if (workReview === 'off') return skip('work-review-off', `Review skipped for #${issue}: framework-config.json workReview is off.`);
@@ -661,7 +657,7 @@ function planSequentialReview({ issue, body = '', base, git, workReview = 'alway
   const range = `${commits[0]}~1..${commits[commits.length - 1]}`;
   const tier3 = planTier3({
     issue, acceptanceCriteria: extractAcceptanceCriteria(body).items.map((i) => i.text), filesToModify,
-    range, commits, charterPath, skillPresent,
+    range, commits, charterPath, skillPresent, ...projectContext(root),
   });
   if (tier3.skipped) return skip(tier3.reason, `Review skipped for #${issue}: the diff-review skill is not installed.`);
   return { ...tier3, range, commits, runPaths: filesToModify };
@@ -1033,14 +1029,14 @@ function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic, unswe
 function evaluateMember({
   member = {}, body, trackerTip, git, suites = [], runSuite, protectedPaths, registrarExemption,
   acceptanceCriteria, filesToModify = [], charterPath, noReview = false, skillPresent, review, schema,
-  fixCycles = 0, resumedFromCompaction = false, epic,
+  fixCycles = 0, resumedFromCompaction = false, epic, root = process.cwd(),
 } = {}) {
   const tier1 = runTier1({
     issue: member.issue, body, trackerTip, branch: member.branch, worktreePath: member.worktreePath,
     git, suites, runSuite, protectedPaths, registrarExemption,
   });
   const acs = acceptanceCriteria || tier1.acceptanceCriteria.items;
-  const plan = planTier3({ issue: member.issue, acceptanceCriteria: acs, filesToModify, range: `${memberBase({ git, trackerTip, branch: member.branch })}..${member.branch}`, charterPath, noReview, skillPresent });
+  const plan = planTier3({ issue: member.issue, acceptanceCriteria: acs, filesToModify, range: `${memberBase({ git, trackerTip, branch: member.branch })}..${member.branch}`, charterPath, noReview, skillPresent, ...projectContext(root) });
   let tier3 = plan;
   if (!plan.skipped) {
     let text;
@@ -1363,7 +1359,7 @@ function runCli(argv, seams = {}) {
     const tier3 = planTier3({
       issue, acceptanceCriteria: extractAcceptanceCriteria(body).items.map((i) => i.text), filesToModify,
       range: `${memberBase({ git, trackerTip: opts['--tracker-tip'], branch: opts['--branch'] })}..${opts['--branch']}`, noReview: !!opts['--no-review'],
-      skillPresent: diffReviewSkillPresent(root),
+      skillPresent: diffReviewSkillPresent(root), ...projectContext(root),
     });
     return { code: 0, envelope: { ok: true, subcommand: sub, tier3 } };
   }
@@ -1448,6 +1444,7 @@ function runCli(argv, seams = {}) {
     const review = planSequentialReview({
       issue, body: bodyOf(issue, bodyFileMap(opts['--body-file'], issue)), base, git,
       workReview: workReview.mode, nonstop: !!opts['--nonstop'], noReview: !!opts['--no-review'], skillPresent: diffReviewSkillPresent(root),
+      root, // #3560: the brief's domains and frameworkPath come from --root, not process.cwd()
     });
     return { code: 0, envelope: { ok: true, subcommand: sub, workReview, base, review } };
   }
@@ -1576,7 +1573,7 @@ function runCli(argv, seams = {}) {
   if (sub === 'clear-member') {
     // #3360: a member merged and In review leaves no scratch file. Its tier1
     // file outlives every outcome that names it as --sibling (--keep-tier1,
-    // then --tier1-only), and a worktree teardown kept keeps all four, so a
+    // then --tier1-only), and a worktree teardown kept keeps all five, so a
     // resumed run still finds them.
     const miss = requireOpts(opts, ['--issue']);
     if (miss) return fail(miss);

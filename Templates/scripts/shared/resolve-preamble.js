@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, reports the issue's type so an epic can be expanded, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -17,8 +17,11 @@ const {
   REVIEW_TYPES,
   FINDING_LINE_PATTERN,
   RECOMMENDATION_PATTERN,
-  AUTO_FIXABLE_CRITERIA,
+  FINDING_ID_PATTERN,
 } = require('./lib/review-format');
+const { repairEntry } = require('./lib/review-repair.js');
+const fs = require('fs');
+const path = require('path');
 const { getIssueType, REDIRECT_LABELS } = require('./lib/issue-type.js');
 const { normalizeEol } = require('./lib/normalize-eol.js');
 
@@ -35,7 +38,20 @@ function parseArgs(args) {
     return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: ${args[0]}` } };
   }
 
-  return { issue: num };
+  // Flag-shaped tokens after the issue number are collected and reported,
+  // never fatal and never silently dropped (#3545) — the review-preamble.js
+  // contract and 02-github-workflow.md's pass-through convention, so a
+  // `--step-wise` passed here is visible rather than lost.
+  const unrecognizedFlags = args.slice(1).filter((a) => /^--[A-Za-z]/.test(a));
+  const result = { issue: num };
+  if (unrecognizedFlags.length > 0) result.unrecognizedFlags = unrecognizedFlags;
+  return result;
+}
+
+/** Put the parsed `unrecognizedFlags` on the envelope — always an array. */
+function reportUnrecognizedFlags(envelope, args) {
+  envelope.unrecognizedFlags = (args && args.unrecognizedFlags) || [];
+  return envelope;
 }
 
 // ─── Issue Type (#2872) ───
@@ -127,10 +143,14 @@ function parseFindings(body) {
     if (match) {
       const emoji = match[1];
       const criterion = match[2];
-      const evidence = match[3];
       const status = statusForEmoji(emoji);
+      // The criterion id finalize appends as a hidden marker (#3544).
+      const idMatch = match[3].match(FINDING_ID_PATTERN);
+      const evidence = idMatch ? match[3].replace(FINDING_ID_PATTERN, '').trimEnd() : match[3];
 
-      findings.push({ status, criterion, evidence });
+      const finding = { status, criterion, evidence };
+      if (idMatch) finding.id = idMatch[1];
+      findings.push(finding);
     }
   }
 
@@ -208,29 +228,76 @@ function slugify(criterion) {
     .replace(/^-|-$/g, '');
 }
 
-function classifyFindings(findings) {
+/**
+ * Display name → criterion id, from the criteria metadata (#3544). Names are
+ * compared lower-cased with punctuation dropped, so "AC present and testable?"
+ * finds `ac-present-testable` where its slug never could. Built once; a
+ * missing file contributes nothing.
+ */
+let _namesToIds = null;
+function nameKey(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function criterionNameIndex(root = process.cwd()) {
+  if (_namesToIds) return _namesToIds;
+  const index = new Map();
+  const read = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { return null; } };
+  const typeSpecific = (read('.claude/metadata/review-criteria.json') || {}).typeSpecific || {};
+  for (const t of Object.values(typeSpecific)) {
+    for (const c of t.criteria || []) if (c && c.id && c.name) index.set(nameKey(c.name), c.id);
+  }
+  const common = (read('.claude/metadata/review-mode-criteria.json') || {}).criteria || {};
+  for (const [id, c] of Object.entries(common)) if (c && c.name) index.set(nameKey(c.name), id);
+  _namesToIds = index;
+  return index;
+}
+
+/** The finding's criterion id: its marker, else its metadata name, else its slug. */
+function resolveCriterionId(f) {
+  if (f.id) return f.id;
+  return criterionNameIndex().get(nameKey(f.criterion)) || slugify(f.criterion);
+}
+
+const ISSUE_TYPES = new Set(['bug', 'enhancement', 'story', 'epic', 'generic']);
+
+/**
+ * Sort findings into passed / autoFixable / needsUserInput. The bucket is
+ * decided by the shared repair data (`review-repair.js` `repairEntry`, #3544)
+ * from the criterion **id**, for warn and fail alike — never from a slug of
+ * the display name, which drifts between reviews. Only a `preFinalize: true`
+ * entry is auto-fixable; a `preFinalize: false` one is user input carrying
+ * `repair: { kind, description }` (#3548).
+ *
+ * @param {object[]} findings
+ * @param {{ type?: string }} [ctx] - the issue type, when known, filters entries
+ */
+function classifyFindings(findings, ctx = {}) {
   const passed = [];
   const autoFixable = [];
   const needsUserInput = [];
+  const type = ISSUE_TYPES.has(ctx.type) ? ctx.type : undefined;
 
-  for (const f of findings) {
+  for (const raw of findings) {
+    const f = { ...raw, id: resolveCriterionId(raw) };
     // skip joins pass (#2989): a ⊘ is a deliberate no-action — the prior-art
     // `recommend` advisory, a `flag-only`/`off` opt-out, a pre-feature
     // `not-applicable` — so asking the user to resolve it is a question that
     // declining cannot answer. `passed` rather than a fourth bucket, following
     // #2717's precedent: nothing downstream distinguishes skip from pass, and a
     // new bucket would need a reader it does not have.
+    const entry = (f.status === 'fail' || f.status === 'warn') ? repairEntry(f.id, { type }) : null;
     if (f.status === 'pass' || f.status === 'skip') {
       passed.push(f);
-    } else if (f.status === 'fail') {
-      const slug = slugify(f.criterion);
-      if (AUTO_FIXABLE_CRITERIA.includes(slug)) {
-        autoFixable.push(f);
-      } else {
-        needsUserInput.push(f);
-      }
+    } else if (entry && entry.preFinalize) {
+      // A deterministic repair (priority, Depends on, Deployment Impact).
+      autoFixable.push(f);
+    } else if (entry) {
+      // #3548: a content repair (preFinalize: false) needs content only the
+      // user can approve — a decision, not an auto-fix. It is asked in Pass 2,
+      // carrying the entry's description to shape the suggested change.
+      needsUserInput.push({ ...f, repair: { kind: entry.kind, description: entry.description } });
     } else {
-      // warn or unknown → needs user input
+      // a non-repairable warn/fail, or an unknown status → needs user input
       needsUserInput.push(f);
     }
   }
@@ -322,12 +389,13 @@ async function main() {
   // Parse findings from review body
   const findings = parseFindings(reviewResult.body);
   const recommendation = extractRecommendation(reviewResult.body);
-  const classified = classifyFindings(findings);
+  const classified = classifyFindings(findings, { type: issueType });
 
   const suggestions = parseSuggestions(reviewResult.body);
 
   const envelope = buildSuccessEnvelope(reviewResult, classified, findings, suggestions, issueType);
   envelope.recommendation = recommendation;
+  reportUnrecognizedFlags(envelope, args);
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
 }
 
@@ -354,4 +422,5 @@ module.exports = {
   extractRecommendation,
   buildSuccessEnvelope,
   buildErrorEnvelope,
+  reportUnrecognizedFlags,
 };

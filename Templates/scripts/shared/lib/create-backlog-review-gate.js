@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Decide whether /create-backlog Phase 1c should gate on PRD review state. Exports evaluateReviewGate(). Reads the tracker's lifecycle checkbox and the review-state verdict together, so a reviewed PRD is not re-gated.
  * @checksum sha256:placeholder
  *
@@ -38,6 +38,7 @@ const REVIEW_STATES = new Set([
   'never-reviewed',
   'findings-pending',
   'reviewed-clean',
+  'stale-reviewed',
   'indeterminate',
 ]);
 
@@ -113,6 +114,18 @@ function evaluateReviewGate(input = {}) {
     return {
       gate: false,
       reason: 'PRD review completed cleanly.',
+      indeterminate: false,
+      signals,
+    };
+  }
+
+  // `stale-reviewed` (#3543) is decided BEFORE the checkbox short-circuit
+  // (#3557): the review that went stale is the one that ticked the box, so a
+  // checked box is no evidence the current body was reviewed.
+  if (reviewState === 'stale-reviewed') {
+    return {
+      gate: true,
+      reason: 'PRD changed since its last review — re-review before decomposing.',
       indeterminate: false,
       signals,
     };

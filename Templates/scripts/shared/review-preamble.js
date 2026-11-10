@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -12,6 +12,7 @@
 // Spawns bounded via lib/exec.js (#2469) — aliased to the original name
 // so call sites are unchanged.
 const { execTimedAsync } = require('./lib/exec.js');
+const { computeReviewHash, readReviewHash } = require('./lib/review-body-hash.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -76,6 +77,7 @@ function parseArgs(args) {
   let force = false;
   let noRedirect = false;
   let priorArt = false;
+  let stepWise = false;
   const unrecognizedFlags = [];
 
   let i = 0;
@@ -99,6 +101,12 @@ function parseArgs(args) {
       i += 1;
     } else if (arg === '--no-redirect') {
       noRedirect = true;
+      i += 1;
+    } else if (arg === '--step-wise') {
+      // #3545: stop at `pending` and name /resolve-review instead of running
+      // the single inline resolve pass. Passed by every non-interactive caller
+      // and by the pass's own --force re-review, so a pass never nests.
+      stepWise = true;
       i += 1;
     } else if (arg === '--prior-art') {
       // Documented in /review-issue's Arguments table. Recorded here but
@@ -147,6 +155,7 @@ function parseArgs(args) {
   if (force) result.force = true;
   if (noRedirect) result.noRedirect = true;
   if (priorArt) result.priorArt = true;
+  if (stepWise) result.stepWise = true;
   if (unrecognizedFlags.length > 0) result.unrecognizedFlags = unrecognizedFlags;
   return result;
 }
@@ -170,6 +179,13 @@ function checkEarlyExit(issue, force) {
   if (hasReviewedLabel && !force) {
     const reviewMatch = (issue.body || '').match(REVIEWS_MARKER_PATTERN);
     const reviewCount = reviewMatch ? parseInt(reviewMatch[1], 10) : 0;
+    // #3554: a recorded hash that no longer matches is stale-reviewed (#3543),
+    // the state review-state.js and the /work gate re-review — so the label
+    // alone must not refuse it. No recorded hash predates #3543: still exits.
+    const recorded = readReviewHash(issue.body);
+    if (recorded !== null && recorded !== computeReviewHash(issue.body)) {
+      return { earlyExit: false, stale: true, reviewCount };
+    }
     return { earlyExit: true, reviewCount };
   }
 
@@ -620,6 +636,12 @@ async function main() {
 
   // Early exit check
   const earlyExit = checkEarlyExit(issue, args.force || false);
+  if (earlyExit.stale) {
+    issueWarnings.push({
+      code: 'REVIEW_BODY_CHANGED',
+      message: `Issue #${args.issue} is labeled reviewed (Review #${earlyExit.reviewCount}), but its body changed since that review — re-reviewing.`
+    });
+  }
   if (earlyExit.earlyExit) {
     const envelope = buildSuccessEnvelope(
       {
@@ -632,6 +654,7 @@ async function main() {
       issueWarnings
     );
     envelope.roundTrips = roundTrips;
+    reportUnrecognizedFlags(envelope, args);
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
     return;
   }
@@ -653,6 +676,7 @@ async function main() {
       issueWarnings
     );
     envelope.roundTrips = roundTrips;
+    reportUnrecognizedFlags(envelope, args);
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
     return;
   }
@@ -695,12 +719,36 @@ async function main() {
     reviewMode,
     reviewNumber: resolveReviewNumber(reviewNumber, commentCount),
     hasReviewedLabel: (issue.labels || []).some(l => l.name === 'reviewed'),
-    force: args.force || false
+    ...contextFlags(args)
   };
 
   const envelope = buildSuccessEnvelope(context, criteria, allWarnings);
   envelope.roundTrips = roundTrips;
+  reportUnrecognizedFlags(envelope, args);
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
+}
+
+/**
+ * The run flags the envelope's `context` carries: `force` always, `stepWise`
+ * only when passed (#3545) — absent, never false, like `priorArt` in parseArgs.
+ */
+function contextFlags(args) {
+  const flags = { force: Boolean(args && args.force) };
+  if (args && args.stepWise) flags.stepWise = true;
+  // #3555: recorded here, consumed at 2a-iv (rule 09) — absent when not passed.
+  if (args && args.priorArt) flags.priorArt = true;
+  return flags;
+}
+
+/**
+ * Put parseArgs' unrecognized flag-shaped tokens on the envelope, always an
+ * array (#3555), as resolve-preamble.js does (#3545): the pass-through
+ * convention in 02-github-workflow.md has the command report them, so every
+ * success envelope main() writes carries the field.
+ */
+function reportUnrecognizedFlags(envelope, args) {
+  envelope.unrecognizedFlags = (args && args.unrecognizedFlags) || [];
+  return envelope;
 }
 
 // ─── Module Guard ───
@@ -718,6 +766,8 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  contextFlags,
+  reportUnrecognizedFlags,
   computeReviewNumber,
   resolveReviewNumber,
   countReviewComments,

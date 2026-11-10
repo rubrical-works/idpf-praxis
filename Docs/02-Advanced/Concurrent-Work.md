@@ -1,6 +1,6 @@
 # Concurrent Work Within One Epic
 
-**Version:** v0.116.0
+**Version:** v0.117.0
 **Topic:** How `/work --concurrent` runs several sub-issues of one epic or branch tracker at the same time without giving up the gates, the attribution or the audit trail a sequential run leaves behind.
 
 ---
@@ -42,7 +42,7 @@ Step 2c shows all three inputs together before anything runs: the declared order
 
 ## Parent and Members
 
-The parent session keeps every per-issue guarantee of sequential `/work`: the Review-State Gate and Pre-Work Status Gate per member, peer announcement events 1 and 2 per member, Steps 4–4f, merge-back, the `in_review` move and the STOP. A member agent, spawned with `isolation: "worktree"` and an inline brief (the issue's description, its proposed solution or fix, its declared scope, its acceptance criteria, the TDD checklist and the commit contract — a section the issue lacks is named as not found rather than omitted), owns exactly one thing: the TDD cycle, committing per acceptance criterion as `Refs #N`. It does not push, merge, move the issue or announce.
+The parent session keeps every per-issue guarantee of sequential `/work`: the Review-State Gate and Pre-Work Status Gate per member, peer announcement events 1 and 2 per member, Steps 4–4f, merge-back, the `in_review` move and the STOP. A member agent — an `idpf-implementer` — spawned with `isolation: "worktree"` and an inline brief (the issue's description, its proposed solution or fix, its declared scope, its acceptance criteria and the TDD checklist — a section the issue lacks is named as not found rather than omitted; the commit contract and the result format come from the `idpf-implementer` definition), owns exactly one thing: the TDD cycle, committing per acceptance criterion as `Refs #N`. It does not push, merge, move the issue or announce. Its result file is checked before its merge-back, and a result that fails the check holds that member's merge-back and nothing else. When the `idpf-implementer` type is not available in the session, the member runs as a `general-purpose` agent told to read that definition first, and the fallback is reported once for the run.
 
 Because every member fires its gates and events once and carries its own `Refs #N` commits, the post-run audits — announcement pairing, commit density, AC checkboxes — read a concurrent run exactly as they read a sequential one. The parent's task list holds one entry per member with its group number, so compaction recovery can name the active member from `TaskList` alone; subagents have no Task tools, which is why those entries live in the parent.
 
@@ -58,9 +58,9 @@ Nothing reaches the shared tracker branch unreviewed. Before a member merges bac
 |---|---|---|
 | 1 — mechanical, always | Every commit carries `Refs #N`; nothing uncommitted; the declared scope holds (`scope-drift-check.js`); the changed files are logged; the member's `parallel` suites re-run with `cwd` at the worktree | The parent |
 | 2 — the read, always | The branch diff file by file against the member's acceptance criteria; the direct-work exemption never applies | The parent |
-| 3 — independent review, on by default | A reviewer agent running the `diff-review` skill over the range, given the issue, its ACs and the charter — never the implementer's summary. It writes its review to `.tmp-gate-<N>-tier3.json` itself and may write nothing else | A second agent, in the implementer's slot |
+| 3 — independent review, on by default | An `idpf-diff-reviewer` agent following the `diff-review` skill over the range, given the issue, its ACs and the charter — never the implementer's summary. It writes its review to `.tmp-gate-<N>-tier3.json` itself and may write nothing else | A second agent, in the implementer's slot |
 
-`--no-review` skips Tier 3; an absent `diff-review` skill degrades to Tiers 1–2. Both are reported, never silent.
+`--no-review` skips Tier 3; an absent `diff-review` skill degrades to Tiers 1–2. Both are reported, never silent. When the `idpf-diff-reviewer` type is not available, Tier 3 runs the same brief as a `general-purpose` agent and reports the fallback once for the run.
 
 **The review reaches the gate in the reviewer's own words.** The parent never copies or re-words it. Before the reviewer starts, the parent removes any earlier cycle's review file and snapshots the working tree (`git status --porcelain --ignored`). The outcome step fails Tier 3 if the reviewer wrote no output file (`tier-3-missing`), if the file was already there before the reviewer started (`tier-3-stale-output`), or if anything changed during the review outside that member's own review and snapshot files and its running-group siblings' own gate files (`tier-3-wrote-outside-contract`, naming the paths). The snapshot's sha256 is recorded when it is taken, so a snapshot altered mid-review fails as `tier-3-snapshot-changed`. The snapshot check is the enforcement: Claude Code's Agent tool has no per-spawn setting that limits a subagent's writes to one file.
 

@@ -245,7 +245,7 @@ Where `#42` is a proposal or enhancement issue.
    - **Negative Test Scenarios** — Intentionally invalid inputs or states
 3. For each category, the AI generates 2–5 candidate scenarios, then asks you to select which apply and add any it missed
 4. Consolidates the confirmed paths and writes a `## Path Analysis` section to the proposal document (or posts as an issue comment)
-5. On an **enhancement**, additionally generates acceptance criteria from the confirmed paths and appends them to the issue body — grouped by category once six or more paths are confirmed, with paths that duplicate existing criteria skipped
+5. On an **enhancement**, additionally generates acceptance criteria from the confirmed paths and appends them to the issue body — grouped by category once six or more paths are confirmed, with paths that duplicate existing criteria skipped. Every skipped path is listed with the existing criterion it matched, so you can contest a wrong match
 
 **Useful flags:**
 
@@ -499,7 +499,7 @@ Naming the same issue twice assigns it once, including when you list an issue ex
 **What happens:**
 1. Validates the issue exists and is assigned to a branch
 2. Detects issue type (story vs. epic)
-3. Checks whether the issue has been reviewed — an unreviewed issue, or one with unresolved review findings, prompts you to run `/review-issue` or `/resolve-review` first (you can decline and proceed)
+3. Requires a clean review before work starts. An issue never reviewed, or changed since its review, is reviewed by `/work` itself first (no status changes until it passes). An issue with unresolved review findings stops and offers `/resolve-review`; declining stops too. To work an issue without a clean review, pass `--unreviewed` — each waived issue is named in the report
 4. Moves the issue to `in_progress`
 5. Extracts acceptance criteria into a todo list
 6. Loads the process framework (IDPF-Agile dispatches to TDD: RED-GREEN-REFACTOR)
@@ -534,7 +534,7 @@ Each acceptance criterion goes through this cycle. You'll see progress as it wor
 
 **Your role during `/work`:** Wait. The AI is implementing. Your turn comes when it stops and presents the result for review. If you're technically inclined, you can watch the output and intervene ("that's the wrong approach — try X instead"), but this is optional.
 
-**For epics:** Before the first story is touched, the assistant checks the review state of the epic and every story it will work and asks one question if any are unreviewed or carry unresolved findings. It then works through the stories one at a time, with a STOP boundary after each story reaches `in_review`. You review and approve each story before the next one begins.
+**For epics:** Before the first story is touched, the assistant checks the review state of the epic and every story it will work, reviews any that were never reviewed (telling you how many first), and asks one question if any carry unresolved findings. It then works through the stories one at a time, with a STOP boundary after each story reaches `in_review`. You review and approve each story before the next one begins.
 
 **Three ways to run an epic.** The default above is one story at a time with a STOP after each. `--nonstop` removes the STOPs and runs every story to `in_review` before stopping once. `--concurrent` keeps the one-at-a-time safety where it matters and adds parallelism where it is provably safe: stories whose declared files do not overlap and whose `**Depends on:**` lines are satisfied run at once, each in its own worktree with its own agent, and are merged back through a review gate. It **STOPs once per group** after the group has merged back (add `--nonstop` to remove those STOPs too); stories the plan cannot prove safe run one at a time afterwards.
 
@@ -707,6 +707,8 @@ You can review any issue type for quality:
 /review-issue #30                          ← Reviews bugs, enhancements, stories, epics
 ```
 
+When an interactive review ends with findings, `/review-issue` resolves them once on the spot — the same prompts as `/resolve-review` — and then re-reviews the issue one time. If findings still remain, it names `/resolve-review #N` as the next step.
+
 ### Batch Reviews
 
 When you have multiple issues to review, batching all reviews and resolutions together before starting implementation is significantly faster. Instead of reviewing one issue, resolving findings, then working it — repeat — you run all the reviews first, resolve all findings, then start implementation as a separate pass.
@@ -717,7 +719,7 @@ When you have multiple issues to review, batching all reviews and resolutions to
 /review-issue #31
 /review-issue #32
 
-# Pass 2: Resolve any findings
+# Pass 2: Resolve any findings the reviews left open
 /resolve-review #30
 /resolve-review #31
 

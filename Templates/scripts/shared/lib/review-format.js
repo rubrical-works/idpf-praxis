@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Shared review format constants, emoji markers, section headers, and regex patterns for deterministic comment formatting and parsing. Exports EMOJI, SECTION_HEADERS, PATTERNS, and formatting helpers. Used by review-finalize.js and resolve-preamble.js.
  * @checksum sha256:placeholder
  *
@@ -150,20 +150,14 @@ function parseReviewComment(commentBody) {
   return result;
 }
 
-// ─── Auto-Fix Classification ───
+// ─── Finding Criterion Id (#3544) ───
 
-// Criteria IDs whose failures can be auto-fixed by the model
-const AUTO_FIXABLE_CRITERIA = [
-  'title-clear',
-  'priority-set',
-  'ac-present',
-  'ac-present-testable',
-  'repro-steps',
-  'expected-actual',
-  'environment-info',
-  'proposed-fix-described',
-  'proposed-solution',
-];
+// review-finalize.js appends a finding's criterion id to its line as a hidden
+// marker; resolve-preamble.js reads it back, so /resolve-review classifies by
+// id. Which criteria are auto-fixable is data: .claude/metadata/review-repairs.json
+// (the retired AUTO_FIXABLE_CRITERIA list lives on there).
+// Flat character class, no nested quantifier (security/detect-unsafe-regex).
+const FINDING_ID_PATTERN = /\s*<!-- id: ([a-z0-9][a-z0-9-]*) -->\s*$/;
 
 module.exports = {
   EMOJI,
@@ -180,7 +174,7 @@ module.exports = {
   REVIEW_TYPES,
   FINDING_LINE_PATTERN,
   RECOMMENDATION_PATTERN,
-  AUTO_FIXABLE_CRITERIA,
+  FINDING_ID_PATTERN,
   formatFindingLine,
   parseReviewComment,
 };

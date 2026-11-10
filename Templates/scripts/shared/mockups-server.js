@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  *
  * Static file server for /mockups --serve, built on http-server (#3023).
  *
@@ -16,12 +16,18 @@
  * before any link is followed. This replaces the hand-rolled absolute-href
  * listing of #2590.
  *
+ * --no-listing (#3533) turns the listing off for a host that renders its own
+ * index: a folder's index.html is still served, but a folder without one
+ * returns http-server's 403 (empty body) instead of "Index of /". The default
+ * is unchanged, and the boot banner is the same with the flag on.
+ *
  * CLI:
- *   node mockups-server.js --root <dir> [--port <N>]
+ *   node mockups-server.js --root <dir> [--port <N>] [--no-listing]
  *
  * Programmatic:
  *   const { startServer, findAvailablePort, formatBanner } = require('./mockups-server');
- *   const { server, port } = await startServer({ root, port });
+ *   const { server, port } = await startServer({ root, port, listing });
+ *   // listing defaults to true; listing: false is the same as --no-listing
  *
  * Port-in-use behavior (from #2377): if the requested port is occupied, falls
  * back to an OS-assigned free port (lib's fallbackToZero option) and reports
@@ -84,7 +90,7 @@ async function findAvailablePort(preferred) {
   return lib.findAvailablePort(preferred, { range: 1, fallbackToZero: true });
 }
 
-async function startServer({ root, port }) {
+async function startServer({ root, port, listing = true }) {
   if (!root) throw new Error('startServer: root is required');
   const absRoot = path.resolve(root);
   const requested = typeof port === 'number' ? port : 3000;
@@ -92,7 +98,10 @@ async function startServer({ root, port }) {
   const instance = httpServer.createServer({
     root: absRoot,
     cache: -1, // mockups are edited and reloaded; never serve a stale copy
-    showDir: true,
+    // http-server 14 reads `options.showDir !== 'false'`: a boolean false is
+    // ignored and still lists, so the off value must be the string 'false'.
+    // autoIndex stays on so a folder's index.html is served either way.
+    showDir: listing === false ? 'false' : true,
     autoIndex: true,
     before: [requestGuard(absRoot)],
   });
@@ -104,19 +113,22 @@ function formatBanner(root, port) {
   return `Serving ${root} at http://localhost:${port}/`;
 }
 
+// Unrecognized flags are ignored, so a host passing a newer flag to an older
+// helper keeps working.
 function parseArgs(argv) {
-  const out = { root: null, port: 3000 };
+  const out = { root: null, port: 3000, listing: true };
   for (let i = 0; i < argv.length; i++) {
     if ((argv[i] === '--root') && i + 1 < argv.length) out.root = argv[++i];
     else if ((argv[i] === '--port' || argv[i] === '-p') && i + 1 < argv.length) out.port = Number(argv[++i]);
+    else if (argv[i] === '--no-listing') out.listing = false;
   }
   return out;
 }
 
 async function main(argv) {
-  const { root, port } = parseArgs(argv);
+  const { root, port, listing } = parseArgs(argv);
   if (!root) {
-    process.stderr.write('usage: mockups-server.js --root <dir> [--port <N>]\n');
+    process.stderr.write('usage: mockups-server.js --root <dir> [--port <N>] [--no-listing]\n');
     process.exit(2);
   }
   const absRoot = path.resolve(root);
@@ -124,7 +136,7 @@ async function main(argv) {
     process.stderr.write(`error: root not found: ${absRoot}\n`);
     process.exit(1);
   }
-  const { port: actualPort } = await startServer({ root: absRoot, port });
+  const { port: actualPort } = await startServer({ root: absRoot, port, listing });
   process.stdout.write(formatBanner(absRoot, actualPort) + '\n');
 }
 

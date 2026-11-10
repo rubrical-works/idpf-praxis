@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -15,7 +15,7 @@
 // of the contract. Both were unbounded: `gh pmu sub add` with no ceiling, and
 // bulk --add-ready multiplies the exposure by the number of issues.
 const { execFile } = require('child_process');
-const { execFileTimed: execFileSync, DEFAULT_TIMEOUT_MS } = require('./lib/exec.js');
+const { execFileTimed: execFileSync, DEFAULT_TIMEOUT_MS, normalizeTimeoutError } = require('./lib/exec.js');
 const { getAllOpenTrackers, findActiveTrackers } = require('./lib/active-label.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js');
@@ -38,6 +38,17 @@ function endTimer(name) {
 const LARGE_SELECTION_THRESHOLD = 20;  // Warn when assigning more issues than this
 const PARALLEL_BATCH_SIZE = 5;         // Number of issues to assign in parallel
 const PARALLEL_THRESHOLD = 3;          // Use parallel assignment above this count
+const PER_ISSUE_MOVE_MS = 3000;        // Added to the batched move's budget per issue (#3525)
+
+/**
+ * Budget for one batched `gh pmu move` over `count` issues (#3525). gh-pmu
+ * writes each issue's field in turn, so a fixed single-issue budget kills a
+ * large batch that would have succeeded. The default stays the floor; each
+ * issue adds PER_ISSUE_MOVE_MS, above the ~1.5–2s per write observed.
+ */
+function batchMoveTimeoutMs(count) {
+    return DEFAULT_TIMEOUT_MS + PER_ISSUE_MOVE_MS * Math.max(0, count);
+}
 
 function execSyncSafe(cmd) {
     try {
@@ -49,12 +60,34 @@ function execSyncSafe(cmd) {
 }
 
 async function execAsyncSafe(cmd, args) {
+    const result = await execAsyncResult(cmd, args);
+    return result.ok ? result.stdout : null;
+}
+
+/**
+ * Like execAsyncSafe, but a failure keeps its reason (#3525). execAsyncSafe's
+ * null contract is left alone — about a dozen call sites test for it — and only
+ * the batched move, whose failure was undiagnosable, uses this form.
+ * Timeout detection is lib/exec.js normalizeTimeoutError's, not re-derived.
+ * @returns {Promise<{ok: boolean, stdout: string, stderr: string, timedOut: boolean, code: (number|string|null), timeoutMs: number}>}
+ */
+async function execAsyncResult(cmd, args, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return new Promise((resolve) => {
-        execFile(cmd, args, { encoding: 'utf-8', timeout: DEFAULT_TIMEOUT_MS }, (err, stdout) => {
-            if (err) return resolve(null);
-            resolve((stdout || '').trim());
+        execFile(cmd, args, { encoding: 'utf-8', timeout: timeoutMs }, (err, stdout, stderr) => {
+            const out = { stdout: (stdout || '').trim(), stderr: (stderr || '').trim(), timeoutMs };
+            if (!err) return resolve({ ok: true, timedOut: false, code: 0, ...out });
+            const normalized = normalizeTimeoutError(err, `${cmd} ${args.join(' ')}`, timeoutMs);
+            const timedOut = normalized.code === 'ETIMEDOUT';
+            resolve({ ok: false, timedOut, code: timedOut ? null : (err.code ?? null), ...out });
         });
     });
+}
+
+/** One-line reason for a failed execAsyncResult: the timeout, else exit code and stderr. */
+function describeExecFailure(result) {
+    if (result.timedOut) return `timed out after ${result.timeoutMs}ms`;
+    const code = result.code === null || result.code === undefined ? 'unknown' : result.code;
+    return result.stderr ? `exit ${code}: ${result.stderr}` : `exit ${code}`;
 }
 
 /**
@@ -145,6 +178,40 @@ async function fetchLabelMap(issueNumbers) {
     const workers = Math.min(PARALLEL_BATCH_SIZE, queue.length);
     await Promise.all(Array.from({ length: workers }, worker));
     return map;
+}
+
+/**
+ * Group backlog issues for the listing by the labels fetchLabelMap() read
+ * (#3556). `gh pmu list --json` offers no labels field, so reading `i.labels`
+ * put every issue in Other and never fetched epic sub-issue counts.
+ *
+ * @param {{number: number, title: string}[]} backlog
+ * @param {Map<number, {labels: string[], loaded: boolean}>} labelMap
+ * @returns {{epics: object[], bugs: object[], enhancements: object[], stories: object[], other: object[]}}
+ */
+function groupBacklogByLabel(backlog, labelMap) {
+    const labelsOf = (i) => (labelMap.get(i.number) || { labels: [] }).labels;
+    const has = (i, l) => labelsOf(i).includes(l);
+    const TYPES = ['epic', 'bug', 'enhancement', 'story'];
+    return {
+        epics: backlog.filter(i => has(i, 'epic')),
+        bugs: backlog.filter(i => has(i, 'bug')),
+        enhancements: backlog.filter(i => has(i, 'enhancement')),
+        stories: backlog.filter(i => has(i, 'story')),
+        other: backlog.filter(i => !TYPES.some(l => has(i, l))),
+    };
+}
+
+/**
+ * The backlog listing's closing hint (#3556): the branch goes in `--branch`,
+ * the only form parseAssignArgs accepts since the positional slash-bearing
+ * branch was retired (#2554, #3030).
+ *
+ * @param {string} branch
+ * @returns {string}
+ */
+function backlogAssignHint(branch) {
+    return `To assign specific issues: /assign-branch #N #M --branch ${branch}`;
 }
 
 /**
@@ -473,14 +540,15 @@ async function assignIssuesToBranch(issueNumbers, branch, useCurrent = false) {
     // bulk update of N issues") before updating anything.
     const confirm = issueNumbers.length > 1 ? ['--yes'] : [];
     startTimer('batchAssign');
-    const batched = await execAsyncSafe('gh', ['pmu', 'move', ...issueNumbers.map(String), '--branch', branchArg, ...confirm]);
+    const batched = await execAsyncResult('gh', ['pmu', 'move', ...issueNumbers.map(String), '--branch', branchArg, ...confirm],
+        batchMoveTimeoutMs(issueNumbers.length));
     endTimer('batchAssign');
-    if (batched !== null) {
+    if (batched.ok) {
         for (const num of issueNumbers) console.log(`  → Assigned #${num} to ${displayBranch}`);
         return [...issueNumbers];
     }
 
-    console.log(`  ⚠ Batched move failed — assigning one issue at a time to find the failures`);
+    console.log(`  ⚠ Batched move failed (${describeExecFailure(batched)}) — assigning one issue at a time to find the failures`);
     const assigned = [];
     startTimer('perIssueAssign');
     if (issueNumbers.length > PARALLEL_THRESHOLD) {
@@ -974,14 +1042,9 @@ async function main() {
                 return;
             }
 
-            // Group by type for display
-            const epics = backlog.filter(i => i.labels?.includes('epic'));
-            const bugs = backlog.filter(i => i.labels?.includes('bug'));
-            const enhancements = backlog.filter(i => i.labels?.includes('enhancement'));
-            const stories = backlog.filter(i => i.labels?.includes('story'));
-            const other = backlog.filter(i =>
-                !['epic', 'bug', 'enhancement', 'story'].some(l => i.labels?.includes(l))
-            );
+            // Group by type for display — labels come from fetchLabelMap (#3556)
+            const labelMap = await fetchLabelMap(backlog.map(i => i.number));
+            const { epics, bugs, enhancements, stories, other } = groupBacklogByLabel(backlog, labelMap);
 
             console.log(`Unassigned backlog issues (${backlog.length} total):\n`);
 
@@ -1019,7 +1082,7 @@ async function main() {
             }
 
             console.log('\n---');
-            console.log(`To assign specific issues: /assign-branch ${branch} #N #M ...`);
+            console.log(backlogAssignHint(branch));
             endTimer('total');
             return;
         }
@@ -1240,6 +1303,8 @@ module.exports = {
     linkToTracker,
     linkAllToTracker,
     expandEpicSubIssues,
+    groupBacklogByLabel,
+    backlogAssignHint,
     classifyExpansionResult,
     findBranchTrackers,
     hasBranchAssigned,
@@ -1258,6 +1323,8 @@ module.exports = {
     LARGE_SELECTION_THRESHOLD,
     PARALLEL_BATCH_SIZE,
     PARALLEL_THRESHOLD,
+    PER_ISSUE_MOVE_MS,
+    batchMoveTimeoutMs,
     // Export for mocking
     setShowTiming: (value) => { showTiming = value; }
 };

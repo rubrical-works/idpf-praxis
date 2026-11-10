@@ -74,7 +74,9 @@
         },
         "issues": { "type": "array", "description": "Issue numbers filed by Step 8 during this run.", "items": { "type": "number" } },
         "updatedIssues": { "type": "array", "description": "Existing issues Step 8 updated in place of filing a duplicate (#3516) — listed apart from `issues`, which holds only new filings. Optional: absent means none were updated, or the record predates the field.", "items": { "type": "number" } },
-        "domains": { "type": "array", "description": "Domain IDs active via --with, when any.", "items": { "type": "string" } }
+        "domains": { "type": "array", "description": "Domain IDs active via --with, when any.", "items": { "type": "string" } },
+        "reviewer": { "type": "string", "enum": ["subagent:idpf-code-reviewer", "subagent:general-purpose", "inline"], "description": "How Step 6 actually ran (#3506): shards on the idpf-code-reviewer type, shards on the general-purpose fallback, or inline in the calling session. Written by Step 10. Optional: a record without it predates the field and is read as `inline`. The Release Review Gate reports it and never refuses an `inline` record." },
+        "unreviewed": { "type": "array", "description": "Files no shard reviewed — a shard that failed, returned nothing or returned an invalid result leaves its files here (#3506). Written by Step 10 from mergeShardResults() `unreviewed`. The Release Review Gate STOPs when it is non-empty, naming them. Optional: absent (a record written before the field) is read as empty.", "items": { "type": "string" } }
       }
     },
     "severityCounts": {

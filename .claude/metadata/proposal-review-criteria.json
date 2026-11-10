@@ -19,9 +19,9 @@
     {
       "id": "cross-references-valid",
       "name": "Cross-references valid",
-      "description": "Verify file paths mentioned in proposal exist on disk",
+      "description": "Verify the file paths, #N issues and /commands the proposal names resolve against project state",
       "type": "objective",
-      "autoCheckMethod": "Verify any file paths mentioned in the proposal exist on disk"
+      "autoCheckMethod": "Run node .claude/scripts/shared/lib/review-references.js --body-file <proposal path> and report the status it returns, never re-deriving it (#3540): each backticked path exists, is new (listed under **Files to modify:**), is missing, or is outside-root (escapes the root via .., never stat-ed); each #N carries its state and close reason, and a Depends on / Blocked by reference to an issue closed not_planned is superseded-or-dropped; each /command exists or is missing. Fenced blocks are skipped. warn -> name each missing, outside-root or superseded-or-dropped reference with its line; relay the helper's warnings (unverified references) verbatim."
     },
     {
       "id": "acceptance-criteria-defined",

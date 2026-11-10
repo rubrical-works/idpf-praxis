@@ -28,4 +28,10 @@ Perform turn-based collaborative scenario path discovery on a proposal or enhanc
 - Loads associated screen specs from `Mockups/*/Specs/` to generate more precise candidates (boundary values, required field violations, dependency chains)
 - Supports resuming a partial analysis if interrupted — detects `(Partial)` marker in the document
 - Results are appended or updated in the proposal file under `## Path Analysis`; if no proposal file exists, posts as an issue comment
+- On an enhancement, confirmed paths also become acceptance criteria on the issue. A path is skipped as a duplicate when most of its significant words (about 60%, compared as whole words) appear in one existing AC. The report lists every skipped path with the AC it matched, not just a count, so a wrong match can be contested:
+  ```
+  Added 12 acceptance criteria from 23 paths (2 duplicates skipped)
+    Path 4 "<path>" matches: <existing AC>
+    Path 9 "<path>" matches: <existing AC>
+  ```
 - **STOP** after reporting — does not proceed without user instruction

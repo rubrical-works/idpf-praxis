@@ -1,5 +1,5 @@
 ---
-version: "v0.116.0"
+version: "v0.117.0"
 description: Complete issues with criteria verification and status transitions, using the IDPF framework.
 argument-hint: "[#issue... | --all] [--yes] (optional) [--help]"
 copyright: "Rubrical Works (c) 2026"

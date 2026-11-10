@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -58,7 +58,9 @@ function loadGateActions() {
  *
  * @returns {{ defer: boolean, state?: string, action?: string, reason?: string }}
  */
-function decideStartMove({ type, issue, active = [], skipped = [], nonstop = false }) {
+function decideStartMove({ type, issue, active = [], skipped = [], nonstop = false, unreviewed = false }) {
+  // --unreviewed (#3537) waives the gate, so nothing waits on it.
+  if (unreviewed) return { defer: false, waived: true };
   if (type === 'epic' || (type === 'branch' && nonstop)) {
     const members = [
       { number: issue.number, state: classifyReviewState(issue).state, boardStatus: null, isTracker: type === 'branch' },
@@ -78,8 +80,11 @@ function decideStartMove({ type, issue, active = [], skipped = [], nonstop = fal
   const { state } = classifyReviewState(issue);
   const entry = matrix && matrix.actions && matrix.actions[state] && matrix.actions[state].single;
   if (!entry) return { defer: false };
-  if (entry.action !== 'stop' && entry.action !== 'halt') return { defer: false };
-  return { defer: true, state, action: entry.action, reason: `the Step 3 Review-State Gate will ${entry.action} on a ${state} issue` };
+  // `review` (#3537) defers too: /work reviews the issue before its first AC,
+  // and no status moves until that review's verdict lets the gate pass.
+  if (!['stop', 'halt', 'review'].includes(entry.action)) return { defer: false };
+  const verb = entry.action === 'review' ? 'review first' : entry.action;
+  return { defer: true, state, action: entry.action, reason: `the Step 3 Review-State Gate will ${verb} on a ${state} issue` };
 }
 
 // Every spawn here goes through the timed wrapper (#2469). These are /work's
@@ -240,6 +245,9 @@ function parseArgs(args) {
   // Tier 3 under --concurrent (#3269), sequential /work's review otherwise
   // (#3457) — so it applies in every mode and is never reported as ignored.
   const hasNoReview = args.includes('--no-review');
+  // --unreviewed (#3537) waives the clean-review requirement (never-reviewed,
+  // stale-reviewed, findings-pending). Not --no-review, which skips Step 4g.
+  const hasUnreviewed = args.includes('--unreviewed');
 
   // The modifier flags attach identically to every mode. One place, so a
   // flag added later cannot be carried by two modes and dropped by the third
@@ -251,6 +259,7 @@ function parseArgs(args) {
     if (hasReopen) result.reopen = true;
     if (hasConcurrent) result.concurrent = true;
     if (hasNoReview) result.noReview = true;
+    if (hasUnreviewed) result.unreviewed = true;
     if (maxAgents !== undefined) {
       result.maxAgents = maxAgents;
       result.maxAgentsSource = 'flag';
@@ -1134,6 +1143,22 @@ function writeResumeLedgerToDisk(tracker, ledger) {
  *   writeBrief (also writes the rolling state file) injectable for tests; a
  *   failed write is pushed onto `warnings`; `noReview` (`--no-review`, #3269) turns every Tier 3 spawn into a review-skip
  */
+/**
+ * The run's project context, resolved once (#3561): the specialist, domains
+ * and absolute frameworkPath every member brief carries (#3501), plus the
+ * rendered brief lines and the notice the parent reports once for the run —
+ * on both schedules. concurrent-orchestration.js takes it as an input and
+ * reads no disk itself.
+ *
+ * @param {string} [root]
+ * @returns {{frameworkPath: string, specialist: object, domains: string[], notice: string|null, lines: string[]}}
+ */
+function resolveRunBriefContext(root = process.cwd()) {
+  const { resolveBriefContext, briefContextLines } = require('./lib/specialist-resolver.js');
+  const ctx = resolveBriefContext({ root });
+  return { ...ctx, lines: briefContextLines(ctx) };
+}
+
 function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => fs.writeFileSync(p, text), warnings = [], tracker, noReview = false } = {}) {
   const members = {};
   const scopeOf = (n) => {
@@ -1151,8 +1176,9 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
     };
   }
   const tddChecklist = loadTddChecklist();
+  const briefContext = resolveRunBriefContext();
   let inlineBriefs = false;
-  for (const brief of memberBriefs({ plan, members, tddChecklist, root: process.cwd() })) {
+  for (const brief of memberBriefs({ plan, members, tddChecklist, root: process.cwd(), briefContext })) {
     try {
       writeBrief(brief.path, brief.text);
     } catch (err) {
@@ -1168,7 +1194,7 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
     const stateFile = `${rootDir}/.tmp-rolling-${tracker}.json`;
     const first = nextSteps({
       layers: plan.layers || [], dependsOn: plan.dependsOn || {}, maxAgents: plan.maxAgents, members, tddChecklist,
-      root: process.cwd(), inlineBriefs, noReview, tail: (plan.tail || []).map(t => t.number), stateFile, ledgerFile, finishOnly: plan.finishOnly || [],
+      root: process.cwd(), inlineBriefs, noReview, tail: (plan.tail || []).map(t => t.number), stateFile, ledgerFile, finishOnly: plan.finishOnly || [], briefContext,
     });
     try {
       writeBrief(stateFile, JSON.stringify(first.state, null, 2));
@@ -1176,13 +1202,13 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
       warnings.push({ code: 'RUN_STATE_WRITE_FAILED', message: `Could not write ${stateFile} (${err && err.message ? err.message : String(err)}); the rolling schedule cannot advance past its first steps — re-run the preamble.` });
     }
     const total = (plan.layers || []).flat().length + (plan.tail || []).length;
-    return { schedule: 'rolling', start: first.start, steps: first.steps, total, stateFile, ledgerFile, templates: { ...MEMBER_TEMPLATES }, tasks: memberTasks({ plan, members, rolling: true }) };
+    return { schedule: 'rolling', start: first.start, steps: first.steps, total, stateFile, ledgerFile, templates: { ...MEMBER_TEMPLATES }, tasks: memberTasks({ plan, members, rolling: true }), specialistNotice: briefContext.notice };
   }
   // The run's inputs, for the replan CLI (#3269): the Review-State Gate and
   // worktree creation decide after this plan is built, and a re-plan drops a
   // stopped or never-started member's later steps. A failed write leaves the
   // steps without re-plan instructions rather than naming a missing file.
-  const inputs = { plan, members, nonstop: !!nonstop, tddChecklist, root: process.cwd(), inlineBriefs, noReview, ledgerFile };
+  const inputs = { plan, members, nonstop: !!nonstop, tddChecklist, root: process.cwd(), inlineBriefs, noReview, ledgerFile, briefContext };
   let stateFile = `${rootDir}/.tmp-run-${tracker}.json`;
   try {
     writeBrief(stateFile, JSON.stringify(inputs, null, 2));
@@ -1190,8 +1216,8 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
     warnings.push({ code: 'RUN_STATE_WRITE_FAILED', message: `Could not write ${stateFile} (${err && err.message ? err.message : String(err)}); a member the Review-State Gate stops, or whose worktree cannot be created, cannot be re-planned — re-run the preamble.` });
     stateFile = null;
   }
-  const { steps, total, templates } = buildRun({ ...inputs, stateFile });
-  return { schedule: 'groups', steps, total, templates, ...(stateFile ? { stateFile } : {}), ledgerFile, tasks: memberTasks({ plan, members }) };
+  const { steps, total, templates, specialistNotice } = buildRun({ ...inputs, stateFile });
+  return { schedule: 'groups', steps, total, templates, ...(stateFile ? { stateFile } : {}), ledgerFile, tasks: memberTasks({ plan, members }), specialistNotice };
 }
 
 /**
@@ -1646,7 +1672,8 @@ async function runSingleIssue(issueNum, options) {
     framework: frameworkConfig.framework,
     frameworkPath: frameworkConfig.frameworkPath,
     ...(options && options.wait ? { wait: true } : {}),
-    ...(options && options.noReview ? { noReview: true } : {})
+    ...(options && options.noReview ? { noReview: true } : {}),
+    ...(options && options.unreviewed ? { unreviewed: true } : {})
   };
 
   // 4a. Redirect types return BEFORE any work is loaded or any status moved
@@ -1918,7 +1945,8 @@ async function runSingleIssue(issueNum, options) {
   //     Status Gate, which also moves `moveDeferred.prdTracker` when set.
   const prdTrackerNum = parsePrdTracker(dataResult.issue.body);
   const startMove = decideStartMove({
-    type, issue: dataResult.issue, active: treeActive, skipped: treeSkipped, nonstop: !!(options && options.nonstop)
+    type, issue: dataResult.issue, active: treeActive, skipped: treeSkipped, nonstop: !!(options && options.nonstop),
+    unreviewed: !!(options && options.unreviewed)
   });
   if (startMove.defer) {
     const priorStatus = dataResult.branch && dataResult.branch.status;
@@ -2091,7 +2119,8 @@ async function runSingleIssueWithShared(issueNum, shared, options) {
     framework: shared.framework,
     frameworkPath: shared.frameworkPath,
     ...(options && options.wait ? { wait: true } : {}),
-    ...(options && options.noReview ? { noReview: true } : {})
+    ...(options && options.noReview ? { noReview: true } : {}),
+    ...(options && options.unreviewed ? { unreviewed: true } : {})
   };
   const gates = { assigned: assignGate, movedToInProgress: false, alreadyInProgress: false, prdTrackerMoved: false };
 
@@ -2262,6 +2291,7 @@ function buildOptions(parsed) {
   // #3126
   if (parsed.concurrent) options.concurrent = true;
   if (parsed.noReview) options.noReview = true;   // #3269
+  if (parsed.unreviewed) options.unreviewed = true;   // #3537
   if (parsed.maxAgents !== undefined) {
     options.maxAgents = parsed.maxAgents;
     options.maxAgentsSource = parsed.maxAgentsSource || 'flag';
@@ -2367,6 +2397,7 @@ module.exports = {
   buildSchema,
   buildAcSectionWarning,
   buildOptions,
+  decideStartMove,
   parseProcessingOrder,
   parseProcessingOrderDetail,
   buildUnsweptMarker,

@@ -26,13 +26,24 @@
     "recommendation": { "type": "string", "enum": ["Ready for work", "Needs minor revision", "Needs revision", "Needs major rework"] },
     "recommendationReason": { "type": "string", "optional": true },
     "suggestions": { "type": "array", "items": "string", "optional": true },
-    "extensions": { "type": "array", "items": "string", "optional": true }
+    "extensions": { "type": "array", "items": "string", "optional": true },
+    "repairs": {
+      "type": "array",
+      "items": { "criterion": "string", "before": "string", "after": "string" },
+      "description": "Pre-finalize repairs (#3544): one per criterion /review-issue fixed in the body before finalize, unprompted. criterion is the criterion id (review-repairs.json); before is the replaced text, empty when the section was absent; after is the text written. Rendered as ✅ repaired in the review comment so each can be reverted."
+    },
+    "acVerdicts": {
+      "type": "array",
+      "items": { "index": "number", "text": "string", "status": "pass|warn|fail|gate", "phase": "implementation|review|release", "evidence": "string" },
+      "description": "One verdict per acceptance criterion in the issue body, in body order; index is 1-based and text is the criterion as written. For bug/enhancement/story/epic/generic reviews finalize rejects the findings when this does not cover every criterion extractAcceptanceCriteria() returns (#3541). An issue with no acceptance-criteria section passes []."
+    }
   },
   "statusEmoji": {
     "pass": "✅",
     "warn": "⚠️",
     "fail": "❌",
-    "skip": "⊘"
+    "skip": "⊘",
+    "gate": "⏳"
   },
   "notes": [
     "findings.userEvaluated is empty [] in solo review mode",

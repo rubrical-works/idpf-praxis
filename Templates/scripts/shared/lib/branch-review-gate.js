@@ -2,7 +2,7 @@
 /**
  * Tree-wide review gate aggregation (#2749, shared with #2748 and #2750).
  *
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  *
  * A pure decision function answering "should `/work` stop and ask before
  * touching this set of issues, and what should it offer?" — the counterpart to
@@ -66,15 +66,18 @@
 'use strict';
 
 /**
- * The four states `review-state.js` emits. Frozen and asserted against that
+ * The states `review-state.js` emits. Frozen and asserted against that
  * classifier's own vocabulary: an unrecognized value must stay representable
  * as unknown rather than be coerced into a neighbor, because coercing toward
  * `reviewed-clean` would let a classifier change silently disable this gate.
+ * `stale-reviewed` (#3543) is handled exactly like `never-reviewed`: the review
+ * on record no longer describes the body.
  */
 const REVIEW_STATES = Object.freeze([
   'never-reviewed',
   'findings-pending',
   'reviewed-clean',
+  'stale-reviewed',
   'indeterminate'
 ]);
 
@@ -162,11 +165,15 @@ function evaluateBranchReviewGate(input = {}) {
       gate: false,
       processable: [],
       neverReviewed: [],
+      staleReviewed: [],
       findingsPending: [],
       indeterminate: [],
       unknown: [],
       clean: [],
       options: [],
+      toReview: [],
+      reviewCount: 0,
+      pendingOptions: [],
       prompts: 0,
       reason: 'No classifiable members were supplied — nothing to gate on.',
       warnings: warnings.length ? warnings : ['members-not-an-array']
@@ -179,6 +186,7 @@ function evaluateBranchReviewGate(input = {}) {
   const processable = members.map((m) => m.number);
 
   const neverReviewed = [];
+  const staleReviewed = [];
   const findingsPending = [];
   const indeterminate = [];
   const unknown = [];
@@ -189,7 +197,13 @@ function evaluateBranchReviewGate(input = {}) {
       unknown.push(m.number);
       continue;
     }
-    if (state === 'never-reviewed') neverReviewed.push(m.number);
+    // Stale members join `neverReviewed` — same offer, same question, so every
+    // consumer that names that bucket names them too — and are listed again in
+    // `staleReviewed` so the report can say why.
+    if (state === 'stale-reviewed') {
+      neverReviewed.push(m.number);
+      staleReviewed.push(m.number);
+    } else if (state === 'never-reviewed') neverReviewed.push(m.number);
     else if (state === 'findings-pending') findingsPending.push(m.number);
     else if (state === 'indeterminate') indeterminate.push(m.number);
   }
@@ -222,6 +236,21 @@ function evaluateBranchReviewGate(input = {}) {
     options.push('proceed-with-clean');
   }
 
+  // #3537: /work reviews never-reviewed and stale-reviewed members itself
+  // before work, so they are a count to report, not an offer. What remains
+  // to decide is the findings-pending members: resolve now (hand off to
+  // /resolve-review), exclude them, or stop. Exclude is a drop, so it follows
+  // #2780 — a selection only, at N >= 2, and only when a member survives it.
+  const toReview = neverReviewed.slice();
+  const pendingOptions = [];
+  if (findingsPending.length) {
+    const pendingSet = new Set([...findingsPending, ...unknown]);
+    const survivors = processable.filter((n) => !pendingSet.has(n));
+    pendingOptions.push('resolve-now');
+    if (setShape === 'selection' && processable.length >= 2 && survivors.length > 0) pendingOptions.push('exclude');
+    pendingOptions.push('stop');
+  }
+
   // ONE prompt, never one per offending member and never two in sequence.
   // A mixed set carries both options in the same question — the reason this
   // is an aggregation helper rather than a per-issue predicate.
@@ -238,7 +267,10 @@ function evaluateBranchReviewGate(input = {}) {
     reason = 'Every processable sub-issue is reviewed, or its state could not be determined.';
   } else {
     const parts = [];
-    if (neverReviewed.length) parts.push(`never reviewed: ${neverReviewed.join(', ')}`);
+    const stale = new Set(staleReviewed);
+    const never = neverReviewed.filter((n) => !stale.has(n));
+    if (never.length) parts.push(`never reviewed: ${never.join(', ')}`);
+    if (staleReviewed.length) parts.push(`changed since review: ${staleReviewed.join(', ')}`);
     if (findingsPending.length) parts.push(`unresolved findings: ${findingsPending.join(', ')}`);
     reason = `Review state blocks an unattended run — ${parts.join('; ')}.`;
   }
@@ -247,11 +279,15 @@ function evaluateBranchReviewGate(input = {}) {
     gate,
     processable,
     neverReviewed,
+    staleReviewed,
     findingsPending,
     indeterminate,
     unknown,
     clean,
     options,
+    toReview,
+    reviewCount: toReview.length,
+    pendingOptions,
     prompts,
     reason,
     warnings

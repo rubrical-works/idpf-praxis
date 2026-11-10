@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "review-state-gate-actions-schema.json",
   "title": "Review-State Gate Actions",
-  "description": "Schema for review-state-gate-actions.json — the state x run-shape action matrix of the /work Step 3 Review-State Gate (#2577), externalized in #2765. Every state must map every shape to an action; a state missing a shape would read as 'no rule', which the gate would then have to invent.",
+  "description": "Schema for review-state-gate-actions.json — the state x run-shape action matrix of the /work Step 3 Review-State Gate (#2577), externalized in #2765. Since #3537 there is no warn-proceed action: an unreviewed issue is reviewed first (review), and only the waiver flag lets a gated state proceed. Every state must map every shape to an action; a state missing a shape would read as 'no rule', which the gate would then have to invent.",
   "type": "object",
-  "required": ["version", "states", "shapes", "actions", "neverPrompt", "actionMeanings"],
+  "required": ["version", "states", "shapes", "actions", "neverPrompt", "waiver", "actionMeanings"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
@@ -12,10 +12,10 @@
     "_meta": { "type": "object", "description": "Provenance. Not read at runtime.", "additionalProperties": true },
     "states": {
       "type": "array",
-      "minItems": 4,
-      "maxItems": 4,
+      "minItems": 5,
+      "maxItems": 5,
       "uniqueItems": true,
-      "items": { "enum": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"] }
+      "items": { "enum": ["never-reviewed", "findings-pending", "reviewed-clean", "stale-reviewed", "indeterminate"] }
     },
     "shapes": {
       "type": "object",
@@ -29,28 +29,44 @@
     },
     "actions": {
       "type": "object",
-      "required": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"],
+      "required": ["never-reviewed", "findings-pending", "reviewed-clean", "stale-reviewed", "indeterminate"],
       "additionalProperties": false,
       "properties": {
         "never-reviewed": { "$ref": "#/$defs/shapeActions" },
         "findings-pending": { "$ref": "#/$defs/shapeActions" },
         "reviewed-clean": { "$ref": "#/$defs/shapeActions" },
+        "stale-reviewed": { "$ref": "#/$defs/shapeActions" },
         "indeterminate": { "$ref": "#/$defs/shapeActions" }
       }
     },
     "neverPrompt": {
       "type": "array",
       "description": "States that never prompt in any mode. The rule states this in prose as well; the two must agree.",
-      "items": { "enum": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"] },
+      "items": { "enum": ["never-reviewed", "findings-pending", "reviewed-clean", "stale-reviewed", "indeterminate"] },
       "uniqueItems": true
+    },
+    "waiver": {
+      "type": "object",
+      "description": "The /work flag that waives the clean-review requirement (#3537), and the states it waives. Without it no gated state proceeds to work.",
+      "required": ["flag", "waives"],
+      "additionalProperties": false,
+      "properties": {
+        "flag": { "type": "string", "pattern": "^--[a-z][a-z-]*$" },
+        "waives": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["never-reviewed", "findings-pending", "stale-reviewed"] }
+        }
+      }
     },
     "actionMeanings": {
       "type": "object",
-      "required": ["stop", "warn-proceed", "halt", "proceed"],
+      "required": ["review", "stop", "halt", "proceed"],
       "additionalProperties": false,
       "properties": {
+        "review": { "type": "string", "minLength": 1 },
         "stop": { "type": "string", "minLength": 1 },
-        "warn-proceed": { "type": "string", "minLength": 1 },
         "halt": { "type": "string", "minLength": 1 },
         "proceed": { "type": "string", "minLength": 1 }
       }
@@ -72,7 +88,7 @@
       "required": ["action"],
       "additionalProperties": false,
       "properties": {
-        "action": { "enum": ["stop", "warn-proceed", "halt", "proceed"] },
+        "action": { "enum": ["review", "stop", "halt", "proceed"] },
         "offer": { "type": "string", "pattern": "^/(review-issue|resolve-review) #\\$ISSUE$" }
       },
       "if": { "properties": { "action": { "const": "stop" } } },

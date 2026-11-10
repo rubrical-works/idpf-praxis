@@ -131,12 +131,13 @@ The assistant detects the current branch and assigns the issue to it.
 
 The assistant takes over and does the technical work:
 1. Validates the issue exists and is assigned to a branch
-2. Moves it to `in_progress`
-3. Extracts acceptance criteria into a todo list
-4. Starts TDD: writes a failing test, makes it pass, refactors
-5. Repeats for each acceptance criterion
-6. Moves to `in_review` when all criteria are met
-7. **STOPS** — waits for you
+2. Reviews the issue first if it has never been reviewed — work needs a clean review. If the review leaves findings, it stops and offers `/resolve-review`
+3. Moves it to `in_progress`
+4. Extracts acceptance criteria into a todo list
+5. Starts TDD: writes a failing test, makes it pass, refactors
+6. Repeats for each acceptance criterion
+7. Moves to `in_review` when all criteria are met
+8. **STOPS** — waits for you
 
 You don't need to do anything during this phase. The AI writes the code and tests. Your role resumes at step 8.
 

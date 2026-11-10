@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Run the /work Step 2b-ii tree-wide review gate chain as one call: enumerate an epic or branch tracker's children with the bare `gh pmu sub list N --json`, read each child's board status, classify every member through review-state.js, and hand the resolved set to branch-review-gate.js for the decision. `--record-bypass` writes the decline note into an epic body (never a branch tracker's). Every gh call goes through one injectable exec so the whole chain is testable against a mocked board (#2826).
  * @checksum sha256:placeholder
  *
@@ -38,10 +38,14 @@
  * #2577's decision that a `gh` outage must not stop an autonomous run.
  *
  * THE BYPASS NOTE IS A RECORD, NOT A FLAG (#2748 AC8). review-state.js reads
- * the `reviewed`/`pending` labels and the `**Reviews:** N` marker only, so
- * the note this writes cannot suppress the gate on a later run. That is the
- * mechanism the mocked suite's case (c) pins; do not make the classifier read
- * the body without revisiting it.
+ * the `reviewed`/`pending` labels, the `**Reviews:** N` marker and, since
+ * #3543, the body hash — a reviewed issue whose body changed after the review
+ * is `stale-reviewed`. The note this writes is body text, so it would move that
+ * hash; `review-body-hash.js` excludes the `**Review gate bypassed:**` line from
+ * the hash (#3552), and the note therefore still cannot change the
+ * classification or suppress the gate on a later run. That is the mechanism
+ * the mocked suite's case (c) pins; any new body read in the classifier must
+ * exclude the note the same way.
  */
 
 'use strict';
@@ -242,7 +246,11 @@ function evaluateTree(args, execFn) {
       reason: verdict.reason,
       processable: verdict.processable,
       neverReviewed: verdict.neverReviewed,
+      staleReviewed: verdict.staleReviewed,
       findingsPending: verdict.findingsPending,
+      toReview: verdict.toReview,
+      reviewCount: verdict.reviewCount,
+      pendingOptions: verdict.pendingOptions,
       indeterminate: verdict.indeterminate,
       unknown: verdict.unknown,
       clean: verdict.clean,

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "issue-reviewer-result-schema.json",
+  "title": "idpf-issue-reviewer result",
+  "description": "The JSON result one idpf-issue-reviewer instance returns for the one issue it reviewed (#3499, PRD #3493). The parent validates it with .claude/scripts/shared/lib/subagent-result.js before the issue enters the review roster; a result failing validation, an empty reply or an errored Agent call is that instance's error, never a guessed recommendation. Role contract: Reference/Agent-Architecture.md.",
+  "type": "object",
+  "required": ["issue", "recommendation", "labelAssigned", "reviewNumber", "filesToModifyWritten"],
+  "additionalProperties": false,
+  "properties": {
+    "issue": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The issue reviewed."
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": ["Ready for work", "Needs minor revision", "Needs revision", "Needs major rework"],
+      "description": "The /review-issue Step 2d recommendation, one of its four values."
+    },
+    "labelAssigned": {
+      "type": ["string", "null"],
+      "enum": ["reviewed", "pending", null],
+      "description": "review-finalize.js labelAssigned, verbatim. null when the label swap failed; the parent's Step 3b verdict event emits nothing for it."
+    },
+    "reviewNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The **Reviews:** N value finalize wrote for this review."
+    },
+    "filesToModifyWritten": {
+      "type": "boolean",
+      "description": "Whether the 2a-ii (b) Files-to-modify write ran before finalize (#2891). false for an epic, which 2a-ii does not cover."
+    }
+  }
+}

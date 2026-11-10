@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.116.0",
+  "version": "0.117.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -687,6 +687,7 @@
           "input-validation.js",
           "issue-duplicates.js",
           "issue-ref-match.js",
+          "issue-reviewer-brief.js",
           "issue-type.js",
           "load-review-extensions.js",
           "local-server.js",
@@ -715,14 +716,20 @@
           "qa-issue.js",
           "rebase-guard.js",
           "regeneration-runner.js",
+          "resolve-precheck.js",
+          "review-body-hash.js",
           "review-format.js",
           "review-mode.js",
+          "review-references.js",
+          "review-repair.js",
           "runner-probe.js",
           "screen-catalog.js",
           "screenshot-input.js",
           "screenshot-token-candidates.js",
           "shell-safe.js",
           "specialist-resolver.js",
+          "subagent-fallback.js",
+          "subagent-result.js",
           "test-runner.js",
           "tmp-cleanup.js",
           "token-drift-report.js",
@@ -1059,6 +1066,16 @@
           "description": "JSON Schema for imported-skills.json"
         },
         {
+          "name": "implementer-result-schema",
+          "source": ".claude/metadata/implementer-result-schema.json",
+          "description": "JSON Schema (Draft 2020-12) for the result an idpf-implementer instance returns; validated by subagent-result.js before the parent uses it (#3499)"
+        },
+        {
+          "name": "issue-reviewer-result-schema",
+          "source": ".claude/metadata/issue-reviewer-result-schema.json",
+          "description": "JSON Schema (Draft 2020-12) for the result an idpf-issue-reviewer instance returns; validated by subagent-result.js before the parent uses it (#3499)"
+        },
+        {
           "name": "overwatch-signals",
           "source": ".claude/metadata/overwatch-signals.json",
           "description": "Observation vocabulary, finding dispositions and the dedupe/rate-limit guards bounding /overwatch --auto-create (#2768)"
@@ -1162,6 +1179,16 @@
           "name": "review-mode-criteria-schema",
           "source": ".claude/metadata/review-mode-criteria-schema.json",
           "description": "JSON Schema for review-mode-criteria.json"
+        },
+        {
+          "name": "review-repairs",
+          "source": ".claude/metadata/review-repairs.json",
+          "description": "Repairable review criteria keyed by criterion id: /review-issue pre-finalize repairs and /resolve-review auto-fix (#3544)"
+        },
+        {
+          "name": "review-repairs-schema",
+          "source": ".claude/metadata/review-repairs-schema.json",
+          "description": "Schema for review-repairs.json (#3544)"
         },
         {
           "name": "review-state-gate-actions",
@@ -1345,6 +1372,12 @@
       "target": ".claude/recipes/",
       "deploymentMode": "symlinked",
       "description": "Extension recipe directories consumed by explicit reads from .claude/scripts/. Symlinked deliberately: explicit reads traverse a Windows junction correctly, so the auto-discovery failure that forced rules to copied (#2736) does not apply here. Fourth member of Praxis Hub Manager SYMLINK_DIRS and the only one deploymentFiles did not declare (#2744); px-manager#1152 derives the set from this rather than a hardcoded constant."
+    },
+    "agents": {
+      "source": ".claude/agents/idpf/",
+      "target": ".claude/agents/idpf/",
+      "deploymentMode": "symlinked",
+      "description": "The four framework agent definitions (idpf-implementer, idpf-diff-reviewer, idpf-issue-reviewer, idpf-code-reviewer — #3495). Praxis Hub Manager creates a real .claude/agents/ in the project and inside it a junction (Windows) or directory symlink idpf/ to this folder in the installed framework_root_<version>, repointed in the upgrade transaction; agent discovery traverses the junction (proposal § 4, § 6 spike 1). The user's own agents stay at the top level. framework-dev.md is dev-only and stays outside this folder (#3509)."
     }
   },
   "deprecatedCommands": [

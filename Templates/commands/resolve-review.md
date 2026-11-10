@@ -1,5 +1,5 @@
 ---
-version: "v0.116.0"
+version: "v0.117.0"
 description: Resolve an issue's review findings, using the IDPF framework.
 argument-hint: "#issue [--prior-art] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -37,7 +37,7 @@ Follow `.claude/rules/09-review-execution.md` (auto-loaded at session start). It
 - Step 1 setup and early-exit check, Step 1a `review-resolved` announcement
 - Step 1b AC feasibility on authored ACs
 - Step 2 Pass 1 auto-fix, Step 3 Pass 2 user input, Step 3a suggestion reporting
-- Step 4 re-review via `Skill("review-issue", "#$ISSUE --force")`
+- Step 4 re-review via `Skill("review-issue", "#$ISSUE --force --step-wise")` (`--prior-art` appended when passed)
 `/resolve-review` is `<!-- MANAGED -->` with no `USER-EXTENSION` blocks, so nothing is retained here for extensibility.
 ---
 ## Error Handling

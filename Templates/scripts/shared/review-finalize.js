@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, and assigns labels (reviewed/pending) to the reviewed issue only — never to its sub-issues (#2869).
  * @checksum sha256:placeholder
  *
@@ -23,6 +23,8 @@ const { EMOJI, SECTION_HEADERS, REVIEW_TYPES, REVIEWS_MARKER_PATTERN } = require
 // The /work Step 4c parser, reused so "declared" means here exactly what the
 // gate that consumes the declaration will read (#2891). No second parser.
 const { parseDeclaredScope } = require('./scope-drift-check.js');
+const { extractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
+const { computeReviewHash, writeReviewHash } = require('./lib/review-body-hash.js');
 
 // Header verb per review type, inverted from REVIEW_TYPES rather than copied
 // (#2594). REVIEW_TYPES is the same table REVIEW_HEADER_PATTERN's alternation
@@ -287,6 +289,77 @@ function checkFilesToModify({ type, body }) {
   return { filesToModifyMissing: !(authoredPaths && authoredPaths.length > 0) };
 }
 
+// ─── Acceptance-criteria Coverage (#3541) ───
+
+// Issue-shaped types carry acceptance criteria; prd/proposal/test-plan are
+// reviewed by their own commands and never reach this check.
+const AC_COVERAGE_TYPES = new Set(['bug', 'enhancement', 'story', 'epic', 'generic']);
+const AC_STATUSES = new Set(['pass', 'warn', 'fail', 'gate']);
+const AC_PHASES = new Set(['implementation', 'review', 'release']);
+
+/** Comparable criterion text: no markdown emphasis or code ticks, one space, lower case. */
+function normalizeAcText(text) {
+  return String(text == null ? '' : text)
+    .replace(/[`*_]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Does `acVerdicts` cover every acceptance criterion in the body, one verdict
+ * each? Matched by 1-based index plus normalized text, so a verdict for the
+ * wrong criterion at a real index counts that index missing AND the entry
+ * extra. A review that sampled the criteria is rejected here, before any
+ * comment, label or `**Reviews:**` write (#3541; ordering per #3374/#3401).
+ *
+ * @param {{ type: string, body: string|null, acVerdicts: object[]|undefined }} params
+ * @returns {{ ok: boolean, checked: boolean, criteriaCount: number, sectionFound: boolean,
+ *   missing: number[], extra: number[], invalid: number[], error?: object }}
+ */
+function checkAcCoverage({ type, body, acVerdicts }) {
+  const skipped = { ok: true, checked: false, criteriaCount: 0, sectionFound: false, missing: [], extra: [], invalid: [] };
+  if (!AC_COVERAGE_TYPES.has(type) || typeof body !== 'string') return skipped;
+
+  const { items, sectionFound } = extractAcceptanceCriteria(body);
+  const verdicts = Array.isArray(acVerdicts) ? acVerdicts : [];
+  const covered = new Set();
+  const extra = [];
+  const invalid = [];
+
+  for (const v of verdicts) {
+    const index = Number(v && v.index);
+    const item = Number.isInteger(index) && index >= 1 ? items[index - 1] : undefined;
+    if (!item || covered.has(index) || normalizeAcText(item.text) !== normalizeAcText(v.text)) {
+      extra.push(Number.isFinite(index) ? index : v && v.index);
+      continue;
+    }
+    covered.add(index);
+    if (!AC_STATUSES.has(v.status) || !AC_PHASES.has(v.phase)) invalid.push(index);
+  }
+  const missing = items.map((_, i) => i + 1).filter((i) => !covered.has(i));
+
+  const result = { ok: true, checked: true, criteriaCount: items.length, sectionFound, missing, extra, invalid };
+  if (missing.length === 0 && extra.length === 0 && invalid.length === 0) return result;
+
+  const parts = [];
+  if (missing.length) parts.push(`missing verdicts for criteria ${missing.join(', ')}`);
+  if (extra.length) parts.push(`verdicts matching no criterion at index ${extra.join(', ')}`);
+  if (invalid.length) parts.push(`unknown status or phase at index ${invalid.join(', ')}`);
+  return {
+    ...result,
+    ok: false,
+    error: {
+      code: 'AC_COVERAGE_INCOMPLETE',
+      message: `acVerdicts does not cover the ${items.length} acceptance criteria in the body of the issue: ${parts.join('; ')}. ` +
+        'Record one verdict per criterion (index, text as written, status pass|warn|fail|gate, phase, evidence) and re-run. Nothing was posted.',
+      missing,
+      extra,
+      invalid,
+    },
+  };
+}
+
 // Not a `- <emoji> criterion — evidence` line, so resolve-preamble.js does not
 // parse it as a finding; and never the bare header shape, so it cannot be
 // mistaken for a declaration if pasted into a body.
@@ -295,6 +368,56 @@ const FILES_TO_MODIFY_MISSING_LINE =
   'rule 09 § 2a-ii (b) did not leave one. /work Step 4c has no authored scope to compare against.';
 
 // ─── Comment Formatting ───
+
+/**
+ * The hidden criterion-id marker on a finding line (#3544): resolve-preamble.js
+ * reads it back so /resolve-review classifies by id, not display name. Empty
+ * when the finding carries no well-formed id.
+ */
+function findingIdMarker(f) {
+  // Flat class, no nested quantifier (security/detect-unsafe-regex).
+  return f && typeof f.id === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(f.id) ? ` <!-- id: ${f.id} -->` : '';
+}
+
+const AC_VERDICTS_HEADER = '### Acceptance Criteria Verdicts';
+
+/** A table cell: one line, pipes escaped. */
+function cell(value) {
+  return String(value == null ? '' : value).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|');
+}
+
+/**
+ * The per-AC verdict table (#3541) as comment lines; `[]` when there are no
+ * verdicts. Non-pass rows (fail, warn, gate) first, each group in index order.
+ */
+function formatAcVerdictTable(acVerdicts) {
+  if (!Array.isArray(acVerdicts) || acVerdicts.length === 0) return [];
+  const byIndex = (a, b) => (Number(a.index) || 0) - (Number(b.index) || 0);
+  const nonPass = acVerdicts.filter((v) => v && v.status !== 'pass').sort(byIndex);
+  const pass = acVerdicts.filter((v) => v && v.status === 'pass').sort(byIndex);
+  const lines = [AC_VERDICTS_HEADER, '', '| # | Status | Criterion | Phase | Evidence |', '|---|---|---|---|---|'];
+  for (const v of [...nonPass, ...pass]) {
+    const emoji = EMOJI[v.status] || EMOJI.skip;
+    lines.push(`| ${cell(v.index)} | ${emoji} | ${cell(v.text)} | ${cell(v.phase)} | ${cell(v.evidence)} |`);
+  }
+  lines.push('');
+  return lines;
+}
+
+const REPAIRS_HEADER = '### Repairs';
+
+/** The pre-finalize repairs table (#3544) as comment lines; `[]` when none. */
+function formatRepairsTable(repairs) {
+  if (!Array.isArray(repairs) || repairs.length === 0) return [];
+  const lines = [REPAIRS_HEADER, '', '| Criterion | Result | Before | After |', '|---|---|---|---|'];
+  for (const r of repairs) {
+    if (!r) continue;
+    const before = typeof r.before === 'string' && r.before.trim() ? cell(r.before) : '(absent)';
+    lines.push(`| \`${cell(r.criterion)}\` | ✅ repaired | ${before} | ${cell(r.after)} |`);
+  }
+  lines.push('');
+  return lines;
+}
 
 function formatReviewComment(findings, options = {}) {
   const date = new Date().toISOString().slice(0, 10);
@@ -326,7 +449,7 @@ function formatReviewComment(findings, options = {}) {
   } else {
     for (const f of autoFindings) {
       const emoji = EMOJI[f.status] || EMOJI.skip;
-      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}`);
+      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}${findingIdMarker(f)}`);
     }
   }
   lines.push('');
@@ -339,10 +462,20 @@ function formatReviewComment(findings, options = {}) {
   } else {
     for (const f of userFindings) {
       const emoji = EMOJI[f.status] || EMOJI.skip;
-      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}`);
+      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}${findingIdMarker(f)}`);
     }
   }
   lines.push('');
+
+  // Per-AC verdicts (#3541): one row per acceptance criterion, non-pass rows
+  // first so the criteria that need attention lead. Table rows never match
+  // resolve-preamble.js's `- <emoji> criterion — evidence` finding shape, so
+  // they are a record of coverage, not a second findings list.
+  lines.push(...formatAcVerdictTable(findings.acVerdicts));
+
+  // Pre-finalize repairs (#3544): what the review wrote into the body itself,
+  // before and after, so each can be reverted. Table rows, not finding lines.
+  lines.push(...formatRepairsTable(findings.repairs));
 
   // Suggestions (#2717)
   //
@@ -386,6 +519,37 @@ function formatReviewComment(findings, options = {}) {
 function determineLabel(recommendation) {
   if (!recommendation) return 'pending';
   return recommendation.startsWith('Ready') ? 'reviewed' : 'pending';
+}
+
+/**
+ * The label for a whole findings document (#3544). When the review repaired
+ * anything, the label follows the criteria, not the recommendation string: a
+ * review whose only non-pass criteria were all repaired earns `reviewed`, and
+ * any non-pass criterion left unrepaired is `pending`. With no repairs this is
+ * determineLabel(recommendation), unchanged.
+ *
+ * @param {{ findings?: object, repairs?: object[], recommendation?: string }} findings
+ * @returns {'reviewed'|'pending'}
+ */
+// Recommendations that say the issue must change before work: a repair can
+// never outrank them.
+const BLOCKING_RECOMMENDATIONS = new Set(['Needs revision', 'Needs major rework']);
+
+function decideReviewLabel(findings) {
+  const repairs = Array.isArray(findings && findings.repairs) ? findings.repairs : [];
+  if (repairs.length === 0) return determineLabel(findings && findings.recommendation);
+  // A repair never masks a remaining problem: a blocking recommendation, an
+  // unrepaired non-pass criterion, or a warn/fail acceptance-criterion verdict
+  // — which is where rule 09 2a-vi's re-check over the repaired body lands.
+  if (BLOCKING_RECOMMENDATIONS.has(findings.recommendation)) return 'pending';
+  const nonPass = (x) => x && (x.status === 'warn' || x.status === 'fail');
+  const verdicts = Array.isArray(findings.acVerdicts) ? findings.acVerdicts : [];
+  if (verdicts.some(nonPass)) return 'pending';
+  const repaired = new Set(repairs.map((r) => r && r.criterion));
+  const f = (findings && findings.findings) || {};
+  const all = [...(f.autoEvaluated || []), ...(f.userEvaluated || [])];
+  const remaining = all.filter((x) => nonPass(x) && !repaired.has(x.id));
+  return remaining.length === 0 ? 'reviewed' : 'pending';
 }
 
 /**
@@ -506,7 +670,10 @@ async function postAndCount({ issue, bodyExport, comment, exec }) {
   if (urlMatch) out.commentUrl = urlMatch[1];
 
   const tmpBodyFile = `.tmp-${issue}-body.${process.pid}.md`;
-  fs.writeFileSync(tmpBodyFile, updateBodyReviewCount(bodyExport.output));
+  // The body hash rides the same write as the **Reviews:** increment (#3543),
+  // computed over the body this review read; review-state.js compares it later.
+  const counted = updateBodyReviewCount(bodyExport.output);
+  fs.writeFileSync(tmpBodyFile, writeReviewHash(counted, computeReviewHash(bodyExport.output)));
   out.bodyEditResult = await exec(`gh pmu edit ${issue} -F ${tmpBodyFile}`);
   try { fs.unlinkSync(tmpBodyFile); } catch (_e) { /* ignore */ }
   out.bodyUpdated = out.bodyEditResult.ok;
@@ -595,6 +762,16 @@ async function main() {
   let bodyEditResult = null;
   const bodyExport = await execSafe(`gh pmu view ${issue} --body-stdout`);
 
+  // Every acceptance criterion carries a verdict (#3541), checked before any
+  // write: a rejected review posts no comment, swaps no label and leaves the
+  // **Reviews:** marker untouched.
+  const coverage = checkAcCoverage({ type: findings.type, body: bodyExport.ok ? bodyExport.output : null, acVerdicts: findings.acVerdicts });
+  if (!coverage.ok) {
+    const result = { ...buildErrorResult(coverage.error), bodyUpdated: false, commentPosted: false, commentUrl: null, labelAssigned: null, labelError: null };
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    process.exit(1);
+  }
+
   // 2a-ii (b) post-condition (#2891), from the body read above — after the
   // model's pre-finalize writes, before this script's own.
   const { filesToModifyMissing } = checkFilesToModify({ type: findings.type, body: bodyExport.ok ? bodyExport.output : null });
@@ -630,7 +807,7 @@ async function main() {
   }
 
   // Assign label
-  const label = determineLabel(findings.recommendation);
+  const label = decideReviewLabel(findings);
   const { labelAssigned, labelError } = await applyReviewLabel({ issue, label, exec: execSafe });
   if (labelError) {
     // Reported, never swallowed. A dropped label leaves the Reviews marker at
@@ -704,9 +881,11 @@ module.exports = {
   formatReviewComment,
   reviewVerb,
   determineLabel,
+  decideReviewLabel,
   applyReviewLabel,
   checkReviewRecorded,
   checkFilesToModify,
+  checkAcCoverage,
   buildClosingNotification,
   buildSuccessResult,
   buildErrorResult,

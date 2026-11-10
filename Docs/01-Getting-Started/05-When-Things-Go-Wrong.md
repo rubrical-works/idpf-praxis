@@ -84,6 +84,7 @@ The assistant will use `/bug` or `/enhancement` to create a properly formatted, 
 | Cascade failure across files | "Multiple files are wrong. Show me the git diff and let's figure out what to revert." |
 | Code done but workflow incomplete | "work #N" — the /work command picks up where it left off and completes the lifecycle. |
 | Branch has diverged from its upstream (startup, `/work` or `/done` says so) | `/sync-branch` — it shows what each side committed before asking, then rebases behind one question. It never forces, merges or pushes. |
+| `/work` stopped before starting because the issue has unresolved review findings, or its own review of the issue failed | Resolve the findings: `/resolve-review #N`, then `/work #N` again. To work it anyway, `/work #N --unreviewed` — the report names the waived issue and its state. |
 | Assigning an issue warns that the branch tracker is at GitHub's 100 sub-issue limit | The issue is on the branch but not linked under its tracker, so `/work <tracker>` will not see it. Work it directly: `work #N`. |
 | A `--concurrent` run halted — a merge conflict, a failed worktree, a story that failed its review gate twice | Read the halt report; the worktrees are kept. "Show me the conflict in `.tmp-wt-<N>` and resolve it", then `/work <epic> --nonstop --concurrent` to resume. See below. |
 

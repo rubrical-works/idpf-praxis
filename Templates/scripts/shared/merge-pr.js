@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Merge a pull request with state re-read, transient retry and a REST fallback (#3491). Exports mergePr() and parseArgs(); the CLI prints one JSON envelope naming the path that merged it (graphql, rest-fallback, already-merged), the merge commit and every failed attempt.
  * @checksum sha256:placeholder
  *

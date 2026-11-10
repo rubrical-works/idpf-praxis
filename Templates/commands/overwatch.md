@@ -1,5 +1,5 @@
 ---
-version: "v0.116.0"
+version: "v0.117.0"
 description: Dedicate a session to observing cross-session IDPF activity.
 argument-hint: "[--auto-create] [--force] | --on <keys> | --off <keys> | --show [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -154,8 +154,8 @@ const verdict = evaluateAutoCreate({ finding, filings, now: Date.now(), signals 
 **Bug path — delegate to a subagent; that is what keeps the monitor responsive.** Filing is multi-step (sweep, compose, `gh pmu create`) and inline it is blocking — a monitor that stops monitoring while it files has stopped being one. Spawn a subagent to run `/bug`.
 - A **prior-art sweep is mandatory**; an `already-shipped` verdict **skips** the filing. Duplicate filing is a known failure here, and an unattended filer has no human check.
 - Auto-filed issues carry the `auto-filed` label (`autoCreate.label`) — recognizable and reversible.
-- **The subagent runs degraded and must say so:** `framework-dev` has no `TaskCreate`/`TaskList`, so `/bug` falls back to rule `07-task-creation-timing.md`'s inline checklist and the `TaskList` compaction-recovery guarantee does not hold.
-**Enhancement path — stays in this session; it cannot be delegated.** Same tool boundary: `framework-dev` has **no `AskUserQuestion`**, so a subagent cannot make an offer at all. Bug filing is non-interactive and delegable; an offer is not. **Never file an enhancement unattended.**
+- **The subagent runs degraded and must say so:** every subagent lacks `TaskCreate`/`TaskList` — no route gives a subagent the task tools (`{frameworkPath}/Reference/Agent-Architecture.md`, findings 4–5) — so `/bug` falls back to rule `07-task-creation-timing.md`'s inline checklist and the `TaskList` compaction-recovery guarantee does not hold.
+**Enhancement path — stays in this session; it cannot be delegated.** Same boundary: a subagent has **no `AskUserQuestion`** (removed from every subagent's pool, finding 3), so it cannot make an offer at all. Bug filing is non-interactive and delegable; an offer is not. **Never file an enhancement unattended.**
 ### Step 6: Continue or Stop
 Schedule the next tick, or stop when the user says so. One line per tick; quiet ticks collapse.
 **Release the marker on stop.** Remove `.claude/.overwatch/.overwatch.json` **only when its `pid` matches this process**; leave a foreign marker untouched. Leave the `.claude/.overwatch/` directory — `config.json` lives there too. This closes the interleave `--force` allows: without the ownership test, monitor A exiting would delete a marker monitor B had overwritten, leaving B live and unmarked.

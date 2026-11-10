@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description File bug and enhancement issues on the local board — one entry
  * or a batch — with the standard template (#3049). The single creation path
  * for `/bug`, `/enhancement` and `/code-review` Step 8.
@@ -232,16 +232,50 @@ function renderDuplicateComment(entry) {
   return lines.join('\n') + '\n';
 }
 
-/** Index of the line after a `**Heading:**` block's last list item, or -1 when absent. */
-function blockEnd(lines, headings, itemRe) {
-  const at = lines.findIndex((l) => headings.includes(l.trim()));
-  if (at === -1) return -1;
+const isTableRow = (line) => /^\s*\|/.test(line);
+
+/**
+ * The one contiguous block under a `**Heading:**` — a table or a list, never
+ * both — read the way scope-drift-check.js extractFilesToModifySection reads
+ * it (#3523): blank lines between the heading and the block are skipped, and
+ * the block ends at its first non-member line. Returns `{ kind, start, end }`
+ * (`end` is the index after the block's last line; `start === end` for an
+ * empty list), or null when the heading is absent.
+ */
+function declarationBlock(lines, headings) {
+  const wanted = headings.map((h) => h.toLowerCase());
+  const at = lines.findIndex((l) => wanted.includes(l.trim().toLowerCase()));
+  if (at === -1) return null;
+  let k = at + 1;
+  while (k < lines.length && lines[k].trim() === '') k++;
+  if (k < lines.length && isTableRow(lines[k])) {
+    let end = k;
+    while (end < lines.length && isTableRow(lines[end])) end++;
+    return { kind: 'table', start: k, end };
+  }
   let end = at + 1;
   for (let i = at + 1; i < lines.length; i++) {
-    if (itemRe.test(lines[i])) end = i + 1;
+    if (/^\s*[-*] /.test(lines[i])) end = i + 1;
     else if (lines[i].trim() !== '' || i > end) break;
   }
-  return end;
+  return { kind: 'list', start: at + 1, end };
+}
+
+/** Split a markdown table row into its trimmed cells. */
+function tableCells(row) {
+  return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+}
+
+/**
+ * One table row per path, matching the header's column count: the path goes
+ * in the first column whose header names a path or file (else the first
+ * column), every other cell left empty.
+ */
+function pathRows(headerRow, paths) {
+  const headers = tableCells(headerRow);
+  const found = headers.findIndex((h) => /path|file/i.test(h));
+  const col = found === -1 ? 0 : found;
+  return paths.map((p) => `| ${headers.map((_, i) => (i === col ? `\`${p}\`` : '')).join(' | ')} |`);
 }
 
 /**
@@ -253,20 +287,26 @@ function blockEnd(lines, headings, itemRe) {
 function applyScopeAdditions(body, { files = [], acceptanceCriteria = [] } = {}) {
   const lines = String(body).replace(/\r\n/g, '\n').split('\n');
   const text = lines.join('\n');
-  const newFiles = files.filter((p) => typeof p === 'string' && p.trim() && !text.includes(`\`${p.trim()}\``)).map((p) => `- \`${p.trim()}\``);
+  const newPaths = files.filter((p) => typeof p === 'string' && p.trim() && !text.includes(`\`${p.trim()}\``)).map((p) => p.trim());
   const newAcs = acceptanceCriteria.filter((a) => typeof a === 'string' && a.trim() && !text.includes(a.trim())).map((a) => `- [ ] ${a.trim()}`);
-  const insert = (headings, items, heading) => {
-    if (!items.length) return;
-    const end = blockEnd(lines, headings, /^\s*[-*] /);
-    if (end === -1) {
+  // `toItems(block)` renders the additions in the existing block's own format,
+  // so the declaration stays one contiguous block (#3523).
+  const insert = (headings, count, toItems, heading) => {
+    if (!count) return;
+    const block = declarationBlock(lines, headings);
+    if (!block) {
       while (lines.length && lines[lines.length - 1] === '') lines.pop();
-      lines.push('', heading, ...items, '');
+      lines.push('', heading, ...toItems(null), '');
     } else {
-      lines.splice(end, 0, ...items);
+      lines.splice(block.end, 0, ...toItems(block));
     }
   };
-  insert(['**Files to modify:**', '**Files:**'], newFiles, '**Files to modify:**');
-  insert(['**Acceptance Criteria:**'], newAcs, '**Acceptance Criteria:**');
+  insert(['**Files to modify:**', '**Files:**'], newPaths.length,
+    (block) => (block && block.kind === 'table'
+      ? pathRows(lines[block.start], newPaths)
+      : newPaths.map((p) => `- \`${p}\``)),
+    '**Files to modify:**');
+  insert(['**Acceptance Criteria:**'], newAcs.length, () => newAcs, '**Acceptance Criteria:**');
   return lines.join('\n');
 }
 

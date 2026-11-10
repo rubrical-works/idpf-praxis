@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.116.0
+ * @framework-script 0.117.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -663,6 +663,7 @@ if (require.main === module) main();
 module.exports = {
   parseArgs,
   parseDeclaredScope,
+  extractFilesToModifySection,
   matchesAny,
   findOverride,
   resolveOverride,

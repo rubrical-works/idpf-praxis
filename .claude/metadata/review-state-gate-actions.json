@@ -1,12 +1,14 @@
 {
   "$schema": "./review-state-gate-actions-schema.json",
-  "version": 1,
+  "version": 2,
   "_meta": {
-    "description": "Action matrix for the /work Step 3 Review-State Gate (#2577), externalized from Reference/work-execution.md (#2765, target identified in #2605). The four state names and every rationale blockquote stay inline in the rule; only the state x run-shape lookup lives here.",
+    "description": "Action matrix for the /work Step 3 Review-State Gate (#2577), externalized from Reference/work-execution.md (#2765, target identified in #2605). The state names and every rationale blockquote stay inline in the rule; only the state x run-shape lookup lives here.",
     "consumer": "/work Step 3 — re-read from disk at use (rule 01: externalized file references)",
-    "classifier": ".claude/scripts/shared/review-state.js"
+    "classifier": ".claude/scripts/shared/review-state.js",
+    "staleReviewed": "#3543: a reviewed label whose recorded body hash no longer matches — mapped exactly like never-reviewed, since the review on record no longer describes the body.",
+    "cleanReviewFirst": "#3537 (version 2): /work reviews a never-reviewed or stale-reviewed issue itself before its first AC instead of warning or offering, because only /review-issue Step 2a-ii writes the Files to modify declaration scope drift, always-protected licensing and --concurrent planning depend on. warn-proceed was removed; a declined stop no longer proceeds unless the waiver flag is passed."
   },
-  "states": ["never-reviewed", "findings-pending", "reviewed-clean", "indeterminate"],
+  "states": ["never-reviewed", "findings-pending", "reviewed-clean", "stale-reviewed", "indeterminate"],
   "shapes": {
     "single": "Single interactive issue",
     "batch": "Batch (--issues / --status), epic, branch tracker",
@@ -14,9 +16,9 @@
   },
   "actions": {
     "never-reviewed": {
-      "single":  { "action": "stop",         "offer": "/review-issue #$ISSUE" },
-      "batch":   { "action": "warn-proceed" },
-      "nonstop": { "action": "warn-proceed" }
+      "single":  { "action": "review" },
+      "batch":   { "action": "review" },
+      "nonstop": { "action": "review" }
     },
     "findings-pending": {
       "single":  { "action": "stop",         "offer": "/resolve-review #$ISSUE" },
@@ -28,6 +30,11 @@
       "batch":   { "action": "proceed" },
       "nonstop": { "action": "proceed" }
     },
+    "stale-reviewed": {
+      "single":  { "action": "review" },
+      "batch":   { "action": "review" },
+      "nonstop": { "action": "review" }
+    },
     "indeterminate": {
       "single":  { "action": "proceed" },
       "batch":   { "action": "proceed" },
@@ -35,9 +42,13 @@
     }
   },
   "neverPrompt": ["reviewed-clean", "indeterminate"],
+  "waiver": {
+    "flag": "--unreviewed",
+    "waives": ["never-reviewed", "stale-reviewed", "findings-pending"]
+  },
   "actionMeanings": {
-    "stop": "STOP and offer the named command via AskUserQuestion; accepting means work does not begin, declining proceeds with nothing mutated.",
-    "warn-proceed": "Warn and proceed without prompting.",
+    "review": "Review the issue before its first AC through one idpf-issue-reviewer agent (node .claude/scripts/shared/lib/issue-reviewer-brief.js --issue N, --stale for stale-reviewed; always --step-wise), with no status move. Its verdict decides: reviewed proceeds; pending is handled as findings-pending for the same shape; a failed review (labelAssigned null, or the reviewer failed) stops — never treated as clean.",
+    "stop": "STOP and offer the named command via AskUserQuestion; accepting hands off to it and STOPs with the issue's status unchanged; declining also STOPs unless the waiver flag (--unreviewed) was passed.",
     "halt": "Halt the --nonstop run on the same terms as any test/AC/QA/gh pmu failure.",
     "proceed": "Proceed without prompting."
   }
