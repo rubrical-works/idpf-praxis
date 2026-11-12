@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * review-body-hash.js — The body hash a review records, so `review-state.js`
  * can tell a reviewed issue from one rewritten since its review (#3543).
  *
@@ -24,13 +24,19 @@
  *   | the `**Review gate bypassed:**` note       | tree-review-gate.js (#3552)     |
  *   | CRLF line endings, blank-line runs         | the GitHub web editor (#3064)   |
  *
+ * Lines inside a fenced code block are author content (#3580): none of the
+ * workflow-write exclusions above (the marker, `**Reviews:**`, checkbox state,
+ * gate suffixes, `### Files Changed`, `**Doc judgment:**`, the bypass note)
+ * applies to them. Whitespace normalization still does: CRLF endings,
+ * trailing whitespace and blank-line runs are normalized inside a fence too.
+ *
  * Built-ins and shared siblings only (runtime dependency contract, #2418).
  */
 
 const crypto = require('crypto');
 const { normalizeEol } = require('./normalize-eol.js');
 // The one checkbox definition (checkbox-scan.js) — never a second regex here.
-const { matchCheckboxLine } = require('./checkbox-scan.js');
+const { matchCheckboxLine, computeFenceMask } = require('./checkbox-scan.js');
 
 const MARKER_PATTERN = /<!-- review-hash: ([0-9a-f]+) -->/;
 const MARKER_LINE = /^[ \t]*<!-- review-hash: [0-9a-f]+ -->[ \t]*$/;
@@ -66,14 +72,19 @@ function normalizeForHash(body) {
   if (typeof body !== 'string') return '';
   const out = [];
   let inFilesChanged = false;
-  for (const raw of normalizeEol(body).split('\n')) {
-    const line = raw.replace(/[ \t]+$/, '');
-    if (FILES_CHANGED.test(line)) { inFilesChanged = true; continue; }
+  const lines = normalizeEol(body).split('\n').map((raw) => raw.replace(/[ \t]+$/, ''));
+  // Fenced lines are quoted author content (#3580): no workflow rule applies
+  // to them, and a fenced heading neither opens nor closes Files Changed.
+  const fenced = computeFenceMask(lines);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (inFilesChanged) {
-      const h = line.match(HEADING);
+      const h = fenced[i] ? null : line.match(HEADING);
       if (!h || h[1].length > 3) continue;
       inFilesChanged = false;
     }
+    if (fenced[i]) { out.push(line); continue; }
+    if (FILES_CHANGED.test(line)) { inFilesChanged = true; continue; }
     if (MARKER_LINE.test(line) || REVIEWS_LINE.test(line) || DOC_JUDGMENT_LINE.test(line) || BYPASS_NOTE_LINE.test(line)) continue;
     const box = matchCheckboxLine(line);
     if (box) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Build the spawn request for one idpf-issue-reviewer: specialist, domains and absolute frameworkPath in the brief (#3501)
  *
  * Concurrent /review-issue (#3199) dispatches one reviewer per issue. A

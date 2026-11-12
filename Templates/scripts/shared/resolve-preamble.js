@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, reports the issue's type so an epic can be expanded, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -22,8 +22,9 @@ const {
 const { repairEntry } = require('./lib/review-repair.js');
 const fs = require('fs');
 const path = require('path');
-const { getIssueType, REDIRECT_LABELS } = require('./lib/issue-type.js');
+const { resolveIssueType } = require('./lib/issue-type.js');
 const { normalizeEol } = require('./lib/normalize-eol.js');
+const { reportUnrecognizedFlags } = require('./lib/command-args.js');
 
 // ─── Argument Parsing ───
 
@@ -34,7 +35,10 @@ function parseArgs(args) {
 
   const cleaned = args[0].replace(/^#/, '');
   const num = parseInt(cleaned, 10);
-  if (isNaN(num) || num <= 0) {
+  // The same check review-preamble.js and review-finalize.js apply, so the two
+  // halves of one review cycle validate the argument identically (#3600):
+  // '12abc' and '12.5' are not issue 12.
+  if (isNaN(num) || num <= 0 || String(num) !== cleaned) {
     return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: ${args[0]}` } };
   }
 
@@ -48,38 +52,13 @@ function parseArgs(args) {
   return result;
 }
 
-/** Put the parsed `unrecognizedFlags` on the envelope — always an array. */
-function reportUnrecognizedFlags(envelope, args) {
-  envelope.unrecognizedFlags = (args && args.unrecognizedFlags) || [];
-  return envelope;
-}
-
 // ─── Issue Type (#2872) ───
-
-/**
- * The issue's type, from the classifier review-preamble.js uses.
- *
- * `/resolve-review <epic>` has to expand the epic into its children before any
- * finding is classified, and it could not: this script read comments only, so
- * an epic looked like any other issue and only its own comment was resolved.
- *
- * Same source and same fallback as review-preamble.js — `getIssueType`, then a
- * redirect label's own name, then `generic` — so the two halves of one review
- * cycle cannot disagree about what an issue is. A second classifier here is
- * how they would.
- *
- * @param {{labels?: Array<{name: string}>}} issueData
- * @returns {string}
- */
-function resolveIssueType(issueData) {
-  const data = issueData && typeof issueData === 'object' ? issueData : {};
-  const { type } = getIssueType(data);
-  if (type) return type;
-  const redirect = (data.labels || [])
-    .map((l) => (l && l.name) || '')
-    .find((name) => Object.prototype.hasOwnProperty.call(REDIRECT_LABELS, name));
-  return redirect || 'generic';
-}
+//
+// `/resolve-review <epic>` has to expand the epic into its children before any
+// finding is classified, so the envelope carries the issue's type. It comes from
+// `resolveIssueType` in lib/issue-type.js — the one review-preamble.js uses too
+// (#3605) — so the two halves of one review cycle cannot disagree about what an
+// issue is. A second classifier here is how they would.
 
 // ─── Review Comment Matching ───
 
@@ -231,15 +210,17 @@ function slugify(criterion) {
 /**
  * Display name → criterion id, from the criteria metadata (#3544). Names are
  * compared lower-cased with punctuation dropped, so "AC present and testable?"
- * finds `ac-present-testable` where its slug never could. Built once; a
- * missing file contributes nothing.
+ * finds `ac-present-testable` where its slug never could. Built once per
+ * root (#3603) — a later call with a different root gets that root's index,
+ * never the first one's; a missing file contributes nothing.
  */
-let _namesToIds = null;
+const _namesToIdsByRoot = new Map();
 function nameKey(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 function criterionNameIndex(root = process.cwd()) {
-  if (_namesToIds) return _namesToIds;
+  const key = path.resolve(root);
+  if (_namesToIdsByRoot.has(key)) return _namesToIdsByRoot.get(key);
   const index = new Map();
   const read = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { return null; } };
   const typeSpecific = (read('.claude/metadata/review-criteria.json') || {}).typeSpecific || {};
@@ -248,7 +229,7 @@ function criterionNameIndex(root = process.cwd()) {
   }
   const common = (read('.claude/metadata/review-mode-criteria.json') || {}).criteria || {};
   for (const [id, c] of Object.entries(common)) if (c && c.name) index.set(nameKey(c.name), id);
-  _namesToIds = index;
+  _namesToIdsByRoot.set(key, index);
   return index;
 }
 
@@ -267,6 +248,11 @@ const ISSUE_TYPES = new Set(['bug', 'enhancement', 'story', 'epic', 'generic']);
  * the display name, which drifts between reviews. Only a `preFinalize: true`
  * entry is auto-fixable; a `preFinalize: false` one is user input carrying
  * `repair: { kind, description }` (#3548).
+ *
+ * Exception (#3588): a `test-ac` entry is `preFinalize: true`, but a test-ac
+ * finding that reaches /resolve-review was refused by the review's test-only
+ * guard (`review-repair.js` `checkTestAc`), and Pass 1 cannot apply an AC — so
+ * it is user input carrying `repair: { kind, description }`, like #3548's.
  *
  * @param {object[]} findings
  * @param {{ type?: string }} [ctx] - the issue type, when known, filters entries
@@ -288,7 +274,7 @@ function classifyFindings(findings, ctx = {}) {
     const entry = (f.status === 'fail' || f.status === 'warn') ? repairEntry(f.id, { type }) : null;
     if (f.status === 'pass' || f.status === 'skip') {
       passed.push(f);
-    } else if (entry && entry.preFinalize) {
+    } else if (entry && entry.preFinalize && entry.kind !== 'test-ac') {
       // A deterministic repair (priority, Depends on, Deployment Impact).
       autoFixable.push(f);
     } else if (entry) {
@@ -307,7 +293,10 @@ function classifyFindings(findings, ctx = {}) {
 
 // ─── Envelope Builders ───
 
-function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions, issueType) {
+function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions, issueType, recommendation) {
+  // `recommendation` is extractRecommendation()'s `{ recommendation, reason }`.
+  const rec = recommendation && typeof recommendation === 'object' ? recommendation : null;
+  const text = rec && typeof rec.recommendation === 'string' ? rec.recommendation : '';
   return {
     ok: true,
     version: 1,
@@ -324,6 +313,10 @@ function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions, is
     // absent key is indistinguishable from a producer that forgot to set it,
     // which is the exact shape of the defect this issue fixed.
     suggestions: Array.isArray(suggestions) ? suggestions : [],
+    recommendation: rec,
+    // Rule 09 (`/resolve-review` Step 1): `earlyExit: true` ends the run when
+    // the latest review already recommends "Ready for …" (#3616).
+    earlyExit: text.startsWith('Ready for'),
     errors: [],
   };
 }
@@ -393,8 +386,7 @@ async function main() {
 
   const suggestions = parseSuggestions(reviewResult.body);
 
-  const envelope = buildSuccessEnvelope(reviewResult, classified, findings, suggestions, issueType);
-  envelope.recommendation = recommendation;
+  const envelope = buildSuccessEnvelope(reviewResult, classified, findings, suggestions, issueType, recommendation);
   reportUnrecognizedFlags(envelope, args);
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
 }
@@ -418,6 +410,7 @@ module.exports = {
   parseFindings,
   parseSuggestions,
   classifyFindings,
+  criterionNameIndex,
   statusForEmoji,
   extractRecommendation,
   buildSuccessEnvelope,

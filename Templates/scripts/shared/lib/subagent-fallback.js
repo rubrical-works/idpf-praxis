@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Fall back to general-purpose when a framework agent type is not found, and report it once per run (#3500)
  *
  * An Agent call naming an unregistered type fails loudly — `Agent type

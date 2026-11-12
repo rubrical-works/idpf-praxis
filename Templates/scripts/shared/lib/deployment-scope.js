@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Classify files and commits by deployment scope (deployed vs dev-only).
  * Uses minimize-config.json rules, deployment chain awareness, and known path patterns.
  * Used by generate-changelog.js to separate user-facing from internal changes.
@@ -27,7 +27,8 @@ const EMPTY_CONFIG = { excludedCommands: [], excludedDirectories: [], includedDi
  *
  * @param {string} [configPath] - override; also bypasses the module cache, so
  *   tests can point at a fixture without poisoning subsequent calls
- * @returns {object} the config, plus a non-enumerable `loaded` boolean
+ * @returns {object} the config, plus an ordinary (enumerable) `loaded` boolean
+ *   property — it appears in `Object.keys()` and `JSON.stringify()` output
  */
 function loadConfig(configPath) {
     if (!configPath && _config) return _config;
@@ -71,7 +72,8 @@ function loadDeclaredPaths(projectRoot) {
  * False means every answer outside the built-in patterns is a guess, and
  * `classifyFile` returns `'unknown'` rather than pretending otherwise.
  *
- * @param {{configPath?: string, projectRoot?: string}} [options]
+ * @param {{configPath?: string, projectRoot?: string, declaredPaths?: string[]}} [options]
+ *   `declaredPaths` overrides the `framework-config.json` `deployedPaths` lookup
  * @returns {boolean}
  */
 function hasClassificationBasis(options = {}) {

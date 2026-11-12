@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -39,12 +39,82 @@ const { extractSection, hasHeader } = require('./lib/checkbox-scan.js');
 //   - exact path match           e.g.  framework-config.json
 //   - `*`  (within one segment)  e.g.  src/*.js
 //   - `**` (across segments)     e.g.  .claude/metadata/**
+//   - `?`  (one non-`/` char)    e.g.  src/?.js                  (#3613)
+//   - `[...]` / `[!...]` class   e.g.  src/[ab].js, src/[!ab].js  (#3613)
+//   - `{a,b}` alternation        e.g.  src/{a,b}.js, may nest     (#3613)
 // Leading-dot segments are matched by `*`/`**` (equivalent to minimatch's
-// `{ dot: true }` mode). Brace expansion, negation, and `?` are NOT
-// supported — they are not used by any caller. If a future caller needs
-// them, switch the helper rather than re-introducing an external dep.
+// `{ dot: true }` mode). An unclosed `[` or a `{...}` with no top-level comma
+// is literal. Negation of a whole pattern (`!foo`) is NOT supported. Before
+// #3613 `?` leaked through as a regex quantifier and `[`/`{` were escaped, so
+// those globs silently never matched (the #3597 workaround's root cause).
 function globToRegex(pattern) {
-  let re = '^';
+  return new RegExp('^' + globBodyToRegex(pattern) + '$');
+}
+
+function escapeRegexChar(c) {
+  return '.+^$()|{}[]\\?*'.includes(c) ? '\\' + c : c;
+}
+
+// Index of the `]` closing a class opened at `start`, or -1. A `]` right after
+// the opener (or after its `!`/`^`) is a member, not the closer.
+function findClassEnd(pattern, start) {
+  let j = start + 1;
+  if (pattern[j] === '!' || pattern[j] === '^') j++;
+  if (pattern[j] === ']') j++;
+  while (j < pattern.length && pattern[j] !== ']') {
+    if (pattern[j] === '/') return -1;
+    j++;
+  }
+  return j < pattern.length ? j : -1;
+}
+
+// For a `{` at `start`: { end, alternatives } split on top-level commas, or
+// null when it is unclosed or has no top-level comma (then it is literal).
+function findBraceGroup(pattern, start) {
+  let depth = 0;
+  const alternatives = [];
+  let from = start + 1;
+  for (let j = start; j < pattern.length; j++) {
+    const c = pattern[j];
+    if (c === '[') {
+      const end = findClassEnd(pattern, j);
+      if (end !== -1) { j = end; continue; }
+    } else if (c === '{') {
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        if (alternatives.length === 0) return null;
+        alternatives.push(pattern.slice(from, j));
+        return { end: j, alternatives };
+      }
+    } else if (c === ',' && depth === 1) {
+      alternatives.push(pattern.slice(from, j));
+      from = j + 1;
+    }
+  }
+  return null;
+}
+
+// A `[...]` body as a regex class, or null when the regex engine rejects it
+// (a reversed range such as `[z-a]`). Null makes the `[` literal: one bad
+// authored declaration must never throw out of matchesAny and break the scope
+// check for every file — before #3613 `[` was always escaped and could not.
+function classToRegex(body) {
+  let negate = false;
+  if (body[0] === '!' || body[0] === '^') { negate = true; body = body.slice(1); }
+  body = body.replace(/[\\\]^]/g, (m) => '\\' + m);
+  const cls = negate ? `(?!/)[^${body}]` : `[${body}]`;
+  try {
+    new RegExp(cls);
+  } catch {
+    return null;
+  }
+  return cls;
+}
+
+function globBodyToRegex(pattern) {
+  let re = '';
   let i = 0;
   while (i < pattern.length) {
     const c = pattern[i];
@@ -57,19 +127,34 @@ function globToRegex(pattern) {
         re += '[^/]*';
         i++;
       }
-    } else if ('.+^$()|{}[]\\'.includes(c)) {
-      re += '\\' + c;
+      continue;
+    }
+    if (c === '?') {
+      re += '[^/]';
       i++;
+      continue;
+    }
+    const classEnd = c === '[' ? findClassEnd(pattern, i) : -1;
+    const classRe = classEnd !== -1 ? classToRegex(pattern.slice(i + 1, classEnd)) : null;
+    const group = c === '{' ? findBraceGroup(pattern, i) : null;
+    if (classRe) {
+      re += classRe;
+      i = classEnd + 1;
+    } else if (group) {
+      re += '(?:' + group.alternatives.map(globBodyToRegex).join('|') + ')';
+      i = group.end + 1;
     } else {
-      re += c;
+      re += escapeRegexChar(c);
       i++;
     }
   }
-  re += '$';
-  return new RegExp(re);
+  return re;
 }
 
+// Literal first (#3613): a real file named `pages/[id].js` or `src/{a,b}.js`
+// must match its own declaration, which the glob reading would not.
 function globMatch(filePath, pattern) {
+  if (filePath === pattern) return true;
   return globToRegex(pattern).test(filePath);
 }
 
@@ -232,14 +317,37 @@ function extractFilesChanged(body) {
   return extractBacktickedPaths(extractSection(body, isHeader, isTerminator));
 }
 
+// A GFM delimiter row (`--- | ---`, optional outer pipes and `:` alignment):
+// two or more cells, each only dashes with optional colons. Checked cell by
+// cell rather than with one regex, which nested quantifiers would make unsafe.
+function isDelimiterRow(line) {
+  const t = line.trim();
+  if (!t.includes('|')) return false;
+  const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|');
+  return cells.length >= 2 && cells.every((c) => /^:?-+:?$/.test(c.trim()));
+}
+
 function extractBacktickedPaths(chunk) {
   const out = [];
-  const re = /`([^`\n]+)`/g;
-  let m;
-  while ((m = re.exec(chunk)) !== null) {
-    const candidate = m[1].trim();
-    // Skip obvious non-paths (URLs, code fragments without slashes/dots are tolerated)
-    if (candidate) out.push(candidate);
+  const lines = chunk.split('\n');
+  // GFM allows a table with no leading pipe. Such a row is recognized only when
+  // the chunk holds a delimiter row (`--- | ---`), which no bullet or prose line
+  // looks like, and the row itself is not a bullet item.
+  const hasDelimiterRow = lines.some(isDelimiterRow);
+  for (const line of lines) {
+    // A table cell escapes `|` as `\|` so the cell does not split; review-repair.js
+    // writes it that way (#3602). Read the path back unescaped (#3613), or the
+    // declaration names a different path and the repair is refused as unverified.
+    const inTable = /^\s*\|/.test(line) ||
+      (hasDelimiterRow && line.includes('|') && !/^\s*[-*+]\s/.test(line));
+    const re = /`([^`\n]+)`/g;
+    let m;
+    while ((m = re.exec(line)) !== null) {
+      let candidate = m[1].trim();
+      if (inTable) candidate = candidate.replace(/\\\|/g, '|');
+      // Skip obvious non-paths (URLs, code fragments without slashes/dots are tolerated)
+      if (candidate) out.push(candidate);
+    }
   }
   return out;
 }

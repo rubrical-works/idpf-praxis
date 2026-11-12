@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description The /code-review reviewer split (#3167). Exports partitionQueue(), mergeShardResults() and validateShardResult(): shard the Step 4 queue for at most N reviewer Agents, then validate and merge their results with the parent assigning every --diff tag.
  * @checksum sha256:placeholder
  *

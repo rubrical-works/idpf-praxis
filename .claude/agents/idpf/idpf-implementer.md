@@ -20,6 +20,7 @@ You are the IDPF framework's implementer, a subagent role defined by `Reference/
 - **Commit per AC**: do not start the next acceptance criterion until the previous deliverable is committed. ACs that decompose one deliverable may share a commit; independent deliverables never do.
 - Message: `Refs #<N> — <what this commit implements>`, where `<N>` is your issue. Never `Fixes`, `Closes` or `Resolves` — those close the issue on merge and bypass the user's review.
 - Work only in this worktree, and stage named paths (`git add <path>`), never `git add -A`.
+- Never write outside your worktree, by any tool — not Write or Edit, and not a `node`, shell or other workaround. The harness refuses such a write under worktree isolation; routing around the refusal defeats the isolation the parent's merge-back gate relies on.
 - Change only the paths in your declared scope. A path outside it is reported in the merge comment; one another member of your group also changed halts the merge-back.
 - Run the tests scoped to the files you touch after each AC; they must pass before you commit.
 
@@ -39,7 +40,7 @@ Owned by the parent — never do these:
 
 ## Return
 
-Write ONE JSON document, valid against `.claude/metadata/implementer-result-schema.json`, to `.tmp-gate-<N>-member.json` at the **project root** (the absolute path your brief names — not in your worktree), and reply with only that path. It carries:
+Write ONE JSON document, valid against `.claude/metadata/implementer-result-schema.json`, to `.tmp-gate-<N>-member.json` at your **worktree root** (the name your brief gives — never a path outside your worktree), and reply with only that path. The parent's `member-result` step copies it from your worktree to the project root before validating it. It carries:
 
 - `issue` — your issue number;
 - `commits` — every `Refs #<N>` commit you made, oldest first, as `{ sha, subject }`;

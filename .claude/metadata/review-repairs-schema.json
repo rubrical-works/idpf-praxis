@@ -23,7 +23,7 @@
       "required": ["kind", "preFinalize", "types", "modes", "description"],
       "additionalProperties": false,
       "properties": {
-        "kind": { "enum": ["deployment-impact", "depends-on-line", "priority", "model-authored"] },
+        "kind": { "enum": ["deployment-impact", "depends-on-line", "priority", "model-authored", "test-ac"] },
         "preFinalize": { "type": "boolean" },
         "types": {
           "type": "array",

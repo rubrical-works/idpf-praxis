@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "routed-command-tasks-schema.json",
+  "title": "Routed Command Tasks Schema",
+  "description": "Schema for .claude/metadata/routed-command-tasks.json — the preamble-script-to-command map, stop signals, Phase 1 subjects and Phase 2 task lists .claude/hooks/task-phase-hook.js reminds the model of (#3610, rule 07). The hook fails open: absent or malformed data means no output.",
+  "type": "object",
+  "required": ["scripts", "stopSignals", "commands", "text"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": {
+      "type": "object",
+      "description": "Human-facing provenance. Never read by the hook.",
+      "additionalProperties": true
+    },
+    "scripts": {
+      "type": "object",
+      "description": "Keyed by preamble script basename. The hook acts only when a Bash command invokes one of these as a node script.",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z0-9._-]+\\.js$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["commands"],
+        "properties": {
+          "commands": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/commandName" },
+            "description": "Every command that runs this script. The first is the command when the script serves one."
+          },
+          "byContextType": {
+            "type": "object",
+            "description": "The preamble envelope's context.type → the command that ran it, for a script several commands share.",
+            "additionalProperties": { "$ref": "#/$defs/commandName" }
+          },
+          "default": {
+            "$ref": "#/$defs/commandName",
+            "description": "The command when context.type matches no byContextType key."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "stopSignals": {
+      "type": "array",
+      "description": "Envelope conditions under which the path stopped (failure, redirect, early exit): PostToolUse emits nothing when any matches.",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "description": "Dotted path into the envelope." },
+          "equals": { "description": "Matches when the value is strictly equal." },
+          "truthy": { "const": true, "description": "Matches when the value is truthy." },
+          "pattern": { "type": "string", "minLength": 1, "description": "Matches when the value is a string matching this regular expression." },
+          "scripts": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Limits the signal to these preamble scripts. Absent → every script."
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "oneOf": [
+          { "required": ["equals"] },
+          { "required": ["truthy"] },
+          { "required": ["pattern"] }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "commands": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/commandName" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["phase1", "phase2"],
+        "properties": {
+          "phase1": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Phase 1 task subject. {forIssue} becomes ' for #N' when the command line names issues, else ''."
+          },
+          "phase2": {
+            "oneOf": [
+              { "$ref": "#/$defs/phase2File" },
+              { "$ref": "#/$defs/phase2Inline" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "text": {
+      "type": "object",
+      "required": ["phase1", "unavailable", "phase2", "extensions", "trackerOmitted"],
+      "properties": {
+        "phase1": { "type": "string", "minLength": 1, "description": "{commands} and {subject} are replaced." },
+        "unavailable": { "type": "string", "minLength": 1 },
+        "phase2": { "type": "string", "minLength": 1, "description": "{command} is replaced." },
+        "extensions": { "type": "string", "minLength": 1 },
+        "trackerOmitted": { "type": "string", "minLength": 1, "description": "{count} is replaced." }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "commandName": { "type": "string", "pattern": "^/[a-z][a-z0-9-]*$" },
+    "phase2File": {
+      "type": "object",
+      "description": "Phase 2 read from a task-definitions file (subject, condition, scope per entry).",
+      "required": ["file"],
+      "properties": {
+        "file": { "type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))\\.claude/[^\\\\:]+$", "description": "A .claude/ path, resolved inside the hook's .claude/ directory; no .. segment, no absolute path (the hook refuses either too)." },
+        "trackerTypes": { "type": "array", "items": { "type": "string" } },
+        "trackerOmitScopes": { "type": "array", "items": { "type": "string" } },
+        "trackerOmitScopesUnlessFlag": {
+          "type": "object",
+          "required": ["flag", "scopes"],
+          "properties": {
+            "flag": { "type": "string", "pattern": "^--" },
+            "scopes": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "phase2Inline": {
+      "type": "object",
+      "description": "Phase 2 listed inline, each subject a step heading of `source`.",
+      "required": ["source", "tasks"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1, "description": "Repo-relative file whose step headings the subjects are." },
+        "extensions": { "type": "boolean", "description": "The spec carries USER-EXTENSION blocks, each a Phase 2 task when non-empty." },
+        "tasks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["subject"],
+            "properties": {
+              "subject": { "type": "string", "pattern": "^Step \\d+[a-z]?(-[a-z]+)?: \\S" },
+              "condition": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

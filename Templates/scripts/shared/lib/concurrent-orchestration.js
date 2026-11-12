@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -96,7 +96,13 @@ const STEP_INSTRUCTION_EXEMPT = Object.freeze({
  */
 const MEMBER_TEMPLATES = Object.freeze({
   // #3502: a spawn step's onReturn names this; {{n}} is the step's issue.
-  'member-result': "Before #{{n}}'s merge-back: node .claude/scripts/shared/lib/subagent-result.js validate --role idpf-implementer --file .tmp-gate-{{n}}-member.json. "
+  // #3590: the member writes its result inside its worktree (isolation refuses
+  // any other path), so this step copies it to the root before validating.
+  // #3596: a root copy left by an earlier spawn must never be validated as
+  // this member's result, so it is removed first and a failed copy stops here.
+  'member-result': "Before #{{n}}'s merge-back: remove any earlier root copy with rm -f .tmp-gate-{{n}}-member.json, then copy the member's result to the root with cp \"<#{{n}}'s worktree path>/.tmp-gate-{{n}}-member.json\" .tmp-gate-{{n}}-member.json. "
+    + "cp fails → #{{n}}'s error, without validating: the member wrote no result, and a file the copy did not just produce is never validated. "
+    + "Otherwise run node .claude/scripts/shared/lib/subagent-result.js validate --role idpf-implementer --file .tmp-gate-{{n}}-member.json. "
     + "ok: false → #{{n}}'s error: hold its merge-back, keep its brief for a re-spawn; siblings continue.",
   // #3500: applies to every spawn step of the run.
   'spawn-not-found': require('./subagent-fallback.js').withFallback({ subagent_type: 'idpf-implementer' }).onNotFound,
@@ -135,6 +141,20 @@ const briefDataOf = (members, n) => {
 };
 
 /**
+ * The parent checkout as a forward-slash path with no trailing slash, or null
+ * when there is none — the one normalization every root-relative path uses (#3576).
+ * The filesystem root `/` normalizes to `''`, which is a root: callers test
+ * `=== null`, never truthiness, so `${rootPath}/x` still yields `/x`.
+ *
+ * @param {string|null|undefined} root
+ * @returns {string|null}
+ */
+function normalizeRoot(root) {
+  if (root === undefined || root === null || root === '') return null;
+  return String(root).replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+/**
  * The inline brief a member agent receives. It carries everything the member
  * needs and names what it must not do, because the parent owns those steps
  * and a member doing them would double a gate or an announcement.
@@ -144,11 +164,22 @@ const briefDataOf = (members, n) => {
  * resolve to nothing in the member's cwd (#3162); with `root` it names the
  * parent's absolute path instead.
  *
- * @param {{issue: number, title?: string, acceptanceCriteria?: string[], tddChecklist?: object|null, root?: string}} input
+ * @param {object} input
+ * @param {number} input.issue - The member's issue number.
+ * @param {string} [input.title] - Its title; `#<issue>` when absent.
+ * @param {string[]} [input.acceptanceCriteria] - The AC lines, rendered as checkboxes.
+ * @param {object|null} [input.tddChecklist] - tdd-checklist.json; null renders the inline cycle.
+ * @param {string|null} [input.root] - The parent checkout, absolute.
+ * @param {string} [input.description] - The issue's description section (#3203); omitted when empty.
+ * @param {string} [input.proposedSolution] - Its proposed solution (#3203); an absent one is said.
+ * @param {string[]} [input.declaredScope] - Its `Files to modify:` paths (#3203); an empty list is said.
+ * @param {{lines: string[], notice: string|null}|null} [input.briefContext] - The project-context
+ *   lines (specialist, domains, frameworkPath) the caller resolved once per run (#3561).
  * @returns {string}
  */
 function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist, root, description = '', proposedSolution = '', declaredScope = [], briefContext = null } = {}) {
-  const skillsRoot = root ? `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/.claude/skills/` : null;
+  const rootPath = normalizeRoot(root);
+  const skillsRoot = rootPath !== null ? `${rootPath}/.claude/skills/` : null;
   const resolveSkills = (line) => (skillsRoot ? line.replace(/(^|[\s`'"(])\.claude\/skills\//g, `$1${skillsRoot}`) : line);
   const lines = [`## Work #${issue}: ${title || `#${issue}`}`, ''];
 
@@ -202,12 +233,15 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
   // format — lives in the idpf-implementer definition (#3502). The brief names
   // only what is specific to this member, plus where to read the definition
   // when the member runs as a general-purpose fallback (#3500).
-  const rootPrefix = root ? `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/` : '';
+  const rootPrefix = rootPath !== null ? `${rootPath}/` : '';
   lines.push('### Role and result');
   lines.push('- You are `idpf-implementer`: your commit contract, what the parent owns and your result format are in that definition. '
     + `If you were spawned without it (a general-purpose fallback), read \`${rootPrefix}.claude/agents/idpf/idpf-implementer.md\` first and follow it.`);
   lines.push(`- Commit message: \`Refs #${issue} — <what this commit implements>\`.`);
-  lines.push(`- Result file: \`${rootPrefix}.tmp-gate-${issue}-member.json\`.`);
+  // The member runs under worktree isolation, which refuses a write outside
+  // its worktree (#3590): the file goes at the worktree root, root or not, and
+  // the parent's member-result step copies it to the project root.
+  lines.push(`- Result file: \`.tmp-gate-${issue}-member.json\` at your worktree root — never outside it, by any tool; the parent copies it from there.`);
   return lines.join('\n');
 }
 
@@ -216,9 +250,13 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
  * project root, absolute, because the member reads it from its worktree.
  * The member's scratch-clear step removes it (#3360); the `.tmp-` prefix
  * leaves the startup stale-scratch sweep as the fallback for a halted run.
+ * A missing root throws (#3576): there is no file to place, and a brief path
+ * built under `undefined/` would hand the member a file that does not exist.
  */
 function briefPathOf(root, issue) {
-  return `${String(root).replace(/\\/g, '/').replace(/\/+$/, '')}/.tmp-brief-${issue}.md`;
+  const rootPath = normalizeRoot(root);
+  if (rootPath === null) throw new Error(`briefPathOf: a project root is required to place #${issue}'s brief file`);
+  return `${rootPath}/.tmp-brief-${issue}.md`;
 }
 
 /**
@@ -229,7 +267,12 @@ function briefPathOf(root, issue) {
  * and the preamble envelope never carries it. Without one — no root to place
  * a file under — the brief is inline, as before.
  *
- * @returns {{description: string, isolation: 'worktree', prompt: string, briefPath?: string}}
+ * @param {object} input - buildMemberBrief's input (issue, title, acceptanceCriteria,
+ *   tddChecklist, root, description, proposedSolution, declaredScope, briefContext), plus:
+ * @param {string} [input.briefPath] - The brief file, absolute; when set the prompt only points at it.
+ * @returns {{description: string, subagent_type: 'idpf-implementer', isolation: 'worktree', prompt: string,
+ *   briefPath?: string, onNotFound: string}} `onNotFound` is the parent's fallback step that
+ *   subagent-fallback.js `withFallback` adds (#3500); buildRun strips it into a run template.
  */
 function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, root, description, proposedSolution, declaredScope, briefPath, briefContext } = {}) {
   const base = { description: `Work #${issue}: ${title || `#${issue}`}`, subagent_type: 'idpf-implementer', isolation: 'worktree' };
@@ -248,11 +291,13 @@ function buildSpawnRequest({ issue, title, acceptanceCriteria, tddChecklist, roo
 
 /**
  * Every group member's brief, for the preamble to write (#3280). `buildRun`
- * stays pure; the caller owns the disk.
+ * stays pure; the caller owns the disk. A missing root throws (#3576), as
+ * briefPathOf does: a brief file needs a root to live under.
  *
  * @returns {Array<{issue: number, path: string, text: string}>}
  */
 function memberBriefs({ plan = {}, members = {}, tddChecklist = null, root, briefContext = null } = {}) {
+  if (normalizeRoot(root) === null) throw new Error('memberBriefs: a project root is required to place the brief files');
   const groups = Array.isArray(plan.groups) ? plan.groups : [];
   return groups.flat().map((n) => ({
     issue: n,
@@ -1296,13 +1341,28 @@ function runRecordSpawnCli(argv) {
   return { code: 0, envelope: { ok: true, ledger: opts['--ledger'], members: next.members } };
 }
 
-// `--not-started N[=<half-made worktree path>]` (#3269).
+// `--not-started N[=<half-made worktree path>]` (#3269). N must be a positive
+// integer; anything else returns null so the CLI refuses it (#3576) — an empty
+// value once became Number('') = 0, a phantom issue 0 in the run state.
+const isIssueNumber = (n) => Number.isInteger(n) && n > 0;
 function parseNotStarted(v) {
-  const [num, ...rest] = String(v || '').split('=');
-  return { issue: Number(num), path: rest.length ? rest.join('=') : null, error: null };
+  const [num, ...rest] = String(v === undefined || v === null ? '' : v).split('=');
+  const issue = /^\d+$/.test(num.trim()) ? Number(num) : NaN;
+  if (!isIssueNumber(issue)) return null;
+  return { issue, path: rest.length ? rest.join('=') : null, error: null };
 }
+// --merged, --passed and --stopped carry a bare issue number (#3595): the same
+// positive-integer rule as --not-started, refused rather than stored as 0 or
+// dropped as NaN.
+function parseIssueFlag(v) {
+  const s = v === undefined || v === null ? '' : String(v).trim();
+  const n = /^\d+$/.test(s) ? Number(s) : NaN;
+  return isIssueNumber(n) ? n : null;
+}
+const issueFlagError = (flag, v) => `${flag} needs a positive issue number; got ${JSON.stringify(v === undefined ? '' : v)}`;
+const notStartedError = (v) => `--not-started needs N[=<path>] with N a positive issue number; got ${JSON.stringify(v === undefined ? '' : v)}`;
 const addNums = (list, more) => [...(list || []), ...more.filter((n) => Number.isInteger(n) && !(list || []).includes(n))];
-const addNotStarted = (list, more) => [...(list || []), ...more.filter((f) => Number.isInteger(f.issue) && !(list || []).some((x) => x.issue === f.issue))];
+const addNotStarted = (list, more) => [...(list || []), ...more.filter((f) => isIssueNumber(f.issue) && !(list || []).some((x) => x.issue === f.issue))];
 
 /**
  * `next-steps` CLI (#3274) — the parent's handle on nextSteps between events.
@@ -1320,11 +1380,17 @@ function runNextStepsCli(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--state') opts.state = argv[++i];
-    else if (a === '--merged') opts.merged.push(Number(argv[++i]));
-    else if (a === '--passed') opts.passed.push(Number(argv[++i]));
-    else if (a === '--stopped') opts.stopped.push(Number(argv[++i]));
-    else if (a === '--not-started') opts.notStarted.push(parseNotStarted(argv[++i]));
-    else if (a === '--show-batch') opts.showBatch = Number(argv[++i]);
+    else if (a === '--merged' || a === '--passed' || a === '--stopped') {
+      const v = argv[++i];
+      const n = parseIssueFlag(v);
+      if (n === null) return { code: 1, envelope: { ok: false, error: issueFlagError(a, v) } };
+      opts[a.slice(2)].push(n);
+    } else if (a === '--not-started') {
+      const v = argv[++i];
+      const f = parseNotStarted(v);
+      if (!f) return { code: 1, envelope: { ok: false, error: notStartedError(v) } };
+      opts.notStarted.push(f);
+    } else if (a === '--show-batch') opts.showBatch = Number(argv[++i]);
     else if (a === '--show-start') opts.showStart = Number(argv[++i]);
     else if (a !== 'next-steps') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
   }
@@ -1369,9 +1435,17 @@ function runReplanCli(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--state') opts.state = argv[++i];
-    else if (a === '--stopped') opts.stopped.push(Number(argv[++i]));
-    else if (a === '--not-started') opts.notStarted.push(parseNotStarted(argv[++i]));
-    else if (a !== 'replan') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
+    else if (a === '--stopped') {
+      const v = argv[++i];
+      const n = parseIssueFlag(v);
+      if (n === null) return { code: 1, envelope: { ok: false, error: issueFlagError(a, v) } };
+      opts.stopped.push(n);
+    } else if (a === '--not-started') {
+      const v = argv[++i];
+      const f = parseNotStarted(v);
+      if (!f) return { code: 1, envelope: { ok: false, error: notStartedError(v) } };
+      opts.notStarted.push(f);
+    } else if (a !== 'replan') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
   }
   if (!opts.state) return { code: 1, envelope: { ok: false, error: '--state <file> is required' } };
   let state;

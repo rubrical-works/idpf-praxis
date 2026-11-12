@@ -17,11 +17,12 @@
     "type": { "type": "string", "enum": ["bug", "enhancement", "story", "epic", "generic", "prd", "proposal", "test-plan"] },
     "findings": {
       "autoEvaluated": [
-        { "id": "string", "criterion": "string", "status": "pass|warn|fail|skip", "evidence": "string" }
+        { "id": "string", "criterion": "string", "status": "pass|warn|fail|skip", "evidence": "string", "advisory": "boolean (optional)" }
       ],
       "userEvaluated": [
-        { "id": "string", "criterion": "string", "status": "pass|warn|fail|skip", "evidence": "string" }
-      ]
+        { "id": "string", "criterion": "string", "status": "pass|warn|fail|skip", "evidence": "string", "advisory": "boolean (optional)" }
+      ],
+      "advisoryNote": "Per-finding advisory (#3609): set advisory: true only where the criterion's autoCheck says to — today a charter-alignment warning on charter-scope.js basis outweighed-out-of-scope. review-finalize.js honors it only for a warn on a criterion that declares conditionalAdvisory in review-criteria.json for the reviewed type, and ignores it everywhere else; criteria marked advisory: true there are advisory without the flag."
     },
     "recommendation": { "type": "string", "enum": ["Ready for work", "Needs minor revision", "Needs revision", "Needs major rework"] },
     "recommendationReason": { "type": "string", "optional": true },

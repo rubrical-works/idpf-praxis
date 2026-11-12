@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Charter entity extraction and count verification (#3420).
  * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
  * memory, checks the Key Entities counts against disk, and scans charter prose

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description The argument rule for deployed commands (#3030): main input
  *   (prose, issue numbers, a single name) is typed bare and every other option
  *   is a `--flag`. Holds the table of bare forms the rule replaced, each
@@ -93,9 +93,23 @@ function helpEnvelope(command) {
   };
 }
 
+/**
+ * Put a parser's unrecognized flag-shaped tokens on the envelope, always an
+ * array (#3545, #3555): the pass-through convention in 02-github-workflow.md
+ * has the command report them. One helper for review-preamble.js and
+ * resolve-preamble.js (#3605), so the two cannot drift apart.
+ * @param {object} envelope
+ * @param {{unrecognizedFlags?: string[]} | null} args
+ */
+function reportUnrecognizedFlags(envelope, args) {
+  envelope.unrecognizedFlags = (args && args.unrecognizedFlags) || [];
+  return envelope;
+}
+
 module.exports = {
   RETIRED_FORMS,
   findRetired,
   wantsHelp,
   helpEnvelope,
+  reportUnrecognizedFlags,
 };

@@ -1,5 +1,5 @@
 # Agent Architecture
-**Version:** v0.117.0
+**Version:** v0.118.0
 **Source:** Reference/Agent-Architecture.md
 **Purpose:** One contract for every framework-spawned subagent, every `.claude/agents/` definition and every spawning call site — cite it, never re-derive it. **On demand, not auto-loaded:** read when writing a definition, a brief builder (`buildMemberBrief()`, `planTier3()`, a review dispatcher) or a spawn request. Why not a rule: `Construction/Design-Decisions/2026-11-01-agent-architecture-reference-not-rule.md`.
 ## Role Contract

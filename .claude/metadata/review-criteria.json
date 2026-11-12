@@ -31,9 +31,10 @@
         },
         {
           "id": "test-coverage-bug",
+          "advisory": true,
           "name": "Test coverage proportionate (bug)",
           "overrides": "test-coverage-proportionate",
-          "autoCheck": "Regression-test AC required unless the issue states why one is not warranted (e.g. the defect is in prose or data with no executable path): the AC must reproduce the reported behavior, because existing tests did not catch the defect — which is why 'existing tests pass' alone does not suffice even for a single-path fix. Flag ⚠️ when neither a regression-test AC nor a stated reason is present (#2993). Multi-path refactor: ACs MUST require tests for new pattern (flag if only 'existing tests pass' for changes touching multiple functions/modules). Additionally report which test files the fix implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. Advisory — blocks nothing."
+          "autoCheck": "Regression-test AC required unless the issue states why one is not warranted (e.g. the defect is in prose or data with no executable path): the AC must reproduce the reported behavior, because existing tests did not catch the defect — which is why 'existing tests pass' alone does not suffice even for a single-path fix. Flag ⚠️ when neither a regression-test AC nor a stated reason is present (#2993). Multi-path refactor: ACs MUST require tests for new pattern (flag if only 'existing tests pass' for changes touching multiple functions/modules). Additionally report which test files the fix implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. When you write the missing test AC, state the behavior under test, not exact output strings: name the input and the observable outcome, never a literal message or log line the test would pin, so the AC survives a wording change. A test AC that names only test paths a declared suite runs is written into the body before finalize (review-repairs.json kind test-ac). Advisory — blocks nothing."
         },
         {
           "id": "proposed-fix-described",
@@ -42,16 +43,19 @@
         },
         {
           "id": "files-to-modify-declared",
+          "advisory": true,
           "name": "Files to modify declared at top level",
           "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/declared-scope-check.js — never through a temp file, whose root write would void a concurrent Tier 3 review (#3351); report the status it returns with its evidence; do not re-parse the block here — the helper reuses scope-drift-check.js parseDeclaredScope. pass -> ✅ with the parsed paths as evidence. warn -> ⚠️ naming the problem the evidence states: a header not at top level (off its own line, or inside a list item such as a Steps to Reproduce step — #3239, which concurrency-plan then classified undeclared and sent to the sequential tail), parseDeclaredScope's warning (section found but no backticked paths parsed), or no top-level declaration at all. Step 2a-ii (b) writes the declaration after this evaluation: when it does, re-run the helper on the written body and report that result, naming the repair. Advisory — a warning, never ❌."
         },
         {
           "id": "references-valid",
+          "advisory": true,
           "name": "References resolve (paths, #N, /commands)",
           "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/review-references.js — never through a temp file (#3351); report the status it returns, never re-deriving it (#3540). It checks every backticked path (exists; new when missing but listed under **Files to modify:**; missing; outside-root when it escapes the root via .., never stat-ed), every #N (state and close reason from one batched query; superseded-or-dropped when a Depends on / Blocked by line names an issue closed not_planned; missing when the number resolves to nothing) and every /command (against CommandsSrc/ or .claude/commands/; proposed, not missing, when named beside an open issue — #3547), skipping fenced blocks. pass -> ✅ with the reference counts as evidence. warn -> ⚠️ naming each missing, outside-root or superseded-or-dropped reference with its line. Relay the helper's warnings verbatim: unverified references (a failed query, no repository configured) are named, never counted as passing. Prose claims that name no path, issue or command are not checked here. Advisory — a warning, never ❌."
         },
         {
           "id": "root-cause-identified",
+          "advisory": true,
           "name": "Root cause identified",
           "autoCheck": "Does the body state WHY the defect happens — the mechanism: the specific code path, condition or data that produces the wrong behavior — anywhere in Description, Actual Behavior or Proposed Fix? Distinct from proposed-fix-described, which asks WHAT the fix does. ✅ when the mechanism is stated. ✅ also when the body explicitly says the root cause is not yet known and names the investigation that will establish it — at filing time an honest 'unknown' is correct. ⚠️ when the body only restates the symptom. Advisory, never ❌: an unknown root cause must not block the review (#2993)."
         },
@@ -100,9 +104,10 @@
         },
         {
           "id": "test-coverage-story",
+          "advisory": true,
           "name": "Test coverage proportionate (story)",
           "overrides": "test-coverage-proportionate",
-          "autoCheck": "Infer scope from ACs and description. If story adds or modifies code paths, ACs should include test requirements proportionate to scope. Additionally report which test files the story implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. A story authored through /add-story should already carry candidate test paths in its `**Files to modify:**` section (#2727) — their absence is itself worth reporting. Advisory — blocks nothing."
+          "autoCheck": "Infer scope from ACs and description. If story adds or modifies code paths, ACs should include test requirements proportionate to scope. Additionally report which test files the story implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. A story authored through /add-story should already carry candidate test paths in its `**Files to modify:**` section (#2727) — their absence is itself worth reporting. When you write the missing test AC, state the behavior under test, not exact output strings: name the input and the observable outcome, never a literal message or log line the test would pin, so the AC survives a wording change. A test AC that names only test paths a declared suite runs is written into the body before finalize (review-repairs.json kind test-ac). Advisory — blocks nothing."
         },
         {
           "id": "proposed-solution",
@@ -111,11 +116,13 @@
         },
         {
           "id": "files-to-modify-declared",
+          "advisory": true,
           "name": "Files to modify declared at top level",
           "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/declared-scope-check.js — never through a temp file, whose root write would void a concurrent Tier 3 review (#3351); report the status it returns with its evidence; do not re-parse the block here — the helper reuses scope-drift-check.js parseDeclaredScope. pass -> ✅ with the parsed paths as evidence. warn -> ⚠️ naming the problem the evidence states: a header not at top level (off its own line, or inside a list item such as a Steps to Reproduce step — #3239, which concurrency-plan then classified undeclared and sent to the sequential tail), parseDeclaredScope's warning (section found but no backticked paths parsed), or no top-level declaration at all. Step 2a-ii (b) writes the declaration after this evaluation: when it does, re-run the helper on the written body and report that result, naming the repair. Advisory — a warning, never ❌."
         },
         {
           "id": "references-valid",
+          "advisory": true,
           "name": "References resolve (paths, #N, /commands)",
           "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/review-references.js — never through a temp file (#3351); report the status it returns, never re-deriving it (#3540). It checks every backticked path (exists; new when missing but listed under **Files to modify:**; missing; outside-root when it escapes the root via .., never stat-ed), every #N (state and close reason from one batched query; superseded-or-dropped when a Depends on / Blocked by line names an issue closed not_planned; missing when the number resolves to nothing) and every /command (against CommandsSrc/ or .claude/commands/; proposed, not missing, when named beside an open issue — #3547), skipping fenced blocks. pass -> ✅ with the reference counts as evidence. warn -> ⚠️ naming each missing, outside-root or superseded-or-dropped reference with its line. Relay the helper's warnings verbatim: unverified references (a failed query, no repository configured) are named, never counted as passing. Prose claims that name no path, issue or command are not checked here. Advisory — a warning, never ❌."
         },
@@ -133,7 +140,8 @@
         {
           "id": "charter-alignment",
           "name": "Aligned with the charter",
-          "autoCheck": "Pipe the title and story statement on stdin — <title and story statement> | node .claude/scripts/shared/lib/charter-scope.js --command add-story — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the story matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the story's own scope section; scope-boundaries covers that."
+          "autoCheck": "Pipe the title and story statement on stdin — <title and story statement> | node .claude/scripts/shared/lib/charter-scope.js --command add-story — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the story matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the story's own scope section; scope-boundaries covers that. When charter-scope.js returns basis outweighed-out-of-scope (#3609), the warning names a concept outside scope rather than proposing out-of-scope work: report it as ⚠️ and set advisory: true on the finding, so it never blocks Ready for work on its own. Set advisory: true in that case only — never for basis no-match and never on a conflicts ❌; review-finalize.js honors the flag only on this criterion (conditionalAdvisory) and only on a warning.",
+          "conditionalAdvisory": true
         }
       ]
     },
@@ -178,7 +186,8 @@
         {
           "id": "charter-alignment",
           "name": "Aligned with the charter",
-          "autoCheck": "Pipe the title and description on stdin — <title and description> | node .claude/scripts/shared/lib/charter-scope.js --command create-backlog — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the epic matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the epic's own scope section; scope-boundaries covers that."
+          "autoCheck": "Pipe the title and description on stdin — <title and description> | node .claude/scripts/shared/lib/charter-scope.js --command create-backlog — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the epic matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the epic's own scope section; scope-boundaries covers that. When charter-scope.js returns basis outweighed-out-of-scope (#3609), the warning names a concept outside scope rather than proposing out-of-scope work: report it as ⚠️ and set advisory: true on the finding, so it never blocks Ready for work on its own. Set advisory: true in that case only — never for basis no-match and never on a conflicts ❌; review-finalize.js honors the flag only on this criterion (conditionalAdvisory) and only on a warning.",
+          "conditionalAdvisory": true
         }
       ]
     },
@@ -197,11 +206,13 @@
         },
         {
           "id": "files-to-modify-declared",
+          "advisory": true,
           "name": "Files to modify declared at top level",
           "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/declared-scope-check.js — never through a temp file, whose root write would void a concurrent Tier 3 review (#3351); report the status it returns with its evidence; do not re-parse the block here — the helper reuses scope-drift-check.js parseDeclaredScope. pass -> ✅ with the parsed paths as evidence. warn -> ⚠️ naming the problem the evidence states: a header not at top level (off its own line, or inside a list item such as a Steps to Reproduce step — #3239, which concurrency-plan then classified undeclared and sent to the sequential tail), parseDeclaredScope's warning (section found but no backticked paths parsed), or no top-level declaration at all. Step 2a-ii (b) writes the declaration after this evaluation: when it does, re-run the helper on the written body and report that result, naming the repair. Advisory — a warning, never ❌."
         },
         {
           "id": "references-valid",
+          "advisory": true,
           "name": "References resolve (paths, #N, /commands)",
           "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/review-references.js — never through a temp file (#3351); report the status it returns, never re-deriving it (#3540). It checks every backticked path (exists; new when missing but listed under **Files to modify:**; missing; outside-root when it escapes the root via .., never stat-ed), every #N (state and close reason from one batched query; superseded-or-dropped when a Depends on / Blocked by line names an issue closed not_planned; missing when the number resolves to nothing) and every /command (against CommandsSrc/ or .claude/commands/; proposed, not missing, when named beside an open issue — #3547), skipping fenced blocks. pass -> ✅ with the reference counts as evidence. warn -> ⚠️ naming each missing, outside-root or superseded-or-dropped reference with its line. Relay the helper's warnings verbatim: unverified references (a failed query, no repository configured) are named, never counted as passing. Prose claims that name no path, issue or command are not checked here. Advisory — a warning, never ❌."
         },
@@ -224,9 +235,10 @@
         },
         {
           "id": "test-coverage-enhancement",
+          "advisory": true,
           "name": "Test coverage proportionate (enhancement)",
           "overrides": "test-coverage-proportionate",
-          "autoCheck": "New feature: ACs MUST require unit tests for new functionality. Behavior change: ACs MUST require updated tests reflecting changed behavior. Infer scope from keywords ('refactor', 'replace', 'rewrite', 'across N files') and count of affected components. Additionally report which test files the enhancement implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. Advisory — blocks nothing."
+          "autoCheck": "New feature: ACs MUST require unit tests for new functionality. Behavior change: ACs MUST require updated tests reflecting changed behavior. Infer scope from keywords ('refactor', 'replace', 'rewrite', 'across N files') and count of affected components. Additionally report which test files the enhancement implicates, pairing inferred source paths against `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json` and naming each; where no pairing resolves, say that none could be resolved and why rather than reporting nothing. When you write the missing test AC, state the behavior under test, not exact output strings: name the input and the observable outcome, never a literal message or log line the test would pin, so the AC survives a wording change. A test AC that names only test paths a declared suite runs is written into the body before finalize (review-repairs.json kind test-ac). Advisory — blocks nothing."
         },
         {
           "id": "deployment-impact-assessed",
@@ -248,7 +260,8 @@
         {
           "id": "charter-alignment",
           "name": "Aligned with the charter",
-          "autoCheck": "Pipe the title, description and proposed solution on stdin — <title, description and proposed solution> | node .claude/scripts/shared/lib/charter-scope.js --command enhancement — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the enhancement matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the enhancement's own scope section; scope-boundaries covers that."
+          "autoCheck": "Pipe the title, description and proposed solution on stdin — <title, description and proposed solution> | node .claude/scripts/shared/lib/charter-scope.js --command enhancement — never through a temp file (#3351), and report the alignment it returns with its matchedItems as evidence; do not re-derive the match here. aligned -> pass. possibly-misaligned -> warning: naming that the enhancement matches no In Scope or Current Focus item, or, when matchedItems carries an outOfScope entry, naming that item as outweighed by the in-charter matches (#3479). conflicts -> fail and blocking: the recommendation is Needs revision or stronger, naming the Out of Scope item matched. skipped (no charter, template charter, .no-charter-enforcement, framework-only paths) -> not applicable, with the reason. Not a judgment of the enhancement's own scope section; scope-boundaries covers that. When charter-scope.js returns basis outweighed-out-of-scope (#3609), the warning names a concept outside scope rather than proposing out-of-scope work: report it as ⚠️ and set advisory: true on the finding, so it never blocks Ready for work on its own. Set advisory: true in that case only — never for basis no-match and never on a conflicts ❌; review-finalize.js honors the flag only on this criterion (conditionalAdvisory) and only on a warning.",
+          "conditionalAdvisory": true
         }
       ]
     },
@@ -268,6 +281,7 @@
         },
         {
           "id": "references-valid",
+          "advisory": true,
           "name": "References resolve (paths, #N, /commands)",
           "autoCheck": "Pipe the body to the helper — gh pmu view <N> --body-stdout | node .claude/scripts/shared/lib/review-references.js — never through a temp file (#3351); report the status it returns, never re-deriving it (#3540). It checks every backticked path (exists; new when missing but listed under **Files to modify:**; missing; outside-root when it escapes the root via .., never stat-ed), every #N (state and close reason from one batched query; superseded-or-dropped when a Depends on / Blocked by line names an issue closed not_planned; missing when the number resolves to nothing) and every /command (against CommandsSrc/ or .claude/commands/; proposed, not missing, when named beside an open issue — #3547), skipping fenced blocks. pass -> ✅ with the reference counts as evidence. warn -> ⚠️ naming each missing, outside-root or superseded-or-dropped reference with its line. Relay the helper's warnings verbatim: unverified references (a failed query, no repository configured) are named, never counted as passing. Prose claims that name no path, issue or command are not checked here. Advisory — a warning, never ❌."
         },

@@ -1,0 +1,145 @@
+{
+  "$schema": "./routed-command-tasks-schema.json",
+  "version": 1,
+  "_meta": {
+    "description": "Rule 07 two-phase task creation, as data for .claude/hooks/task-phase-hook.js (#3610). The hook reminds; it does not block (Construction/Design-Decisions/2026-11-11-task-phase-hook.md). PreToolUse names the Phase 1 subject when a routed preamble script is invoked; PostToolUse names the Phase 2 list for the path the preamble chose, and nothing when a stop signal matches. Inline Phase 2 subjects are the step headings of each command's `source` file, issue references stripped; tests/hooks/task-phase-hook.test.js checks each against its source.",
+    "issue": 3610
+  },
+  "scripts": {
+    "work-preamble.js": {
+      "commands": ["/work"]
+    },
+    "done-preamble.js": {
+      "commands": ["/done"]
+    },
+    "review-preamble.js": {
+      "commands": ["/review-issue", "/review-proposal", "/review-prd", "/review-test-plan"],
+      "byContextType": {
+        "proposal": "/review-proposal",
+        "prd": "/review-prd",
+        "test-plan": "/review-test-plan"
+      },
+      "default": "/review-issue"
+    },
+    "resolve-preamble.js": {
+      "commands": ["/resolve-review"]
+    }
+  },
+  "stopSignals": [
+    { "path": "ok", "equals": false, "reason": "the preamble failed" },
+    { "path": "context.redirect", "truthy": true, "reason": "redirect — the target command creates its own tasks" },
+    { "path": "earlyExit", "equals": true, "reason": "early exit" },
+    { "path": "context.earlyExit", "equals": true, "reason": "early exit" }
+  ],
+  "commands": {
+    "/work": {
+      "phase1": "Step 1: Context Gathering (preamble script){forIssue}",
+      "phase2": {
+        "file": ".claude/scripts/shared/lib/work-task-definitions.json",
+        "trackerTypes": ["epic", "branch"],
+        "trackerOmitScopes": ["per-sub-issue"],
+        "trackerOmitScopesUnlessFlag": { "flag": "--nonstop", "scopes": ["per-sub-issue-unless-nonstop"] }
+      }
+    },
+    "/done": {
+      "phase1": "Step 1: Context Gathering (Preamble Script){forIssue}",
+      "phase2": {
+        "source": "CommandsSrc/done.md",
+        "extensions": true,
+        "tasks": [
+          { "subject": "Step 1a: Epic Detection" },
+          { "subject": "Step 1b: Post Work Summary Comment" },
+          { "subject": "Step 2: Push (Batch-Aware)" },
+          { "subject": "Step 3: Background CI Monitoring (Batch-Aware)" },
+          { "subject": "Step 4: Cleanup and Task Audit" }
+        ]
+      }
+    },
+    "/review-issue": {
+      "phase1": "Step 1: Setup (Preamble Script){forIssue}",
+      "phase2": {
+        "source": "Reference/review-execution.md",
+        "tasks": [
+          { "subject": "Step 1d: Load Conditional Sections", "condition": "epic, --prior-art, or a test-plan/prd label" },
+          { "subject": "Step 1c: Peer Announcement — review started" },
+          { "subject": "Step 2: Evaluate Criteria" },
+          { "subject": "Step 3: Finalize (Script)" },
+          { "subject": "Step 3b: Peer Announcement — the review verdict" },
+          { "subject": "Step 3c: Single Resolve Pass", "condition": "finalize gave pending, interactive, no --step-wise" },
+          { "subject": "Step 3a: Interdependence Analysis (Multi-Issue Only)", "condition": "2+ issues reviewed" },
+          { "subject": "Step 4: Closing Notification and Cleanup" }
+        ]
+      }
+    },
+    "/resolve-review": {
+      "phase1": "Step 1: Setup (Preamble Script){forIssue}",
+      "phase2": {
+        "source": "Reference/review-execution.md",
+        "tasks": [
+          { "subject": "Step 1d: Load Conditional Sections", "condition": "context.type == 'epic'" },
+          { "subject": "Step 1a: Peer Announcement — review resolved" },
+          { "subject": "Step 1b: AC Feasibility on Authored ACs" },
+          { "subject": "Step 2: Resolve — Pass 1 (Auto-Fix)" },
+          { "subject": "Step 3: Resolve — Pass 2 (User Input)" },
+          { "subject": "Step 3a: Report Suggestions" },
+          { "subject": "Step 3b: Pre-Check", "condition": "Passes 1–2 edited the body" },
+          { "subject": "Step 4: Re-Review" }
+        ]
+      }
+    },
+    "/review-proposal": {
+      "phase1": "Step 1: Setup (Preamble Script){forIssue}",
+      "phase2": {
+        "source": "CommandsSrc/review-proposal.md",
+        "extensions": true,
+        "tasks": [
+          { "subject": "Step 1b: Construction Context Discovery" },
+          { "subject": "Step 2: Evaluate Criteria" },
+          { "subject": "Step 3: Update Proposal File" },
+          { "subject": "Step 4: Finalize (Self-Contained)" },
+          { "subject": "Step 5: Closing Notification and Cleanup" }
+        ]
+      }
+    },
+    "/review-prd": {
+      "phase1": "Step 1: Setup (Preamble Script){forIssue}",
+      "phase2": {
+        "source": "CommandsSrc/review-prd.md",
+        "extensions": true,
+        "tasks": [
+          { "subject": "Step 1b: Locate Test Plan" },
+          { "subject": "Step 2: Evaluate Criteria" },
+          { "subject": "Step 3: Update PRD File" },
+          { "subject": "Step 3a: Branch Auto-Assignment" },
+          { "subject": "Step 4: Finalize (Self-Contained)" },
+          { "subject": "Step 5: AC Check-Off (Conditional)" },
+          { "subject": "Step 6: Closing Notification and Cleanup" }
+        ]
+      }
+    },
+    "/review-test-plan": {
+      "phase1": "Step 1: Setup (Preamble Script){forIssue}",
+      "phase2": {
+        "source": "CommandsSrc/review-test-plan.md",
+        "extensions": true,
+        "tasks": [
+          { "subject": "Step 1a: Source PRD Review Gate" },
+          { "subject": "Step 2: Evaluate Criteria" },
+          { "subject": "Step 3: Update Test Plan File" },
+          { "subject": "Step 3a: Branch Auto-Assignment" },
+          { "subject": "Step 4: Finalize (Self-Contained)" },
+          { "subject": "Step 5: Approval Gate AC Check-Off (Conditional)" },
+          { "subject": "Step 5a: Approval Gate Confirmation (Conditional)" },
+          { "subject": "Step 6: Closing Notification and Cleanup" }
+        ]
+      }
+    }
+  },
+  "text": {
+    "phase1": "Rule 07 two-phase task creation: {commands} needs its Phase 1 task before this preamble runs — TaskCreate \"{subject}\" now if it does not exist. Only that one; Phase 2 waits for the preamble's result.",
+    "unavailable": "If the task tools are unavailable, track the steps in an inline checklist and say once that TaskList compaction recovery does not hold.",
+    "phase2": "Rule 07 Phase 2 for {command}: the preamble confirmed the path. Mark the preamble task completed and create these tasks now — every TaskCreate in ONE message as parallel tool calls; a conditional entry is created or skipped with a one-line note, never silently omitted:",
+    "extensions": "Plus one task per non-empty USER-EXTENSION block in the spec.",
+    "trackerOmitted": "Omitted for an epic or branch tracker ({count} per-sub-issue entries): Step 2b's parent tasks own them."
+  }
+}

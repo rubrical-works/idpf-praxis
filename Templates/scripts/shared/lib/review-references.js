@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * review-references.js — Back the `references-valid` review criterion: check
  * the paths, `#N` issues and `/commands` an issue body names against project
  * state (#3540).
@@ -32,7 +32,8 @@
  * Built-ins and shared siblings only (runtime dependency contract, #2418).
  *
  * CLI: node .claude/scripts/shared/lib/review-references.js [--body-file <path>] [--root <dir>]
- *      (or the body on stdin) → JSON result on stdout.
+ *      (or the body on stdin) → JSON result on stdout; an unreadable body is
+ *      `{ ok: false, error: { code, message } }` with exit code 1.
  */
 
 const fs = require('fs');
@@ -73,9 +74,13 @@ function extractPathRefs(body) {
   lines.forEach((line, i) => {
     if (fenced[i]) return;
     for (const m of line.matchAll(CODE_SPAN)) {
-      // Strip a trailing :line or :line:col — a flat pattern applied twice,
-      // not a nested quantifier (security/detect-unsafe-regex).
-      const token = m[1].trim().replace(/:\d+$/, '').replace(/:\d+$/, '');
+      // Strip a trailing :start-end range (#3608), :line or :line:col — flat
+      // patterns applied in turn, not a nested quantifier
+      // (security/detect-unsafe-regex).
+      const token = m[1].trim()
+        .replace(/:\d+-\d+$/, '')
+        .replace(/:\d+$/, '')
+        .replace(/:\d+$/, '');
       if (!isPathToken(token) || seen.has(token)) continue;
       seen.add(token);
       out.push({ ref: token, line: i + 1 });
@@ -92,7 +97,8 @@ function checkPaths(body, root) {
     // escapes the root via `..` — it is reported, never probed.
     const abs = path.resolve(rootAbs, ref);
     const rel = path.relative(rootAbs, abs);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    // `..` as a whole segment, not a prefix: `..config/x` is in-root (#3579).
+    if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
       return { kind: 'path', ref, result: 'outside-root', line };
     }
     let result;
@@ -112,7 +118,9 @@ function normalize(p) {
 // `#N` not preceded by a word character, `/`, `&` or `#`: excludes
 // `owner/repo#N` (companion references are out of scope), HTML entities
 // (`&#97;`) and nothing else that matters — `## Heading` has no digit.
-const ISSUE_REF = /(^|[^\w/&#])#([1-9]\d*)\b/g;
+// A factory, not a shared instance (#3579): a global-flag RegExp carries
+// `lastIndex` between `.test()`/`.exec()` calls, so every caller gets its own.
+const issueRefPattern = () => /(^|[^\w/&#])#([1-9]\d*)\b/g;
 const DEPENDENCY_LINE = /\b(?:depends on|blocked by)\b/i;
 
 /**
@@ -131,7 +139,7 @@ function extractIssueRefs(body) {
   lines.forEach((line, i) => {
     if (fenced[i]) return;
     const dependency = DEPENDENCY_LINE.test(line);
-    for (const m of line.matchAll(ISSUE_REF)) {
+    for (const m of line.matchAll(issueRefPattern())) {
       const number = Number(m[2]);
       const entry = byNumber.get(number);
       if (entry) entry.dependency = entry.dependency || dependency;
@@ -180,8 +188,9 @@ function buildIssueQuery(numbers) {
  * One batched state query for `numbers`, the `repository` object keyed
  * `i<N>`, or `null` with the reason. A whole-batch failure (no data at all —
  * a dropped connection's "unexpected EOF") is retried once with the identical
- * payload; a partial error already carries data and is never retried. Shared
- * with resolve-precheck.js's fallback (#3563) — one copy of the query.
+ * payload; a partial error already carries data and is never retried. Used by
+ * checkReferences (through checkIssues); resolve-precheck.js reads the states
+ * checkReferences already fetched (#3563, #3574).
  *
  * @param {number[]} numbers
  * @param {string} root
@@ -275,7 +284,7 @@ function issuesBesideCommands(body) {
   const out = new Map();
   lines.forEach((line, i) => {
     if (fenced[i]) return;
-    const numbers = [...line.matchAll(ISSUE_REF)].map((m) => Number(m[2]));
+    const numbers = [...line.matchAll(issueRefPattern())].map((m) => Number(m[2]));
     for (const m of line.matchAll(COMMAND_REF)) {
       if (!out.has(m[2])) out.set(m[2], []);
       out.get(m[2]).push(...numbers);
@@ -337,12 +346,31 @@ function main(argv = process.argv.slice(2)) {
     const i = argv.indexOf(name);
     return i !== -1 ? argv[i + 1] : undefined;
   };
+  // One JSON envelope, never a stack trace — same contract as
+  // resolve-precheck.js (#3579). exitCode, not process.exit(), so a piped
+  // stdout write is not cut off.
+  const fail = (code, prefix, e) => {
+    const message = `${prefix}: ${e && e.message ? e.message : String(e)}`;
+    process.stdout.write(JSON.stringify({ ok: false, error: { code, message } }, null, 2) + '\n');
+    process.exitCode = 1;
+  };
   const bodyFile = arg('--body-file');
-  const body = bodyFile ? fs.readFileSync(bodyFile, 'utf8') : fs.readFileSync(0, 'utf8');
-  const result = checkReferences(body, { root: arg('--root') || process.cwd() });
-  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  let body;
+  try {
+    body = bodyFile ? fs.readFileSync(bodyFile, 'utf8') : fs.readFileSync(0, 'utf8');
+  } catch (e) {
+    fail('BODY_UNREADABLE', `Could not read the body from ${bodyFile || 'stdin'}`, e);
+    return;
+  }
+  // The check and its write sit in the envelope too (#3604).
+  try {
+    const result = checkReferences(body, { root: arg('--root') || process.cwd() });
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } catch (e) {
+    fail('CHECK_FAILED', 'Reference check failed', e);
+  }
 }
 
 if (require.main === module) main();
 
-module.exports = { checkReferences, extractPathRefs, extractIssueRefs, extractCommandRefs, isPathToken, ISSUE_REF, queryIssueStates };
+module.exports = { checkReferences, extractPathRefs, extractIssueRefs, extractCommandRefs, isPathToken, issueRefPattern, queryIssueStates };

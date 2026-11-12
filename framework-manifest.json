@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.117.0",
+  "version": "0.118.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -686,6 +686,7 @@
           "hook-heartbeat.js",
           "input-validation.js",
           "issue-duplicates.js",
+          "issue-history-cache.js",
           "issue-ref-match.js",
           "issue-reviewer-brief.js",
           "issue-type.js",
@@ -754,6 +755,7 @@
           "block-cd.js",
           "shell-safety-hook.js",
           "ask-question-shape-hook.js",
+          "task-phase-hook.js",
           "startup-hook.js",
           "clear-hook.js",
           "resume-hook.js",
@@ -786,6 +788,18 @@
         "event": "PreToolUse",
         "matcher": "AskUserQuestion",
         "file": "ask-question-shape-hook.js",
+        "timeout": 5
+      },
+      {
+        "event": "PreToolUse",
+        "matcher": "Bash",
+        "file": "task-phase-hook.js",
+        "timeout": 5
+      },
+      {
+        "event": "PostToolUse",
+        "matcher": "Bash",
+        "file": "task-phase-hook.js",
         "timeout": 5
       },
       {
@@ -1249,6 +1263,16 @@
           "name": "ask-question-shape-schema",
           "source": ".claude/metadata/ask-question-shape-schema.json",
           "description": "JSON Schema for ask-question-shape.json"
+        },
+        {
+          "name": "routed-command-tasks",
+          "source": ".claude/metadata/routed-command-tasks.json",
+          "description": "Rule 07 Phase 1 subjects and Phase 2 task lists per routed command, read by task-phase-hook.js (#3610)"
+        },
+        {
+          "name": "routed-command-tasks-schema",
+          "source": ".claude/metadata/routed-command-tasks-schema.json",
+          "description": "JSON Schema for routed-command-tasks.json"
         },
         {
           "name": "spelling-policy",

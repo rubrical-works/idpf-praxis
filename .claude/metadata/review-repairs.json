@@ -31,6 +31,27 @@
       "modes": ["team", "enterprise"],
       "description": "Set the board priority the review named: gh pmu move <N> --priority <p0|p1|p2>."
     },
+    "test-coverage-bug": {
+      "kind": "test-ac",
+      "preFinalize": true,
+      "types": ["bug"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Append the test-only acceptance criterion the review wrote, and add its test files to **Files to modify:** (#3588). Guarded by review-repair.js classifyRepair: every path the AC names or adds must be a test path under test-coverage-conventions.json that a declared suite runs; otherwise not repairable, and the finding goes to /resolve-review Pass 2."
+    },
+    "test-coverage-story": {
+      "kind": "test-ac",
+      "preFinalize": true,
+      "types": ["story"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Append the test-only acceptance criterion the review wrote, and add its test files to **Files to modify:** (#3588). Guarded by review-repair.js classifyRepair: every path the AC names or adds must be a test path under test-coverage-conventions.json that a declared suite runs; otherwise not repairable, and the finding goes to /resolve-review Pass 2."
+    },
+    "test-coverage-enhancement": {
+      "kind": "test-ac",
+      "preFinalize": true,
+      "types": ["enhancement"],
+      "modes": ["solo", "team", "enterprise"],
+      "description": "Append the test-only acceptance criterion the review wrote, and add its test files to **Files to modify:** (#3588). Guarded by review-repair.js classifyRepair: every path the AC names or adds must be a test path under test-coverage-conventions.json that a declared suite runs; otherwise not repairable, and the finding goes to /resolve-review Pass 2."
+    },
     "title-clear": {
       "kind": "model-authored",
       "preFinalize": false,

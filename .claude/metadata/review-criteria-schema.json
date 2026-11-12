@@ -41,6 +41,14 @@
                   "type": "string",
                   "description": "Common criterion ID that this type-specific criterion supersedes"
                 },
+                "advisory": {
+                  "type": "boolean",
+                  "description": "True for a criterion whose warning blocks nothing (#3587). When every non-pass criterion of a review is advisory and no acceptance-criterion verdict is warn or fail, review-finalize.js assigns the reviewed label and records Ready for work. Omitted means false."
+                },
+                "conditionalAdvisory": {
+                  "type": "boolean",
+                  "description": "True for a criterion whose warning is advisory only when the reviewer flags the finding advisory: true for the condition its autoCheck names (#3609; charter-alignment on charter-scope.js basis outweighed-out-of-scope). review-finalize.js honors the per-finding flag on a warn of such a criterion, for the reviewed type only, and ignores it on every other criterion and on a fail. Omitted means false."
+                },
                 "env": {
                   "type": "string",
                   "enum": ["dev", "deployed", "both"],

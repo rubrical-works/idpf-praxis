@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -1030,7 +1030,7 @@ function loadTddChecklist() {
  * WorktreeCreate hook (worktree-create-hook.js) is registered (#3224).
  * Without it a member's worktree branches from the remote default branch.
  * @param {{cwd?: string, homedir?: string}} [where]
- * @returns {{registered: boolean, warnings: Array<{code: string, message: string}>}}
+ * @returns {{registered: boolean, layer: string|null, warnings: Array<{code: string, message: string}>}}
  */
 function resolveWorktreeHookFromDisk({ cwd = process.cwd(), homedir = require('os').homedir() } = {}) {
   const layers = [
@@ -1120,6 +1120,22 @@ function writeResumeLedgerToDisk(tracker, ledger) {
 }
 
 /**
+ * The run's project context, resolved once (#3561): the specialist, domains
+ * and absolute frameworkPath every member brief carries (#3501), plus the
+ * rendered brief lines and the notice the parent reports once for the run —
+ * on both schedules. concurrent-orchestration.js takes it as an input and
+ * reads no disk itself.
+ *
+ * @param {string} [root]
+ * @returns {{frameworkPath: string, specialist: object, domains: string[], notice: string|null, lines: string[]}}
+ */
+function resolveRunBriefContext(root = process.cwd()) {
+  const { resolveBriefContext, briefContextLines } = require('./lib/specialist-resolver.js');
+  const ctx = resolveBriefContext({ root });
+  return { ...ctx, lines: briefContextLines(ctx) };
+}
+
+/**
  * The concurrent run the parent executes (#3129): its step sequence, with a
  * worktree spawn request carrying each group member's brief, and one task per
  * member naming its group.
@@ -1139,27 +1155,13 @@ function writeResumeLedgerToDisk(tracker, ledger) {
  * @param {object} plan - buildPlan result
  * @param {Array<{number: number, title?: string, body?: string}>} active
  * @param {boolean} nonstop
- * @param {{writeBrief?: function(string, string): void, warnings?: object[], tracker?: number, noReview?: boolean}} [io] -
+ * @param {{writeBrief?: function(string, string): void, warnings?: object[], tracker?: number, noReview?: boolean, briefContext?: object}} [io] -
  *   writeBrief (also writes the rolling state file) injectable for tests; a
- *   failed write is pushed onto `warnings`; `noReview` (`--no-review`, #3269) turns every Tier 3 spawn into a review-skip
+ *   failed write is pushed onto `warnings`; `noReview` (`--no-review`, #3269) turns every Tier 3 spawn into a review-skip;
+ *   `briefContext` (#3570) is the resolveRunBriefContext() result, injectable so a
+ *   test never reads the real framework-config.json or specialist file — absent, it is resolved from disk
  */
-/**
- * The run's project context, resolved once (#3561): the specialist, domains
- * and absolute frameworkPath every member brief carries (#3501), plus the
- * rendered brief lines and the notice the parent reports once for the run —
- * on both schedules. concurrent-orchestration.js takes it as an input and
- * reads no disk itself.
- *
- * @param {string} [root]
- * @returns {{frameworkPath: string, specialist: object, domains: string[], notice: string|null, lines: string[]}}
- */
-function resolveRunBriefContext(root = process.cwd()) {
-  const { resolveBriefContext, briefContextLines } = require('./lib/specialist-resolver.js');
-  const ctx = resolveBriefContext({ root });
-  return { ...ctx, lines: briefContextLines(ctx) };
-}
-
-function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => fs.writeFileSync(p, text), warnings = [], tracker, noReview = false } = {}) {
+function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => fs.writeFileSync(p, text), warnings = [], tracker, noReview = false, briefContext: injectedBriefContext } = {}) {
   const members = {};
   const scopeOf = (n) => {
     const info = ((plan && plan.members) || []).find(m => m.number === n);
@@ -1176,7 +1178,9 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
     };
   }
   const tddChecklist = loadTddChecklist();
-  const briefContext = resolveRunBriefContext();
+  // Called through module.exports so a test can observe the default path
+  // (#3570); an injected io.briefContext skips it and reads no disk.
+  const briefContext = injectedBriefContext || module.exports.resolveRunBriefContext();
   let inlineBriefs = false;
   for (const brief of memberBriefs({ plan, members, tddChecklist, root: process.cwd(), briefContext })) {
     try {
@@ -1872,6 +1876,7 @@ async function runSingleIssue(issueNum, options) {
       // the plan falls back to sequential. Injectable so tests read no disk.
       const hook = (options.resolveWorktreeHook || resolveWorktreeHookFromDisk)();
       if (hook && Array.isArray(hook.warnings)) warnings.push(...hook.warnings);
+      const hookRegistered = !!(hook && hook.registered);
       // #3277: the tracker tree is checked before any spawn step. Injectable
       // so tests run no git.
       const dirtyTree = trackerTreeDirtyWarning(await (options.readTrackerStatus || readTrackerStatusFromGit)());
@@ -1905,10 +1910,18 @@ async function runSingleIssue(issueNum, options) {
         maxAgents: options.maxAgents,
         source: options.maxAgents !== undefined ? (options.maxAgentsSource || 'flag') : 'default',
         dependencies: context.dependencyGraph,
-        worktreeHookRegistered: !!(hook && hook.registered)
+        worktreeHookRegistered: hookRegistered
       });
+      // #3568: report where member worktrees start in both cases, so a
+      // registered hook is distinguishable from a decision never made.
+      context.concurrencyPlan.worktreeBase = {
+        registered: hookRegistered,
+        layer: (hook && typeof hook.layer === 'string') ? hook.layer : null,
+        base: hookRegistered ? 'tracker tip' : 'sequential fallback'
+      };
       context.concurrentRun = buildConcurrentRun(context.concurrencyPlan, statusResult.active, options.nonstop, {
         ...(options.writeBrief ? { writeBrief: options.writeBrief } : {}),
+        ...(options.briefContext ? { briefContext: options.briefContext } : {}),
         warnings,
         tracker: issueNum,
         noReview: !!options.noReview
@@ -1949,11 +1962,11 @@ async function runSingleIssue(issueNum, options) {
     unreviewed: !!(options && options.unreviewed)
   });
   if (startMove.defer) {
-    const priorStatus = dataResult.branch && dataResult.branch.status;
     const envelope = buildSuccessEnvelope(context, {
       assigned: assignGate,
       movedToInProgress: false,
-      alreadyInProgress: normalizeStatus(priorStatus) === 'inprogress',
+      // priorNorm is step 4b's, from the one priorStatus (#3605).
+      alreadyInProgress: priorNorm === 'inprogress',
       prdTrackerMoved: false,
       moveDeferred: {
         ...(startMove.state ? { state: startMove.state } : {}),
@@ -2240,12 +2253,12 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason } — zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks } (#3129) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE.'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, unreviewed (true only under --unreviewed, #3537: the Review-State Gate is waived for this run; absent otherwise), type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason, worktreeBase { registered, layer, base } } — worktreeBase is present in both cases (#3568): layer names the first settings layer registering the hook (project, project-local, user) or null, and base is "tracker tip" when registered, "sequential fallback" when not; zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks, specialistNotice } (#3129; specialistNotice, #3501, is the one specialist notice of the run for the parent to report — a string when no specialist was loaded, else null — on both schedules) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE.'
     },
     gates: {
       name: 'gates',
       type: 'object',
-      description: 'Boolean gate results: assigned, movedToInProgress, alreadyInProgress, prdTrackerMoved. movedToInProgress reports a real state change — it is false when the issue was already in_progress (see alreadyInProgress), not merely when the move command failed.'
+      description: 'Boolean gate results: assigned, movedToInProgress, alreadyInProgress, prdTrackerMoved. movedToInProgress reports a real state change — it is false when the issue was already in_progress (see alreadyInProgress), not merely when the move command failed. reopenedFrom (--reopen, #3265) names the In review/Done status the issue was moved back from. moveDeferred { state?, action, reason, prdTracker } (#3259) is present when the Review-State Gate will review or stop, so nothing was moved: state is the review state that deferred it (absent for a tree gate), action is the gate action that deferred it ("review", "stop" or "halt"; always "stop" for a tree gate), reason is the one line to report, and prdTracker is the PRD tracker number the Pre-Work Status Gate moves too, or null.'
     },
     autoTask: {
       name: 'autoTask',
@@ -2278,8 +2291,14 @@ function buildSchema() {
  * Callers gate on truthiness either way, but an envelope reporting wait:false
  * describes a decision nobody made.
  *
- * @param {{assign?: boolean, wait?: boolean, nonstop?: boolean}} parsed parseArgs output
- * @returns {{assign?: boolean, wait?: boolean, nonstop?: boolean}}
+ * @param {{assign?: boolean, wait?: boolean, nonstop?: boolean, reopen?: boolean,
+ *   concurrent?: boolean, noReview?: boolean, unreviewed?: boolean, maxAgents?: number,
+ *   maxAgentsSource?: string, parseWarnings?: Array<{code: string, message: string}>}} parsed parseArgs output
+ * @returns {{assign?: boolean, wait?: boolean, nonstop?: boolean, reopen?: boolean,
+ *   concurrent?: boolean, noReview?: boolean, unreviewed?: boolean, maxAgents?: number,
+ *   maxAgentsSource?: string, parseWarnings?: Array<{code: string, message: string}>}}
+ *   maxAgentsSource defaults to 'flag' whenever maxAgents is set; parseWarnings
+ *   is carried only when non-empty
  */
 function buildOptions(parsed) {
   const options = {};
@@ -2397,6 +2416,8 @@ module.exports = {
   buildSchema,
   buildAcSectionWarning,
   buildOptions,
+  buildConcurrentRun,
+  resolveRunBriefContext,
   decideStartMove,
   parseProcessingOrder,
   parseProcessingOrderDetail,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Charter scope check shared by the commands that create work (#3001).
  * @checksum sha256:placeholder
  *
@@ -23,7 +23,8 @@
  * CLI: node .claude/scripts/shared/lib/charter-scope.js --command <name>
  *        [--text "<work item>" | --text-file <path>] [--paths a,b] [--quiet] [--root <dir>]
  *   With neither text flag, the work item is read from stdin (#3351).
- *   → {"alignment", "matchedItems", "warnings", "skipped", "depth", "ask"}, exit 0
+ *   → {"alignment", "basis", "matchedItems", "warnings", "skipped", "depth", "ask"}, exit 0
+ *   basis (#3609): 'outweighed-out-of-scope' | 'no-match' for possibly-misaligned, else null
  */
 
 const fs = require('fs');
@@ -142,7 +143,7 @@ function checkScope(opts = {}) {
   const root = opts.root || process.cwd();
   const warnings = [];
   const result = (fields) => ({
-    alignment: null, matchedItems: [], warnings, skipped: null, depth, ask: false, ...fields,
+    alignment: null, basis: null, matchedItems: [], warnings, skipped: null, depth, ask: false, ...fields,
   });
 
   let data;
@@ -183,15 +184,26 @@ function checkScope(opts = {}) {
   // possibly-misaligned warning; the Out of Scope items stay in matchedItems.
   const outOfScope = matchedItems.filter((m) => m.list === 'outOfScope').length;
   const inCharter = matchedItems.length - outOfScope;
+  // #3609: `basis` names which possibly-misaligned case was hit — an Out of
+  // Scope match outweighed by in-charter matches, or no in-charter match at
+  // all — so the charter-alignment review criterion can treat the first as
+  // advisory. Null for every other alignment; `alignment` itself is unchanged.
   let alignment;
-  if (outOfScope) alignment = inCharter > outOfScope ? 'possibly-misaligned' : 'conflicts';
-  else if (matchedItems.length || !data.depths[depth].lists.includes('inScope')) alignment = 'aligned';
-  else alignment = 'possibly-misaligned';
+  let basis = null;
+  if (outOfScope) {
+    alignment = inCharter > outOfScope ? 'possibly-misaligned' : 'conflicts';
+    if (alignment === 'possibly-misaligned') basis = 'outweighed-out-of-scope';
+  } else if (matchedItems.length || !data.depths[depth].lists.includes('inScope')) {
+    alignment = 'aligned';
+  } else {
+    alignment = 'possibly-misaligned';
+    basis = 'no-match';
+  }
 
   let ask = data.alignment[alignment].ask;
   if (opts.quiet && alignment !== 'conflicts') ask = false;
 
-  return result({ alignment, matchedItems, ask });
+  return result({ alignment, basis, matchedItems, ask });
 }
 
 function parseArgs(argv) {

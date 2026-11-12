@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * Compact Hook — SessionStart:compact
  * Fires after context compaction.
  */

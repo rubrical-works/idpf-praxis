@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -29,7 +29,10 @@
  *
  * git and the suite runner are injected into every function; only the
  * command-line entry point at the bottom (#3158) spawns — real git, and each
- * declared suite command verbatim. Its subcommands (tier1, tier3-plan,
+ * declared suite command verbatim. One disk read remains outside the CLI:
+ * evaluateMember and planSequentialReview call projectContext(root), which
+ * reads framework-config.json and resolves the specialist, unless the caller
+ * injects a resolved `briefContext` ({domains, frameworkPath}) (#3575). Its subcommands (tier1, tier3-plan,
  * outcome, merge-back, group-tier1) are what the concurrent run's gate steps
  * name; `--help` with no subcommand prints the usage.
  */
@@ -232,6 +235,11 @@ function projectContext(root = process.cwd()) {
   return { domains: ctx.domains, frameworkPath: ctx.frameworkPath };
 }
 
+/** An injected `briefContext`'s domains and frameworkPath, else projectContext(root)'s disk read (#3575). */
+function briefOf(briefContext, root) {
+  return briefContext ? { domains: briefContext.domains || [], frameworkPath: briefContext.frameworkPath } : projectContext(root);
+}
+
 /** Whether the `diff-review` skill is installed under `root`. */
 function diffReviewSkillPresent(root = process.cwd()) {
   const fs = require('fs');
@@ -246,7 +254,10 @@ function diffReviewSkillPresent(root = process.cwd()) {
  * an input, so the read stays independent (diff-review § Input Contract).
  *
  * @param {{issue: number, acceptanceCriteria?: string[], filesToModify?: string[],
- *   range: string, charterPath?: string, noReview?: boolean, skillPresent?: boolean}} input
+ *   range: string, charterPath?: string, noReview?: boolean, skillPresent?: boolean,
+ *   domains?: string[], frameworkPath?: string}} input
+ *   `domains` and `frameworkPath` are the project's resolved domain ids and
+ *   absolute framework path, named in the prompt (#3501).
  */
 function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, commits = [], charterPath = 'CHARTER.md', noReview = false, skillPresent, domains = [], frameworkPath }) {
   if (noReview) {
@@ -388,6 +399,25 @@ const TREE_STATUS_ARGS = ['status', '--porcelain', '--ignored', '--untracked-fil
 const sha256 = (text) => require('crypto').createHash('sha256').update(String(text)).digest('hex');
 
 /**
+ * Could run path `runPath` name a file inside the directory `dir` (`a/b/`)?
+ * A literal path under it does; so does a glob that matches a file there, or
+ * one whose literal prefix (up to the first wildcard) lies under or above it —
+ * `src/**` and `src/*\/x.js` both reach into a new `src/new/` (#3293). Over-
+ * inclusive on purpose: a missed directory lets a stray write pass Tier 3.
+ * A declared directory written without a trailing slash (`src/new`, `src`)
+ * counts as the directory itself or an ancestor of it (#3601).
+ */
+function dirMayHoldRunPath(dir, runPath) {
+  if (runPath.startsWith(dir)) return true;
+  if (dir.startsWith(`${runPath.replace(/\/+$/, '')}/`)) return true;
+  const wild = runPath.search(/[*?[{]/);
+  if (wild === -1) return false;
+  if (scopeDrift.matchesAny(`${dir}x`, [runPath])) return true;
+  const prefix = runPath.slice(0, runPath.lastIndexOf('/', wild) + 1);
+  return dir.startsWith(prefix);
+}
+
+/**
  * Whether a reviewer kept to its write contract (#3204): compare
  * `git status --porcelain --ignored` after the review with the snapshot taken
  * before the spawn. A line present after and not before is a change; any
@@ -414,22 +444,6 @@ const sha256 = (text) => require('crypto').createHash('sha256').update(String(te
  *   (HOST_WRITTEN_PATHS) are listed as `hostWritten` either way.
  * @returns {{ok: boolean, outsideContract: string[], hostWritten?: string[], external?: string[]}}
  */
-/**
- * Could run path `runPath` name a file inside the directory `dir` (`a/b/`)?
- * A literal path under it does; so does a glob that matches a file there, or
- * one whose literal prefix (up to the first wildcard) lies under or above it —
- * `src/**` and `src/*\/x.js` both reach into a new `src/new/` (#3293). Over-
- * inclusive on purpose: a missed directory lets a stray write pass Tier 3.
- */
-function dirMayHoldRunPath(dir, runPath) {
-  if (runPath.startsWith(dir)) return true;
-  const wild = runPath.search(/[*?[{]/);
-  if (wild === -1) return false;
-  if (scopeDrift.matchesAny(`${dir}x`, [runPath])) return true;
-  const prefix = runPath.slice(0, runPath.lastIndexOf('/', wild) + 1);
-  return dir.startsWith(prefix);
-}
-
 function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-gate-${issue}-tier3.json`, siblings = [], runPaths } = {}) {
   const lines = (s) => String(s).split(/\r?\n/).filter((l) => l.trim() !== '');
   const prior = new Set(lines(before));
@@ -642,9 +656,12 @@ function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries
  *
  * @param {{issue: number, body: string, base: string, git: Function,
  *   workReview?: string, nonstop?: boolean, noReview?: boolean,
- *   skillPresent?: boolean, charterPath?: string}} input
+ *   skillPresent?: boolean, charterPath?: string, root?: string,
+ *   briefContext?: {domains: string[], frameworkPath: string}}} input
+ *   `root` (string) is the project whose framework-config.json supplies the
+ *   prompt's domains and frameworkPath when no `briefContext` is injected.
  */
-function planSequentialReview({ issue, body = '', base, git, workReview = 'always', nonstop = false, noReview = false, skillPresent, charterPath = 'CHARTER.md', root = process.cwd() } = {}) {
+function planSequentialReview({ issue, body = '', base, git, workReview = 'always', nonstop = false, noReview = false, skillPresent, charterPath = 'CHARTER.md', root = process.cwd(), briefContext } = {}) {
   const skip = (reason, message) => ({ tier: 3, skipped: true, reason, message });
   if (noReview) return skip('no-review', `Review skipped for #${issue}: --no-review was passed.`);
   if (workReview === 'off') return skip('work-review-off', `Review skipped for #${issue}: framework-config.json workReview is off.`);
@@ -657,7 +674,7 @@ function planSequentialReview({ issue, body = '', base, git, workReview = 'alway
   const range = `${commits[0]}~1..${commits[commits.length - 1]}`;
   const tier3 = planTier3({
     issue, acceptanceCriteria: extractAcceptanceCriteria(body).items.map((i) => i.text), filesToModify,
-    range, commits, charterPath, skillPresent, ...projectContext(root),
+    range, commits, charterPath, skillPresent, ...briefOf(briefContext, root),
   });
   if (tier3.skipped) return skip(tier3.reason, `Review skipped for #${issue}: the diff-review skill is not installed.`);
   return { ...tier3, range, commits, runPaths: filesToModify };
@@ -1024,28 +1041,31 @@ function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic, unswe
 /**
  * Run every tier for one member and decide (#3141). `review` is the injected
  * reviewer: it takes the Tier 3 request and returns the reviewer's final
- * message. Everything else is what runTier1 and planTier3 take.
+ * message. Everything else is what runTier1 and planTier3 take. `briefContext`
+ * ({domains, frameworkPath}), when given, replaces projectContext(root)'s
+ * read of framework-config.json (#3575).
  */
 function evaluateMember({
   member = {}, body, trackerTip, git, suites = [], runSuite, protectedPaths, registrarExemption,
   acceptanceCriteria, filesToModify = [], charterPath, noReview = false, skillPresent, review, schema,
-  fixCycles = 0, resumedFromCompaction = false, epic, root = process.cwd(),
+  fixCycles = 0, resumedFromCompaction = false, epic, root = process.cwd(), briefContext,
 } = {}) {
   const tier1 = runTier1({
     issue: member.issue, body, trackerTip, branch: member.branch, worktreePath: member.worktreePath,
     git, suites, runSuite, protectedPaths, registrarExemption,
   });
   const acs = acceptanceCriteria || tier1.acceptanceCriteria.items;
-  const plan = planTier3({ issue: member.issue, acceptanceCriteria: acs, filesToModify, range: `${memberBase({ git, trackerTip, branch: member.branch })}..${member.branch}`, charterPath, noReview, skillPresent, ...projectContext(root) });
+  const plan = planTier3({ issue: member.issue, acceptanceCriteria: acs, filesToModify, range: tier1.range, charterPath, noReview, skillPresent, ...briefOf(briefContext, root) });
   let tier3 = plan;
   if (!plan.skipped) {
     let text;
     try {
       text = review(plan.request);
     } catch (e) {
-      text = `reviewer failed: ${e.message}`;
+      // A non-Error throw (a string, undefined) keeps its cause (#3604).
+      text = `reviewer failed: ${e && e.message ? e.message : String(e)}`;
     }
-    tier3 = parseReview(text, { issue: member.issue, schema });
+    tier3 = parseReview(text, { issue: member.issue, schema, root });
   }
   const tier2 = buildTier2({ issue: member.issue, files: tier1.scope.touched, acceptanceCriteria: acs });
   return { tier1, tier2, tier3, ...decideOutcome({ member, tier1, tier3, fixCycles, resumedFromCompaction, epic }) };

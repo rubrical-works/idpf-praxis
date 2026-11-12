@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * measure-wiring.js
  *
  * Self-wiring for `/idpf-measure` (#2794): registers the PostToolUse tap on

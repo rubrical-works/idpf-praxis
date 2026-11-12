@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, and assigns labels (reviewed/pending) to the reviewed issue only — never to its sub-issues (#2869).
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,7 @@
 // so call sites are unchanged.
 const { execTimedAsync } = require('./lib/exec.js');
 const fs = require('fs');
+const path = require('path');
 
 const execAsync = execTimedAsync;
 const EXEC_OPTS = { encoding: 'utf-8' };
@@ -379,6 +380,12 @@ function findingIdMarker(f) {
   return f && typeof f.id === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(f.id) ? ` <!-- id: ${f.id} -->` : '';
 }
 
+// An advisory criterion's warning (#3587), marked after the evidence so the
+// criterion name resolve-preamble.js parses back is unchanged.
+function advisoryMarker(f) {
+  return f && f.advisory === true ? ' (advisory)' : '';
+}
+
 const AC_VERDICTS_HEADER = '### Acceptance Criteria Verdicts';
 
 /** A table cell: one line, pipes escaped. */
@@ -449,7 +456,7 @@ function formatReviewComment(findings, options = {}) {
   } else {
     for (const f of autoFindings) {
       const emoji = EMOJI[f.status] || EMOJI.skip;
-      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}${findingIdMarker(f)}`);
+      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}${advisoryMarker(f)}${findingIdMarker(f)}`);
     }
   }
   lines.push('');
@@ -462,7 +469,7 @@ function formatReviewComment(findings, options = {}) {
   } else {
     for (const f of userFindings) {
       const emoji = EMOJI[f.status] || EMOJI.skip;
-      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}${findingIdMarker(f)}`);
+      lines.push(`- ${emoji} ${f.criterion} — ${f.evidence}${advisoryMarker(f)}${findingIdMarker(f)}`);
     }
   }
   lines.push('');
@@ -521,35 +528,174 @@ function determineLabel(recommendation) {
   return recommendation.startsWith('Ready') ? 'reviewed' : 'pending';
 }
 
-/**
- * The label for a whole findings document (#3544). When the review repaired
- * anything, the label follows the criteria, not the recommendation string: a
- * review whose only non-pass criteria were all repaired earns `reviewed`, and
- * any non-pass criterion left unrepaired is `pending`. With no repairs this is
- * determineLabel(recommendation), unchanged.
- *
- * @param {{ findings?: object, repairs?: object[], recommendation?: string }} findings
- * @returns {'reviewed'|'pending'}
- */
 // Recommendations that say the issue must change before work: a repair can
 // never outrank them.
 const BLOCKING_RECOMMENDATIONS = new Set(['Needs revision', 'Needs major rework']);
 
-function decideReviewLabel(findings) {
+const READY_RECOMMENDATION = 'Ready for work';
+
+/** A criterion name reduced to a comparable key (same shape as resolve-preamble.js). */
+function criterionNameKey(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * The criteria review-criteria.json marks `advisory: true` (#3587), by id and
+ * by name, keyed by issue type (#3594): `byType[type]` holds only that type's
+ * advisory criteria, so a criterion advisory for one type is never advisory
+ * for another. `ids`/`names` are the union across types, kept for reporting.
+ * Read from the project first, then beside this script (the hub). Nothing
+ * readable → nothing advisory, so every warning blocks as before.
+ *
+ * @param {string[]} [candidates] - review-criteria.json paths, tried in order
+ * @returns {{ ids: Set<string>, names: Set<string>, byType: Object<string, { ids: Set<string>, names: Set<string> }> }}
+ */
+function loadAdvisoryCriteria(candidates) {
+  const paths = candidates || [
+    path.join(process.cwd(), '.claude', 'metadata', 'review-criteria.json'),
+    path.join(__dirname, '..', '..', 'metadata', 'review-criteria.json'),
+  ];
+  const ids = new Set();
+  const names = new Set();
+  const byType = {};
+  for (const p of paths) {
+    let data;
+    try { data = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_e) { continue; }
+    for (const [type, t] of Object.entries((data && data.typeSpecific) || {})) {
+      const own = { ids: new Set(), names: new Set(), conditional: { ids: new Set(), names: new Set() } };
+      byType[type] = own;
+      for (const c of (t && t.criteria) || []) {
+        if (!c) continue;
+        // #3609: advisory only when the finding is flagged — kept apart from
+        // the always-advisory sets, so it never joins the reporting union.
+        if (c.conditionalAdvisory === true) {
+          if (c.id) own.conditional.ids.add(c.id);
+          if (c.name) own.conditional.names.add(criterionNameKey(c.name));
+        }
+        if (c.advisory !== true) continue;
+        if (c.id) { ids.add(c.id); own.ids.add(c.id); }
+        if (c.name) { names.add(criterionNameKey(c.name)); own.names.add(criterionNameKey(c.name)); }
+      }
+    }
+    return { ids, names, byType };
+  }
+  return { ids, names, byType };
+}
+
+const NO_ADVISORY = { ids: new Set(), names: new Set() };
+
+/**
+ * The advisory set that applies to one review (#3594). A typed set
+ * (`byType`, as loadAdvisoryCriteria returns) yields the reviewed type's own
+ * criteria — an unknown type has none. A flat `{ ids, names }` set, as callers
+ * and tests pass directly, applies as given.
+ */
+function advisoryForType(advisory, type) {
+  if (!advisory) return NO_ADVISORY;
+  if (advisory.byType) return advisory.byType[type] || NO_ADVISORY;
+  return advisory;
+}
+
+/**
+ * The review outcome for a whole findings document: label, recorded
+ * recommendation, and whether the recommendation was changed.
+ *
+ * Advisory criteria (#3587): when every remaining non-pass criterion is
+ * advisory and no acceptance-criterion verdict is warn or fail, the label is
+ * `reviewed` and the recommendation `Ready for work` — reported as
+ * `recommendationAdjusted: { from, to }` when it changed. A blocking
+ * recommendation (BLOCKING_RECOMMENDATIONS) is never lifted (#3594): the
+ * reviewer may block for reasons no criterion records. Advisory criteria are
+ * the reviewed type's own (`findings.type`), matched by id when the finding
+ * has one and by display name only when it does not (#3594).
+ *
+ * Repairs (#3544): when the review repaired anything, the label follows the
+ * criteria, not the recommendation string — any non-pass criterion left
+ * unrepaired is `pending`. With neither, this is determineLabel(recommendation).
+ *
+ * @param {{ findings?: object, repairs?: object[], acVerdicts?: object[], recommendation?: string }} findings
+ * @param {{ advisory?: { ids: Set<string>, names: Set<string> } }} [options]
+ */
+function decideReviewOutcome(findings, options = {}) {
+  const advisory = advisoryForType(options.advisory || loadAdvisoryCriteria(), findings && findings.type);
+  const recommendation = findings && findings.recommendation;
   const repairs = Array.isArray(findings && findings.repairs) ? findings.repairs : [];
-  if (repairs.length === 0) return determineLabel(findings && findings.recommendation);
-  // A repair never masks a remaining problem: a blocking recommendation, an
-  // unrepaired non-pass criterion, or a warn/fail acceptance-criterion verdict
-  // — which is where rule 09 2a-vi's re-check over the repaired body lands.
-  if (BLOCKING_RECOMMENDATIONS.has(findings.recommendation)) return 'pending';
   const nonPass = (x) => x && (x.status === 'warn' || x.status === 'fail');
-  const verdicts = Array.isArray(findings.acVerdicts) ? findings.acVerdicts : [];
-  if (verdicts.some(nonPass)) return 'pending';
+  // #3609: a criterion declaring conditionalAdvisory is advisory only on a
+  // warning the reviewer flagged `advisory: true`; the flag on any other
+  // criterion, or on a fail, is ignored.
+  const conditional = advisory.conditional || NO_ADVISORY;
+  const flagged = (x) => x.advisory === true && x.status === 'warn';
+  const isAdvisory = (x) => (x.id
+    ? advisory.ids.has(x.id) || (flagged(x) && conditional.ids.has(x.id))
+    : advisory.names.has(criterionNameKey(x.criterion)) || (flagged(x) && conditional.names.has(criterionNameKey(x.criterion))));
+  const verdicts = Array.isArray(findings && findings.acVerdicts) ? findings.acVerdicts : [];
+  const acBlocked = verdicts.some(nonPass);
   const repaired = new Set(repairs.map((r) => r && r.criterion));
   const f = (findings && findings.findings) || {};
   const all = [...(f.autoEvaluated || []), ...(f.userEvaluated || [])];
   const remaining = all.filter((x) => nonPass(x) && !repaired.has(x.id));
-  return remaining.length === 0 ? 'reviewed' : 'pending';
+  const advisoryFindings = remaining.filter(isAdvisory);
+  const keep = (label) => ({ label, recommendation, recommendationAdjusted: null, advisoryFindings });
+
+  // Only advisory warnings remain: they never lower the recommendation — but
+  // never lift a blocking one either (#3594), as the repair path below refuses.
+  if (!acBlocked && !BLOCKING_RECOMMENDATIONS.has(recommendation)
+    && advisoryFindings.length > 0 && advisoryFindings.length === remaining.length) {
+    const adjusted = typeof recommendation === 'string' && recommendation.startsWith('Ready') ? null
+      : { from: recommendation || null, to: READY_RECOMMENDATION };
+    return { label: 'reviewed', recommendation: adjusted ? READY_RECOMMENDATION : recommendation, recommendationAdjusted: adjusted, advisoryFindings };
+  }
+  if (repairs.length === 0) return keep(determineLabel(recommendation));
+  // A repair never masks a remaining problem: a blocking recommendation, an
+  // unrepaired non-pass criterion, or a warn/fail acceptance-criterion verdict
+  // — which is where rule 09 2a-vi's re-check over the repaired body lands.
+  if (BLOCKING_RECOMMENDATIONS.has(recommendation) || acBlocked) return keep('pending');
+  return keep(remaining.length === 0 ? 'reviewed' : 'pending');
+}
+
+/**
+ * The label for a whole findings document (#3544): the `label` of
+ * decideReviewOutcome(findings, options), to which it delegates — the rules
+ * (advisory criteria, repairs, blocking recommendations) are documented there.
+ *
+ * @param {{ findings?: object, repairs?: object[], acVerdicts?: object[], recommendation?: string }} findings
+ * @param {{ advisory?: { ids: Set<string>, names: Set<string> } }} [options]
+ * @returns {'reviewed'|'pending'}
+ */
+function decideReviewLabel(findings, options) {
+  return decideReviewOutcome(findings, options).label;
+}
+
+/**
+ * The findings as recorded (#3587): a copy with advisory findings flagged for
+ * the comment, each listed among the suggestions, and the recommendation the
+ * outcome settled on. The input is not mutated.
+ */
+function applyReviewOutcome(findings, outcome) {
+  const flagged = new Set(outcome.advisoryFindings);
+  // #3609: an input `advisory` flag the outcome did not honor is dropped, so
+  // the comment never marks a blocking finding "(advisory)".
+  const unflag = (x) => {
+    if (!x || !Object.prototype.hasOwnProperty.call(x, 'advisory')) return x;
+    const rest = { ...x };
+    delete rest.advisory;
+    return rest;
+  };
+  const mark = (arr) => (Array.isArray(arr) ? arr.map((x) => (flagged.has(x) ? { ...x, advisory: true } : unflag(x))) : arr);
+  const f = findings.findings || {};
+  const out = { ...findings, findings: { ...f, autoEvaluated: mark(f.autoEvaluated), userEvaluated: mark(f.userEvaluated) } };
+  if (outcome.advisoryFindings.length > 0) {
+    const base = Array.isArray(findings.suggestions) ? findings.suggestions : [];
+    out.suggestions = [...base, ...outcome.advisoryFindings.map((x) => `Advisory: ${x.criterion} — ${x.evidence || ''}`.trimEnd())];
+  }
+  if (outcome.recommendationAdjusted) {
+    const { from } = outcome.recommendationAdjusted;
+    const note = `Recommendation adjusted from "${from}": every remaining warning is advisory.`;
+    out.recommendation = outcome.recommendation;
+    out.recommendationReason = findings.recommendationReason ? `${note} ${findings.recommendationReason}` : note;
+  }
+  return out;
 }
 
 /**
@@ -622,6 +768,9 @@ function buildSuccessResult(data) {
     // bug/enhancement/story review whose body was read.
     filesToModifyMissing: typeof data.filesToModifyMissing === 'boolean' ? data.filesToModifyMissing : null,
     closingNotification: data.closingNotification || null,
+    // Present-and-null, never absent (#3587): { from, to } only when advisory-only
+    // warnings changed the recommendation finalize recorded.
+    recommendationAdjusted: data.recommendationAdjusted || null,
   };
 }
 
@@ -779,8 +928,12 @@ async function main() {
     process.stderr.write(`Warning: #${issue} has no Files to modify declaration after review (rule 09 § 2a-ii (b)).\n`);
   }
 
+  // The outcome is decided before the comment so the comment records it (#3587).
+  const outcome = decideReviewOutcome(findings);
+  const recordedFindings = applyReviewOutcome(findings, outcome);
+
   // Post the comment and write the Reviews marker it stands for (#3374, #3401).
-  const comment = formatReviewComment(findings, { filesToModifyMissing });
+  const comment = formatReviewComment(recordedFindings, { filesToModifyMissing });
   const recorded = await postAndCount({ issue, bodyExport, comment, exec: execSafe });
   const { commentResult, commentPosted, commentUrl } = recorded;
   bodyEditResult = recorded.bodyEditResult;
@@ -807,7 +960,7 @@ async function main() {
   }
 
   // Assign label
-  const label = decideReviewLabel(findings);
+  const label = outcome.label;
   const { labelAssigned, labelError } = await applyReviewLabel({ issue, label, exec: execSafe });
   if (labelError) {
     // Reported, never swallowed. A dropped label leaves the Reviews marker at
@@ -854,6 +1007,7 @@ async function main() {
     labelError,
     filesToModifyMissing,
     closingNotification,
+    recommendationAdjusted: outcome.recommendationAdjusted,
   });
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }
@@ -882,6 +1036,9 @@ module.exports = {
   reviewVerb,
   determineLabel,
   decideReviewLabel,
+  decideReviewOutcome,
+  applyReviewOutcome,
+  loadAdvisoryCriteria,
   applyReviewLabel,
   checkReviewRecorded,
   checkFilesToModify,

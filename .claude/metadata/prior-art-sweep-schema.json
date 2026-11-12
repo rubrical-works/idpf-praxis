@@ -41,7 +41,11 @@
         },
         "issueHistory": {
           "type": "object",
-          "description": "Issue-history search configuration",
+          "description": "Issue-history search configuration. Retrieval is one bulk fetch per repository through issue-history-cache.js, matched locally (#3607); the per-term `gh issue list --search` command it replaced is no longer accepted.",
+          "required": [
+            "helper",
+            "fetch"
+          ],
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -49,8 +53,34 @@
             "includeClosed": {
               "type": "boolean"
             },
-            "command": {
-              "type": "string"
+            "helper": {
+              "type": "string",
+              "pattern": "issue-history-cache\\.js",
+              "description": "The invocation that fetches this repository's issues once and matches every term locally (#3607)."
+            },
+            "fetch": {
+              "type": "object",
+              "description": "Paging for the bulk fetch: pageSize issues per REST page, at most maxPages pages. A fetch that reaches maxPages on a full page is reported possibly truncated.",
+              "required": [
+                "pageSize",
+                "maxPages"
+              ],
+              "properties": {
+                "pageSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "maxPages": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "cache": {
+              "type": "string",
+              "description": "Where the fetched issues are cached and how the cache is refreshed. Prose pointer."
             },
             "excludedSections": {
               "type": "object",
@@ -151,6 +181,9 @@
         "companionRepos": {
           "type": "object",
           "description": "Cross-repo issue-history search over charter-registered companion repositories (#2665). Carries no repository list of its own: the list is read from CHARTER.md through companion-projects.js, so this file cannot become a second registry that drifts from the charter.",
+          "required": [
+            "helper"
+          ],
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -166,9 +199,10 @@
               "type": "string",
               "description": "Entity field gating inclusion — searchable, not mere registration."
             },
-            "command": {
+            "helper": {
               "type": "string",
-              "description": "Per-companion invocation; must carry --repo, since the unscoped issueHistory command can never see a companion repo."
+              "pattern": "issue-history-cache\\.js.*--repo",
+              "description": "Per-companion invocation of the issue-history helper (#3607); must carry --repo, since the unscoped default is this repository and can never see a companion repo."
             },
             "unreachable": {
               "type": "string",

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Generate acceptance criteria from behavioral paths discovered by /paths.
  * Only applies to enhancement issues. Produces ACs with inline path references.
  * @checksum sha256:placeholder
@@ -80,7 +80,9 @@ function significantWords(text) {
 /**
  * Check if a path description restates an existing AC line: at least
  * DUPLICATE_WORD_SHARE of the path's significant words appear in the AC, and
- * at least DUPLICATE_MIN_WORDS of them (#3562).
+ * at least DUPLICATE_MIN_WORDS of them (#3562) — or the two significant-word
+ * sets are equal, whatever their size (#3581), so a one- or two-word path that
+ * restates an AC word for word is still a duplicate.
  * @param {string} pathDesc - Path description
  * @param {string} acLine - Existing AC line
  * @returns {boolean}
@@ -90,6 +92,7 @@ function fuzzyMatch(pathDesc, acLine) {
   if (pathWords.length === 0) return false;
   const acWords = new Set(significantWords(String(acLine).replace(PATH_REF, '')));
   const matchCount = pathWords.filter(w => acWords.has(w)).length;
+  if (matchCount === pathWords.length && acWords.size === pathWords.length) return true;
   return matchCount >= DUPLICATE_MIN_WORDS && matchCount / pathWords.length >= DUPLICATE_WORD_SHARE;
 }
 

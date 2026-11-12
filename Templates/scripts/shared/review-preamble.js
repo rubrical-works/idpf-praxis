@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -13,6 +13,9 @@
 // so call sites are unchanged.
 const { execTimedAsync } = require('./lib/exec.js');
 const { computeReviewHash, readReviewHash } = require('./lib/review-body-hash.js');
+// Shared with resolve-preamble.js (#3605): every success envelope main() writes
+// carries `unrecognizedFlags`, always an array (#3555).
+const { reportUnrecognizedFlags } = require('./lib/command-args.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -184,7 +187,9 @@ function checkEarlyExit(issue, force) {
     // alone must not refuse it. No recorded hash predates #3543: still exits.
     const recorded = readReviewHash(issue.body);
     if (recorded !== null && recorded !== computeReviewHash(issue.body)) {
-      return { earlyExit: false, stale: true, reviewCount };
+      // #3572: say whether the Reviews marker exists, so the warning never
+      // cites a "Review #0" the body never recorded.
+      return { earlyExit: false, stale: true, reviewCount, hasReviewsMarker: Boolean(reviewMatch) };
     }
     return { earlyExit: true, reviewCount };
   }
@@ -639,7 +644,9 @@ async function main() {
   if (earlyExit.stale) {
     issueWarnings.push({
       code: 'REVIEW_BODY_CHANGED',
-      message: `Issue #${args.issue} is labeled reviewed (Review #${earlyExit.reviewCount}), but its body changed since that review — re-reviewing.`
+      message: earlyExit.hasReviewsMarker
+        ? `Issue #${args.issue} is labeled reviewed (Review #${earlyExit.reviewCount}), but its body changed since that review — re-reviewing.`
+        : `Issue #${args.issue} is labeled reviewed, but its body changed since the recorded review — re-reviewing.`
     });
   }
   if (earlyExit.earlyExit) {
@@ -660,7 +667,7 @@ async function main() {
   }
 
   // Type detection (uses shared issue-type.js)
-  const { getIssueType } = require('./lib/issue-type.js');
+  const { getIssueType, resolveIssueType } = require('./lib/issue-type.js');
   const { type: issueType, redirect } = getIssueType(issue);
 
   // If redirect and not suppressed, return immediately with redirect info
@@ -681,9 +688,11 @@ async function main() {
     return;
   }
 
-  // When redirect was suppressed (--no-redirect), derive type from redirect label name
-  // e.g., proposal label -> type 'proposal', prd label -> type 'prd', test-plan label -> type 'test-plan'
-  const resolvedType = issueType || ((issue.labels || []).find(l => ['proposal', 'prd', 'test-plan'].includes(l.name)) || {}).name || 'generic';
+  // When redirect was suppressed (--no-redirect), the type is the redirect
+  // label's own name (proposal -> 'proposal'). resolveIssueType derives that
+  // from REDIRECT_LABELS, as resolve-preamble.js does (#3605); `issueType`
+  // short-circuits it whenever getIssueType already answered.
+  const resolvedType = issueType || resolveIssueType(issue);
 
   // Load review mode
   const { getReviewMode } = require('./lib/review-mode.js');
@@ -729,8 +738,11 @@ async function main() {
 }
 
 /**
- * The run flags the envelope's `context` carries: `force` always, `stepWise`
- * only when passed (#3545) — absent, never false, like `priorArt` in parseArgs.
+ * The run flags the envelope's `context` carries: `force` always; `stepWise`
+ * (#3545) and `priorArt` (#3555) only when passed — absent, never false.
+ *
+ * @param {{force?: boolean, stepWise?: boolean, priorArt?: boolean}} [args] - parsed CLI arguments from parseArgs
+ * @returns {{force: boolean, stepWise?: true, priorArt?: true}} the flags to spread into `context`
  */
 function contextFlags(args) {
   const flags = { force: Boolean(args && args.force) };
@@ -738,17 +750,6 @@ function contextFlags(args) {
   // #3555: recorded here, consumed at 2a-iv (rule 09) — absent when not passed.
   if (args && args.priorArt) flags.priorArt = true;
   return flags;
-}
-
-/**
- * Put parseArgs' unrecognized flag-shaped tokens on the envelope, always an
- * array (#3555), as resolve-preamble.js does (#3545): the pass-through
- * convention in 02-github-workflow.md has the command report them, so every
- * success envelope main() writes carries the field.
- */
-function reportUnrecognizedFlags(envelope, args) {
-  envelope.unrecognizedFlags = (args && args.unrecognizedFlags) || [];
-  return envelope;
 }
 
 // ─── Module Guard ───

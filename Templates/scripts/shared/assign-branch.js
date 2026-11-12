@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -69,6 +69,9 @@ async function execAsyncSafe(cmd, args) {
  * null contract is left alone — about a dozen call sites test for it — and only
  * the batched move, whose failure was undiagnosable, uses this form.
  * Timeout detection is lib/exec.js normalizeTimeoutError's, not re-derived.
+ * @param {string} cmd - executable to run
+ * @param {string[]} args - arguments passed to it
+ * @param {number} [timeoutMs=DEFAULT_TIMEOUT_MS] - kill the process after this many milliseconds
  * @returns {Promise<{ok: boolean, stdout: string, stderr: string, timedOut: boolean, code: (number|string|null), timeoutMs: number}>}
  */
 async function execAsyncResult(cmd, args, timeoutMs = DEFAULT_TIMEOUT_MS) {
@@ -185,20 +188,27 @@ async function fetchLabelMap(issueNumbers) {
  * (#3556). `gh pmu list --json` offers no labels field, so reading `i.labels`
  * put every issue in Other and never fetched epic sub-issue counts.
  *
+ * Label names are compared lower-cased, as expandEpicSubIssues and
+ * findBranchTrackers compare them (#3571). An issue carrying more than one
+ * type label is listed in exactly one group: the first matching type in TYPES
+ * order (epic, bug, enhancement, story), so the listing never shows an issue
+ * twice and agrees with the backlog count.
+ *
  * @param {{number: number, title: string}[]} backlog
  * @param {Map<number, {labels: string[], loaded: boolean}>} labelMap
  * @returns {{epics: object[], bugs: object[], enhancements: object[], stories: object[], other: object[]}}
  */
 function groupBacklogByLabel(backlog, labelMap) {
     const labelsOf = (i) => (labelMap.get(i.number) || { labels: [] }).labels;
-    const has = (i, l) => labelsOf(i).includes(l);
+    const has = (i, l) => labelsOf(i).some(name => String(name).toLowerCase() === l);
     const TYPES = ['epic', 'bug', 'enhancement', 'story'];
+    const typeOf = (i) => TYPES.find(l => has(i, l)) || null;
     return {
-        epics: backlog.filter(i => has(i, 'epic')),
-        bugs: backlog.filter(i => has(i, 'bug')),
-        enhancements: backlog.filter(i => has(i, 'enhancement')),
-        stories: backlog.filter(i => has(i, 'story')),
-        other: backlog.filter(i => !TYPES.some(l => has(i, l))),
+        epics: backlog.filter(i => typeOf(i) === 'epic'),
+        bugs: backlog.filter(i => typeOf(i) === 'bug'),
+        enhancements: backlog.filter(i => typeOf(i) === 'enhancement'),
+        stories: backlog.filter(i => typeOf(i) === 'story'),
+        other: backlog.filter(i => typeOf(i) === null),
     };
 }
 

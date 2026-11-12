@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * resolve-precheck.js — /resolve-review's deterministic check of its own edits
  * before the Step 4 re-review (#3542).
  *
@@ -12,7 +12,7 @@
  *
  *   | check              | source                                         |
  *   |--------------------|------------------------------------------------|
- *   | references         | review-references.js (#3540), when present      |
+ *   | references         | review-references.js (#3540)                   |
  *   | declared-scope     | declared-scope-check.js                        |
  *   | unbuilt-dependency | an AC naming an OPEN issue #N — possibly out of |
  *   |                    | phase (ac-feasibility-prompts.json phaseFeasibility) |
@@ -20,6 +20,8 @@
  *   |                    | from other lines (#3546); needs --before-file    |
  *
  * Built-ins and shared siblings only (runtime dependency contract, #2418).
+ * review-references.js is a hard dependency, installed with this file under
+ * the same gate (#3566): there is no degraded mode without it (#3574).
  *
  * CLI: node .claude/scripts/shared/lib/resolve-precheck.js --issue <N> [--body-file <path>] [--before-file <path>]
  *      --issue alone fetches the live body (gh pmu view --body-stdout) → JSON on stdout.
@@ -35,30 +37,28 @@ const { checkDeclaredScope } = require('./declared-scope-check.js');
 const { stripGateSuffix } = require('./review-body-hash.js');
 
 // One issue-reference pattern, owned by review-references.js (#3563).
-const { ISSUE_REF, queryIssueStates } = require('./review-references.js');
+const { issueRefPattern, checkReferences, extractIssueRefs, extractPathRefs, extractCommandRefs } = require('./review-references.js');
 const REFERENCE_PROBLEMS = new Set(['missing', 'superseded-or-dropped', 'outside-root']);
 
 /**
  * Acceptance criteria that name an open issue: the AC may depend on work not
- * built yet. With `issueStates` — the per-#N results checkReferences already
- * fetched in this precheck — no query is made (#3563). Without it (references
- * unavailable) one batched query through review-references.js's own
- * queryIssueStates, which retries a whole-batch failure once; a failed query
- * flags nothing and warns.
+ * built yet. The states come from `issueStates` — the per-#N results
+ * checkReferences already fetched in this precheck — so the scan makes no
+ * query of its own (#3563). A number absent from it, or `unverified`, is not
+ * flagged and is named in a warning.
  *
  * @param {string} body
- * @param {{ root?: string, runGh?: Function, issue?: number, warnings?: string[], issueStates?: Map<number, string> }} opts
+ * @param {{ issue?: number, warnings?: string[], issueStates?: Map<number, string> }} opts
  *   issueStates: #N → its checkReferences result (`open`, `closed`, `unverified`, …)
  * @returns {{ check: 'unbuilt-dependency', ref: string, acIndex: number, detail: string }[]}
  */
 function scanUnbuiltDependencies(body, opts = {}) {
-  const root = opts.root || process.cwd();
   const warnings = opts.warnings || [];
   const { items } = extractAcceptanceCriteria(typeof body === 'string' ? body : '');
   const refs = [];
   items.forEach((item, i) => {
     const text = stripGateSuffix(item.text);
-    for (const m of text.matchAll(ISSUE_REF)) {
+    for (const m of text.matchAll(issueRefPattern())) {
       const n = Number(m[2]);
       if (n !== Number(opts.issue)) refs.push({ n, acIndex: i + 1 });
     }
@@ -66,16 +66,10 @@ function scanUnbuiltDependencies(body, opts = {}) {
   if (refs.length === 0) return [];
   const numbers = [...new Set(refs.map((r) => r.n))];
 
-  let isOpen;
-  if (opts.issueStates instanceof Map) {
-    const unknown = numbers.filter((n) => !opts.issueStates.has(n) || opts.issueStates.get(n) === 'unverified');
-    if (unknown.length) warnings.push(`unbuilt-dependency scan: ${unknown.map((n) => `#${n}`).join(', ')} not verified by the reference check — not flagged`);
-    isOpen = (n) => opts.issueStates.get(n) === 'open';
-  } else {
-    const { repository, error } = queryIssueStates(numbers, root, opts.runGh);
-    if (!repository) { warnings.push(`unbuilt-dependency scan skipped: ${error}`); return []; }
-    isOpen = (n) => Boolean(repository[`i${n}`]) && repository[`i${n}`].state === 'OPEN';
-  }
+  const states = opts.issueStates instanceof Map ? opts.issueStates : new Map();
+  const unknown = numbers.filter((n) => !states.has(n) || states.get(n) === 'unverified');
+  if (unknown.length) warnings.push(`unbuilt-dependency scan: ${unknown.map((n) => `#${n}`).join(', ')} not verified by the reference check — not flagged`);
+  const isOpen = (n) => states.get(n) === 'open';
 
   return refs
     .filter((r) => isOpen(r.n))
@@ -87,10 +81,6 @@ function scanUnbuiltDependencies(body, opts = {}) {
     }));
 }
 
-function defaultLoadReferences() {
-  try { return require('./review-references.js'); } catch { return null; }
-}
-
 /**
  * The lines (outside fenced blocks) on which each reference appears. Runs
  * review-references.js's own extractors one line at a time, so a `#N`, a
@@ -98,19 +88,18 @@ function defaultLoadReferences() {
  * reference check recognizes them — no second set of patterns (#3546).
  *
  * @param {string} body
- * @param {object} refs review-references.js exports
  * @returns {Map<string, { line: number, text: string }[]>}
  */
-function referenceLines(body, refs) {
+function referenceLines(body) {
   const lines = (typeof body === 'string' ? body : '').split(/\r?\n/);
   const fenced = computeFenceMask(lines);
   const map = new Map();
   lines.forEach((text, i) => {
     if (fenced[i]) return;
     const keys = [
-      ...refs.extractIssueRefs(text).map((r) => `#${r.number}`),
-      ...refs.extractPathRefs(text).map((r) => r.ref),
-      ...refs.extractCommandRefs(text).map((r) => `/${r.name}`),
+      ...extractIssueRefs(text).map((r) => `#${r.number}`),
+      ...extractPathRefs(text).map((r) => r.ref),
+      ...extractCommandRefs(text).map((r) => `/${r.name}`),
     ];
     for (const key of keys) {
       if (!map.has(key)) map.set(key, []);
@@ -129,14 +118,11 @@ function referenceLines(body, refs) {
  *
  * @param {string} before body before the resolve pass edited it
  * @param {string} after edited body
- * @param {{ loadReferences?: Function }} [opts]
  * @returns {{ check: 'stale-mention', ref: string, line: number, text: string, detail: string }[]}
  */
-function scanStaleMentions(before, after, opts = {}) {
-  const refs = (opts.loadReferences || defaultLoadReferences)();
-  if (!refs) return [];
-  const was = referenceLines(before, refs);
-  const now = referenceLines(after, refs);
+function scanStaleMentions(before, after) {
+  const was = referenceLines(before);
+  const now = referenceLines(after);
   const hits = [];
   for (const [ref, prior] of was) {
     const remaining = now.get(ref);
@@ -159,37 +145,46 @@ function scanStaleMentions(before, after, opts = {}) {
  * Run every check over the edited body.
  *
  * @param {string} body
- * @param {{ root?: string, runGh?: Function, issue?: number, loadReferences?: Function }} [opts]
- * @returns {{ ok: true, found: number, hits: object[], references: 'checked'|'not available', warnings: string[] }}
+ * @param {{ root?: string, runGh?: Function, issue?: number, before?: string, beforeError?: string }} [opts]
+ *   before: the pre-edit body (`--before-file`), which feeds the stale-mention
+ *     check; absent or blank skips that check with a warning.
+ *   beforeError: why the pre-edit body could not be read; used as the skip
+ *     reason when `before` is absent.
+ * @returns {{ ok: true, found: number, hits: object[], references: 'checked'|'failed', warnings: string[] }}
  */
 function runPrecheck(body, opts = {}) {
   const text = typeof body === 'string' ? body : '';
   const root = opts.root || process.cwd();
   const warnings = [];
   const hits = [];
+  // #3574: a check that throws becomes a warning naming it; the rest still run.
+  const guard = (check, fn) => {
+    try { return fn(); } catch (e) { warnings.push(`${check} failed: ${e && e.message ? e.message : String(e)}`); return undefined; }
+  };
 
-  const refsModule = (opts.loadReferences || defaultLoadReferences)();
-  let references = 'not available';
   // #3563: the issue states checkReferences fetched, reused by the
   // unbuilt-dependency scan so one precheck makes one issue query.
-  let issueStates;
-  if (refsModule && typeof refsModule.checkReferences === 'function') {
-    references = 'checked';
-    const r = refsModule.checkReferences(text, { root, runGh: opts.runGh });
+  const issueStates = new Map();
+  const referencesChecked = guard('references', () => {
+    const r = checkReferences(text, { root, runGh: opts.runGh });
     warnings.push(...(r.warnings || []));
-    issueStates = new Map();
     for (const ref of r.references || []) {
       if (ref.kind === 'issue') issueStates.set(Number(String(ref.ref).slice(1)), ref.result);
       if (REFERENCE_PROBLEMS.has(ref.result)) {
         hits.push({ check: 'references', ref: ref.ref, line: ref.line, detail: `${ref.kind} ${ref.ref} is ${ref.result}` });
       }
     }
-  }
+    return true;
+  });
 
-  const scope = checkDeclaredScope(text);
-  if (scope.status !== 'pass') hits.push({ check: 'declared-scope', ref: 'Files to modify', detail: scope.evidence });
+  guard('declared-scope', () => {
+    const scope = checkDeclaredScope(text);
+    if (scope.status !== 'pass') hits.push({ check: 'declared-scope', ref: 'Files to modify', detail: scope.evidence });
+  });
 
-  hits.push(...scanUnbuiltDependencies(text, { root, runGh: opts.runGh, issue: opts.issue, warnings, issueStates }));
+  guard('unbuilt-dependency', () => {
+    hits.push(...scanUnbuiltDependencies(text, { issue: opts.issue, warnings, issueStates }));
+  });
 
   if (typeof opts.before !== 'string') {
     warnings.push(`stale-mention check skipped: ${opts.beforeError || 'no pre-edit body (--before-file)'}`);
@@ -197,12 +192,10 @@ function runPrecheck(body, opts = {}) {
     // A failed `gh pmu view … > file` still creates the file, empty. Read as a
     // body it would find no references and pass silently.
     warnings.push('stale-mention check skipped: pre-edit body is empty (the save may have failed)');
-  } else if (!refsModule) {
-    warnings.push('stale-mention check skipped: review-references.js not available');
   } else {
-    hits.push(...scanStaleMentions(opts.before, text, { loadReferences: () => refsModule }));
+    guard('stale-mention', () => { hits.push(...scanStaleMentions(opts.before, text)); });
   }
-  return { ok: true, found: hits.length, hits, references, warnings };
+  return { ok: true, found: hits.length, hits, references: referencesChecked ? 'checked' : 'failed', warnings };
 }
 
 function defaultFetchBody(issue) {
@@ -221,16 +214,40 @@ function defaultFetchBody(issue) {
  *   | { ok: false, error: { code: string, message: string } }}
  */
 function resolveBody(argv, deps = {}) {
-  const arg = (name) => { const i = argv.indexOf(name); return i !== -1 ? argv[i + 1] : undefined; };
-  const issue = Number(arg('--issue')) || undefined;
-  const bodyFile = arg('--body-file');
   const fail = (code, message) => ({ ok: false, error: { code, message } });
+  // A flag in a value position is a missing value, never the value (#3600):
+  // `--issue --body-file x` must not read `--body-file` as the issue.
+  let flagAsValue = null;
+  const arg = (name) => {
+    const i = argv.indexOf(name);
+    if (i === -1) return undefined;
+    const value = argv[i + 1];
+    if (typeof value === 'string' && value.startsWith('--')) {
+      if (!flagAsValue) flagAsValue = `${name} is missing its value (found the flag ${value} instead)`;
+      return undefined;
+    }
+    return value;
+  };
+  // A positive integer, checked the way review-preamble.js checks it: an
+  // invalid value is named, not reported as a missing argument (#3600).
+  const rawIssue = arg('--issue');
+  let issue;
+  if (rawIssue !== undefined) {
+    const num = parseInt(rawIssue, 10);
+    if (isNaN(num) || num <= 0 || String(num) !== rawIssue) {
+      return fail('INVALID_ARGUMENT', `Invalid --issue value: ${rawIssue} (expected a positive integer)`);
+    }
+    issue = num;
+  }
+  const bodyFile = arg('--body-file');
+  const beforeFile = arg('--before-file');
+  if (flagAsValue) return fail('INVALID_ARGUMENT', flagAsValue);
   let body;
   let source;
   try {
     if (bodyFile) { body = fs.readFileSync(bodyFile, 'utf8'); source = 'file'; }
     else if (issue) { body = (deps.fetchBody || defaultFetchBody)(issue); source = 'issue'; }
-    else return fail('MISSING_ARGUMENT', 'Usage: resolve-precheck.js --issue <N> [--body-file <path>]');
+    else return fail('MISSING_ARGUMENT', 'Usage: resolve-precheck.js --issue <N> [--body-file <path>] [--before-file <path>]');
   } catch (e) {
     return fail('BODY_UNREADABLE', `Could not read the body of ${bodyFile || `#${issue}`}: ${e.message}`);
   }
@@ -240,7 +257,6 @@ function resolveBody(argv, deps = {}) {
   const result = { ok: true, body, issue, source };
   // The pre-edit body only feeds the stale-mention check, so an unreadable one
   // skips that check with its reason; the other checks still run (#3546).
-  const beforeFile = arg('--before-file');
   if (beforeFile) {
     try { result.before = fs.readFileSync(beforeFile, 'utf8'); } catch (e) {
       result.beforeError = `pre-edit body ${beforeFile} unreadable: ${e.message}`;
@@ -249,16 +265,33 @@ function resolveBody(argv, deps = {}) {
   return result;
 }
 
-function main(argv = process.argv.slice(2)) {
-  const input = resolveBody(argv);
-  if (!input.ok) {
-    process.stdout.write(JSON.stringify(input, null, 2) + '\n');
-    process.exit(1);
+/**
+ * CLI entry. stdout is always exactly one JSON document (#3574): a usage or
+ * body error is resolveBody's envelope, and anything else that throws becomes
+ * `{ ok: false, error }`.
+ *
+ * @param {string[]} [argv]
+ * @param {{ fetchBody?: (issue: number) => string, runPrecheck?: Function }} [deps]
+ */
+function main(argv = process.argv.slice(2), deps = {}) {
+  const emit = (doc) => process.stdout.write(JSON.stringify(doc, null, 2) + '\n');
+  try {
+    const input = resolveBody(argv, deps);
+    if (!input.ok) {
+      // exitCode, not process.exit(): exit can cut off a pending stdout write
+      // to a pipe, which is how rule 09 consumes this envelope.
+      emit(input);
+      process.exitCode = 1;
+      return;
+    }
+    const opts = { issue: input.issue, before: input.before, beforeError: input.beforeError };
+    emit((deps.runPrecheck || runPrecheck)(input.body, opts));
+  } catch (e) {
+    emit({ ok: false, error: { code: 'PRECHECK_FAILED', message: e && e.message ? e.message : String(e) } });
+    process.exitCode = 1;
   }
-  const opts = { issue: input.issue, before: input.before, beforeError: input.beforeError };
-  process.stdout.write(JSON.stringify(runPrecheck(input.body, opts), null, 2) + '\n');
 }
 
 if (require.main === module) main();
 
-module.exports = { runPrecheck, scanUnbuiltDependencies, scanStaleMentions, resolveBody };
+module.exports = { runPrecheck, scanUnbuiltDependencies, scanStaleMentions, resolveBody, main };

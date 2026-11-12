@@ -1,5 +1,5 @@
 # Review Execution Rule
-**Version:** v0.117.0
+**Version:** v0.118.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` (hybrid shell + rule). The shells `.claude/commands/review-issue.md` and `.claude/commands/resolve-review.md` carry arguments, prerequisites and error handling; this rule carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks.** The three retired points live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.
@@ -49,11 +49,11 @@ node -e "console.log(JSON.stringify(require('./.claude/scripts/shared/lib/prior-
 **Sweeping — status `fail`, or `--prior-art` passed:** body in `{frameworkPath}/Reference/review-execution-conditional.md` § 2a-iv (Step 1d, or read now): the explicit path through `decideFlagSweep`, the #2514 procedure reading `.claude/metadata/prior-art-sweep.json` (none restated), the `**Prior Art:**` write via `insertPriorArtSection`, the recommendation impact. **Ordering:** 2a-ii's slot, before Step 3 finalize.
 **Missing config:** `prior-art-sweep.json` missing/unreadable → report criterion, warn, skip sweep. Do not fail the review.
 **2a-v: Branch Auto-Assignment for Test-Plan and PRD Issues** — trigger: a `test-plan` or `prd` label **and** no branch assignment. Body in `{frameworkPath}/Reference/review-execution-conditional.md` § 2a-v (Step 1d): delegate to `.claude/scripts/shared/assign-branch.js`, **reported, not prompted**, **before Step 3 finalize runs** (same race as 2a-ii).
-**2a-vi: Repairs** — a warn/fail `review-repair.js` `classifyRepair` marks repairable (id + concrete fix) is written **before Step 3 finalize** (2a-ii's slot), **unprompted**, into findings `repairs`; re-check `references-valid` and `acVerdicts` on the repaired body — a flagged repair stays a finding.
+**2a-vi: Repairs** — a warn/fail `review-repair.js` `classifyRepair` marks repairable (id + concrete fix) is written **before Step 3 finalize** (2a-ii's slot), **unprompted**, into findings `repairs`; re-check `references-valid` and `acVerdicts` on the repaired body — a flagged repair stays a finding. A `test-ac` repair is written by `applyTestAcRepair(body, { criterion, ac, files })`, never by hand: pass the finding's `files` from `classifyRepair`, write the returned `body`, record its `repair`; `applied: false` writes nothing — report `reason`, leave it for Pass 2.
 **2b: Ask Subjective Criteria** — for subjective criteria applicable to current reviewMode, use `AskUserQuestion`. Re-read `.claude/metadata/review-mode-criteria.json` from disk for question/options. Solo mode: skip entirely.
 **2c: Extension Criteria** (if `--with`) — evaluate domain criteria loaded by preamble.
 **2c-ii: Security Finding Label** — if `--with security`/`--with all` and any security finding ⚠️/❌: `gh issue edit $ISSUE --add-label=security-finding`. All ✅ → no label.
-**2d: Recommendation** — one of: `Ready for work` (no blocking concerns) / `Needs minor revision` (small) / `Needs revision` (must address before starting) / `Needs major rework` (fundamental).
+**2d: Recommendation** — one of: `Ready for work` (no blocking concerns) / `Needs minor revision` (small) / `Needs revision` (must address before starting) / `Needs major rework` (fundamental). An advisory ⚠️ (`advisory: true` in `.claude/metadata/review-criteria.json`) never lowers the recommendation: when only advisory warnings remain, `review-finalize.js` records `Ready for work`.
 ### Step 3: Finalize (Script)
 Write findings JSON to `.tmp-$ISSUE-findings.json`. **Read** `.claude/scripts/shared/lib/findings-schema.json` for the contract. Solo mode: `userEvaluated` always `[]`.
 **`type`:** issue type from preamble `context` — `bug`, `enhancement`, `story`, `epic`, or `generic`. Issue-shaped types produce a `## Issue Review #N` header and tick no AC boxes. NEVER write `prd`, `proposal`, or `test-plan` here.

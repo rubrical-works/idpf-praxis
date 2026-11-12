@@ -1,5 +1,5 @@
 # Task Creation Timing for Routed Commands
-**Version:** v0.117.0
+**Version:** v0.118.0
 **Source:** Reference/Task-Creation-Timing.md
 **Purpose:** Prevent orphaned tasks when commands have routing decisions.
 ## Availability Precondition

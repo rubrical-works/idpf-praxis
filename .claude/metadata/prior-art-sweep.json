@@ -26,7 +26,12 @@
     "issueHistory": {
       "enabled": true,
       "includeClosed": true,
-      "command": "gh issue list --search \"<terms>\" --state all --limit 50 --json number,title,state,body",
+      "helper": "node .claude/scripts/shared/lib/issue-history-cache.js --term <term> [--term <term> ...] — fetches this repository's issues once (open and closed, paged) and matches every term locally against the title and the stripped body; returns one JSON surface with the hits per term (#3607). Pass every term of a sweep in one call.",
+      "fetch": {
+        "pageSize": 100,
+        "maxPages": 100
+      },
+      "cache": ".claude/.cache/issue-history/<owner>-<name>.json — gitignored, a disposable per-host copy that every invocation in a batch reads; refreshed incrementally by updatedAt before use, so GitHub stays the only source of truth. --refresh refetches in full.",
       "excludedSections": {
         "sections": [
           "**Prior Art:**",
@@ -38,16 +43,16 @@
           "issueHistory",
           "companionRepos"
         ],
-        "scope": "Evidence matching only (#2874). gh issue list --search matches whole bodies server-side and cannot exclude a section, so every candidate it returns is post-filtered: pass the body through the helper, and count the issue as evidence only when a term still matches its title or its stripped body. A hit that falls only inside an earlier sweep's **Prior Art:** section (any recognized form, heading at any level) or a log-changed-files.js ### Files Changed section is not prior art. This never removes a section a command reads as INPUT: /qa reads the parent's ### Files Changed section as its term source, and that is unchanged."
+        "scope": "Evidence matching only (#2874). Applied by issue-history-cache.js (#3607) to every fetched issue: an issue is evidence for a term only when the term matches its title or its stripped body. A hit that falls only inside an earlier sweep's **Prior Art:** section (any recognized form, heading at any level) or a log-changed-files.js ### Files Changed section is not prior art. This never removes a section a command reads as INPUT: /qa reads the parent's ### Files Changed section as its term source, and that is unchanged."
       },
-      "truncation": "A search that returns exactly the number of issues its command's --limit allows (gh's default is 30 when the command carries none) is reported as possibly truncated, never as complete: --limit cuts off with no signal. Applies to companionRepos searches too. Decide via isPossiblyTruncated(resultCount, command) in .claude/scripts/shared/lib/prior-art-marker.js."
+      "truncation": "A fetch that stops at fetch.maxPages full pages is reported as possibly truncated (truncated: true with a note), never as complete: more issues may exist past the cap. Applies to companionRepos surfaces too. Decided by issue-history-cache.js; an unreachable repository is reported skipped with its reason, never as zero hits."
     },
     "companionRepos": {
       "enabled": true,
       "includeClosed": true,
       "source": "CHARTER.md Companion Repositories, via .claude/scripts/shared/lib/companion-projects.js",
       "capabilityField": "searchable",
-      "command": "gh issue list --repo <owner/name> --search \"<terms>\" --state all --limit 50 --json number,title,state,body",
+      "helper": "node .claude/scripts/shared/lib/issue-history-cache.js --repo <owner/name> [--repo <owner/name> ...] --term <term> [--term <term> ...] — one fetch per searchable companion, cached and matched exactly as issueHistory (#3607); each companion is its own surface in the result.",
       "unreachable": "skip",
       "directionTreatment": {
         "_note": "Read from each companion's Direction (CHARTER.md, companion-projects.js DIRECTIONS; #3422). An undeclared direction reads as bidirectional, the behavior before the column existed.",

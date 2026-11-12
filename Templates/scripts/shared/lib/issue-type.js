@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Centralize label-based issue type detection and review command routing. Exports getIssueType(). Used by review-preamble.js and work-preamble.js for type dispatch.
  * @checksum sha256:placeholder
  *
@@ -85,7 +85,30 @@ function getIssueType(issueData) {
  * keeps the two commands from drifting to different targets for one label
  * without forcing them to redirect on the same set.
  */
-module.exports = { getIssueType, REDIRECT_LABELS };
+
+/**
+ * The issue's type for a review that is not redirected: `getIssueType`'s type,
+ * else a redirect label's own name, else `generic`.
+ *
+ * Shared by review-preamble.js (its `--no-redirect` path) and
+ * resolve-preamble.js (#2872, #3605), so the two halves of one review cycle
+ * cannot disagree about what an issue is. The fallback reads REDIRECT_LABELS,
+ * never a list of its own: a label added there is a type here too.
+ *
+ * @param {{labels?: Array<{name: string}>}} issueData
+ * @returns {string}
+ */
+function resolveIssueType(issueData) {
+  const data = issueData && typeof issueData === 'object' ? issueData : {};
+  const { type } = getIssueType(data);
+  if (type) return type;
+  const redirect = (data.labels || [])
+    .map((l) => (l && l.name) || '')
+    .find((name) => Object.prototype.hasOwnProperty.call(REDIRECT_LABELS, name));
+  return redirect || 'generic';
+}
+
+module.exports = { getIssueType, resolveIssueType, REDIRECT_LABELS };
 
 if (require.main === module) {
   console.log('issue-type.js — no standalone execution');

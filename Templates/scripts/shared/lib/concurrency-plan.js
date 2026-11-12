@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * concurrency-plan.js — Disjointness over declared scope, and the
  * `--concurrent` grouping plan (#3126, PRD Concurrent-Work Story 1.9)
  *
@@ -95,13 +95,16 @@ function settingsRegisterWorktreeHook(settings) {
 /**
  * Resolve whether any Claude Code settings layer registers the WorktreeCreate
  * hook (#3224). The reader is injected, so callers decide what "disk" is.
+ * `layer` (#3568) is the label of the first layer that registers it, or
+ * null, so the decision is reportable rather than inferred from silence.
  *
  * @param {{layers: Array<{label: string, path: string}>, readFile: function(string): string}} input
- * @returns {{registered: boolean, warnings: Array<{code: string, message: string}>}}
+ * @returns {{registered: boolean, layer: string|null, warnings: Array<{code: string, message: string}>}}
  */
 function resolveWorktreeHook({ layers = [], readFile } = {}) {
   const warnings = [];
   let registered = false;
+  let registeringLayer = null;
   for (const layer of layers) {
     let settings;
     try {
@@ -118,9 +121,12 @@ function resolveWorktreeHook({ layers = [], readFile } = {}) {
       });
       continue;
     }
-    if (settingsRegisterWorktreeHook(settings)) registered = true;
+    if (settingsRegisterWorktreeHook(settings)) {
+      registered = true;
+      if (registeringLayer === null) registeringLayer = layer.label;
+    }
   }
-  return { registered, warnings };
+  return { registered, layer: registeringLayer, warnings };
 }
 
 /**
@@ -211,10 +217,28 @@ function globsMayOverlap(a, b) {
   return pa.startsWith(pb) || pb.startsWith(pa);
 }
 
-/** Does a declared path (literal or glob) reach a file `pattern` matches? */
+/**
+ * Does a declared path (literal or glob) reach a file `pattern` matches? A
+ * declared glob against a literal pattern goes through globCovers (#3612), so
+ * a `?`, `[` or `{` glob reaches a literal under its fixed prefix.
+ */
 function reaches(declared, pattern) {
   if (matchesAny(declared, [pattern])) return true;
-  return WILDCARD.test(declared) && (WILDCARD.test(pattern) ? globsMayOverlap(declared, pattern) : matchesAny(pattern, [declared]));
+  return WILDCARD.test(declared) && (WILDCARD.test(pattern) ? globsMayOverlap(declared, pattern) : globCovers(declared, pattern));
+}
+
+/** Wildcards matchesAny cannot express: it escapes `[` and `{` and passes `?` through as a regex quantifier. */
+const UNMATCHED_WILDCARD = /[?[{]/;
+
+/**
+ * Does `glob` cover `path` (#3597)? Any wildcard counts, as in reaches().
+ * matchesAny decides a `*` glob; a glob using `?`, `[` or `{` is treated as
+ * covering any path under its literal prefix — over-inclusive on purpose,
+ * like globsMayOverlap: a missed overlap merges two edits.
+ */
+function globCovers(glob, path) {
+  if (!WILDCARD.test(glob)) return false;
+  return matchesAny(path, [glob]) || (UNMATCHED_WILDCARD.test(glob) && globsMayOverlap(glob, path));
 }
 
 /** Paths two scopes share: equal, a glob on one side covering the other, or two globs that may meet. */
@@ -223,8 +247,8 @@ function sharedPaths(a, b) {
   for (const pa of a) {
     for (const pb of b) {
       if (pa === pb) shared.add(pa);
-      else if (pa.includes('*') && matchesAny(pb, [pa])) shared.add(pb);
-      else if (pb.includes('*') && matchesAny(pa, [pb])) shared.add(pa);
+      else if (globCovers(pa, pb)) shared.add(pb);
+      else if (globCovers(pb, pa)) shared.add(pa);
       else if (WILDCARD.test(pa) && WILDCARD.test(pb) && globsMayOverlap(pa, pb)) {
         shared.add(pa);
         shared.add(pb);

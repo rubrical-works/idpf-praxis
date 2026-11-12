@@ -1,5 +1,5 @@
 ---
-version: "v0.117.0"
+version: "v0.118.0"
 description: Create text-based or diagrammatic screen mockups, using the IDPF framework.
 argument-hint: "[#NN] [--from-image <path>] [--serve [{Name}]] [--port <N>] [--open] [--showcase] [--apply-decisions] [--help]"
 copyright: "Rubrical Works (c) 2026"

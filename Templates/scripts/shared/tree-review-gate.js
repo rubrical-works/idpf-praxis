@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Run the /work Step 2b-ii tree-wide review gate chain as one call: enumerate an epic or branch tracker's children with the bare `gh pmu sub list N --json`, read each child's board status, classify every member through review-state.js, and hand the resolved set to branch-review-gate.js for the decision. `--record-bypass` writes the decline note into an epic body (never a branch tracker's). Every gh call goes through one injectable exec so the whole chain is testable against a mocked board (#2826).
  * @checksum sha256:placeholder
  *
@@ -53,6 +53,7 @@
 const fs = require('fs');
 
 const { execTimed } = require('./lib/exec.js');
+const { validateIssueNumber } = require('./lib/input-validation.js');
 const reviewState = require('./review-state.js');
 const { evaluateBranchReviewGate } = require('./lib/branch-review-gate.js');
 
@@ -70,9 +71,21 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--issue' && argv[i + 1] !== undefined) {
-      out.issue = parseInt(argv[++i], 10);
+      try {
+        out.issue = validateIssueNumber(argv[++i]);
+      } catch (e) {
+        return { error: `Missing or invalid --issue <number> argument: ${e.message}` };
+      }
     } else if (a === '--issues' && argv[i + 1] !== undefined) {
-      out.issues = String(argv[++i]).split(',').map((s) => parseInt(s.trim(), 10));
+      try {
+        // validateIssueNumber, not parseInt: 0, -5 and "12abc" are not issue
+        // numbers and must not reach `gh pmu` (#3573).
+        // De-duplicated: a repeated number would be classified twice and reach
+        // the gate twice (#3600).
+        out.issues = [...new Set(String(argv[++i]).split(',').map((s) => validateIssueNumber(s.trim())))];
+      } catch (e) {
+        return { error: `--issues must be a comma-separated list of issue numbers: ${e.message}` };
+      }
     } else if (a === '--evaluate' || a === '--record-bypass') {
       modesSeen.push(a.slice(2));
     } else if (a === '--tracker') {
@@ -93,11 +106,17 @@ function parseArgs(argv) {
   if (modesSeen.length > 1) return { error: 'Pass exactly one of --evaluate or --record-bypass.' };
   out.mode = modesSeen[0] || 'evaluate';
 
-  if (out.issues) {
-    if (!out.issues.length || out.issues.some((n) => Number.isNaN(n))) {
-      return { error: '--issues must be a comma-separated list of issue numbers.' };
-    }
-  } else if (!out.issue || Number.isNaN(out.issue)) {
+  // The selection shape ignores --issue and --tracker, so either beside
+  // --issues would be silently dropped rather than honored (#3600).
+  if (out.issues && out.issue) {
+    return { error: '--issue and --issues are mutually exclusive: pass a tree root or a selection, not both.' };
+  }
+  if (out.issues && out.tracker) {
+    return { error: '--tracker applies to a tree root (--issue) and cannot be combined with --issues.' };
+  }
+
+  // Every value was validated as it was read, so only presence is left to check.
+  if (!out.issues && !out.issue) {
     return { error: 'Missing or invalid --issue <number> argument (or --issues <a,b,c>).' };
   }
 

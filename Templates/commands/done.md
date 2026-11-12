@@ -1,5 +1,5 @@
 ---
-version: "v0.117.0"
+version: "v0.118.0"
 description: Complete issues with criteria verification and status transitions, using the IDPF framework.
 argument-hint: "[#issue... | --all] [--yes] (optional) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -144,8 +144,10 @@ Multiple workflows → report per-workflow from `workflows[]`.
 <!-- USER-EXTENSION-START: post-done -->
 <!-- USER-EXTENSION-END: post-done -->
 
-### Step 4: Cleanup
-**MUST DO:** Clear task list.
+### Step 4: Cleanup and Task Audit
+**MUST DO:** Clear task list. In order, like `/work` Step 6:
+**(1) Audit.** `TaskList`. Report each task this invocation owns still `pending` or `in_progress` as `Not executed: <subject>`. None created → report `No tasks were created for this /done run — rule 07 two-phase creation was skipped`.
+**(2) Prune the task list** — only after (1): `TaskUpdate status=deleted` for every task this invocation owns. Do **not** delete tasks created outside it.
 ---
 ## Peer Announcements (#2663)
 Tells other sessions in this working directory that a push is happening, then how it resolved. **Composed by `announce.js`** (#2972), as `/work` and the review commands compose theirs; delivery by `SendMessage`.

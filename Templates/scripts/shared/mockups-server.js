@@ -1,5 +1,5 @@
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  *
  * Static file server for /mockups --serve, built on http-server (#3023).
  *

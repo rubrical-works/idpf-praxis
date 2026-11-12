@@ -1,5 +1,5 @@
 ---
-version: "v0.117.0"
+version: "v0.118.0"
 description: Verify and close a PRD tracker, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"

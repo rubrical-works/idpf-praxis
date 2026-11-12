@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Software Development
-**Version:** v0.117.0
+**Version:** v0.118.0
 **Core Principle:** Verification over assumption. Project state over training memory. Observable actions over confident-sounding answers. Every rule names a *condition* and an *observable action*.
 ## Information Source Hierarchy
 When facts conflict, trust them in this order:
@@ -7,6 +7,7 @@ When facts conflict, trust them in this order:
 2. **User-provided context in the current conversation** — requirements, shared snippets, error output.
 3. **Official documentation** — fetched via WebFetch / WebSearch when project files are silent.
 4. **Training memory** — only when 1–3 are unavailable, with an explicit hedge ("based on training; verify against current docs").
+5. **Auto-memory** — per-user notes under `~/.claude/projects/*/memory/`, distinct from training memory: recall to be verified, never evidence. Check a note against 1–3 before acting on it.
 Skipping 1–3 because 4 *feels* sufficient is a hallucination risk, not an efficiency win.
 ## Verification Procedures (run *before* answering)
 ### V1 — Verify the project's stack before assuming it
@@ -51,6 +52,8 @@ Skipping 1–3 because 4 *feels* sufficient is a hallucination risk, not an effi
 - ❌ That a feature is already implemented → Grep for it before suggesting it as new
 - ❌ That credentials or environment variables are configured → Check `.env.example` or ask
 - ❌ Database schema or migrations state → Read migration files
+## NEVER Override a Script's Verdict From Memory
+When a preamble, gate or helper script has decided a question — a plan, a fallback, a gate result — memory never overrides that verdict, whether an auto-memory note or training recall. A conflicting recollection is verified against the deciding script's source and reported as a finding with both values — the script's verdict and the recalled claim; the verdict stands unless that source shows it wrong.
 ## NEVER Expand Scope
 - ❌ Edit files the user did not mention
 - ❌ "Improve" or "clean up" code adjacent to the requested change

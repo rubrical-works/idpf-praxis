@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Duplicate check for `/code-review` Step 8 (#3516): classify each
  * approved finding against open `bug` and `enhancement` issues before it is
  * filed, as `new`, `duplicate` or `related`.

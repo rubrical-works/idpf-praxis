@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.117.0
+ * @framework-script 0.118.0
  * @description Validate a framework subagent's returned result against its role's schema before the parent uses it (#3499)
  *
  * The role contract (`Reference/Agent-Architecture.md` § Role Contract,
