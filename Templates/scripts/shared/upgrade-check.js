@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Check for third-party framework/dependency upgrades. Detects ecosystems from manifest files at the project root (never from CHARTER.md or Tech-Stack.md prose), queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
  *
@@ -24,54 +24,47 @@ const CONFIG_FILE = '.idpf-update-check.json';
 
 /**
  * Ecosystem registry — maps ecosystem names to their dependency files
- * and package registry identifiers.
+ * and package registry identifiers. No keyword lists: ecosystems come only
+ * from manifests (#2895), so prose matching has nothing to read (#3672).
  */
 const ECOSYSTEM_REGISTRY = [
   {
     name: 'Node.js',
-    keywords: ['node.js', 'node', 'javascript', 'npm', 'yarn', 'pnpm', 'bun'],
     dependencyFiles: ['package.json'],
     registry: 'npm'
   },
   {
     name: 'Python',
-    keywords: ['python', 'pip', 'django', 'flask', 'fastapi', 'poetry'],
     dependencyFiles: ['requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile'],
     registry: 'pypi'
   },
   {
     name: 'Rust',
-    keywords: ['rust', 'cargo', 'crate'],
     dependencyFiles: ['Cargo.toml'],
     registry: 'crates'
   },
   {
     name: 'Go',
-    keywords: ['go', 'golang'],
     dependencyFiles: ['go.mod'],
     registry: 'go'
   },
   {
     name: 'Ruby',
-    keywords: ['ruby', 'rails', 'gem', 'bundler'],
     dependencyFiles: ['Gemfile'],
     registry: 'rubygems'
   },
   {
     name: 'Java',
-    keywords: ['java', 'maven', 'gradle', 'spring'],
     dependencyFiles: ['pom.xml', 'build.gradle', 'build.gradle.kts'],
     registry: 'maven'
   },
   {
     name: '.NET',
-    keywords: ['.net', 'dotnet', 'c#', 'csharp', 'nuget'],
     dependencyFiles: ['*.csproj', '*.fsproj', 'packages.config'],
     registry: 'nuget'
   },
   {
     name: 'PHP',
-    keywords: ['php', 'composer', 'laravel', 'symfony'],
     dependencyFiles: ['composer.json'],
     registry: 'packagist'
   }
@@ -157,9 +150,6 @@ function getEcosystemDependencyFiles(ecosystemName) {
  * one spurious word also suppressed the ecosystem actually present.
  */
 
-/** Marker the upgrade-check writer puts on the artifact it generates. */
-const TECH_STACK_MARKER = '*Auto-detected by upgrade-check.';
-
 /** The codebase-analysis skill's empty-result statement, verbatim. */
 const EMPTY_RESULT_STATEMENT = 'No stack detected - no manifest file present at the analyzed root.';
 
@@ -221,114 +211,18 @@ function detectEcosystemsFromFiles(projectDir) {
 }
 
 /**
- * Generate Inception/Tech-Stack.md from manifest detections.
+ * The ecosystem list for a project, from its root manifests (#2895).
  *
- * Every row cites the manifest files that were opened — never the registry's
- * full list for that ecosystem — and nothing else: no source extensions,
- * Dockerfile or CI evidence. With no detection it writes the codebase-analysis
- * skill's empty-result statement and names no technology.
- * @param {Array<{name: string, files: string[]}>} detections - From detectManifests()
- * @returns {string} Markdown content for the tech stack document
- */
-function generateTechStackContent(detections) {
-  const rows = (detections || []).filter(d => d && Array.isArray(d.files) && d.files.length > 0);
-  const lines = [
-    '# Tech Stack',
-    '',
-    `${TECH_STACK_MARKER} Update as needed.*`,
-    ''
-  ];
-
-  if (rows.length === 0) {
-    lines.push(EMPTY_RESULT_STATEMENT);
-    lines.push('');
-    return lines.join('\n');
-  }
-
-  lines.push('## Detected Ecosystems');
-  lines.push('');
-  lines.push('| Ecosystem | Manifest Found | Registry |');
-  lines.push('|-----------|----------------|----------|');
-
-  for (const detection of rows) {
-    const eco = ECOSYSTEM_REGISTRY.find(e => e.name === detection.name);
-    if (eco) {
-      lines.push(`| ${eco.name} | ${detection.files.join(', ')} | ${eco.registry} |`);
-    }
-  }
-
-  lines.push('');
-  return lines.join('\n');
-}
-
-/**
- * Compare an existing Tech-Stack.md against the manifest result.
- *
- * Only a file carrying the upgrade-check marker is compared: a hand-written
- * file is the project's own statement of intent, not a detection that can be
- * wrong. Recorded ecosystems are read from the first cell of table rows and
- * limited to registry names, so the comparison never re-derives prose.
- * @param {string} content - Existing Tech-Stack.md content
- * @param {string[]} detected - Ecosystem names from the manifests
- * @returns {{marked: boolean, recorded: string[], detected: string[],
- *   missing: string[], extra: string[], agrees: boolean}}
- */
-function compareTechStackArtifact(content, detected) {
-  const text = typeof content === 'string' ? content : '';
-  const marked = text.includes(TECH_STACK_MARKER);
-  const names = new Set(ECOSYSTEM_REGISTRY.map(e => e.name));
-  const recorded = [];
-
-  for (const line of text.split(/\r?\n/)) {
-    const cell = line.match(/^\|\s*([^|]+?)\s*\|/);
-    if (cell && names.has(cell[1]) && !recorded.includes(cell[1])) recorded.push(cell[1]);
-  }
-
-  const missing = detected.filter(n => !recorded.includes(n));
-  const extra = recorded.filter(n => !detected.includes(n));
-  return { marked, recorded, detected: [...detected], missing, extra, agrees: missing.length === 0 && extra.length === 0 };
-}
-
-/**
- * Decide the ecosystem list and the Tech-Stack.md outcome for a project.
- *
- * An absent Inception/Tech-Stack.md is written from the manifests (including
- * the empty-result form). An existing file is never rewritten; when it carries
- * the upgrade-check marker and disagrees with the manifests, the disagreement
- * is returned for the check to report.
+ * Writes nothing (#3650): the generated Tech-Stack.md artifact this used to
+ * write and compare is retired with the lifecycle directory that held it. The charter's Tech Stack table
+ * names the stack; the manifests read here hold the versions.
  * @param {string} projectDir - Project root directory
  * @returns {{detections: Array<{name: string, files: string[]}>, ecosystems: string[],
- *   techStackSource: string, written: boolean,
- *   disagreement: null|{recorded: string[], detected: string[], missing: string[], extra: string[]}}}
+ *   techStackSource: string, written: false}}
  */
 function resolveTechStack(projectDir) {
   const detections = detectManifests(projectDir);
-  const ecosystems = detections.map(d => d.name);
-  const techStackPath = path.join(projectDir, 'Inception', 'Tech-Stack.md');
-  const existing = readFileSafe(techStackPath);
-
-  if (existing === null) {
-    fs.mkdirSync(path.join(projectDir, 'Inception'), { recursive: true });
-    fs.writeFileSync(techStackPath, generateTechStackContent(detections));
-    return {
-      detections,
-      ecosystems,
-      techStackSource: 'Inception/Tech-Stack.md (auto-generated)',
-      written: true,
-      disagreement: null
-    };
-  }
-
-  const cmp = compareTechStackArtifact(existing, ecosystems);
-  return {
-    detections,
-    ecosystems,
-    techStackSource: 'Inception/Tech-Stack.md',
-    written: false,
-    disagreement: cmp.marked && !cmp.agrees
-      ? { recorded: cmp.recorded, detected: cmp.detected, missing: cmp.missing, extra: cmp.extra }
-      : null
-  };
+  return { detections, ecosystems: detections.map(d => d.name), techStackSource: 'root manifests', written: false };
 }
 
 // ======================================
@@ -430,6 +324,9 @@ function resolveNpmCommand({ platform = process.platform, execPath = process.exe
   return exists(cli) ? { file: execPath, prefix: [cli] } : null;
 }
 
+// PEP 508 project name: starts with an alphanumeric, then letters, digits, `.`, `_`, `-`.
+const PYPI_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 /**
  * Query a package registry for the latest version of a package.
  * @param {string} registry - Registry type ('npm', 'pypi', 'crates')
@@ -456,6 +353,10 @@ function queryLatestVersion(registry, packageName, env = {}) {
         return result.trim();
       }
       case 'pypi': {
+        // packageName comes from requirements.txt — in a cloned repo
+        // attacker-controlled. A name must start with an alphanumeric (PEP 508),
+        // so `--pre` or `-v` never reaches pip as an option (#3693).
+        if (typeof packageName !== 'string' || !PYPI_NAME_PATTERN.test(packageName)) return null;
         // Array-args and a JS first-line parse: the old `2>/dev/null | head -1`
         // shell string cannot run under cmd.exe (#3050).
         const result = execFileSync(
@@ -525,11 +426,22 @@ function checkDependencies(items, {
  * Build the result message and decide whether to advance lastCheck.
  * A lookup that failed is unknown, never up to date; when nothing could be
  * checked at all, lastCheck stays put so the next session retries (#3050).
- * @param {{checked: object[], outdated: object[], failed: object[]}} result
+ * When ecosystems were detected but none of their manifests yielded a
+ * dependency (no parser or registry for them), nothing was queried, so the
+ * message says so rather than "up-to-date" (#3672); lastCheck still advances,
+ * as for no ecosystems at all — the answer cannot change until the manifests do.
+ * @param {{checked: object[], outdated: object[], failed: object[], ecosystems?: string[]}} result
  * @returns {{message: string, writeLastCheck: boolean, failed: object[]}}
  */
-function summarizeCheck({ checked, outdated, failed }) {
+function summarizeCheck({ checked, outdated, failed, ecosystems = [] }) {
   const failedList = failed.map(({ name, ecosystem, reason }) => ({ name, ecosystem, reason }));
+  if (checked.length === 0 && failed.length === 0 && ecosystems.length > 0) {
+    return {
+      message: `No dependencies could be enumerated for the detected ecosystem(s): ${ecosystems.join(', ')}; nothing was checked`,
+      writeLastCheck: true,
+      failed: failedList
+    };
+  }
   if (checked.length === 0 && failed.length > 0) {
     return {
       message: `Could not query the registry for any of ${failed.length} package(s); nothing was checked`,
@@ -589,28 +501,15 @@ async function main() {
     process.exit(0);
   }
 
-  // Ecosystems come from root manifests only; CHARTER.md and Tech-Stack.md
-  // prose never add or suppress one (#2895). The same list drives the artifact
-  // and the registry queries below.
-  const {
-    detections,
-    ecosystems,
-    techStackSource,
-    disagreement
-  } = resolveTechStack(projectDir);
-
-  // A marked artifact disagreeing with the manifests is reported, never
-  // silently rewritten — it may be a fabrication from the old prose scan.
-  const disagreementNote = disagreement
-    ? ` Inception/Tech-Stack.md (auto-detected) lists ${disagreement.recorded.join(', ') || 'no ecosystem'}` +
-      ` but the manifests show ${disagreement.detected.join(', ') || 'none'}; the file was not rewritten.`
-    : '';
+  // Ecosystems come from root manifests only; CHARTER.md prose never adds or
+  // suppresses one (#2895), and nothing is written (#3650).
+  const { detections, ecosystems, techStackSource } = resolveTechStack(projectDir);
 
   if (ecosystems.length === 0) {
     console.log(JSON.stringify({
       success: true,
-      message: `${EMPTY_RESULT_STATEMENT}${disagreementNote}`,
-      data: { ecosystems: [], outdated: [], techStackSource, techStackDisagreement: disagreement }
+      message: EMPTY_RESULT_STATEMENT,
+      data: { ecosystems: [], outdated: [], techStackSource }
     }));
     writeCheckConfig(projectDir, { lastCheck: new Date().toISOString() });
     process.exit(0);
@@ -633,7 +532,7 @@ async function main() {
   }
 
   const { checked, outdated, failed } = checkDependencies(items);
-  const summary = summarizeCheck({ checked, outdated, failed });
+  const summary = summarizeCheck({ checked, outdated, failed, ecosystems });
 
   // Update config with check timestamp — not when every lookup failed (#3050)
   if (summary.writeLastCheck) {
@@ -643,14 +542,13 @@ async function main() {
   // Output result
   console.log(JSON.stringify({
     success: true,
-    message: summary.message + (disagreementNote ? `.${disagreementNote}` : ''),
+    message: summary.message,
     data: {
       ecosystems,
       checked: checked.length,
       failed: summary.failed,
       outdated,
-      techStackSource,
-      techStackDisagreement: disagreement
+      techStackSource
     }
   }));
 }
@@ -676,8 +574,6 @@ module.exports = {
   getEcosystemDependencyFiles,
   detectEcosystemsFromFiles,
   detectManifests,
-  generateTechStackContent,
-  compareTechStackArtifact,
   resolveTechStack,
   parseDependencyVersions,
   queryLatestVersion,

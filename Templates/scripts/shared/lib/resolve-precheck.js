@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * resolve-precheck.js — /resolve-review's deterministic check of its own edits
  * before the Step 4 re-review (#3542).
  *
@@ -35,6 +35,8 @@ const { checkDeclaredScope } = require('./declared-scope-check.js');
 // `→ QA: #N` / `→ GATE: …` suffixes name the gate that owns the AC, not a
 // dependency. One shared stripper (review-body-hash.js), no second pattern.
 const { stripGateSuffix } = require('./review-body-hash.js');
+// One flag-value reader, shared with review-references.js (#3627, #3664).
+const { readFlagValues } = require('./command-args.js');
 
 // One issue-reference pattern, owned by review-references.js (#3563).
 const { issueRefPattern, checkReferences, extractIssueRefs, extractPathRefs, extractCommandRefs } = require('./review-references.js');
@@ -215,19 +217,10 @@ function defaultFetchBody(issue) {
  */
 function resolveBody(argv, deps = {}) {
   const fail = (code, message) => ({ ok: false, error: { code, message } });
-  // A flag in a value position is a missing value, never the value (#3600):
-  // `--issue --body-file x` must not read `--body-file` as the issue.
-  let flagAsValue = null;
-  const arg = (name) => {
-    const i = argv.indexOf(name);
-    if (i === -1) return undefined;
-    const value = argv[i + 1];
-    if (typeof value === 'string' && value.startsWith('--')) {
-      if (!flagAsValue) flagAsValue = `${name} is missing its value (found the flag ${value} instead)`;
-      return undefined;
-    }
-    return value;
-  };
+  // A flag in a value position, or given last, is a missing value, never the
+  // value (#3600, #3664): `--issue --body-file x` must not read `--body-file`
+  // as the issue, and `--issue 5 --body-file` must not fetch #5's body.
+  const { arg, flagAsValue: missingValue } = readFlagValues(argv);
   // A positive integer, checked the way review-preamble.js checks it: an
   // invalid value is named, not reported as a missing argument (#3600).
   const rawIssue = arg('--issue');
@@ -241,6 +234,7 @@ function resolveBody(argv, deps = {}) {
   }
   const bodyFile = arg('--body-file');
   const beforeFile = arg('--before-file');
+  const flagAsValue = missingValue();
   if (flagAsValue) return fail('INVALID_ARGUMENT', flagAsValue);
   let body;
   let source;

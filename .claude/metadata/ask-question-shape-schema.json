@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ask-question-shape-schema.json",
   "title": "AskUserQuestion Shape Schema",
-  "description": "Schema for .claude/metadata/ask-question-shape.json — the tool's hard limits and the correction text .claude/hooks/ask-question-shape-hook.js applies to every AskUserQuestion call (#3233, #3463). The hook fails open: absent or malformed data means no block.",
+  "description": "Schema for .claude/metadata/ask-question-shape.json — the tool's hard limits and the correction text .claude/hooks/ask-question-shape-hook.js applies to every AskUserQuestion call (#3233, #3463, #3638). The hook fails open: absent or malformed data means no block and no rewrite.",
   "type": "object",
   "required": [
     "maxOptions",
@@ -31,7 +31,7 @@
     "maxHeaderLength": {
       "type": "integer",
       "minimum": 1,
-      "description": "The tool's own limit on header length, in characters (#3198)."
+      "description": "The tool's own limit on header length, in characters (#3198). The hook trims a longer header to this length (#3638)."
     },
     "remedy": {
       "type": "object",
@@ -43,7 +43,7 @@
         "header": {
           "type": "string",
           "minLength": 1,
-          "description": "Remedy for a header over maxHeaderLength (#3452). {maxHeaderLength} is replaced with the limit."
+          "description": "Remedy for a header over maxHeaderLength (#3452), used only when the call blocks: it also has too many options, or the header has nothing to trim to (#3638). {maxHeaderLength} is replaced with the limit."
         },
         "options": {
           "type": "string",

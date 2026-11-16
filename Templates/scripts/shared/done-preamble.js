@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -154,8 +154,11 @@ function parseArgs(args) {
     if (!raw) {
       return { error: { code: 'MISSING_ARGUMENT', message: '--issues requires a comma-separated list.' } };
     }
-    const nums = raw.split(',').map(s => parseInt(s.trim().replace(/^#/, ''), 10));
-    if (nums.some(n => isNaN(n) || n <= 0)) {
+    // #3668: the same round-trip check --issue applies, per element — parseInt
+    // alone read '12abc' as 12.
+    const tokens = raw.split(',').map(s => s.trim().replace(/^#/, ''));
+    const nums = tokens.map(t => parseInt(t, 10));
+    if (nums.some((n, i) => isNaN(n) || n <= 0 || String(n) !== tokens[i])) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue numbers in: "${raw}".` } };
     }
     const result = { mode: 'batch', issues: nums, forceMove };
@@ -210,7 +213,9 @@ async function gatherAllData(issueNum) {
 
 // ─── Default-Mode Epic Continuation (#3325) ───
 
-const labelNames = (labels) => (labels || []).map(l => (typeof l === 'string' ? l : l.name));
+const labelNames = (labels) => (labels || []).map(l => (typeof l === 'string' ? l : l && l.name));
+/** The one epic-label predicate (#3667): labels as objects or strings; null entries tolerated. */
+const hasEpicLabel = (labels) => labelNames(labels).includes('epic');
 const PROCESSED_STATUSES = new Set(['in review', 'in_review', 'done']);
 
 /**
@@ -223,7 +228,7 @@ const PROCESSED_STATUSES = new Set(['in review', 'in_review', 'done']);
  * @returns {{ epic: number, remaining: number[], guidance: string[] }|null}
  */
 function buildEpicContinuation({ issueNumber, parent, siblings }) {
-  if (!parent || !labelNames(parent.labels).includes('epic')) return null;
+  if (!parent || !hasEpicLabel(parent.labels)) return null;
   const remaining = (siblings || [])
     .filter(s => s.number !== issueNumber)
     .filter(s => !PROCESSED_STATUSES.has(String(s.status || '').toLowerCase()))
@@ -252,7 +257,7 @@ async function resolveEpicContinuation(issueNum, parentRef, execJSONFn = execJSO
   const parentResult = await execJSONFn(`gh pmu view ${epicNum} --json=labels,subIssues`, 'NOT_FOUND', `Issue #${epicNum} not found`);
   if (parentResult.error) return { nextSteps: null, calls: 1, warning };
   const parent = { number: epicNum, labels: parentResult.data.labels };
-  if (!labelNames(parent.labels).includes('epic')) return { nextSteps: null, calls: 1 };
+  if (!hasEpicLabel(parent.labels)) return { nextSteps: null, calls: 1 };
   const open = (parentResult.data.subIssues || [])
     .filter(s => String(s.state || '').toUpperCase() === 'OPEN' && s.number !== issueNum)
     .map(s => s.number);
@@ -280,7 +285,7 @@ function hasPrdLabel(labels) {
  * @returns {boolean}
  */
 function isApprovalGate(labels) {
-  const names = (labels || []).map(l => l.name);
+  const names = labelNames(labels);
   return names.includes('test-plan') && names.includes('approval-required');
 }
 
@@ -309,8 +314,7 @@ function isMoveEligible(forceMove, diffVerification) {
  * @returns {{ skippedReason: string|null, warning: { code: string, message: string }|null }}
  */
 function classifyMoveSkip({ labels, forceMove, diffVerification } = {}) {
-  const isEpic = (labels || []).some(l => l && l.name === 'epic');
-  if (!isEpic || !isMoveEligible(forceMove, diffVerification)) {
+  if (!hasEpicLabel(labels) || !isMoveEligible(forceMove, diffVerification)) {
     return { skippedReason: null, warning: null };
   }
   return {
@@ -341,6 +345,50 @@ function parsePrdReference(body) {
   const prdMatch = body.match(/\*\*PRD:\*\*\s*#(\d+)/);
   if (prdMatch) return parseInt(prdMatch[1], 10);
   return null;
+}
+
+/**
+ * Next-step guidance for an approval-gate issue (#1481, #1867, #3641).
+ *
+ * The tracker comes from the body's `#N` reference when there is one; for a
+ * test plan approval that cites its PRD by file path, it comes from the
+ * lifecycle-box lookup (#3636) this run already made — never a second search,
+ * so the guidance and `gates.lifecycleBox` cannot name different trackers. An
+ * ambiguous, failed or empty lookup names no tracker.
+ *
+ * @param {{ labels: Array<{name:string}>, body: string, lifecycleBox?: object|null }} input
+ * @returns {{ prdTracker: number|null, guidance: string[] }|null} null when not an approval gate
+ */
+function buildApprovalNextSteps({ labels, body, lifecycleBox = null }) {
+  if (!isApprovalGate(labels)) return null;
+  const isTestPlanApproval = (labels || []).some(l => l.name === 'test-plan');
+  let prdRef = parsePrdReference(body);
+  if (!prdRef && isTestPlanApproval && lifecycleBox && lifecycleBox.tracker
+      && lifecycleBox.reason !== 'ambiguous-tracker') {
+    prdRef = lifecycleBox.tracker;
+  }
+  // A test plan approval implies a reviewed PRD (test plans are derived from
+  // reviewed PRDs) — no PRD review suggestion (#1867).
+  if (prdRef && isTestPlanApproval) {
+    return { prdTracker: prdRef, guidance: [`/create-backlog #${prdRef} — decompose into epics/stories`] };
+  }
+  if (prdRef) {
+    return {
+      prdTracker: prdRef,
+      guidance: [
+        `/review-prd #${prdRef} — review the PRD before decomposition`,
+        `/create-backlog #${prdRef} — decompose into epics/stories (after review)`
+      ]
+    };
+  }
+  return { prdTracker: null, guidance: ['Review the linked PRD before running /create-backlog.'] };
+}
+
+/** Combine approval guidance with the epic continuation (#3325); either may be null. */
+function mergeNextSteps(approval, continuation) {
+  if (!continuation) return approval;
+  if (!approval) return continuation;
+  return { ...approval, ...continuation, guidance: [...approval.guidance, ...continuation.guidance] };
 }
 
 // ─── Status Validation ───
@@ -554,15 +602,67 @@ async function moveToDone(issueNum) {
   }
 }
 
-// ─── Single Issue Flow ───
+// ─── PRD tracker lifecycle box (#3636) ───
 
 /**
- * Run the done preamble for a single issue.
- * Parallelizes data gathering and diff verification for performance.
- * @param {number} issueNum
- * @param {{ forceMove?: boolean }} options
- * @returns {Promise<object>} JSON envelope
+ * Check `Test plan approved` on the PRD tracker when a test plan approval
+ * issue — `test-plan` + `approval-required`, per isApprovalGate — moves to Done. #2694 left this box to "the command that closes" the
+ * approval issue; /done is that command and never wrote it, so the box stayed
+ * unchecked for the life of every tracker.
+ *
+ * The tracker is resolved by prd-tracker-lookup.js (the approval issue cites
+ * the PRD file, not the tracker), and the box is written by label and
+ * fence-aware through review-ac-checkoff.js — with this approval issue as the
+ * reference, so a box naming another approval issue is left alone.
+ *
+ * Advisory: never throws, never blocks the close. No tracker (an Extract Mode
+ * PRD) is a reported outcome, not a warning; a failed lookup or write is a
+ * coded warning.
+ *
+ * @returns {null | { result: {tracker, label, checked, reason}, warning?: {code, message} }}
  */
+function applyTestPlanApprovedBox({ issueNum, labels, body, deps = {} }) {
+  // One predicate with the approval guidance (#3667): a bare `test-plan`
+  // issue is not an approval issue and never claims the box.
+  if (!isApprovalGate(labels)) return null;
+  const label = 'Test plan approved';
+  const fail = (tracker, reason, detail) => ({
+    result: { tracker, label, checked: false, reason },
+    warning: { code: 'LIFECYCLE_BOX_FAILED', message: `Could not check "${label}" for approval issue #${issueNum}${tracker ? ` on PRD tracker #${tracker}` : ''}: ${detail}` },
+  });
+  // Dependencies resolve inside the try (#3667): this runs after the move to
+  // Done, so a module that fails to load is a lookup failure, never a throw.
+  const load = deps.load || require;
+  let lookup;
+  let check;
+  try {
+    const resolve = deps.resolvePrdTracker || load('./lib/prd-tracker-lookup.js').resolvePrdTracker;
+    check = deps.checkLifecycleBox || load('./review-ac-checkoff.js').checkLifecycleBox;
+    lookup = resolve({ approvalIssue: issueNum, body });
+  } catch (e) {
+    return fail(null, 'lookup-failed', e.message);
+  }
+  if (!lookup || lookup.ok !== true) {
+    return fail(null, 'lookup-failed', ((lookup && lookup.warnings) || []).join('; ') || 'tracker search failed');
+  }
+  if (!lookup.tracker) return { result: { tracker: null, label, checked: false, reason: 'no-tracker' } };
+  // Several trackers name the same PRD path: resolvePrdTracker picks the
+  // first, and a box with no `#N` would pass the reference guard. Writing a
+  // guess is worse than writing nothing — warn, name the candidates, skip.
+  if ((lookup.warnings || []).includes('ambiguous-path-match')) {
+    const names = (lookup.candidates || [lookup.tracker]).map((n) => `#${n}`).join(', ');
+    return fail(lookup.tracker, 'ambiguous-tracker', `${names} all name the same PRD path; check the box on the right tracker by hand`);
+  }
+  let out;
+  try {
+    out = check(lookup.tracker, label, { reference: issueNum });
+  } catch (e) {
+    return fail(lookup.tracker, 'write-failed', e.message);
+  }
+  if (!out || out.ok !== true) return fail(lookup.tracker, (out && out.reason) || 'write-failed', (out && out.error) || 'unknown error');
+  return { result: { tracker: lookup.tracker, label, checked: out.checked === true, reason: out.reason } };
+}
+
 // ─── Post-release gate hand-off (#3453) ───
 //
 // A `→ GATE: release` criterion whose check can only run after the release
@@ -690,9 +790,33 @@ async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defa
   return failure ? { ok: false, handedOff, body, error: failure } : { ok: true, handedOff, body };
 }
 
+// ─── Single Issue Flow ───
+
+/**
+ * Run the done preamble for a single issue.
+ * Parallelizes data gathering and diff verification for performance.
+ * @param {number} issueNum
+ * @param {object} [options]
+ * @param {boolean} [options.forceMove] - Move to Done without diff verification
+ *   (verification is skipped entirely, and the move needs no confirmation).
+ * @param {boolean} [options.releaseHandoff] - Consent to hand each post-release
+ *   `→ GATE: release` criterion to a standalone QA issue before the move (#3453).
+ * @param {boolean} [options.yes] - Fix both consents in advance (#3658): the move
+ *   a requiresConfirmation would ask about, and the release hand-off. Unlike
+ *   forceMove, diff verification still runs, so its warnings stay in the envelope.
+ * @param {object} [options.deps] - Injected collaborators for tests: `fileQaFn`
+ *   and `writeBodyFn` (release hand-off), `resolvePrdTracker`, `checkLifecycleBox`
+ *   and `load` (the PRD tracker lifecycle box, see applyTestPlanApprovedBox).
+ * @returns {Promise<object>} JSON envelope
+ */
 async function runSingleIssue(issueNum, options = {}) {
   const warnings = [];
   let roundTrips = 0;
+  // --yes fixes the answer to both consents in advance (#3658): the move a
+  // requiresConfirmation would ask about, and the release hand-off. Verification
+  // still runs under --yes, so its warnings stay in the envelope for audit.
+  const consentMove = Boolean(options.forceMove || options.yes);
+  const consentHandoff = Boolean(options.releaseHandoff || options.yes);
 
   // 1. Parallel: gather all data (single API call) + diff verification
   //    These are independent — diff verification only needs issueNum.
@@ -724,47 +848,19 @@ async function runSingleIssue(issueNum, options = {}) {
     return buildErrorEnvelope([statusValidation.error]);
   }
 
-  // 5. Check for approval-gate labels
-  const approvalGate = isApprovalGate(dataResult.issue.labels);
-  let nextSteps = null;
-  if (approvalGate) {
-    const prdRef = parsePrdReference(dataResult.issue.body);
-    // If this is a test plan approval issue, the PRD was necessarily reviewed
-    // (test plans are derived from reviewed PRDs) — skip PRD review suggestion (#1867)
-    const isTestPlanApproval = (dataResult.issue.labels || []).some(l => l.name === 'test-plan');
-    if (prdRef && isTestPlanApproval) {
-      nextSteps = {
-        prdTracker: prdRef,
-        guidance: [
-          `/create-backlog #${prdRef} — decompose into epics/stories`
-        ]
-      };
-    } else if (prdRef) {
-      nextSteps = {
-        prdTracker: prdRef,
-        guidance: [
-          `/review-prd #${prdRef} — review the PRD before decomposition`,
-          `/create-backlog #${prdRef} — decompose into epics/stories (after review)`
-        ]
-      };
-    } else {
-      nextSteps = {
-        prdTracker: null,
-        guidance: ['Review the linked PRD before running /create-backlog.']
-      };
-    }
-  }
+  // Computed once (#3667): gates the release hand-off (6a) and the move (7).
+  const isEpic = hasEpicLabel(dataResult.issue.labels);
+
+  // 5. Approval-gate guidance. Built from the body here; rebuilt after 7a
+  // once the lifecycle-box lookup has resolved a path-cited tracker (#3641).
+  const approvalInput = { labels: dataResult.issue.labels, body: dataResult.issue.body };
 
   // 5a. Default-mode epic continuation (#3325): a sub-issue whose parent epic
   // still has unprocessed siblings hands back to a fresh /work #<epic>.
   const continuation = await resolveEpicContinuation(issueNum, dataResult.parent);
   roundTrips += continuation.calls;
   if (continuation.warning) warnings.push(continuation.warning);
-  if (continuation.nextSteps) {
-    nextSteps = nextSteps
-      ? { ...nextSteps, ...continuation.nextSteps, guidance: [...nextSteps.guidance, ...continuation.nextSteps.guidance] }
-      : continuation.nextSteps;
-  }
+  let nextSteps = mergeNextSteps(buildApprovalNextSteps(approvalInput), continuation.nextSteps);
 
   // 6. Process diff verification result
   let diffVerification = null;
@@ -782,9 +878,8 @@ async function runSingleIssue(issueNum, options = {}) {
   // default; performed with --release-handoff, after which the rewritten body
   // has no unchecked box and the move below proceeds.
   let releaseHandoff = null;
-  const isEpicIssue = (dataResult.issue.labels || []).some(l => l.name === 'epic');
-  const gates0 = isEpicIssue ? { eligible: false, gated: [] } : classifyReleaseGates(dataResult.issue.body);
-  if (gates0.eligible && !options.releaseHandoff) {
+  const gates0 = isEpic ? { eligible: false, gated: [] } : classifyReleaseGates(dataResult.issue.body);
+  if (gates0.eligible && !consentHandoff) {
     const context = { issue: dataResult.issue, status: dataResult.status, ci: gatherCiData(), tracker: resolveTracker(), trackerLinked: false };
     if (nextSteps) context.nextSteps = nextSteps;
     const gates = { movedToDone: false, releaseHandoff: { offered: true, criteria: gates0.gated.map((g) => g.criterion) } };
@@ -792,7 +887,7 @@ async function runSingleIssue(issueNum, options = {}) {
     envelope.roundTrips = roundTrips;
     return envelope;
   }
-  if (gates0.eligible && options.releaseHandoff) {
+  if (gates0.eligible && consentHandoff) {
     const deps = options.deps || {};
     const handoff = await runReleaseHandoff(issueNum, { issue: dataResult.issue, fileQaFn: deps.fileQaFn, writeBodyFn: deps.writeBodyFn });
     roundTrips += handoff.handedOff.length + (handoff.handedOff.length ? 1 : 0);
@@ -809,8 +904,7 @@ async function runSingleIssue(issueNum, options = {}) {
   // (epic reaches Done only after sub-issues) otherwise gets inverted and
   // has to be recovered in a follow-up batch.
   let movedToDone = false;
-  const isEpic = (dataResult.issue.labels || []).some(l => l.name === 'epic');
-  if (!isEpic && isMoveEligible(options.forceMove, diffVerification)) {
+  if (!isEpic && isMoveEligible(consentMove, diffVerification)) {
     roundTrips++;
     const moveResult = await moveToDone(issueNum);
     if (moveResult.error) {
@@ -824,11 +918,28 @@ async function runSingleIssue(issueNum, options = {}) {
   // case so a caller can tell them apart (#2670).
   const moveSkip = classifyMoveSkip({
     labels: dataResult.issue.labels,
-    forceMove: options.forceMove,
+    forceMove: consentMove,
     diffVerification
   });
   if (moveSkip.warning) {
     warnings.push(moveSkip.warning);
+  }
+
+  // 7a. PRD tracker lifecycle box (#3636): only after the approval issue
+  // actually reached Done — a box claiming approval must not precede it.
+  let lifecycleBoxResult = null;
+  if (movedToDone) {
+    const lifecycleBox = applyTestPlanApprovedBox({
+      issueNum, labels: dataResult.issue.labels, body: dataResult.issue.body, deps: options.deps || {}
+    });
+    if (lifecycleBox) {
+      lifecycleBoxResult = lifecycleBox.result;
+      if (lifecycleBox.warning) warnings.push(lifecycleBox.warning);
+      nextSteps = mergeNextSteps(
+        buildApprovalNextSteps({ ...approvalInput, lifecycleBox: lifecycleBoxResult }),
+        continuation.nextSteps
+      );
+    }
   }
 
   // 8. CI pre-check data + tracker resolution (both local, no network)
@@ -867,6 +978,9 @@ async function runSingleIssue(issueNum, options = {}) {
   }
   if (releaseHandoff) {
     gates.releaseHandoff = releaseHandoff;
+  }
+  if (lifecycleBoxResult) {
+    gates.lifecycleBox = lifecycleBoxResult;
   }
 
   const envelope = attachDiffVerification(buildSuccessEnvelope(context, gates, warnings), diffVerification);
@@ -982,6 +1096,17 @@ function buildBatchEnvelope(issues, results) {
 
 // ─── Main Entry Point ───
 
+/**
+ * The per-issue options main passes to runSingleIssue, single and batch alike.
+ * `yes` is carried so the preamble applies --force-move and --release-handoff
+ * itself under --yes (#3658) instead of the spec re-running it with them.
+ * @param {{ forceMove?: boolean, releaseHandoff?: boolean, yes?: boolean }} parsed
+ * @returns {{ forceMove: boolean, releaseHandoff: boolean, yes: boolean }}
+ */
+function issueOptions(parsed) {
+  return { forceMove: Boolean(parsed.forceMove), releaseHandoff: Boolean(parsed.releaseHandoff), yes: Boolean(parsed.yes) };
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const parsed = parseArgs(args);
@@ -1008,7 +1133,7 @@ async function main() {
   }
 
   if (parsed.mode === 'single') {
-    const result = await runSingleIssue(parsed.issues[0], { forceMove: parsed.forceMove, releaseHandoff: parsed.releaseHandoff });
+    const result = await runSingleIssue(parsed.issues[0], issueOptions(parsed));
     if (parsed.yes) result.yes = true;
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
@@ -1019,7 +1144,7 @@ async function main() {
     // Batch mode: process each issue sequentially (order matters for side effects)
     const results = [];
     for (const num of parsed.issues) {
-      results.push(await runSingleIssue(num, { forceMove: parsed.forceMove, releaseHandoff: parsed.releaseHandoff }));
+      results.push(await runSingleIssue(num, issueOptions(parsed)));
     }
     const envelope = buildBatchEnvelope(parsed.issues, results);
     if (parsed.yes) envelope.yes = true;
@@ -1044,6 +1169,7 @@ if (require.main === module) {
 
 module.exports = {
   applyReleaseHandoff,
+  applyTestPlanApprovedBox,
   attachDiffVerification,
   buildHandoffQaBody,
   classifyReleaseGates,
@@ -1055,12 +1181,16 @@ module.exports = {
   parseArgs,
   gatherAllData,
   hasPrdLabel,
+  hasEpicLabel,
   isApprovalGate,
   buildEpicContinuation,
   resolveEpicContinuation,
   isMoveEligible,
+  issueOptions,
   classifyMoveSkip,
   parsePrdReference,
+  buildApprovalNextSteps,
+  mergeNextSteps,
   validateStatus,
   runDiffVerification,
   moveToDone,

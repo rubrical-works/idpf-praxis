@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
- * @description Charter entity extraction and count verification (#3420).
+ * @framework-script 0.119.0
+ * @description Charter entity extraction and derived counts (#3420, #3644).
  * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
- * memory, checks the Key Entities counts against disk, and scans charter prose
- * for counts that disagree with the table. Formerly generate-domain-entities.js;
+ * memory and counts each Key Entities row against disk when asked. Nothing
+ * stores or verifies a count (#3644): the charter's Entity | Location rows
+ * declare what to count, and the count is derived at the moment it is shown.
+ * Formerly generate-domain-entities.js;
  * the generated domain-entities.json it wrote is retired, and
  * removeRetiredEntitiesFile() deletes a leftover copy.
  * @checksum sha256:placeholder
@@ -13,7 +15,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { computeFenceMask } = require('./lib/checkbox-scan.js');
 const { parseCompanionTable } = require('./lib/companion-projects.js');
 const { loadCharterContract } = require('./lib/charter-template.js');
 const { escapeRegExp } = require('./lib/input-validation.js');
@@ -35,28 +36,40 @@ function extractEntities(content) {
   }
   if (!sectionMatch) return entities;
   const tableLines = sectionMatch[1].split('\n').filter(l => l.startsWith('|'));
-  const tableMatch = tableLines.length >= 3 ? [null, tableLines.join('\n') + '\n'] : null;
-
-  if (!tableMatch) return entities;
-
+  // A header, a separator and at least one row.
+  if (tableLines.length < 3) return entities;
   const rows = tableLines;
+  // Columns are found by header (#3644): the target table is Entity | Location,
+  // a legacy one Entity | Count | Location. With no recognizable Location
+  // header, the last column is the location, as it always was — unless that
+  // column is Count.
+  // Cells are positional: an empty cell keeps its column, so an empty Location
+  // is a row with no location, not a row shifted one column left.
+  const cellsOf = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+  const header = cellsOf(rows[0]);
+  const countCol = header.findIndex(h => /^count$/i.test(h));
+  let locationCol = header.findIndex(h => /^location/i.test(h));
+  // The last-column fallback never lands on the Count column (#3671): a legacy
+  // Entity | Count table has no location, not a count cell read as a path.
+  if (locationCol === -1) locationCol = header.length - 1 === countCol ? -1 : header.length - 1;
   // Skip header and separator rows
   for (let i = 2; i < rows.length; i++) {
-    const cells = rows[i].split('|').map(c => c.trim()).filter(c => c);
-    if (cells.length >= 2) {
+    const cells = cellsOf(rows[i]);
+    if (cells.length >= 2 && cells[0]) {
       const name = cells[0];
       const key = name.toLowerCase().replace(/\s+/g, '-');
       const entity = { description: name };
 
-      // Parse count if present
-      if (cells[1] && cells[1].match(/^\d+$/)) {
-        entity.count = parseInt(cells[1], 10);
+      // A legacy Count cell is read so a repair can compare against it; it is
+      // never used as a count (#3644).
+      if (countCol > 0 && cells[countCol] && cells[countCol].match(/^\d+$/)) {
+        entity.count = parseInt(cells[countCol], 10);
       }
 
       // Parse location if present — split comma-separated locations
       // Only split on commas outside parentheses to preserve annotations
-      if (cells[2]) {
-        const locationRaw = cells[2].replace(/`/g, '').trim();
+      if (locationCol > 0 && cells[locationCol]) {
+        const locationRaw = cells[locationCol].replace(/`/g, '').trim();
         if (locationRaw) {
           const { locations, exclude } = parseLocationWithExclusions(locationRaw);
           entity.locations = locations;
@@ -223,9 +236,17 @@ function globToRegex(pattern) {
     const c = pattern[i];
     if (c === '*') {
       if (pattern[i + 1] === '*') {
-        re += '.*';
         i += 2;
-        if (pattern[i] === '/') i++;
+        // `**/` is zero or more whole segments, as in scope-drift-check.js
+        // (#3621): emitting `.*` and consuming the `/` lost the segment
+        // boundary, so `**/x.js` counted myx.js too (#3688). A bare trailing
+        // `**` stays `.*`.
+        if (pattern[i] === '/') {
+          re += '(?:.*/)?';
+          i++;
+        } else {
+          re += '.*';
+        }
       } else {
         re += '[^/]*';
         i++;
@@ -314,58 +335,46 @@ function collectGlobMatches(fs, path, absBase, pattern) {
 }
 
 /**
- * Verify entity counts against the filesystem.
- *
- * For each entity with both `count` and `locations`, derives a count on disk
- * and compares it against the charter count.
+ * Count each Key Entities row against the filesystem (#3644). Nothing is
+ * compared: the charter stores no count, so the count shown is the one derived
+ * now. A legacy `count` an entity still carries is ignored.
  *
  * **A count that could not be derived is reported as such, never as zero**
- * (#2597). Before this, three separate failures — a glob thrown into a silent
- * catch, a file location matching no branch, and a path that does not exist —
- * all emerged as `actualCount: 0, match: false`, indistinguishable from a
- * genuinely deleted entity. A caller then had to re-derive every count by hand,
- * which is the work this function exists to save.
+ * (#2597): a missing path, a missing glob base, a file location or a row with
+ * no location yields `counted: false`, `count: null` and a reason.
  *
  * Location kinds:
  *   - **glob** (contains `*` or `?`) — expanded from its static prefix and
- *     counted. A base directory that does not exist is unresolvable; a base
- *     that exists and matches nothing is a resolved zero.
- *   - **file** — counts as 1.
- *   - **directory** — immediate children, as before.
- *   - **anything else** — unresolvable, with a reason.
+ *     counted. A base directory that does not exist cannot be counted; a base
+ *     that exists and matches nothing is a counted zero.
+ *   - **file** — yields no item count (#2919).
+ *   - **directory** — immediate children, files and subdirectories alike.
+ *   - **anything else** — not counted, with a reason.
  *
- * Resolution is all-or-nothing per entity: one unresolvable location among
- * several yields `resolved: false` and `actualCount: null`. A partial total
- * compared against a charter count is precisely the false mismatch this
- * function was producing.
- *
- * **Directory counting semantics are unchanged** — still immediate children,
- * files and subdirectories alike. Whether a charter count means "files" or
- * "subdirectories" cannot be settled without inferring intent from prose, which
- * #2597 places out of scope; `scanOutOfTableCounts` classifies that gap as a
- * `counting-rule-artifact` (#2636) instead.
+ * All-or-nothing per row: one location that cannot be counted leaves the row
+ * not counted, so a partial total is never shown as the count.
  *
  * @param {object} entities - Entities object from extractEntities()
  * @param {{root?: string}} [options] - Project root locations resolve against (default: process.cwd())
- * @returns {Array<{entity, charterCount, actualCount: number|null,
- *   match: boolean|null, excludesApplied: boolean, resolved: boolean,
- *   unresolved: Array<{location: string, reason: string}>}>}
+ * @returns {Array<{entity: string, description: string, count: number|null, counted: boolean,
+ *   locations: string[], excludesApplied: boolean, unresolved: Array<{location: string, reason: string}>}>}
  */
-function verifyEntityCounts(entities, options = {}) {
+function deriveEntityCounts(entities, options = {}) {
   const root = options.root || process.cwd();
   const results = [];
 
   for (const [key, entity] of Object.entries(entities)) {
-    if (!entity.count || !entity.locations || entity.locations.length === 0) continue;
-
-    let totalCount = 0;
-    const unresolved = [];
+    const locations = entity.locations || [];
     const excludes = (entity.countSource && entity.countSource.exclude) || [];
     const excludesApplied = excludes.length > 0;
     const excludeNames = excludes.map(e => e.replace(/\/$/, ''));
     const notExcluded = (name) => !excludeNames.includes(name);
+    const unresolved = [];
+    let totalCount = 0;
 
-    for (const location of entity.locations) {
+    if (locations.length === 0) unresolved.push({ location: '', reason: 'no location in the Key Entities row' });
+
+    for (const location of locations) {
       // Strip parenthetical annotations for path resolution
       const cleanLoc = location.replace(/\s*\([^)]*\)\s*$/, '').trim();
 
@@ -408,33 +417,36 @@ function verifyEntityCounts(entities, options = {}) {
       }
 
       if (stat.isDirectory()) {
-        // Count immediate children (files or subdirectories)
-        let entries = fs.readdirSync(fullPath);
+        // Count immediate children (files or subdirectories). An unreadable
+        // directory is not counted, with its reason (#3647) — one entity, not
+        // the whole check.
+        let entries;
+        try {
+          entries = fs.readdirSync(fullPath);
+        } catch (err) {
+          unresolved.push({ location, reason: `directory could not be read (${err.code || 'error'})` });
+          continue;
+        }
         if (excludes.length > 0) entries = entries.filter(notExcluded);
         totalCount += entries.length;
       } else if (stat.isFile()) {
-        // Defect 2 (#2597): a file used to stat successfully, match no branch,
-        // and add nothing — output identical to a path that does not exist.
-        // #2597 fixed that by counting the file as 1, which made a registry
-        // file whose contents hold the items (extension-recipes.json) report a
-        // definite mismatch (#2919). A file yields no item count, so it is
-        // unverifiable; the reason text keeps it distinct from a missing path.
+        // A file yields no item count (#2919): a registry file holds its items
+        // inside, so counting it as 1 would be a wrong number, not a count.
         unresolved.push({ location, reason: 'file location yields no item count' });
       } else {
         unresolved.push({ location, reason: 'not a file or directory' });
       }
     }
 
-    const resolved = unresolved.length === 0;
+    const counted = unresolved.length === 0;
     results.push({
       entity: key,
-      charterCount: entity.count,
-      actualCount: resolved ? totalCount : null,
-      // null, never false: "does not match" is a claim about disk, and no claim
-      // about disk can be made from a count that was never derived.
-      match: resolved ? entity.count === totalCount : null,
+      description: entity.description || key,
+      // null, never 0: a row that could not be counted has no count (#2597).
+      count: counted ? totalCount : null,
+      counted,
+      locations,
       excludesApplied,
-      resolved,
       unresolved
     });
   }
@@ -442,299 +454,38 @@ function verifyEntityCounts(entities, options = {}) {
   return results;
 }
 
-/**
- * Maximum character distance between an entity match form and an integer for
- * that integer to be treated as a count claim about the entity (#2636).
- */
-const COUNT_SCAN_WINDOW = 60;
-
-/** Words too generic to be worth matching on their own. */
-const COUNT_SCAN_STOPWORDS = new Set([
-  'and', 'the', 'for', 'with', 'from', 'into', 'over', 'across', 'per', 'via',
-  'plus', 'that', 'this', 'each', 'other', 'than', 'also', 'only'
-]);
+/** The heading of the block bare `/charter` and `/charter --refresh` show (#3644). */
+const COUNTS_HEADING = 'Key Entities — counts (derived now, not stored)';
 
 /**
- * Best-effort plural -> singular. Returns null when no transform applies.
+ * The derived counts block: one line per Key Entities row, a row that could
+ * not be counted named with its reason — never shown as zero. Shown, never
+ * written to a file.
  */
-function singularizeWord(word) {
-  if (/[^aeiou]ies$/i.test(word)) return word.slice(0, -3) + 'y';
-  if (/(ches|shes|sses|xes|zes)$/i.test(word)) return word.slice(0, -2);
-  if (/[^su]s$/i.test(word)) return word.slice(0, -1);
-  return null;
-}
-
-/**
- * Best-effort singular -> plural. Returns null when no transform applies.
- */
-function pluralizeWord(word) {
-  if (/s$/i.test(word)) return null;
-  if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
-  if (/(ch|sh|x|z)$/i.test(word)) return word + 'es';
-  return word + 's';
-}
-
-/**
- * Derive the forms of an entity name that prose might use, from the name
- * itself — no hardcoded alias list, because downstream charters define
- * arbitrary entity names (#2636).
- *
- * Priority 0 = the name verbatim, 1 = singular/plural of the name,
- * 2 = an individual significant word (or its singular/plural). Lower wins.
- *
- * @param {string} name - Entity name as written in the Key Entities table
- * @returns {Array<{form: string, priority: number}>}
- */
-function deriveMatchForms(name) {
-  const forms = new Map();
-  const add = (form, priority) => {
-    const f = String(form).trim().toLowerCase();
-    if (!f) return;
-    if (!forms.has(f) || forms.get(f) > priority) forms.set(f, priority);
-  };
-
-  const clean = String(name || '').replace(/`/g, '').trim();
-  if (!clean) return [];
-  add(clean, 0);
-
-  // Singular/plural of the whole name, by transforming its final word.
-  const words = clean.split(/\s+/);
-  const last = words[words.length - 1];
-  const lastCore = last.replace(/[^A-Za-z0-9]/g, '');
-  if (lastCore) {
-    for (const transformed of [singularizeWord(lastCore), pluralizeWord(lastCore)]) {
-      if (transformed && transformed.toLowerCase() !== lastCore.toLowerCase()) {
-        add(words.slice(0, -1).concat(transformed).join(' '), 1);
-      }
+function formatCountsBlock(results) {
+  const rows = results || [];
+  const width = Math.max(0, ...rows.map(r => String(r.description).length));
+  const lines = [COUNTS_HEADING];
+  for (const r of rows) {
+    const name = String(r.description).padEnd(width);
+    if (r.counted) {
+      lines.push(`  ${name}  ${String(r.count).padStart(4)}   ${(r.locations || []).join(', ')}`);
+    } else {
+      const why = (r.unresolved || []).map(u => (u.location ? `${u.location}: ${u.reason}` : u.reason)).join('; ');
+      lines.push(`  ${name}  not counted — ${why}`);
     }
   }
-
-  // Individual significant words, so "Metadata Registries" also reaches
-  // "metadata registry system" in prose.
-  for (const word of clean.split(/[^A-Za-z0-9]+/)) {
-    const lw = word.toLowerCase();
-    if (lw.length < 4 || COUNT_SCAN_STOPWORDS.has(lw)) continue;
-    add(lw, 2);
-    for (const transformed of [singularizeWord(lw), pluralizeWord(lw)]) {
-      if (transformed && transformed.toLowerCase() !== lw) add(transformed, 2);
-    }
-  }
-
-  return Array.from(forms.entries())
-    .map(([form, priority]) => ({ form, priority }))
-    // Longest form first within a priority tier: prefer the most specific match.
-    .sort((a, b) => a.priority - b.priority || b.form.length - a.form.length);
+  return lines.join('\n');
 }
 
-/**
- * Character gap between an integer and a matched entity name on one line.
- * Zero when they overlap.
- */
-function gapBetween(number, matchStart, matchEnd) {
-  if (number.start >= matchEnd) return number.start - matchEnd;
-  if (number.end <= matchStart) return matchStart - number.end;
-  return 0;
-}
-
-/**
- * True when this entity's count carries a qualifier the naive counting rule in
- * verifyEntityCounts() does not honor — declared exclusions, or a location
- * annotated with a parenthetical (".js only", per-directory subtotals). Such
- * entities can report a disk mismatch that is an artifact, not drift.
- *
- * The one caller skips a falsy entity first, so no guard here (#3446, CodeQL #25).
- */
-function hasQualifiedCount(entity) {
-  const excludes = entity.countSource && entity.countSource.exclude;
-  if (Array.isArray(excludes) && excludes.length > 0) return true;
-  return Array.isArray(entity.locations)
-    && entity.locations.some(loc => typeof loc === 'string' && loc.includes('('));
-}
-
-/**
- * Scan the non-table regions of a charter for count claims about entities that
- * the Key Entities table already counts (#2636).
- *
- * verifyEntityCounts() only ever sees the Key Entities table, so counts written
- * into charter prose — Vision, In Scope, Architecture — are never verified and
- * drift silently. This scan finds them; it never modifies the charter. Repair is
- * the caller's, under the existing consent contract.
- *
- * Markdown table rows are skipped wherever they appear, which is what keeps rows
- * of the Key Entities table itself from being reported as out-of-table claims.
- * Fenced code blocks and headings are skipped as non-prose.
- *
- * False positives (an integer near an entity word that is not a count of it) are
- * expected and safe: every candidate is reported for a human to accept or reject,
- * never auto-applied. Do not tighten the matcher into fragility to chase them.
- *
- * @param {string} charterContent - Raw markdown content of CHARTER.md
- * @param {object} entities - Entities parsed from the Key Entities table
- * @param {Array} [countVerification] - Optional verifyEntityCounts() results, which
- *   supply the disk count used to tell drift from a counting-rule artifact
- * @returns {Array<object>} Candidates, in charter order
- */
-function scanOutOfTableCounts(charterContent, entities, countVerification) {
-  if (!charterContent || typeof charterContent !== 'string') return [];
-  if (!entities || typeof entities !== 'object') return [];
-
-  const verificationByEntity = new Map();
-  if (Array.isArray(countVerification)) {
-    for (const result of countVerification) {
-      if (result && typeof result.entity === 'string') verificationByEntity.set(result.entity, result);
-    }
-  }
-
-  const targets = [];
-  for (const [key, entity] of Object.entries(entities)) {
-    if (!entity || entity.external) continue;
-    // No numeric table count means nothing to compare a prose claim against.
-    if (typeof entity.count !== 'number') continue;
-    const forms = deriveMatchForms(entity.description || key.replace(/-/g, ' '));
-    if (forms.length === 0) continue;
-    targets.push({ key, tableCount: entity.count, forms, qualifiedCount: hasQualifiedCount(entity) });
-  }
-  if (targets.length === 0) return [];
-
-  const lines = charterContent.split('\n');
-  const fenceMask = computeFenceMask(lines);
-  const candidates = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const trimmed = raw.trim();
-
-    if (fenceMask[i]) continue;            // inside a fenced code block
-    if (trimmed.startsWith('|')) continue;   // markdown table row — incl. Key Entities
-    if (/^#{1,6}\s/.test(trimmed)) continue; // heading
-    if (!/\d/.test(raw)) continue;
-
-    const numbers = [];
-    const numberPattern = /\d+/g;
-    let numberMatch;
-    while ((numberMatch = numberPattern.exec(raw)) !== null) {
-      numbers.push({
-        value: parseInt(numberMatch[0], 10),
-        start: numberMatch.index,
-        end: numberMatch.index + numberMatch[0].length
-      });
-    }
-    if (numbers.length === 0) continue;
-
-    const lower = raw.toLowerCase();
-    const lineCandidates = [];
-
-    for (const target of targets) {
-      let best = null;
-      for (const { form, priority } of target.forms) {
-        const formPattern = new RegExp('\\b' + escapeRegex(form) + '\\b', 'g');
-        let formMatch;
-        while ((formMatch = formPattern.exec(lower)) !== null) {
-          const matchStart = formMatch.index;
-          const matchEnd = matchStart + formMatch[0].length;
-          for (const number of numbers) {
-            const distance = gapBetween(number, matchStart, matchEnd);
-            if (distance > COUNT_SCAN_WINDOW) continue;
-            if (!best
-              || priority < best.priority
-              || (priority === best.priority && distance < best.distance)) {
-              best = { priority, distance, form, matchStart, matchEnd, number };
-            }
-          }
-        }
-      }
-      if (!best) continue;
-
-      // Integers that were in range but not selected are surfaced, not dropped:
-      // one prose line often carries several counts for the same entity.
-      const otherCountsOnLine = numbers
-        .filter(n => n !== best.number)
-        .filter(n => gapBetween(n, best.matchStart, best.matchEnd) <= COUNT_SCAN_WINDOW)
-        .map(n => n.value);
-
-      const statedCount = best.number.value;
-      // #2597: verifyEntityCounts now reports an unresolvable location as
-      // `actualCount: null` with a reason, so a 0 finally means what it says —
-      // an empty resolved location. The hedge that used to be attached to every
-      // 0 existed only because the two were indistinguishable.
-      const describeDisk = (n) => (n === null || n === undefined)
-        ? 'unresolved (the location could not be resolved on disk)'
-        : String(n);
-      const verification = verificationByEntity.get(target.key) || null;
-      const diskCount = verification ? verification.actualCount : null;
-      // true | false | null. null means no count was derived, which is NOT a
-      // disagreement — reading it through `=== true` collapsed it to false and
-      // folded unresolvable entities into the mismatch list, the consumer-side
-      // half of the defect (#2597).
-      const tableMatchesDisk = verification ? verification.match : null;
-      const diskUnresolved = verification ? verification.resolved === false : false;
-      const agreesWithTable = statedCount === target.tableCount;
-
-      let classification;
-      let note;
-      if (!agreesWithTable) {
-        classification = 'drift';
-        note = 'Prose states ' + statedCount + '; the Key Entities table states ' + target.tableCount + '.';
-        if (tableMatchesDisk === false) {
-          note += target.qualifiedCount
-            ? ' The table count is itself unconfirmed on disk (' + describeDisk(diskCount) + '), but this entity\'s count is qualified, so that gap is likely a verifyEntityCounts counting-rule artifact.'
-            : ' The table count also disagrees with disk (' + describeDisk(diskCount) + '); settle the table first.';
-        } else if (diskUnresolved) {
-          note += ' Disk could not confirm either figure: ' + describeDisk(diskCount) + '. The prose-vs-table drift stands on its own.';
-        }
-      } else if (diskUnresolved) {
-        // Prose and table agree and disk said nothing. Reporting this as a disk
-        // disagreement is what #2597 fixes: an unresolvable location is not
-        // evidence of anything, so it neither confirms nor contradicts.
-        classification = 'agrees-with-table';
-        note = 'Prose agrees with the table (' + target.tableCount + '). Disk is ' + describeDisk(diskCount) + ', so it neither confirms nor contradicts the count.';
-      } else if (tableMatchesDisk === false && target.qualifiedCount) {
-        classification = 'counting-rule-artifact';
-        note = 'Prose agrees with the table (' + target.tableCount + '). Disk reports ' + describeDisk(diskCount) + ', but this entity\'s count is qualified, so the gap is a verifyEntityCounts counting-rule artifact rather than drift.';
-      } else if (tableMatchesDisk === false) {
-        classification = 'unclassified';
-        note = 'Prose agrees with the table (' + target.tableCount + '), but disk reports ' + describeDisk(diskCount) + ' and nothing qualifies the count. Table-vs-disk drift is verifyEntityCounts\' remit, not this scan\'s.';
-      } else {
-        classification = 'agrees-with-table';
-        note = 'Prose agrees with the table (' + target.tableCount + ').';
-      }
-
-      lineCandidates.push({
-        entity: target.key,
-        statedCount,
-        tableCount: target.tableCount,
-        diskCount,
-        line: i + 1,
-        lineText: trimmed,
-        matchedText: raw.slice(best.matchStart, best.matchEnd),
-        matchForm: best.form,
-        matchPriority: best.priority,
-        distance: best.distance,
-        otherCountsOnLine,
-        agreesWithTable,
-        tableMatchesDisk,
-        qualifiedCount: target.qualifiedCount,
-        classification,
-        note
-      });
-    }
-
-    // When some entity matched this line by its full name (or that name's
-    // singular/plural), entities that matched only by a shared significant word
-    // are dropped. Without this, "framework" and "commands" claim integers on
-    // lines a specific match already explains, and the resulting wall of bogus
-    // drift verdicts is what makes a user reject the whole report — the outcome
-    // the drift/artifact distinction exists to prevent. A line with no specific
-    // match keeps its generic candidates, so charters that only ever use generic
-    // wording are still covered.
-    const hasSpecificMatch = lineCandidates.some(c => c.matchPriority <= 1);
-    for (const candidate of lineCandidates) {
-      if (hasSpecificMatch && candidate.matchPriority > 1) continue;
-      candidates.push(candidate);
-    }
-  }
-
-  return candidates.sort((a, b) => a.line - b.line || a.entity.localeCompare(b.entity));
+/** One line for the startup Charter Health row: each counted row, and the not-counted tally. */
+function summarizeCounts(results) {
+  const rows = results || [];
+  const counted = rows.filter(r => r.counted).map(r => `${r.description} ${r.count}`);
+  const missed = rows.filter(r => !r.counted).map(r => r.description);
+  let line = `Key Entities (derived): ${counted.length ? counted.join(' · ') : 'none counted'}`;
+  if (missed.length) line += `; ${missed.length} not counted (${missed.join(', ')})`;
+  return line;
 }
 
 const ENTITIES_FILENAME = 'domain-entities.json';
@@ -819,15 +570,12 @@ function linksToDirectory(link) {
   }
 }
 
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 module.exports = {
   extractEntities,
   extractCompanionRepos,
-  verifyEntityCounts,
-  scanOutOfTableCounts,
+  deriveEntityCounts,
+  formatCountsBlock,
+  summarizeCounts,
   removeRetiredEntitiesFile,
   ENTITIES_FILENAME,
 };

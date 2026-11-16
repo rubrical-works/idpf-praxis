@@ -101,14 +101,10 @@ Your choices are written to `testing.suites[]` in `framework-config.json` — th
 **What it creates:**
 ```
 CHARTER.md                     ← Main charter (vision, tech, scope)
-Inception/
-  ├── Charter-Details.md       ← Detailed vision and problem statement
-  ├── Tech-Stack.md            ← Languages, frameworks, dependencies
-  ├── Scope-Boundaries.md      ← In-scope and out-of-scope items
-  ├── Constraints.md           ← NFRs, compliance, security
+Project/
   ├── Architecture.md          ← System structure
-  ├── Test-Strategy.md         ← TDD approach, coverage targets; Framework table generated from testing.suites[]
-  └── Milestones.md            ← Delivery milestones (TBD)
+  ├── Constraints.md           ← NFRs, compliance, security
+  └── Test-Strategy.md         ← TDD approach, coverage targets; Framework table generated from testing.suites[]
 Construction/
   ├── Test-Plans/
   ├── Design-Decisions/
@@ -128,7 +124,7 @@ Transition/
 As your project evolves:
 - `/charter --update` — Modify specific sections (vision, scope, tech stack)
 - `/charter --refresh` — Re-analyze the codebase and merge findings. For testing, refresh acts only on what changed: a newly added language or role gets harness selection for that pair alone, existing choices are never re-asked or overwritten, suites that no longer match any file are reported (never removed), and "install pending" suites are re-checked with an offer to put them back in the gate once their tooling is present
-- `/charter --refresh --dry-run` — See what refresh would change, including the charter shape step (over-long In Scope items, exclusions inside In Scope, history in Current Focus), without writing anything
+- `/charter --refresh --dry-run` — See what refresh would change, including the charter shape step (over-long In Scope items, exclusions inside In Scope) and the legacy-shape repair, without writing anything
 
 **Testing drift at startup.** When your charter is active, the session startup block adds a `Testing Drift:` row if your stack has gained a language or role with no declared suite, or a declared suite matches no files. The row names `/charter --refresh` as the remedy. A `Coverage Overrides:` row may also appear when test-coverage settings in `framework-config.json` no longer fit the installed coverage-audit skill. For a JavaScript or TypeScript project, a `Supply Chain:` row appears when the project root has no `.npmrc` (run `/charter --refresh` to be offered the npm supply-chain controls) or no `.github/dependabot.yml` (run `/ci` and add the `dependabot` feature). Projects chartered before these offers existed see the row too. To silence either row after declining, set `supplyChainRows.npmrc` or `supplyChainRows.dependabot` to `false` in `framework-config.json`. These rows are advisory — nothing is changed for you, and no row appears when everything is in order.
 
@@ -579,7 +575,7 @@ All three levels of review are valid. The depth of your review is a quality mult
 
 **What happens:**
 1. Validates the issue is in `in_review` status
-2. Moves to `done` (auto-closes the issue)
+2. Moves to `done`; the board's **Auto-close issue** workflow then closes the issue (see [Kanban Template Setup, step 5](06-Kanban-Template-Setup.md#5-confirm-the-auto-close-issue-workflow))
 3. Offers to document design decisions in `Construction/Design-Decisions/`
 4. Commits and pushes changes. If someone else pushed to the branch in the meantime, your commits are rebased onto theirs before the push. A conflict stops the push with the tree unchanged; `/sync-branch` then shows what diverged and resolves it.
 

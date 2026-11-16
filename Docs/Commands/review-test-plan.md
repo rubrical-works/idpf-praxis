@@ -22,6 +22,7 @@ Review a TDD test plan against its source PRD for coverage completeness.
 ## Key Behaviors
 
 - Requires the issue body to contain both `**Test Plan:**` and `**PRD:**` file path references; stops if either file is missing
+- **Source PRD review gate.** Before any criterion is evaluated, the command finds the PRD tracker and checks that the PRD was reviewed, using the same rule as `/create-backlog`. A PRD that was never reviewed, has open findings, or whose latest review recommended "Ready with minor revisions" gates here: you are offered to run `/review-prd` first (recommended) or continue against the unsettled PRD, and continuing is recorded in the review comment. `--force` does not bypass this gate. When no tracker is found or the lookup fails, the review reports it and proceeds.
 - Performs a coverage analysis mapping every PRD acceptance criterion to test cases in the test plan and reports gaps
 - Recommendations: "Ready for approval", "Ready with minor gaps", "Needs revision", or "Needs major rework"
 - When the recommendation is "Ready for approval" or "Ready with minor gaps", the issue moves to `in_review` and the user runs `/done #N` to close the approval gate. The approval issue is never closed by the review itself.

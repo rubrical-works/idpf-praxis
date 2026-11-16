@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * task-phase-hook.js
  *
  * PreToolUse and PostToolUse hook (matcher: Bash) that reminds the model of
@@ -64,22 +64,35 @@ function usable(data) {
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
+ * A node eval flag as a whole token: --eval, --print, an `=` form, or a
+ * single-dash short-flag cluster carrying e or p (-e, -p, -pe, -ep — #3672).
+ */
+const EVAL_FLAG = /(?:^|\s)(?:-[a-zA-Z]*[ep][a-zA-Z]*|--eval|--print)(?:=|\s|$)/;
+
+/**
  * Every routed preamble script the command invokes as a node script, with the
  * arguments that follow it in the same command segment.
  * `node` must start a command segment (start, or after ; & | ( or a newline),
  * optionally behind VAR=value assignments — so a quoted mention inside grep,
  * echo or cat never matches, and a separator inside quotes starts no segment.
- * A quoted script path may contain spaces (#3615).
+ * A quoted script path may contain spaces (#3615). `node -e`, `--eval`, `-p`
+ * and `--print` run a program, not a script file, so they never match (#3617);
+ * neither do combined short flags such as `-pe` (#3672).
  * @returns {{script: string, args: string[]}[]}
  */
 function findInvocations(command, data) {
   if (typeof command !== 'string' || !data || !data.scripts) return [];
   const names = Object.keys(data.scripts);
   if (names.length === 0) return [];
+  const alt = '(' + names.map(escapeRe).join('|') + ')';
+  // Groups: 1 flags, 2 opening quote, 3 quoted prefix, 4 quoted name,
+  // 5 unquoted prefix, 6 unquoted name, 7 the rest of the segment.
   const re = new RegExp(
-    '(?:^|[;&|(\\n])\\s*(?:[A-Za-z_][A-Za-z0-9_]*=\\S*\\s+)*node(?:\\.exe)?\\s+(?:-{1,2}\\S+\\s+)*'
-    // A quoted path may hold a space (a user-chosen hub path, #3615); try it before the unquoted form.
-    + '(?:"[^"]*[\\\\/]|\'[^\']*[\\\\/]|["\']|[^\\s"\';&|]*[\\\\/])?(' + names.map(escapeRe).join('|') + ')["\']?(?=$|[\\s;&|)])([^;&|\\n]*)',
+    '(?:^|[;&|(\\n])\\s*(?:[A-Za-z_][A-Za-z0-9_]*=\\S*\\s+)*node(?:\\.exe)?\\s+((?:-{1,2}\\S+\\s+)*)'
+    // A quoted path may hold a space (a user-chosen hub path, #3615), and must close with
+    // its own quote right after the script name (#3617); try it before the unquoted form.
+    + '(?:(["\'])((?:(?!\\2).)*[\\\\/])?' + alt + '\\2|((?:[^\\s"\';&|]*[\\\\/])?)' + alt + ')'
+    + '(?=$|[\\s;&|)])([^;&|\\n]*)',
     'g'
   );
   const quoted = quotedPositions(command);
@@ -88,7 +101,9 @@ function findInvocations(command, data) {
   while ((m = re.exec(command)) !== null) {
     // A separator inside a quoted argument starts no segment (#3615).
     if (quoted[m.index]) continue;
-    found.push({ script: m[1], args: tokenize(m[2]) });
+    // node with an eval program runs no script file, whatever the program names (#3617).
+    if (EVAL_FLAG.test(m[1] + (m[5] || ''))) continue;
+    found.push({ script: m[4] || m[6], args: tokenize(m[7]) });
   }
   return found;
 }
@@ -145,6 +160,7 @@ function parseIssues(args) {
   return [];
 }
 
+/** The Phase 1 task subject for a command, with {forIssue} filled from the issues, or null. */
 function phase1Subject(command, issues, data) {
   const entry = data.commands[command];
   if (!entry || typeof entry.phase1 !== 'string') return null;
@@ -198,6 +214,7 @@ function parseEnvelope(toolResponse) {
   return start >= 0 && end > start ? tryParse(text.slice(start, end + 1)) : null;
 }
 
+/** The value at a dotted path in obj, or undefined when any step is missing. */
 function getPath(obj, dotted) {
   return dotted.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), obj);
 }
@@ -242,7 +259,8 @@ function resolveClaudePath(rel) {
   return full.startsWith(CLAUDE_DIR + path.sep) ? full : null;
 }
 
-const line = (t) => `- ${t.subject}${t.condition && t.condition !== 'always' ? ` (if ${t.condition})` : ''}`;
+/** One Phase 2 list line: the subject, with its condition when not always. */
+const formatTaskLine = (t) => `- ${t.subject}${t.condition && t.condition !== 'always' ? ` (if ${t.condition})` : ''}`;
 
 /** The Phase 2 lines for a command, or null when its source cannot be read. */
 function phase2Lines(command, envelope, args, data) {
@@ -258,14 +276,14 @@ function phase2Lines(command, envelope, args, data) {
     const omit = new Set(tracker ? (p2.trackerOmitScopes || []) : []);
     const unless = p2.trackerOmitScopesUnlessFlag;
     if (tracker && unless && !args.includes(unless.flag)) (unless.scopes || []).forEach((s) => omit.add(s));
-    const kept = defs.tasks.filter((t) => t && typeof t.subject === 'string' && !omit.has(t.scope));
-    const out = kept.map(line);
-    const dropped = defs.tasks.length - kept.length;
-    if (dropped > 0) out.push(data.text.trackerOmitted.replace(/\{count\}/g, String(dropped)));
+    const valid = defs.tasks.filter((t) => t && typeof t.subject === 'string');
+    const out = valid.filter((t) => !omit.has(t.scope)).map(formatTaskLine);
+    const dropped = valid.filter((t) => omit.has(t.scope)).length;
+    if (tracker && dropped > 0) out.push(data.text.trackerOmitted.replace(/\{count\}/g, String(dropped)));
     return out;
   }
   if (Array.isArray(p2.tasks)) {
-    const out = p2.tasks.filter((t) => t && typeof t.subject === 'string').map(line);
+    const out = p2.tasks.filter((t) => t && typeof t.subject === 'string').map(formatTaskLine);
     if (p2.extensions === true) out.push(data.text.extensions);
     return out;
   }

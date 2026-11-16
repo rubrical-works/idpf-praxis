@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
- * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(). Used by /review-prd and /review-test-plan.
+ * @framework-script 0.119.0
+ * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(), and checkLifecycleBoxIn()/checkLifecycleBox() (CLI --check-box) for the PRD tracker lifecycle boxes other commands own (#3636). Used by /review-prd, /review-test-plan, /done and /create-backlog.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -26,7 +26,7 @@
 // so call sites are unchanged.
 const { execFileTimed: execFileSync } = require('./lib/exec.js');
 const fs = require('fs');
-const { validateIssueNumber } = require('./lib/input-validation.js');
+const { validateIssueNumber, safePath } = require('./lib/input-validation.js');
 const { sanitizeShellArg } = require('./lib/shell-safe.js');
 const { REVIEW_TYPES } = require('./lib/review-format.js');
 const { scanCheckboxes } = require('./lib/checkbox-scan.js');
@@ -59,6 +59,79 @@ function isTrackerType(type) {
 // the positional check-off #2594 suppressed: a tracker's 3 boxes and a review's
 // ~20 findings have no correspondence, so the box is found by what it says.
 const LIFECYCLE_GATES = { prd: 'PRD reviewed' };
+
+// Every lifecycle box /create-prd writes on a PRD tracker, with the command
+// that checks it (#3636). #2694 gave `PRD reviewed` its owner and said the
+// other two were "left to the commands that close them"; none did, so they
+// stayed unchecked for the life of every tracker. A box absent from this table
+// is never written by checkLifecycleBoxIn(), which is what keeps the write
+// from becoming a general-purpose checkbox setter.
+const LIFECYCLE_BOXES = [
+  { label: 'PRD reviewed', owner: '/review-prd Step 5 (checkOffACs, clean "Ready for" recommendation)' },
+  { label: 'Test plan approved', owner: '/done, when the test plan approval issue moves to Done' },
+  { label: 'Ready for backlog creation', owner: '/create-backlog Phase 7, in the banner body write' },
+];
+
+/**
+ * Tick the marker on a line the scanner already resolved as an open checkbox.
+ *
+ * The one marker rewrite every write path shares (#3665). It works in whatever
+ * spacing the scanner accepted (`-  [ ] `, `- [ ]Label`): a literal '- [ ] '
+ * replace no-ops on those while the caller still reports the box checked. The
+ * scanner proved the line is an open checkbox, so its first `[ ]` is the
+ * marker — no second checkbox regex (checkbox-scan.js stays the only one).
+ *
+ * @param {string} line
+ * @returns {string|null} the rewritten line, or null when there is no open marker
+ */
+function tickMarker(line) {
+  const at = typeof line === 'string' ? line.indexOf('[ ]') : -1;
+  if (at === -1) return null;
+  return line.slice(0, at) + '[x]' + line.slice(at + 3);
+}
+
+/**
+ * Check one lifecycle box in a body, by label and fence-aware (#3636).
+ *
+ * The same by-label discipline findLifecycleGateLine() uses: the box is found
+ * by what it says, never by where it sits, and a quoted `- [ ]` inside a fence
+ * is not a box. Pure — the caller owns the read and the write, so
+ * /create-backlog can apply it to the body it is already composing.
+ *
+ * `reference`, when given, is the approval issue number: a box naming a
+ * DIFFERENT `#N` belongs to another approval issue and is left alone. A box
+ * naming no number (an unfilled `#{test_plan_issue}`) is still written.
+ *
+ * @param {string} body
+ * @param {string} label - one of LIFECYCLE_BOXES' labels
+ * @param {{reference?: number}} [opts]
+ * @returns {{ body: string, checked: boolean, reason: 'checked'|'absent'|'already-checked'|'reference-mismatch'|'unknown-label' }}
+ */
+function checkLifecycleBoxIn(body, label, opts = {}) {
+  const text = typeof body === 'string' ? body : '';
+  if (!LIFECYCLE_BOXES.some((b) => b.label === label)) {
+    return { body: text, checked: false, reason: 'unknown-label' };
+  }
+  const boxes = scanCheckboxes(text).filter((b) => b.text.startsWith(label));
+  if (boxes.length === 0) return { body: text, checked: false, reason: 'absent' };
+  const openBoxes = boxes.filter((b) => !b.checked);
+  if (openBoxes.length === 0) return { body: text, checked: false, reason: 'already-checked' };
+  // Filter by reference first, then pick (#3665): an earlier box naming another
+  // #N must not hide a later one naming the requested reference.
+  const hasRef = opts.reference !== undefined && opts.reference !== null;
+  const qualifies = (b) => {
+    if (!hasRef) return true;
+    const named = [...b.text.matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+    return named.length === 0 || named.includes(Number(opts.reference));
+  };
+  const open = openBoxes.find(qualifies);
+  if (!open) return { body: text, checked: false, reason: 'reference-mismatch' };
+  const lines = text.split('\n');
+  const ticked = tickMarker(lines[open.line]);
+  if (ticked === null) return { body: text, checked: false, reason: 'absent' };
+  lines[open.line] = ticked;
+  return { body: lines.join('\n'), checked: true, reason: 'checked' };
+}
 
 // The gate predicate is deliberately STRICTER than determineLabel()'s.
 // determineLabel (review-finalize.js) tests startsWith('Ready'), which admits
@@ -199,9 +272,11 @@ function checkOffACs(issue, findings, moveStatus, type, recommendation) {
   // #2694 added is that the ONE box this review owns may be written — by label,
   // not by position — when the recommendation is clean.
   const gateLine = findLifecycleGateLine(body, type, recommendation);
+  // Only a line that really changed is written and reported (#3665).
+  const ticked = gateLine !== -1 ? tickMarker(lines[gateLine]) : null;
   let lifecycleGateChecked = null;
-  if (gateLine !== -1) {
-    lines[gateLine] = lines[gateLine].replace('- [ ] ', '- [x] ');
+  if (ticked !== null) {
+    lines[gateLine] = ticked;
     const write = writeBody(issue, lines);
     if (!write.ok) {
       return { ok: false, checkedOff: 0, total, moved: false, skipped: true, lifecycleGateChecked: null, error: write.error };
@@ -294,7 +369,11 @@ function checkOffIn(body, gateMap, heading, checkable) {
   let checked = 0;
   for (const r of resolved) {
     if (r.alreadyChecked || !checkable.has(r.id)) continue;
-    lines[r.line] = lines[r.line].replace('- [ ] ', '- [x] ');
+    // Counted only when the line really changed (#3665): a count for an
+    // unticked gate would make the caller write and report it.
+    const ticked = tickMarker(lines[r.line]);
+    if (ticked === null) continue;
+    lines[r.line] = ticked;
     checked++;
   }
   return { text: lines.join('\n'), checked, resolved, unresolvable };
@@ -310,6 +389,36 @@ const defaultIo = {
     return { ok: true };
   },
 };
+
+/**
+ * Read an issue body, check one lifecycle box by label, write only on change
+ * (#3636). Never throws: a failed read or write is `ok: false` with the error,
+ * because both callers (/done, /create-backlog) report it and continue — the
+ * box is bookkeeping, and closing the approval issue must not fail on it.
+ *
+ * @returns {{ ok: boolean, issue: number, label: string, checked: boolean, reason: string, error?: string }}
+ */
+function checkLifecycleBox(issue, label, { reference, io = defaultIo } = {}) {
+  const base = { issue, label, checked: false };
+  // A misspelled label is a caller error, not a no-op (#3665): refused before
+  // the read, and ok:false so --issue exits 1 exactly as --body-file does.
+  if (!LIFECYCLE_BOXES.some((b) => b.label === label)) {
+    return { ...base, ok: false, reason: 'unknown-label', error: `Unknown lifecycle box label ${JSON.stringify(label)}` };
+  }
+  let body;
+  try {
+    body = io.readIssueBody(issue);
+  } catch (e) {
+    return { ...base, ok: false, reason: 'read-failed', error: `Failed to read #${issue}: ${e.message}` };
+  }
+  const out = checkLifecycleBoxIn(body, label, { reference });
+  if (!out.checked) return { ...base, ok: out.reason !== 'unknown-label', reason: out.reason };
+  const w = io.writeIssueBody(issue, out.body);
+  if (!w || w.ok === false) {
+    return { ...base, ok: false, reason: 'write-failed', error: (w && w.error) || 'issue write failed' };
+  }
+  return { ...base, ok: true, checked: true, reason: 'checked' };
+}
 
 /**
  * Check off resolvable, checkable gates on BOTH surfaces.
@@ -435,7 +544,63 @@ function renderApprovalDecisions(gateMap, rollup, responses = {}, { autoChecked 
 }
 
 // CLI mode
-if (require.main === module) {
+if (require.main === module && process.argv.includes('--check-box')) {
+  // Lifecycle-box mode (#3636):
+  //   --check-box <label> --body-file F   rewrite F in place (create-backlog Phase 7)
+  //   --check-box <label> --issue N [--reference M]   read/write the issue body
+  const argv = process.argv;
+  const val = (flag) => { const i = argv.indexOf(flag); return i !== -1 ? argv[i + 1] : undefined; };
+  const label = val('--check-box');
+  const bodyFile = val('--body-file');
+  const issueArg = val('--issue');
+  const refArg = val('--reference');
+  // Validated, never parseInt'd: a malformed value became NaN and turned every
+  // box naming a #N into a silent reference-mismatch (#3665).
+  let reference;
+  let refError = null;
+  if (refArg !== undefined) {
+    try {
+      reference = validateIssueNumber(refArg);
+    } catch (e) {
+      refError = `--reference: ${e.message}`;
+    }
+  }
+  let result;
+  if (refError) {
+    result = { ok: false, label, checked: false, reason: 'usage', error: refError };
+  } else if (bodyFile) {
+    // Contained to the working directory: the file is read AND written back.
+    let target = null;
+    try {
+      target = safePath(process.cwd(), bodyFile);
+    } catch (e) {
+      result = { ok: false, label, checked: false, reason: 'unsafe-path', error: e.message };
+    }
+    if (target) {
+      try {
+        const out = checkLifecycleBoxIn(fs.readFileSync(target, 'utf8'), label, { reference });
+        if (out.checked) fs.writeFileSync(target, out.body);
+        result = { ok: out.reason !== 'unknown-label', label, checked: out.checked, reason: out.reason, bodyFile };
+      } catch (e) {
+        result = { ok: false, label, checked: false, reason: 'read-failed', error: e.message };
+      }
+    }
+  } else if (issueArg) {
+    // Caught (#3665): an uncaught throw printed a stack trace, and callers that
+    // parse stdout as JSON got nothing parseable.
+    let issue = null;
+    try {
+      issue = validateIssueNumber(issueArg);
+    } catch (e) {
+      result = { ok: false, label, checked: false, reason: 'usage', error: e.message };
+    }
+    if (issue !== null) result = checkLifecycleBox(issue, label, { reference });
+  } else {
+    result = { ok: false, label, checked: false, reason: 'usage', error: 'Usage: --check-box <label> (--body-file F | --issue N [--reference M])' };
+  }
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(result.ok ? 0 : 1);
+} else if (require.main === module) {
   const args = parseArgs(process.argv);
   if (!args.issue || !args.findingsFile) {
     console.error('Usage: node review-ac-checkoff.js --issue N --findings FILE [--move-status STATUS]');
@@ -466,6 +631,9 @@ if (require.main === module) {
 
 module.exports = {
   checkOffACs,
+  checkLifecycleBoxIn,
+  checkLifecycleBox,
+  LIFECYCLE_BOXES,
   resolveApprovalGates,
   applyApprovalGateCheckOff,
   renderApprovalDecisions,

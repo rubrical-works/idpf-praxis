@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Input validation utilities to prevent command injection, path traversal, and ReDoS from externally-sourced inputs. Exports validateIssueNumber(), validateBranchName(), validatePath(), and related guards. Used by all preamble scripts accepting user input.
  * @checksum sha256:placeholder
  *
@@ -18,25 +18,56 @@ const path = require('path');
 // an embedded newline acts as a command separator when a "validated" value is
 // interpolated into a shell string (lib/gh.js). Kept consistent with
 // sanitizeShellArg in lib/shell-safe.js, which already rejects \n\r (#2456).
-const SHELL_META = /[`$(){}|;&<>!\\\n\r]/;
+// Also any whitespace and both quote characters (#3692): a space or tab splits
+// one value into several arguments, and a quote breaks out of the quoting a
+// caller wraps the value in. Git forbids spaces in ref names, so a real branch
+// or tag never carries one. \s covers \n and \r.
+const SHELL_META = /[`$(){}|;&<>!\\\s'"]/;
 
 /**
- * Validate an issue number is a positive integer.
+ * Throw when `value` starts with '-' (#3692): even spawned through execFile,
+ * where no shell is involved, such a value is read as an option — a branch
+ * named '-D', or '--upload-pack=...'. Git refuses ref names starting with '-'.
+ * @param {string} value
+ * @param {string} label - e.g. 'Branch name'
+ * @throws {Error} If value starts with '-'
+ */
+function rejectLeadingDash(value, label) {
+  if (value.startsWith('-')) {
+    throw new Error(`${label} must not start with '-': ${value.substring(0, 30)}`);
+  }
+}
+
+/**
+ * Whether `value` is an issue number written as one (#3675): a string of
+ * digits with no leading zero, sign, space, exponent or radix prefix, or a
+ * positive safe integer. The text is tested, not the conversion — Number()
+ * reads '1e2' as 100, '0x1A' as 26 and ' 7' as 7.
+ * @param {*} value
+ * @returns {boolean}
+ */
+function isIssueNumber(value) {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0;
+  return typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
+}
+
+/**
+ * Validate an issue number is a positive integer written as one.
  * @param {string|number} value
  * @returns {number} Validated integer
- * @throws {Error} If not a positive integer
+ * @throws {Error} If not an issue number per isIssueNumber()
  */
 function validateIssueNumber(value) {
-  const num = Number(value);
-  if (!Number.isInteger(num) || num <= 0) {
+  if (!isIssueNumber(value)) {
     throw new Error(`Invalid issue number: ${String(value).substring(0, 20)}`);
   }
-  return num;
+  return Number(value);
 }
 
 /**
  * Validate a branch name is safe for shell use.
- * Git branch names can contain /, -, ., _ but not shell metacharacters.
+ * Git branch names can contain /, -, ., _ but not shell metacharacters,
+ * whitespace, quotes or a leading '-' (#3692).
  * @param {string} name
  * @returns {string} Validated branch name
  * @throws {Error} If branch name contains shell metacharacters
@@ -48,6 +79,7 @@ function validateBranchName(name) {
   if (SHELL_META.test(name)) {
     throw new Error(`Branch name contains unsafe characters: ${name.substring(0, 30)}`);
   }
+  rejectLeadingDash(name, 'Branch name');
   return name;
 }
 
@@ -64,6 +96,7 @@ function validateTag(tag) {
   if (SHELL_META.test(tag)) {
     throw new Error(`Tag contains unsafe characters: ${tag.substring(0, 30)}`);
   }
+  rejectLeadingDash(tag, 'Tag');
   return tag;
 }
 
@@ -221,6 +254,7 @@ function escapeRegExp(str) {
 }
 
 module.exports = {
+  isIssueNumber,
   validateIssueNumber,
   validateBranchName,
   validateTag,

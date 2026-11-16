@@ -5,7 +5,7 @@
   "description": "Contract for charter-contract.json (#3481): what a valid CHARTER.md is — its title, required sections, Key Entities table, the unfilled-placeholder rule and the shape thresholds — with verdict cases any implementation of the placeholder rule must reproduce. Read by .claude/scripts/shared/lib/charter-template.js, lib/charter-shape.js and charter-entities.js.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "title", "requiredSections", "keyEntities", "placeholder", "shapeThresholds", "cases"],
+  "required": ["version", "title", "requiredSections", "retiredSections", "keyEntities", "storedValues", "placeholder", "shapeThresholds", "cases"],
   "$defs": {
     "pattern": {
       "type": "object",
@@ -38,6 +38,66 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
+    },
+    "optionalSections": {
+      "type": "array",
+      "description": "Sections /charter writes when they have content and a charter may carry, beyond requiredSections (#3643).",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "retiredSections": {
+      "type": "array",
+      "description": "Sections an earlier contract version required or allowed and this one removes; a charter carrying one does not conform (#3643).",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "storedValues": {
+      "type": "object",
+      "description": "What counts as a stored count or version, which a charter never holds (#3643).",
+      "additionalProperties": false,
+      "required": ["keyEntities", "techStack", "prose", "never"],
+      "properties": {
+        "description": { "type": "string" },
+        "keyEntities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["countColumn", "numberOnlyCell"],
+          "properties": {
+            "countColumn": { "type": "string", "minLength": 1, "description": "A Key Entities column with this header (case-insensitive) is a stored count." },
+            "numberOnlyCell": { "$ref": "#/$defs/pattern" },
+            "description": { "type": "string" }
+          }
+        },
+        "techStack": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "parenthesizedQuantity"],
+          "properties": {
+            "version": { "$ref": "#/$defs/pattern" },
+            "parenthesizedQuantity": { "$ref": "#/$defs/pattern" },
+            "description": { "type": "string" }
+          }
+        },
+        "prose": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sections", "countedNoun"],
+          "properties": {
+            "sections": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "countedNoun": { "$ref": "#/$defs/pattern" },
+            "description": { "type": "string" }
+          }
+        },
+        "never": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["excludedSections"],
+          "properties": {
+            "excludedSections": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "description": { "type": "string" }
+          }
+        }
+      }
     },
     "keyEntities": {
       "type": "object",
@@ -101,7 +161,31 @@
             "required": ["template", "placeholders"],
             "properties": {
               "template": { "type": "boolean" },
-              "placeholders": { "type": "array", "items": { "type": "string" } }
+              "placeholders": { "type": "array", "items": { "type": "string" } },
+              "shape": {
+                "type": "object",
+                "description": "The shape verdict (#3643): required sections missing, retired sections present, and stored values in document order. Present only on cases that pin the shape rule.",
+                "additionalProperties": false,
+                "required": ["conforms", "missingSections", "retiredSections", "storedValues"],
+                "properties": {
+                  "conforms": { "type": "boolean" },
+                  "missingSections": { "type": "array", "items": { "type": "string" } },
+                  "retiredSections": { "type": "array", "items": { "type": "string" } },
+                  "storedValues": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["section", "kind", "text"],
+                      "properties": {
+                        "section": { "type": "string" },
+                        "kind": { "enum": ["count-column", "number-cell", "version", "parenthesized-quantity", "counted-noun"] },
+                        "text": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }

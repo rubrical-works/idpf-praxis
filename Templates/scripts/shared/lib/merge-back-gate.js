@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -321,6 +321,14 @@ function porcelainPath(line) {
   const rest = line.slice(3);
   const arrow = rest.indexOf(' -> ');
   return unquoteGitPath(arrow === -1 ? rest : rest.slice(arrow + 4));
+}
+
+/**
+ * A CLI-given path in the form porcelainPath reports (#3625): relative to
+ * `root`, forward slashes — so `./x` and an absolute path name the same file.
+ */
+function rootRelative(root, p) {
+  return path.relative(root, path.resolve(root, p)).split(path.sep).join('/');
 }
 
 /**
@@ -647,6 +655,18 @@ function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries
 }
 
 /**
+ * Whether `sha` has a parent (#3625): a root commit has none, so `sha~1` does
+ * not resolve. A git failure keeps the parent assumed — the range as before.
+ */
+function hasParent(git, sha) {
+  try {
+    return String(git(['rev-list', '--parents', '-n', '1', sha]) || '').trim().split(/\s+/).length > 1;
+  } catch (_e) {
+    return true;
+  }
+}
+
+/**
  * Sequential /work's independent review (#3457) — Tier 3 without a worktree.
  * The range is the issue's own `Refs #N` commits since `base` (the branch's
  * merge-base), oldest first; other issues' commits can fall inside it, so the
@@ -671,7 +691,7 @@ function planSequentialReview({ issue, body = '', base, git, workReview = 'alway
     .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (!commits.length) return skip('no-commits', `Review skipped for #${issue}: no Refs #${issue} commits since ${base}, so there is nothing to review.`);
   const filesToModify = scopeDrift.parseDeclaredScope(body).paths;
-  const range = `${commits[0]}~1..${commits[commits.length - 1]}`;
+  const range = `${hasParent(git, commits[0]) ? `${commits[0]}~1` : base}..${commits[commits.length - 1]}`;
   const tier3 = planTier3({
     issue, acceptanceCriteria: extractAcceptanceCriteria(body).items.map((i) => i.text), filesToModify,
     range, commits, charterPath, skillPresent, ...briefOf(briefContext, root),
@@ -1348,6 +1368,10 @@ function runCli(argv, seams = {}) {
   const runSuite = seams.runSuite || cliRunSuite;
   const bodyOf = seams.readBody || ((n, files) => readBody(root, n, files));
   const num = (v) => (v === undefined ? undefined : Number(v));
+  // #3668: a positive integer written as one — Number('') is 0 and Number('7 ')
+  // is 7, so the text is tested, not the conversion. One rule, shared with
+  // validateIssueNumber (#3675).
+  const { isIssueNumber } = require('./input-validation.js');
 
   if (sub === 'tier1') {
     const miss = requireOpts(opts, ['--issue', '--branch', '--worktree', '--tracker-tip']);
@@ -1429,7 +1453,7 @@ function runCli(argv, seams = {}) {
         } catch (_e) { /* that sibling's scope stays unknown */ }
       }
       tier3 = evaluateTier3({
-        issue, outputPath: opts['--tier3'], exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
+        issue, outputPath: rootRelative(root, opts['--tier3']), exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
         treeBefore, treeBeforeIntact: sha256(treeBefore) === String(opts['--tree-before-sha']).toLowerCase(),
         treeAfter: git(TREE_STATUS_ARGS), root, siblings,
         ...(scopesRead === 1 + siblings.length ? { runPaths } : {}),
@@ -1481,7 +1505,7 @@ function runCli(argv, seams = {}) {
     // outside it during the review is reported, never failed.
     const runPaths = scopeDrift.parseDeclaredScope(bodyOf(issue, bodyFileMap(opts['--body-file'], issue))).paths;
     const tier3 = evaluateTier3({
-      issue, outputPath: opts['--tier3'], exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
+      issue, outputPath: rootRelative(root, opts['--tier3']), exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
       treeBefore, treeBeforeIntact: sha256(treeBefore) === String(opts['--tree-before-sha']).toLowerCase(),
       treeAfter: git(TREE_STATUS_ARGS), root, ...(runPaths.length ? { runPaths } : {}),
     });
@@ -1553,6 +1577,7 @@ function runCli(argv, seams = {}) {
   if (sub === 'group-tier1') {
     const miss = requireOpts(opts, ['--base', '--member']);
     if (miss) return fail(miss);
+    if (!opts['--member'].every(isIssueNumber)) return fail('--member takes an issue number');
     const files = bodyFileMap(opts['--body-file']);
     // #3286: --state is the run-state file; its regeneratedCommits are --own.
     let recorded = [];
@@ -1582,7 +1607,14 @@ function runCli(argv, seams = {}) {
   if (sub === 'batch-range') {
     const miss = requireOpts(opts, ['--member', '--head']);
     if (miss) return fail(miss);
-    const bases = (opts['--base-of'] || []).map((spec) => {
+    if (!opts['--member'].every(isIssueNumber)) return fail('--member takes an issue number');
+    // #3668: a spec with no '=' became issue NaN and tip = the whole spec, so
+    // the error named a missing tip rather than the malformed flag.
+    const specs = opts['--base-of'] || [];
+    if (!specs.every((spec) => spec.indexOf('=') > 0 && isIssueNumber(spec.slice(0, spec.indexOf('='))))) {
+      return fail('--base-of takes N=SHA');
+    }
+    const bases = specs.map((spec) => {
       const i = spec.indexOf('=');
       return { issue: Number(spec.slice(0, i)), tip: spec.slice(i + 1) };
     });

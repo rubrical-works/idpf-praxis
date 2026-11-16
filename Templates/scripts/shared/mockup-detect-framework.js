@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Detect UI framework for mockup generation.
  * Used by /mockups to decide between framework-native components and .drawio.svg fallback.
  * @checksum sha256:placeholder
@@ -132,6 +132,18 @@ function detectFramework(context) {
   return { framework: null, fallback: true, reason: FALLBACK_REASONS.NO_UI_FRAMEWORK };
 }
 
+/**
+ * The charter context for detectFramework from CHARTER.md content: the first
+ * Tech Stack, Frontend or UI table row. Matching is on technology names, so a
+ * names-only Tech Stack (contract version 2, #3643) reads as a versioned one.
+ * @param {string} content - CHARTER.md content
+ * @returns {{techStack: string}|undefined}
+ */
+function readCharterTechStack(content) {
+  const match = String(content || '').match(/\|\s*(?:Tech Stack|Frontend|UI)\s*\|\s*(.+?)\s*\|/i);
+  return match ? { techStack: match[1] } : undefined;
+}
+
 // CLI mode
 if (require.main === module) {
   const fs = require('fs');
@@ -151,11 +163,8 @@ if (require.main === module) {
   const charterPath = path.join(process.cwd(), 'CHARTER.md');
   if (fs.existsSync(charterPath)) {
     try {
-      const content = fs.readFileSync(charterPath, 'utf8');
-      const match = content.match(/\|\s*(?:Tech Stack|Frontend|UI)\s*\|\s*(.+?)\s*\|/i);
-      if (match) {
-        context.charter = { techStack: match[1] };
-      }
+      const charter = readCharterTechStack(fs.readFileSync(charterPath, 'utf8'));
+      if (charter) context.charter = charter;
     } catch { /* ignore */ }
   }
 
@@ -164,4 +173,4 @@ if (require.main === module) {
   process.exit(result.fallback ? 1 : 0);
 }
 
-module.exports = { detectFramework, SUPPORTED_FRAMEWORKS, FALLBACK_REASONS };
+module.exports = { detectFramework, readCharterTechStack, SUPPORTED_FRAMEWORKS, FALLBACK_REASONS };

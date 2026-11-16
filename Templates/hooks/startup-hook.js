@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -642,10 +642,11 @@ function renderBlock(info, checkResults, opts = { color: true }) {
     }
     if (r.name === 'charter-health') {
       // #3423. Row carried verbatim from the helper's formatRows — the wording
-      // has one home. Clean → no row; undetermined → the helper's own row.
+      // has one home. #3644: a clean charter's row is the derived count
+      // summary, shown plain; only a row carrying ⚠️ is warning-colored.
       const row = r.parsed?.data?.rows?.health;
       if (row) {
-        lines.push(`- Charter Health: ${w(row)}`);
+        lines.push(`- Charter Health: ${row.startsWith('⚠️') ? w(row) : row}`);
       } else if (!r.parsed?.data && r.error === 'timeout') {
         lines.push(`- Charter Health: ${e('⚠️ check timed out')}`);
       } else if (!r.parsed?.data && r.status === 'error') {
@@ -965,9 +966,13 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
   // precompute. The tradeoff is deliberate — #2475 made the summary immune to
   // being silently skipped by a later model turn, but only by clipping it to
   // 200 chars per section, which produced truncated sentences. A read of
-  // CHARTER.md yields full prose and can surface observations the clipped lines
-  // could not (e.g. a Current Focus naming a version the working branch has
-  // moved past). Listed first so the summary lands right after the block.
+  // CHARTER.md yields full prose. Listed first so the summary lands right
+  // after the block.
+  //
+  // #3653: the summary states what the project is — nothing about current
+  // work. The charter no longer holds a focus section (contract version 2,
+  // #3643); the board is where current work is seen, and startup gains no
+  // board read for it.
   //
   // #3423 (supersedes #2930): the summary is ALL this instruction asks for.
   // #2637 had added "note any mismatch you observe between the charter and
@@ -978,12 +983,14 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
   // also repaired counts only, so most of what it flagged could not be fixed by
   // the command it named. The observation is now a named, reported call:
   // charter-health-check.js (registered in buildChecks beside testing-drift)
-  // verifies counts with charter-entities.js and shape with charter-shape.js,
-  // and emits a Charter Health row only on a finding. The stale-version signal
+  // derives the Key Entities counts with charter-entities.js (#3644: nothing
+  // stores or verifies a count) and checks shape with charter-shape.js; its row
+  // carries the one-line derived summary and names the remedy only on a shape
+  // finding. The stale-version signal
   // is excluded there for the same habituation reason. Recommend, never mutate:
   // the row names /charter --refresh and nothing is changed for the user.
   if (info.charterStatus === 'Active') {
-    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is and its current focus.');
+    instructions.push('Read `CHARTER.md` and emit a concise prose summary of what this project is.');
   }
 
   // #2503: the specialist is INJECTED, not pointed at. The former
@@ -1292,7 +1299,30 @@ function buildChecks(info) {
   return checks;
 }
 
-async function main() {
+/**
+ * Every action main() takes, and what it does when SessionStart's source is
+ * `clear` (#3679). clear-hook.js runs main({ source: 'clear' }) after /clear;
+ * the process is not new then, so anything that assumes "nothing of this
+ * process exists yet" is skipped. Order is main()'s order.
+ */
+const CLEAR_SAFETY = [
+  { action: 'retired-file-removal', onClear: 'safe', reason: 'deletes only domain-entities.json, derived from CHARTER.md and read by nothing; idempotent' },
+  { action: 'session-info', onClear: 'safe', reason: 'reads config, git and gh state; writes nothing' },
+  { action: 'checks', onClear: 'safe', reason: 'every check is read-only at startup (branch-sync fetches one ref; task-tools writes only on an explicit --enable); a peer scan excludes this process' },
+  { action: 'stale-tmp-sweep', onClear: 'skipped', reason: 'the process that ran /clear may still own day-old .tmp-* files — a background agent\'s review file, a --concurrent run\'s state — that only a fresh process can call abandoned' },
+  { action: 'leftover-worktrees', onClear: 'safe', reason: 'lists .tmp-wt-* directories and names the teardown command; removes nothing' },
+  { action: 'render-and-emit', onClear: 'safe', reason: 'writes the block to stderr and hookSpecificOutput to stdout, as a fresh session does' },
+];
+
+/** Whether CLEAR_SAFETY skips an action for this source. */
+function skippedFor(source, action) {
+  return source === 'clear' && CLEAR_SAFETY.some((a) => a.action === action && a.onClear === 'skipped');
+}
+
+/**
+ * @param {{source?: 'startup'|'clear'}} [opts] - SessionStart source; clear-hook.js passes 'clear' (#3679)
+ */
+async function main({ source = 'startup' } = {}) {
   const cwd = process.cwd();
   // #3420: before gatherSessionInfo reads `git status --porcelain`, so the
   // Branch row reports the deletion as dirty. After the checks (where the
@@ -1313,7 +1343,8 @@ async function main() {
   // before, because its outcome is a row in the block. Its own try/catch is
   // inside the helper — a failed sweep degrades to no row, never to a missing
   // Session Initialized block.
-  info.trash = sweepStaleTempFiles(cwd, info);
+  // Skipped on clear (#3679): no row, exactly as a disabled sweep emits none.
+  info.trash = skippedFor(source, 'stale-tmp-sweep') ? null : sweepStaleTempFiles(cwd, info);
   info.worktrees = gatherLeftoverWorktrees(cwd);
 
   // Render block — colored for stderr, plain for additionalContext
@@ -1334,8 +1365,10 @@ async function main() {
   process.stdout.write(JSON.stringify(hookOutput) + '\n');
 }
 
-// Public API for testing
+// Public API for testing, and main() for clear-hook.js (#3679)
 module.exports = {
+  main,
+  CLEAR_SAFETY,
   gatherSessionInfo,
   resolveSpecialist,
   isSafeSpecialistName,

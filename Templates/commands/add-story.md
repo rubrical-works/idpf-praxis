@@ -1,5 +1,5 @@
 ---
-version: "v0.118.0"
+version: "v0.119.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
 argument-hint: "[epic-number] (e.g., 42 or #42) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -41,9 +41,7 @@ node .claude/scripts/shared/create-epic.js --theme "{Theme}" --assign-branch
 Parse JSON envelope:
 - `ok: false` → report `errors[]`, **STOP** (no orphan story).
 - `ok: true` → use `epicNumber`, `branchAssigned`, `branch`, `warnings[]`.
-- Surface every `warnings[]` entry (charter Out-of-Scope, missing CHARTER.md, branch-assign issues).
-
-If charter warnings present: **ASK USER** to confirm before proceeding.
+- Surface every `warnings[]` entry (branch-assign issues). The epic theme gets no charter check of its own (#3645): the scope call is Phase 2's, on the story.
 
 Report: `✅ Created Epic #{epicNumber}: {Theme} — Branch: {branch} — Warnings: {count}`
 **Step 3: Validate epic**
@@ -75,13 +73,9 @@ Prefer annotation over deletion when the requirement is real — the goal is to 
 Infer user type from context or ask.
 ## Phase 2: Charter Compliance Check
 Write story title + description to `.tmp-charter-scope-{random}.txt` (suffix shelled out); run `node .claude/scripts/shared/lib/charter-scope.js --command add-story --text-file <file>`; `rm` after.
-| Envelope | Report |
-|---|---|
-| `skipped` set (`no-charter` → suggest `/charter`) | One line naming `skipped.reason`; continue |
-| `alignment: aligned` | `✅ Story aligns with charter scope`, naming any `matchedItems` |
-| `ask: true` | `⚠️` with `alignment` + `matchedItems`, then the `resolutionOptions` from `.claude/metadata/charter-enforcement.json` |
+`skipped` set (`no-charter` → suggest `/charter`) → one line naming `skipped.reason`; continue. Otherwise make the **scope call** from the returned `inputs` as `scopeCall` in `.claude/metadata/charter-enforcement.json` directs — the helper decides nothing (#3645) — and report it in its one-line format, `Charter scope: <verdict> — "<bullet quoted>" — <reason in one sentence>`, with a stated reason; `boardThemes.available: false` → say the board themes were unavailable and decide on the bullets alone. At `quick` depth the inputs are the Out of Scope bullets alone: the call is `conflicts` or `aligned`.
 
-**ASK USER:** when `ask` is true, offer those options via `AskUserQuestion` (`expand` follows its `expansionFlow`). Relay `warnings`.
+**ASK USER:** When that verdict's `alignment.<verdict>.ask` is true (under `quiet`, only for `conflicts`), offer `resolutionOptions` from `.claude/metadata/charter-enforcement.json` via `AskUserQuestion` (`expand` follows its `expansionFlow`). Relay `warnings`.
 ## Phase 3: Create Story Issue
 **Step 1: Determine priority**
 **ASK USER:** Priority:
@@ -148,14 +142,14 @@ N/A
 **Depends on — machine-read, fixed shape (#3127).** Value is `none` or comma-separated `#N` refs to **sibling sub-issues of the same epic** — never `Story 1.1`, a bare number, or the story's own number. `/work --nonstop`/`--concurrent` order members from it via `.claude/scripts/shared/lib/depends-on.js`; an unreadable entry yields no edge and is never treated as satisfied, and `/review-issue`'s `depends-on-valid` flags it. `none` asserts no dependency — write it only when the user says so, never for "unknown". A parenthetical after an entry is ignored (`#12 (shares the helpers)`).
 
 **Relevant Skills renders `N/A` when skills ARE configured (#2817).** The section used to emit the whole `projectSkills` array into every story; there is no relevance filter here or in `/create-backlog`, so all stories got the same list — ten identical copies in a ten-story epic — and the name was a misnomer, the content being project-wide. It was also a third copy: the session lists available skills, and `/work` loads TDD skills from `.claude/skills/tdd-process/tdd-checklist.json`, not the story body. The unconfigured branch stays: it is the only actionable half.
-**E2E — the source is `framework-config.json` `testing.suites[]`, the suite whose `role` is `e2e` (#2851).** **This inverts the #2817 instruction that stood here**, which named `Inception/Test-Strategy.md` as the only source and forbade a `framework-config.json` key. That was right while the prose artifact was the only declaration; since #2849 the config carries `testing.suites[]` and since #2851 the Framework table is **rendered from it**, so reading the prose means reading a view and calling it the source. The reason is recorded rather than the rule deleted, because nothing else stops it being reinstated. `Inception/Test-Strategy.md` remains **corroboration** when the config declares nothing. Three states, and the last two stay distinguishable:
+**E2E — the source is `framework-config.json` `testing.suites[]`, the suite whose `role` is `e2e` (#2851).** **This inverts the #2817 instruction that stood here**, which named the Test-Strategy document as the only source and forbade a `framework-config.json` key. That was right while the prose artifact was the only declaration; since #2849 the config carries `testing.suites[]` and since #2851 the Framework table is **rendered from it**, so reading the prose means reading a view and calling it the source. The reason is recorded rather than the rule deleted, because nothing else stops it being reinstated. `Project/Test-Strategy.md` remains **corroboration** when the config declares nothing. Three states, and the last two stay distinguishable:
 | `testing.suites[]` (via `framework-config.js`, #3490) | Emit |
 |---|---|
 | A gate e2e suite (`role: "e2e"`, `execution` absent or `"gate"`) | Its `full` command and `id`, verbatim |
 | Only a `manual-only` e2e record (none applicable, or install pending) | `N/A` |
 | No e2e suite declared | `Not declared — no e2e suite in testing.suites[]` |
 
-`N/A` asserts the declaration was read and holds no gate e2e suite; with no e2e suite declared at all nothing says either way, so `N/A` there would claim a reading never consulted — and no state may invent a framework name. `Inception/Test-Strategy.md` stays corroboration only. **This repository is the worked case for `N/A`:** its `testing.suites[]` holds only the `manual-only` records `none-javascript-e2e` and `none-typescript-e2e`.
+`N/A` asserts the declaration was read and holds no gate e2e suite; with no e2e suite declared at all nothing says either way, so `N/A` there would claim a reading never consulted — and no state may invent a framework name. `Project/Test-Strategy.md` stays corroboration only. **This repository is the worked case for `N/A`:** its `testing.suites[]` holds only the `manual-only` records `none-javascript-e2e` and `none-typescript-e2e`.
 **Both sections obey the atomic contract rather than being exempt.** Each can legitimately have nothing to say and each still renders, with `N/A`, exactly as `Files to modify:` does. Naming them as exceptions trades one rule for a rule plus a list of what it does not cover.
 **Step 3: Link to parent epic**
 ```bash
@@ -168,14 +162,14 @@ gh issue view $epic_num --json body --jq '.body' | grep -oE "PRD/[A-Za-z0-9_-]+/
 ```
 Derive: `PRD/{name}/PRD-{name}.md → PRD/{name}/Test-Plan-{name}.md`
 
-If no test plan found: `ℹ️ No test plan. Test cases created when work begins.` → Steps 3-5 skipped, but **continue to Step 2 and run Step 3a/3b**: candidate test-path resolution depends on `Inception/Test-Strategy.md`, not on a test plan, and a story with no test plan is exactly the one whose test paths are otherwise never named (#2727).
-**Step 2: Load test config** — from `Inception/Test-Strategy.md` (framework, organization) and `Inception/Tech-Stack.md` (language). Fallback to `{frameworkPath}/IDPF-Agile/Agile-Core.md` TDD defaults with warning.
+If no test plan found: `ℹ️ No test plan. Test cases created when work begins.` → Steps 3-5 skipped, but **continue to Step 2 and run Step 3a/3b**: candidate test-path resolution depends on `Project/Test-Strategy.md`, not on a test plan, and a story with no test plan is exactly the one whose test paths are otherwise never named (#2727).
+**Step 2: Load test config** — from `Project/Test-Strategy.md` (framework, organization; locate it with `node .claude/scripts/shared/lib/charter-shape.js --locate Test-Strategy.md`; `legacy: true` → report its `message` (names `/charter --refresh`), never read the old path) and the `CHARTER.md` Tech Stack table (language). Fallback to `{frameworkPath}/IDPF-Agile/Agile-Core.md` TDD defaults with warning.
 **Step 3: Generate test cases from acceptance criteria**
 | Criterion | Test Cases |
 |-----------|------------|
 | {Criterion text} | Valid input, Invalid input, Edge case |
 **Step 3a: Resolve candidate test paths (#2727)**
-For each acceptance criterion implicating a code path, resolve the **candidate test file paths** a TDD RED phase would create or extend, from the framework/organization Step 2 loaded from `Inception/Test-Strategy.md` and the language from `Inception/Tech-Stack.md` — before #2727 that fed prose test *cases* and was discarded.
+For each acceptance criterion implicating a code path, resolve the **candidate test file paths** a TDD RED phase would create or extend, from the framework/organization Step 2 loaded from `Project/Test-Strategy.md` and the language from the `CHARTER.md` Tech Stack table — before #2727 that fed prose test *cases* and was discarded.
 **Read pairing conventions from `.claude/skills/tdd-refactor-coverage-audit/resources/test-coverage-conventions.json`** — `languages` keyed by the loaded language, its `sourceExtensions`, `testPatterns` (`{dir}`/`{stem}`), `ignoredSourcePatterns`. **Do not declare a second convention source:** it is the single pairing authority (project overrides in `framework-config.json` `testCoverageAudit`); a second rule set drifts silently until two commands disagree where a test belongs.
 1. Infer from the criterion which source paths the change touches.
 2. Apply each `testPatterns` entry, substituting `{dir}`/`{stem}` from the source path.

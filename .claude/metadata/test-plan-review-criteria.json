@@ -98,7 +98,7 @@
       "name": "Framework consistent with test strategy",
       "description": "Verify test plan aligns with project test strategy",
       "type": "objective",
-      "autoCheckMethod": "If `Inception/Test-Strategy.md` exists, verify test plan aligns with its guidance"
+      "autoCheckMethod": "If `Project/Test-Strategy.md` exists, verify test plan aligns with its guidance"
     },
     {
       "id": "coverage-targets-realistic",

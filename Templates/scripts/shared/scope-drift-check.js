@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -120,9 +120,16 @@ function globBodyToRegex(pattern) {
     const c = pattern[i];
     if (c === '*') {
       if (pattern[i + 1] === '*') {
-        re += '.*';
         i += 2;
-        if (pattern[i] === '/') i++;
+        // `**/` is zero or more whole segments: emitting `.*` and consuming
+        // the `/` lost the segment boundary, so `**/index.js` matched
+        // src/myindex.js (#3621). A bare trailing `**` stays `.*`.
+        if (pattern[i] === '/') {
+          re += '(?:.*/)?';
+          i++;
+        } else {
+          re += '.*';
+        }
       } else {
         re += '[^/]*';
         i++;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Add selected CI features to a project's GitHub Actions workflows. Applies feature templates with YAML merging, handles confirmation prompts, and provides error recovery. Part of the /ci --add subcommand.
  * @checksum sha256:placeholder
  *
@@ -215,11 +215,18 @@ function writeConfigFiles(projectDir, featureId) {
   ];
   const written = [];
   const left = [];
-  for (const [rel, body] of plan) {
-    if (!rel || typeof body !== 'string') continue;
-    const target = path.join(projectDir, ...rel.split('/'));
-    if (writeIfAbsent(target, body)) written.push(rel);
-    else left.push(rel);
+  try {
+    for (const [rel, body] of plan) {
+      if (!rel || typeof body !== 'string') continue;
+      const target = path.join(projectDir, ...rel.split('/'));
+      if (writeIfAbsent(target, body)) written.push(rel);
+      else left.push(rel);
+    }
+  } catch (err) {
+    // writeIfAbsent rethrows everything but EEXIST (EACCES, EPERM, …): report it
+    // as a result like every other path, naming what was already written (#3672).
+    const already = written.length ? ` (already written: ${written.join(', ')})` : '';
+    return { success: false, message: `Failed to add feature: ${err.message}${already}`, feature: featureId, files: written };
   }
   const parts = [];
   if (written.length) parts.push(`wrote ${written.join(' and ')}`);
@@ -355,7 +362,7 @@ function removeCreated({ file, dirs }) {
 const DOC_DIRS = ['docs', 'Docs', 'doc', 'documentation'];
 
 /** IDPF artifact directories: planning and design records no test reads. */
-const IDPF_ARTIFACT_DIRS = ['Proposal', 'Construction', 'Inception', 'Mockups'];
+const IDPF_ARTIFACT_DIRS = ['Proposal', 'Construction', 'Project', 'Mockups'];
 
 /**
  * Markdown a project runs rather than reads: command specs, rules and skills.

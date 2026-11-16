@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -975,7 +975,9 @@ function resumeFinish(n) {
  * Uncommitted they failed group-tier1's uncommitted check; committed under a
  * member they failed its scope; a branch tracker has no epic. So they are
  * committed once, naming the run's root issue — the epic, or the branch
- * tracker's own issue — and passed to group-tier1 as --epic <root> with each
+ * tracker's own issue, which is also a selection run's root (#3681): its
+ * members merge back onto the current branch's tracker — and passed to
+ * group-tier1 as --epic <root> with each
  * path as --regenerated, which accepts exactly that commit.
  *
  * @param {{group?: number, batch?: number}} where
@@ -1008,12 +1010,7 @@ function recordRegenerated(state, { sha, paths = [], group, batch } = {}) {
   return { ...(state || {}), regeneratedCommits: list };
 }
 
-/**
- * The `--nonstop` halt report for a concurrent run (#3140): what failed,
- * what was kept, what never merged, what never started, and how to resume.
- * Same contract as the sequential halt — sub-issue, completed count, resume
- * instructions — with the worktrees added, because they are the state.
- */
+/** The halt report's "Not swept" line naming the in_review members the end-of-run sweep never reached. */
 function unsweptLine(unswept) {
   // --nonstop sweeps once after the last member (#3202), so a halt leaves the
   // processed members in_review and unswept; a resumed run skips them. One
@@ -1021,6 +1018,12 @@ function unsweptLine(unswept) {
   return `  Not swept (the end-of-run Step 4f never ran): ${list(unswept)} — run the declared verification set over their changes before /done; a resumed run skips in_review members.`;
 }
 
+/**
+ * The `--nonstop` halt report for a concurrent run (#3140): what failed,
+ * what was kept, what never merged, what never started, and how to resume.
+ * Same contract as the sequential halt — sub-issue, completed count, resume
+ * instructions — with the worktrees added, because they are the state.
+ */
 function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotStarted = [], processed = 0, total = 0, worktreesKept = [], unswept = [] } = {}) {
   const lines = [`Halted: ${reason}`];
   if (failed) {
@@ -1328,6 +1331,10 @@ function runRecordSpawnCli(argv) {
   }
   const missing = ['--ledger', '--issue', '--branch', '--worktree'].filter((k) => !opts[k]);
   if (missing.length) return { code: 1, envelope: { ok: false, error: `missing ${missing.join(', ')}` } };
+  // A non-numeric or zero --issue would write a phantom entry no resume can
+  // match (#3623); refused like --merged/--passed/--stopped (#3595).
+  const issue = parseIssueFlag(opts['--issue']);
+  if (issue === null) return { code: 1, envelope: { ok: false, error: issueFlagError('--issue', opts['--issue']) } };
   // Read directly, ENOENT meaning first use (#3446, CodeQL js/file-system-race):
   // an existence check first could miss a ledger and replace it with an empty one.
   let ledger = { members: [] };
@@ -1336,7 +1343,7 @@ function runRecordSpawnCli(argv) {
       return { code: 1, envelope: { ok: false, error: `cannot read run ledger ${opts['--ledger']}: ${e.message}` } };
     }
   }
-  const next = recordSpawn(ledger, { issue: Number(opts['--issue']), branch: opts['--branch'], worktreePath: opts['--worktree'] });
+  const next = recordSpawn(ledger, { issue, branch: opts['--branch'], worktreePath: opts['--worktree'] });
   fs.writeFileSync(opts['--ledger'], JSON.stringify(next, null, 2));
   return { code: 0, envelope: { ok: true, ledger: opts['--ledger'], members: next.members } };
 }
@@ -1501,10 +1508,17 @@ function runRecordRegeneratedCli(argv, seams = {}) {
 
 if (require.main === module) {
   const argv = process.argv.slice(2);
-  const result = argv[0] === 'replan' ? runReplanCli(argv)
-    : argv[0] === 'record-spawn' ? runRecordSpawnCli(argv)
-      : argv[0] === 'record-regenerated' ? runRecordRegeneratedCli(argv)
-        : runNextStepsCli(argv);
+  // One JSON envelope even when a run*Cli throws (a failed state or ledger
+  // write) — the parent parses stdout, never a stack trace (#3623).
+  let result;
+  try {
+    result = argv[0] === 'replan' ? runReplanCli(argv)
+      : argv[0] === 'record-spawn' ? runRecordSpawnCli(argv)
+        : argv[0] === 'record-regenerated' ? runRecordRegeneratedCli(argv)
+          : runNextStepsCli(argv);
+  } catch (e) {
+    result = { code: 1, envelope: { ok: false, error: e.message } };
+  }
   process.stdout.write(JSON.stringify(result.envelope, null, 2) + '\n');
   process.exitCode = result.code;
 }

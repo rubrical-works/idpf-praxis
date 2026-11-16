@@ -86,7 +86,22 @@ transitions work in every downstream project. The same rule explains the
 existing aliases: a `Parking Lot` column derives `parking_lot`, while a
 `ParkingLot` column derives `parkinglot`.
 
-### 5. Record the project identifier
+### 5. Confirm the Auto-close issue workflow
+
+Praxis never closes an issue directly. `/done` and `/complete-prd` run `gh pmu
+move <n> --status done`, and the board's built-in **Auto-close issue** workflow
+closes the issue when it reaches Done. Check it on this template, and check the
+same setting on any project board where issues stay open after `/done`.
+
+1. On the project, click the **⋯** (more options) button in the top right.
+2. Select **Workflows**.
+3. Click **Auto-close issue** and confirm it is **On** (turn it on if it is not).
+
+**Why this is not optional.** With the workflow off, every finished issue stays
+open in the Done column. The close is credited to your own account rather than
+an app, so nothing in the issue's history says what was supposed to close it.
+
+### 6. Record the project identifier
 
 Praxis Hub Manager needs to locate this template during project creation. Note **either** of the following and keep them handy:
 
@@ -106,6 +121,7 @@ Before moving on, confirm:
 - [ ] The project contains **no items** (import was deselected).
 - [ ] The board view shows the **Labels** field on cards (drag a test card on if needed, then delete it).
 - [ ] The **Status** field has a `QA required` option, spelled exactly.
+- [ ] The **Auto-close issue** workflow is on (**⋯** → **Workflows**).
 - [ ] You have recorded the project **name** or **number**.
 
 ---

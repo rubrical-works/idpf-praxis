@@ -3,7 +3,7 @@
 /**
  * Section-scoped loading of /work's conditional bodies (#3325).
  *
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  *
  * Rule 08 Step 1d used to read all of `Reference/work-execution-conditional.md`
  * for any epic, branch tracker, `--nonstop`, `--concurrent` or multi-issue run.
@@ -33,6 +33,9 @@ const { computeFenceMask } = require('./checkbox-scan.js');
 const CONDITIONAL_REL = path.join('Reference', 'work-execution-conditional.md');
 
 const tree = (s) => s.type === 'epic' || s.type === 'branch';
+// #3681: --concurrent on a selection of two or more issues is planned and
+// run as a tree's members are, so it loads the concurrent bodies too.
+const concurrentRun = (s) => !!s.concurrent && (tree(s) || (s.selection || 0) >= 2);
 
 /** Every section of the conditional file, in file order, with when it loads. */
 const SECTIONS = [
@@ -40,12 +43,12 @@ const SECTIONS = [
   { id: '2b', applies: (s) => tree(s) },
   { id: '2b-ii', applies: (s) => s.type === 'epic' || (s.type === 'branch' && !!s.nonstop) || (!tree(s) && (s.selection || 0) >= 2) },
   { id: '2c', applies: (s) => tree(s) && !!s.nonstop },
-  { id: '3', applies: (s) => tree(s) && !!s.concurrent },
+  { id: '3', applies: (s) => concurrentRun(s) },
   { id: '4f', applies: (s) => tree(s) && !!s.nonstop },
   // Step 4g runs for every issue (#3457); a shape Step 1d loads carries it, and
   // a single standard issue reads it with --section 4g.
   { id: '4g', applies: (s) => tree(s) || (s.selection || 0) >= 2 },
-  { id: '6', applies: (s) => tree(s) && (!!s.nonstop || !!s.concurrent) },
+  { id: '6', applies: (s) => (tree(s) && !!s.nonstop) || concurrentRun(s) },
   { id: '6a', applies: (s) => tree(s) && !!s.nonstop },
 ];
 

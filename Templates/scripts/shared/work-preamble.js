@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -28,7 +28,9 @@ const { topoOrder } = require('./lib/topo-order.js');
 const { buildRun, nextSteps, memberTasks, memberBriefs, extractBriefSections, MEMBER_TEMPLATES, pruneRunLedger } = require('./lib/concurrent-orchestration.js');
 // #3259: the status move waits on the Review-State Gate's decision, computed
 // from the same classifier and aggregator the gate itself uses.
-const { classifyReviewState } = require('./review-state.js');
+// #3632/#3666: required as a module so classifyAndRelabel is called through
+// it (tests observe the calls); a stale issue is relabeled reviewed → pending.
+const reviewState = require('./review-state.js');
 const { evaluateBranchReviewGate } = require('./lib/branch-review-gate.js');
 const { dirtyTrackerPaths } = require('./lib/merge-back-gate.js');
 
@@ -56,35 +58,52 @@ function loadGateActions() {
  *   the epic (classified) or the tracker (dropped) plus its active members;
  * - branch tracker without --nonstop: no up-front gate, so no deferral.
  *
+ * Not side-effect free: a stale-reviewed issue is relabeled reviewed → pending
+ * through `execFn` (#3632, #3666) — pass a recording execFn to observe it.
+ *
  * @returns {{ defer: boolean, state?: string, action?: string, reason?: string }}
  */
-function decideStartMove({ type, issue, active = [], skipped = [], nonstop = false, unreviewed = false }) {
+function decideStartMove({ type, issue, active = [], skipped = [], nonstop = false, unreviewed = false, execFn }) {
   // --unreviewed (#3537) waives the gate, so nothing waits on it.
   if (unreviewed) return { defer: false, waived: true };
+  // #3632: every issue classified stale-reviewed here is relabeled
+  // reviewed → pending; `relabeled` lists the swaps, `relabelWarnings` the
+  // failures. Neither changes the state classified.
+  const relabeled = [];
+  const relabelWarnings = [];
+  // #3666: review-state's one shared rule; the label write goes through
+  // `execFn` (review-state's execTimed when omitted), an explicit dependency.
+  const classify = (iss) => {
+    const { verdict, relabel } = reviewState.classifyAndRelabel(iss, execFn);
+    if (relabel && relabel.swapped) relabeled.push({ number: iss.number, removed: relabel.removed, added: relabel.added });
+    if (relabel && relabel.warning) relabelWarnings.push(relabel.warning);
+    return verdict.state;
+  };
+  const done = (decision) => ({ ...decision, relabeled, relabelWarnings });
   if (type === 'epic' || (type === 'branch' && nonstop)) {
     const members = [
-      { number: issue.number, state: classifyReviewState(issue).state, boardStatus: null, isTracker: type === 'branch' },
-      ...active.map((s) => ({ number: s.number, state: classifyReviewState(s).state, boardStatus: s.status || null })),
+      { number: issue.number, state: classify(issue), boardStatus: null, isTracker: type === 'branch' },
+      ...active.map((s) => ({ number: s.number, state: classify(s), boardStatus: s.status || null })),
     ];
     const verdict = evaluateBranchReviewGate({ members, skipped, setShape: 'tree' });
-    if (!verdict.gate) return { defer: false };
-    return {
+    if (!verdict.gate) return done({ defer: false });
+    return done({
       defer: true,
       action: 'stop',
       reason: `the Step 2b-ii tree gate will stop on ${[...(verdict.neverReviewed || []), ...(verdict.findingsPending || [])].map((n) => `#${n}`).join(', ')}`,
-    };
+    });
   }
-  if (type === 'branch') return { defer: false };
+  if (type === 'branch') return done({ defer: false });
 
   const matrix = loadGateActions();
-  const { state } = classifyReviewState(issue);
+  const state = classify(issue);
   const entry = matrix && matrix.actions && matrix.actions[state] && matrix.actions[state].single;
-  if (!entry) return { defer: false };
+  if (!entry) return done({ defer: false });
   // `review` (#3537) defers too: /work reviews the issue before its first AC,
   // and no status moves until that review's verdict lets the gate pass.
-  if (!['stop', 'halt', 'review'].includes(entry.action)) return { defer: false };
+  if (!['stop', 'halt', 'review'].includes(entry.action)) return done({ defer: false });
   const verb = entry.action === 'review' ? 'review first' : entry.action;
-  return { defer: true, state, action: entry.action, reason: `the Step 3 Review-State Gate will ${verb} on a ${state} issue` };
+  return done({ defer: true, state, action: entry.action, reason: `the Step 3 Review-State Gate will ${verb} on a ${state} issue` });
 }
 
 // Every spawn here goes through the timed wrapper (#2469). These are /work's
@@ -1225,6 +1244,164 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
 }
 
 /**
+ * The concurrency plan and run for a set of members (#3126, shared with a
+ * selection run by #3681): worktree-hook check, tracker-tree check, resume
+ * (merged members, kept worktrees through the run ledger), buildPlan, then
+ * buildConcurrentRun. `runKey` keys every per-run state file —
+ * `.tmp-concurrent-<key>.json`, `.tmp-run-<key>.json`, `.tmp-rolling-<key>.json`:
+ * the epic or tracker number for a tree, selectionRunKey(tracker) for a
+ * selection. Every disk and git read is injectable through `options`.
+ *
+ * @param {{active: object[], processingOrder: number[], dependencyGraph: object,
+ *   runKey: number|string, nonstop: boolean, options: object, warnings: object[]}} input
+ * @returns {Promise<{concurrencyPlan: object, concurrentRun: object}>}
+ */
+async function planConcurrentRun({ active, processingOrder, dependencyGraph, runKey, nonstop, options, warnings }) {
+  // #3224: a member worktree starts from the tracker's HEAD only when the
+  // WorktreeCreate hook is registered; absent (or unreadable settings),
+  // the plan falls back to sequential. Injectable so tests read no disk.
+  const hook = (options.resolveWorktreeHook || resolveWorktreeHookFromDisk)();
+  if (hook && Array.isArray(hook.warnings)) warnings.push(...hook.warnings);
+  const hookRegistered = !!(hook && hook.registered);
+  // #3277: the tracker tree is checked before any spawn step. Injectable
+  // so tests run no git.
+  const dirtyTree = trackerTreeDirtyWarning(await (options.readTrackerStatus || readTrackerStatusFromGit)());
+  if (dirtyTree) warnings.push(dirtyTree);
+  // #3264: a resumed run's members already merged on the tracker are
+  // finished, not re-spawned. Injectable so tests run no git.
+  const numbers = active.map((s) => s.number);
+  const logs = await (options.readResumeLogs || readResumeLogsFromGit)(numbers);
+  const { merged } = classifyResume({ members: numbers, logs });
+  const found = await (options.readResumeWorktrees || readResumeWorktreesFromDisk)(runKey);
+  // #3350: drop ledger entries whose worktree is gone and whose member is
+  // not active, before matching; a kept worktree's entry always stays.
+  const pruned = pruneRunLedger(found.ledger, { worktrees: found.worktrees, active: numbers });
+  if (pruned.dropped.length) {
+    try {
+      (options.writeResumeLedger || writeResumeLedgerToDisk)(runKey, pruned.ledger);
+    } catch (_e) { /* the in-memory prune still applies to this run */ }
+    warnings.push({ code: 'RUN_LEDGER_PRUNED', dropped: pruned.dropped, message: `Pruned ${pruned.dropped.length} run-ledger ${pruned.dropped.length === 1 ? 'entry' : 'entries'} with no worktree and no active member: ${pruned.dropped.map((n) => `#${n}`).join(', ')}.` });
+  }
+  const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees, ledger: pruned.ledger, members: numbers.filter((n) => !merged.includes(n)) });
+  for (const k of worktreeMatch.kept) {
+    warnings.push({ code: 'KEPT_WORKTREE', message: `#${k.issue} has a worktree kept from an earlier run at ${k.worktreePath} (${k.branch}); it is held, not re-spawned, since it may hold fixes. Check it, then merge it with \`node .claude/scripts/shared/lib/merge-back-gate.js merge-back --tracker <tracker branch> --member ${k.issue}:${k.branch}:${k.worktreePath}\`, or tear it down with worktree-teardown.js, and re-run.` });
+  }
+  for (const u of worktreeMatch.unmatched) {
+    warnings.push({ code: 'UNMATCHED_WORKTREE', message: `Worktree ${u.worktreePath} (${u.branch}) is not in ${worktreeMatch.ledgerFound ? 'the run ledger' : 'any run ledger — none was found'}; it may hold a member's work from an earlier run. Inspect it before tearing it down.` });
+  }
+  const concurrencyPlan = buildPlan({
+    resume: { merged, kept: worktreeMatch.kept },
+    members: active,
+    processingOrder,
+    maxAgents: options.maxAgents,
+    source: options.maxAgents !== undefined ? (options.maxAgentsSource || 'flag') : 'default',
+    dependencies: dependencyGraph,
+    worktreeHookRegistered: hookRegistered
+  });
+  // #3568: report where member worktrees start in both cases, so a
+  // registered hook is distinguishable from a decision never made.
+  concurrencyPlan.worktreeBase = {
+    registered: hookRegistered,
+    layer: (hook && typeof hook.layer === 'string') ? hook.layer : null,
+    base: hookRegistered ? 'tracker tip' : 'sequential fallback'
+  };
+  const concurrentRun = buildConcurrentRun(concurrencyPlan, active, nonstop, {
+    ...(options.writeBrief ? { writeBrief: options.writeBrief } : {}),
+    ...(options.briefContext ? { briefContext: options.briefContext } : {}),
+    warnings,
+    tracker: runKey,
+    noReview: !!options.noReview
+  });
+  return { concurrencyPlan, concurrentRun };
+}
+
+/**
+ * The run key of a selection run (#3681): the branch tracker's number plus a
+ * suffix, so a selection's ledger and run-state files can never be the
+ * tracker-rooted run's (`.tmp-concurrent-<tracker>.json`) on the same branch,
+ * and a resumed selection run on that branch finds its own ledger again.
+ * @param {number} tracker
+ * @returns {string}
+ */
+function selectionRunKey(tracker) {
+  return `${tracker}-selection`;
+}
+
+/**
+ * --concurrent on a selection (#3681). Two or more workable members — ok,
+ * not redirected — are planned exactly as an epic's sub-issues are, merging
+ * back onto the current branch's tracker. Redirected and failed members
+ * (TREE_IN_BATCH among them) are left out and listed in `excluded`. Fewer
+ * than two workable members → CONCURRENT_IGNORED; no tracker →
+ * CONCURRENT_NO_TRACKER; either way no plan and the members run
+ * sequentially. A `**Depends on:**` cycle among members fails the selection.
+ * `--nonstop` stays ignored on a selection (NONSTOP_IGNORED), so the run keeps
+ * fixed groups.
+ *
+ * @param {object[]} results - runSingleIssueWithShared results, in selection order
+ * @param {number|null} tracker
+ * @param {object} options
+ * @param {object[]} warnings - pushed onto
+ * @returns {Promise<{concurrencyPlan?: object, concurrentRun?: object, error?: object}>}
+ */
+async function planSelection(results, tracker, options, warnings) {
+  const workable = results.filter((r) => r.ok && !(r.context && r.context.redirect));
+  if (workable.length < 2) {
+    warnings.push({
+      code: 'CONCURRENT_IGNORED',
+      message: `--concurrent needs two or more workable members in a selection; ${workable.length} ${workable.length === 1 ? 'is' : 'are'} workable, so it is ignored and the selection runs as standard /work.`
+    });
+    return {};
+  }
+  if (!tracker) {
+    warnings.push({
+      code: 'CONCURRENT_NO_TRACKER',
+      message: '--concurrent on a selection merges each member back onto the current branch\'s tracker, and this branch has no open tracker; the members run sequentially. Create one with /create-branch, or work on a branch that has one (/assign-branch).'
+    });
+    return {};
+  }
+  const excluded = results.filter((r) => !workable.includes(r)).map((r) => (r.ok
+    ? { number: r.issueNum, reason: 'redirect', detail: r.context.redirect }
+    : { number: r.issueNum, reason: (r.errors[0] && r.errors[0].code) || 'FAILED', detail: (r.errors[0] && r.errors[0].message) || '' }));
+  const active = workable.map((r) => ({
+    number: r.issueNum,
+    title: r.context.issue.title,
+    body: r.context.issue.body,
+    labels: r.context.issue.labels
+  }));
+  // The selection order is the declared order; **Depends on:** moves a
+  // member after what it depends on, exactly as for a tree (#3128). A
+  // dependency outside the selection is a non-member entry: unreadable to
+  // this run, never treated as satisfied, so the member falls to the tail.
+  const declaredOrder = active.map((a) => a.number);
+  const dependencies = orderByDependencies(active, [], declaredOrder);
+  if (!dependencies.ok) {
+    return { error: { code: 'DEPENDENCY_CYCLE', message: dependencies.graph.message, cycle: dependencies.graph.cycle } };
+  }
+  for (const message of dependencies.graph.warnings) warnings.push({ code: 'DEPENDS_ON_INVALID', message });
+  const dependencyGraph = { edges: dependencies.graph.edges, blockedBy: dependencies.graph.blockedBy, invalid: dependencies.graph.invalid };
+  const planned = await planConcurrentRun({
+    active, processingOrder: dependencies.order, dependencyGraph,
+    runKey: selectionRunKey(tracker), nonstop: false, options, warnings
+  });
+  planned.concurrencyPlan.excluded = excluded;
+  planned.concurrencyPlan.tracker = tracker;
+  // The selection review gate runs over the whole selection before any member
+  // agent spawns (#2750, #3681): first in the run, so a member it stops or
+  // excludes is re-planned out before a worktree exists for it.
+  const run = planned.concurrentRun;
+  const replan = run.stateFile
+    ? ` For each member it stops or excludes, run \`node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state ${run.stateFile} --stopped <N>\` and continue from the steps it prints.`
+    : ' The run state could not be written, so a stopped or excluded member cannot be re-planned: re-run the preamble without it.';
+  run.steps.unshift({
+    kind: 'selection-review-gate', step: '2b-ii', owner: 'parent', scope: 'run',
+    members: [...dependencies.order],
+    instruction: `Before any member is spawned, run Step 2b-ii's selection review gate (branch-review-gate.js) over every member: ${dependencies.order.map((n) => `#${n}`).join(', ')}. Review the unreviewed first, then raise one question for those with unresolved findings.${replan}`,
+  });
+  return planned;
+}
+
+/**
  * Build autoTask for epic issues
  * @param {Array<{ number: number, title: string }>} activeSubIssues
  * @param {number[]} processingOrder
@@ -1871,61 +2048,17 @@ async function runSingleIssue(issueNum, options) {
     // follows a transition. Members are the ACTIVE set: skipped sub-issues
     // are not worked, so they are not grouped.
     if (options && options.concurrent) {
-      // #3224: a member worktree starts from the tracker's HEAD only when the
-      // WorktreeCreate hook is registered; absent (or unreadable settings),
-      // the plan falls back to sequential. Injectable so tests read no disk.
-      const hook = (options.resolveWorktreeHook || resolveWorktreeHookFromDisk)();
-      if (hook && Array.isArray(hook.warnings)) warnings.push(...hook.warnings);
-      const hookRegistered = !!(hook && hook.registered);
-      // #3277: the tracker tree is checked before any spawn step. Injectable
-      // so tests run no git.
-      const dirtyTree = trackerTreeDirtyWarning(await (options.readTrackerStatus || readTrackerStatusFromGit)());
-      if (dirtyTree) warnings.push(dirtyTree);
-      // #3264: a resumed run's members already merged on the tracker are
-      // finished, not re-spawned. Injectable so tests run no git.
-      const numbers = statusResult.active.map((s) => s.number);
-      const logs = await (options.readResumeLogs || readResumeLogsFromGit)(numbers);
-      const { merged } = classifyResume({ members: numbers, logs });
-      const found = await (options.readResumeWorktrees || readResumeWorktreesFromDisk)(issueNum);
-      // #3350: drop ledger entries whose worktree is gone and whose member is
-      // not active, before matching; a kept worktree's entry always stays.
-      const pruned = pruneRunLedger(found.ledger, { worktrees: found.worktrees, active: numbers });
-      if (pruned.dropped.length) {
-        try {
-          (options.writeResumeLedger || writeResumeLedgerToDisk)(issueNum, pruned.ledger);
-        } catch (_e) { /* the in-memory prune still applies to this run */ }
-        warnings.push({ code: 'RUN_LEDGER_PRUNED', dropped: pruned.dropped, message: `Pruned ${pruned.dropped.length} run-ledger ${pruned.dropped.length === 1 ? 'entry' : 'entries'} with no worktree and no active member: ${pruned.dropped.map((n) => `#${n}`).join(', ')}.` });
-      }
-      const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees, ledger: pruned.ledger, members: numbers.filter((n) => !merged.includes(n)) });
-      for (const k of worktreeMatch.kept) {
-        warnings.push({ code: 'KEPT_WORKTREE', message: `#${k.issue} has a worktree kept from an earlier run at ${k.worktreePath} (${k.branch}); it is held, not re-spawned, since it may hold fixes. Check it, then merge it with \`node .claude/scripts/shared/lib/merge-back-gate.js merge-back --tracker <tracker branch> --member ${k.issue}:${k.branch}:${k.worktreePath}\`, or tear it down with worktree-teardown.js, and re-run.` });
-      }
-      for (const u of worktreeMatch.unmatched) {
-        warnings.push({ code: 'UNMATCHED_WORKTREE', message: `Worktree ${u.worktreePath} (${u.branch}) is not in ${worktreeMatch.ledgerFound ? 'the run ledger' : 'any run ledger — none was found'}; it may hold a member's work from an earlier run. Inspect it before tearing it down.` });
-      }
-      context.concurrencyPlan = buildPlan({
-        resume: { merged, kept: worktreeMatch.kept },
-        members: statusResult.active,
+      const planned = await planConcurrentRun({
+        active: statusResult.active,
         processingOrder,
-        maxAgents: options.maxAgents,
-        source: options.maxAgents !== undefined ? (options.maxAgentsSource || 'flag') : 'default',
-        dependencies: context.dependencyGraph,
-        worktreeHookRegistered: hookRegistered
+        dependencyGraph: context.dependencyGraph,
+        runKey: issueNum,
+        nonstop: !!options.nonstop,
+        options,
+        warnings
       });
-      // #3568: report where member worktrees start in both cases, so a
-      // registered hook is distinguishable from a decision never made.
-      context.concurrencyPlan.worktreeBase = {
-        registered: hookRegistered,
-        layer: (hook && typeof hook.layer === 'string') ? hook.layer : null,
-        base: hookRegistered ? 'tracker tip' : 'sequential fallback'
-      };
-      context.concurrentRun = buildConcurrentRun(context.concurrencyPlan, statusResult.active, options.nonstop, {
-        ...(options.writeBrief ? { writeBrief: options.writeBrief } : {}),
-        ...(options.briefContext ? { briefContext: options.briefContext } : {}),
-        warnings,
-        tracker: issueNum,
-        noReview: !!options.noReview
-      });
+      context.concurrencyPlan = planned.concurrencyPlan;
+      context.concurrentRun = planned.concurrentRun;
     }
 
     // Branch tracker with all sub-issues complete: suggest next step
@@ -1942,7 +2075,7 @@ async function runSingleIssue(issueNum, options) {
     if (options && options.concurrent) {
       warnings.push({
         code: 'CONCURRENT_IGNORED',
-        message: '--concurrent applies to an epic or branch tracker; ignored for a standard issue.'
+        message: '--concurrent applies to an epic, a branch tracker or a selection of two or more issues; ignored for a single standard issue.'
       });
     }
     // Standard flow: parse acceptance criteria
@@ -1957,10 +2090,47 @@ async function runSingleIssue(issueNum, options) {
   //     root exactly as found; a decline is moved by the Step 3 Pre-Work
   //     Status Gate, which also moves `moveDeferred.prdTracker` when set.
   const prdTrackerNum = parsePrdTracker(dataResult.issue.body);
+  // #3632: a `pending` issue may be a stale one relabeled earlier; only its
+  // latest review's recommendation tells, so its comments are read — for the
+  // issue and, where the tree gate runs, each active member. Only `pending`
+  // issues cost the read; a failed read warns and `pending` decides.
+  const classifiesHere = !(options && options.unreviewed)
+    && (type === 'standard' || type === 'epic' || (type === 'branch' && !!(options && options.nonstop)));
+  // Each read returns its warning rather than pushing it, so warnings join in
+  // member order whatever order the concurrent reads finish in (#3666).
+  const withGateComments = async (iss) => {
+    if (!classifiesHere || !(reviewState.labelNames(iss.labels) || []).includes('pending')) return { iss, warning: null };
+    roundTrips++;
+    const commentsResult = await execJSON(
+      'gh', ['issue', 'view', String(iss.number), '--json=comments'],
+      'ISSUE_COMMENTS_FAILED',
+      `Failed to read comments on #${iss.number}`
+    );
+    if (!commentsResult.error && commentsResult.data && Array.isArray(commentsResult.data.comments)) {
+      return { iss: { ...iss, comments: commentsResult.data.comments }, warning: null };
+    }
+    return {
+      iss,
+      warning: {
+        code: 'COMMENTS_UNREAD',
+        message: `Could not read comments on #${iss.number}, so a stale review relabeled pending cannot be told from unresolved findings; it is treated as findings-pending.`
+      }
+    };
+  };
+  const gateReads = [await withGateComments({ number: issueNum, ...dataResult.issue })];
+  if (type !== 'standard') gateReads.push(...await Promise.all(treeActive.map(withGateComments)));
+  for (const read of gateReads) if (read.warning) warnings.push(read.warning);
+  const gateIssue = gateReads[0].iss;
+  const gateActive = type === 'standard' ? treeActive : gateReads.slice(1).map((read) => read.iss);
   const startMove = decideStartMove({
-    type, issue: dataResult.issue, active: treeActive, skipped: treeSkipped, nonstop: !!(options && options.nonstop),
+    type, issue: gateIssue, active: gateActive, skipped: treeSkipped, nonstop: !!(options && options.nonstop),
     unreviewed: !!(options && options.unreviewed)
   });
+  // Every relabel attempt is one `gh issue edit` — a swap made or one that
+  // failed — and is a round trip like any other (#3666).
+  roundTrips += (startMove.relabeled || []).length + (startMove.relabelWarnings || []).length;
+  for (const message of startMove.relabelWarnings || []) warnings.push({ code: 'RELABEL_FAILED', message });
+  const relabeledGate = startMove.relabeled && startMove.relabeled.length ? { relabeled: startMove.relabeled } : {};
   if (startMove.defer) {
     const envelope = buildSuccessEnvelope(context, {
       assigned: assignGate,
@@ -1973,7 +2143,8 @@ async function runSingleIssue(issueNum, options) {
         action: startMove.action,
         reason: startMove.reason,
         prdTracker: prdTrackerNum || null
-      }
+      },
+      ...relabeledGate
     }, autoTask, warnings);
     envelope.roundTrips = roundTrips;
     return envelope;
@@ -1990,7 +2161,8 @@ async function runSingleIssue(issueNum, options) {
     alreadyInProgress: moveResult.alreadyInProgress,
     prdTrackerMoved: false,
     // #3265: --reopen names the status it reopened, so the move is reported.
-    ...(finished && moveResult.moved ? { reopenedFrom: priorStatus } : {})
+    ...(finished && moveResult.moved ? { reopenedFrom: priorStatus } : {}),
+    ...relabeledGate
   };
   if (moveResult.error) {
     return failAfterAssign([moveResult.error]);
@@ -2208,13 +2380,10 @@ async function runBatch(issueNums, options) {
     results.push(await runSingleIssueWithShared(num, shared, options));
   }
 
-  // #3260: flags that only an epic or branch tracker uses are reported once,
+  // #3260: a flag only an epic or branch tracker uses is reported once,
   // never dropped silently. Members are never trees on this path (TREE_IN_BATCH).
   const warnings = [];
   if (frameworkConfig.warning) warnings.push(frameworkConfig.warning);   // #3266
-  if (options && options.concurrent) {
-    warnings.push({ code: 'CONCURRENT_IGNORED', message: '--concurrent applies to an epic or branch tracker; ignored for a selection of issues.' });
-  }
   if (options && options.nonstop) {
     warnings.push({ code: 'NONSTOP_IGNORED', message: '--nonstop applies to an epic or branch tracker; ignored for a selection of issues.' });
   }
@@ -2222,16 +2391,39 @@ async function runBatch(issueNums, options) {
   // A batch in which every member failed is a failed batch (#3260); one that
   // has any member to work is ok, with per-member errors in results[].
   const allFailed = results.length > 0 && results.every((r) => !r.ok);
+  // #3681: --concurrent plans the selection's workable members.
+  const selection = (options && options.concurrent && !allFailed)
+    ? await planSelection(results, tracker, options, warnings)
+    : {};
+  if (options && options.concurrent && allFailed) {
+    warnings.push({ code: 'CONCURRENT_IGNORED', message: '--concurrent needs two or more workable members in a selection; none is workable, so it is ignored.' });
+  }
+  const errors = allFailed
+    ? [{ code: 'ALL_MEMBERS_FAILED', message: `Every member of the selection failed: ${results.map((r) => `#${r.issueNum}`).join(', ')}.` }]
+    : selection.error ? [selection.error] : [];
   return {
-    ok: !allFailed,
+    ok: errors.length === 0,
     version: SCHEMA_VERSION,
     results,
-    errors: allFailed
-      ? [{ code: 'ALL_MEMBERS_FAILED', message: `Every member of the selection failed: ${results.map((r) => `#${r.issueNum}`).join(', ')}.` }]
-      : [],
+    errors,
     warnings,
+    ...(selection.concurrencyPlan ? { concurrencyPlan: selection.concurrencyPlan, concurrentRun: selection.concurrentRun } : {}),
     roundTrips: results.reduce((sum, r) => sum + (r.roundTrips || 0), 0) + (issueNums.length > 0 ? 1 : 0)
   };
+}
+
+/**
+ * `--status <status>`: the issues in that status, run as a selection —
+ * `--concurrent` included (#3681). Extracted from main() so a test can reach
+ * the path the CLI takes. A failed status query is an error envelope.
+ * @param {string} status
+ * @param {object} [options]
+ * @returns {Promise<object>} batch envelope, or an error envelope
+ */
+async function runStatus(status, options) {
+  const statusResult = await resolveStatusIssues(status);
+  if (statusResult.error) return buildErrorEnvelope([statusResult.error]);
+  return runBatch(statusResult.issues, options);
 }
 
 // ─── Main Entry Point ───
@@ -2253,12 +2445,12 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, unreviewed (true only under --unreviewed, #3537: the Review-State Gate is waived for this run; absent otherwise), type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason, worktreeBase { registered, layer, base } } — worktreeBase is present in both cases (#3568): layer names the first settings layer registering the hook (project, project-local, user) or null, and base is "tracker tip" when registered, "sequential fallback" when not; zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks, specialistNotice } (#3129; specialistNotice, #3501, is the one specialist notice of the run for the parent to report — a string when no specialist was loaded, else null — on both schedules) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE.'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, unreviewed (true only under --unreviewed, #3537: the Review-State Gate is waived for this run; absent otherwise), type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason, worktreeBase { registered, layer, base } } — worktreeBase is present in both cases (#3568): layer names the first settings layer registering the hook (project, project-local, user) or null, and base is "tracker tip" when registered, "sequential fallback" when not; zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks, specialistNotice } (#3129; specialistNotice, #3501, is the one specialist notice of the run for the parent to report — a string when no specialist was loaded, else null — on both schedules) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE. With --concurrent on a selection (--issues, several #N, or --status — #3681) the batch envelope carries concurrencyPlan and concurrentRun at its top level, built the same way over the workable members (ok, not redirected) in selection order with **Depends on:** edges among them; concurrencyPlan adds tracker (the current branch\'s tracker, the merge-back target) and excluded ([{ number, reason, detail }]: reason "redirect" with the command, or the member\'s error code such as TREE_IN_BATCH). Its concurrentRun.steps open with one selection-review-gate step (step "2b-ii", members in plan order) before any spawn, naming the replan --stopped command for a member the gate stops or excludes. Its state files are keyed <tracker>-selection (.tmp-concurrent-<tracker>-selection.json and the .tmp-run-/.tmp-rolling- files), never a tracker-rooted run\'s. Fewer than two workable members warns CONCURRENT_IGNORED, no open tracker warns CONCURRENT_NO_TRACKER — no plan either way, the members run sequentially; a **Depends on:** cycle among members fails the batch with DEPENDENCY_CYCLE; --nonstop stays NONSTOP_IGNORED, so the schedule is "groups".'
     },
     gates: {
       name: 'gates',
       type: 'object',
-      description: 'Boolean gate results: assigned, movedToInProgress, alreadyInProgress, prdTrackerMoved. movedToInProgress reports a real state change — it is false when the issue was already in_progress (see alreadyInProgress), not merely when the move command failed. reopenedFrom (--reopen, #3265) names the In review/Done status the issue was moved back from. moveDeferred { state?, action, reason, prdTracker } (#3259) is present when the Review-State Gate will review or stop, so nothing was moved: state is the review state that deferred it (absent for a tree gate), action is the gate action that deferred it ("review", "stop" or "halt"; always "stop" for a tree gate), reason is the one line to report, and prdTracker is the PRD tracker number the Pre-Work Status Gate moves too, or null.'
+      description: 'Boolean gate results: assigned, movedToInProgress, alreadyInProgress, prdTrackerMoved. movedToInProgress reports a real state change — it is false when the issue was already in_progress (see alreadyInProgress), not merely when the move command failed. reopenedFrom (--reopen, #3265) names the In review/Done status the issue was moved back from. moveDeferred { state?, action, reason, prdTracker } (#3259) is present when the Review-State Gate will review or stop, so nothing was moved: state is the review state that deferred it (absent for a tree gate), action is the gate action that deferred it ("review", "stop" or "halt"; always "stop" for a tree gate), reason is the one line to report, and prdTracker is the PRD tracker number the Pre-Work Status Gate moves too, or null. relabeled [{ number, removed, added }] (#3632) is present when an issue the preamble classified stale-reviewed was swapped from reviewed to pending; a failed swap is a RELABEL_FAILED warning instead.'
     },
     autoTask: {
       name: 'autoTask',
@@ -2362,31 +2554,11 @@ async function main() {
   }
 
   if (parsed.mode === 'status') {
-    const statusResult = await resolveStatusIssues(parsed.status);
-    if (statusResult.error) {
-      const envelope = buildErrorEnvelope([statusResult.error]);
-      process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
-      process.exit(1);
-      return;
-    }
-    const result = await runBatch(statusResult.issues, options);
+    const result = await runStatus(parsed.status, options);
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
     return;
   }
-}
-
-// ─── Module Guard ───
-
-if (require.main === module) {
-  main().catch(err => {
-    const envelope = buildErrorEnvelope([{
-      code: 'UNEXPECTED',
-      message: err.message
-    }]);
-    process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
-    process.exit(1);
-  });
 }
 
 module.exports = {
@@ -2429,7 +2601,24 @@ module.exports = {
   buildEpicAutoTask,
   resolveStatusIssues,
   runBatch,
+  runStatus,
+  selectionRunKey,
   resolveWorktreeHookFromDisk,
   execSafe,
   main
 };
+
+// ─── Module Guard ───
+// After the exports (#3680): buildConcurrentRun calls through module.exports,
+// which must be assigned before main() can reach it.
+
+if (require.main === module) {
+  main().catch(err => {
+    const envelope = buildErrorEnvelope([{
+      code: 'UNEXPECTED',
+      message: err.message
+    }]);
+    process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
+    process.exit(1);
+  });
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -16,6 +16,10 @@ const { computeReviewHash, readReviewHash } = require('./lib/review-body-hash.js
 // Shared with resolve-preamble.js (#3605): every success envelope main() writes
 // carries `unrecognizedFlags`, always an array (#3555).
 const { reportUnrecognizedFlags } = require('./lib/command-args.js');
+// One definition of a review comment, shared with resolve-preamble.js (#2837),
+// and one of the body marker, shared with every reader and locator (#2880).
+// Required with the other lib imports (#3627) so no function reads it in its TDZ.
+const { REVIEW_HEADER_PATTERN, REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -549,12 +553,6 @@ async function gatherIssueData(issueNum, deps = {}) {
     warnings
   };
 }
-
-// One definition of a review comment, shared with resolve-preamble.js (#2837),
-// and one of the body marker, shared with every reader and locator (#2880).
-// computeReviewNumber and checkEarlyExit above resolve it when called, after
-// this module has loaded.
-const { REVIEW_HEADER_PATTERN, REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
 
 /**
  * Count the review comments already posted on an issue (#2837).

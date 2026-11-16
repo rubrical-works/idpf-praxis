@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * review-body-hash.js — The body hash a review records, so `review-state.js`
  * can tell a reviewed issue from one rewritten since its review (#3543).
  *
@@ -20,13 +20,16 @@
  *   | checkbox state (`[x]` reads as `[ ]`)      | /work Step 4, /done             |
  *   | trailing `→ QA: #N` / `→ GATE: <phase>`    | /work Step 4a, 4b               |
  *   | the `### Files Changed` section            | /work Step 4c                   |
+ *   | the `## Approval Decisions` section        | /review-test-plan Step 5a (#3635) |
  *   | `**Doc judgment:**` lines                  | /work Step 3b                   |
  *   | the `**Review gate bypassed:**` note       | tree-review-gate.js (#3552)     |
+ *   | the `**Processing Order:**` section        | /work Step 2c (#3655)           |
  *   | CRLF line endings, blank-line runs         | the GitHub web editor (#3064)   |
  *
  * Lines inside a fenced code block are author content (#3580): none of the
  * workflow-write exclusions above (the marker, `**Reviews:**`, checkbox state,
- * gate suffixes, `### Files Changed`, `**Doc judgment:**`, the bypass note)
+ * gate suffixes, `### Files Changed`, `## Approval Decisions`,
+ * `**Doc judgment:**`, the bypass note, Processing Order)
  * applies to them. Whitespace normalization still does: CRLF endings,
  * trailing whitespace and blank-line runs are normalized inside a fence too.
  *
@@ -45,6 +48,23 @@ const DOC_JUDGMENT_LINE = /^\*\*Doc judgment:\*\*/;
 // tree-review-gate.js BYPASS_NOTE_MARKER, matched here rather than required:
 // a lib loading a top-level script would invert the dependency direction.
 const BYPASS_NOTE_LINE = /^\*\*Review gate bypassed:\*\*/;
+// work-preamble.js PO_BOLD / PO_HEADING / PO_ITEM and the section-end rule of
+// its findProcessingOrderSection (#3655), matched here for the same reason.
+// A bold header with text after it is the inline form: that line alone. Else
+// the section runs over list items carrying a `#N`, blank lines between them
+// included, and ends at the first other line — a heading, prose, or an item
+// with no `#N` — which is author content.
+const PO_BOLD = /^\s*\*\*Processing Order:\*\*\s*(.*)$/;
+const PO_HEADING = /^\s*#{1,6}\s+Processing Order:?\s*$/;
+const PO_ITEM = /^\s*(?:\d+[.)]|[-*+])\s+/;
+const PO_ANY_HEADING = /^\s*#{1,6}\s/;
+const PO_REF = /#\d+/;
+
+/** True for a line that continues an open Processing Order section. */
+function continuesProcessingOrder(line) {
+  if (line.trim() === '') return true;
+  return PO_ITEM.test(line) && !PO_ANY_HEADING.test(line) && PO_REF.test(line);
+}
 // One trailing `→ QA: #N` / `→ GATE: <phase>` annotation. Applied in a loop
 // rather than as a repeated group (security/detect-unsafe-regex).
 const ONE_GATE_SUFFIX = /\s*→\s*(?:QA:\s*#\d+|GATE:\s*[A-Za-z-]+)\s*$/;
@@ -58,7 +78,13 @@ function stripGateSuffix(text) {
     current = next;
   }
 }
-const FILES_CHANGED = /^###[ \t]+Files Changed[ \t]*$/;
+// Workflow-written sections, each skipped from its heading to the next
+// unfenced heading at `closesAt` level or above. Approval Decisions carries a
+// `###` heading per gate, so it closes on level 2, never on its own children.
+const SKIPPED_SECTIONS = [
+  { heading: /^###[ \t]+Files Changed[ \t]*$/, closesAt: 3 },
+  { heading: /^##[ \t]+Approval Decisions[ \t]*$/, closesAt: 2 },
+];
 const HEADING = /^(#{1,6})[ \t]/;
 const HASH_LENGTH = 16;
 
@@ -71,20 +97,34 @@ const HASH_LENGTH = 16;
 function normalizeForHash(body) {
   if (typeof body !== 'string') return '';
   const out = [];
-  let inFilesChanged = false;
+  // The open skipped section, or null.
+  let skipping = null;
+  // An open Processing Order section (#3655); a fenced line always ends it.
+  let inOrder = false;
   const lines = normalizeEol(body).split('\n').map((raw) => raw.replace(/[ \t]+$/, ''));
   // Fenced lines are quoted author content (#3580): no workflow rule applies
-  // to them, and a fenced heading neither opens nor closes Files Changed.
+  // to them, and a fenced heading neither opens nor closes a skipped section.
   const fenced = computeFenceMask(lines);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (inFilesChanged) {
+    if (skipping) {
       const h = fenced[i] ? null : line.match(HEADING);
-      if (!h || h[1].length > 3) continue;
-      inFilesChanged = false;
+      if (!h || h[1].length > skipping.closesAt) continue;
+      skipping = null;
+    }
+    if (inOrder) {
+      if (!fenced[i] && continuesProcessingOrder(line)) continue;
+      inOrder = false;
     }
     if (fenced[i]) { out.push(line); continue; }
-    if (FILES_CHANGED.test(line)) { inFilesChanged = true; continue; }
+    const opened = SKIPPED_SECTIONS.find((s) => s.heading.test(line));
+    if (opened) { skipping = opened; continue; }
+    const order = PO_BOLD.exec(line);
+    if (order || PO_HEADING.test(line)) {
+      // The inline form is its header line alone; lines below it are author content.
+      inOrder = !(order && order[1].trim());
+      continue;
+    }
     if (MARKER_LINE.test(line) || REVIEWS_LINE.test(line) || DOC_JUDGMENT_LINE.test(line) || BYPASS_NOTE_LINE.test(line)) continue;
     const box = matchCheckboxLine(line);
     if (box) {
@@ -102,24 +142,47 @@ function computeReviewHash(body) {
   return crypto.createHash('sha256').update(normalizeForHash(body), 'utf8').digest('hex').slice(0, HASH_LENGTH);
 }
 
-/** The recorded hash, or null when the body carries no marker. */
+/**
+ * Index of the real marker line — the first unfenced line matching
+ * MARKER_LINE — or -1. Found the same way normalizeForHash excludes it, so a
+ * marker quoted inside a code fence is author content, never read or
+ * rewritten as the real one (#3620). `lines` may still carry a trailing `\r`.
+ */
+function findMarkerLine(lines) {
+  const bare = lines.map((l) => l.replace(/\r$/, ''));
+  const fenced = computeFenceMask(bare);
+  return bare.findIndex((l, i) => !fenced[i] && MARKER_LINE.test(l));
+}
+
+/** The recorded hash, or null when the body carries no unfenced marker. */
 function readReviewHash(body) {
   if (typeof body !== 'string') return null;
-  const m = body.match(MARKER_PATTERN);
-  return m ? m[1] : null;
+  const lines = body.split('\n');
+  const at = findMarkerLine(lines);
+  return at === -1 ? null : lines[at].match(MARKER_PATTERN)[1];
 }
 
 /**
- * Write the marker: replace an existing one in place, else put it on the line
- * after `**Reviews:** N`, else append it. Never two markers.
+ * Write the marker: replace an existing unfenced one in place, else put it on
+ * the line after the first unfenced `**Reviews:** N`, else append it. Never two
+ * markers; a marker or `**Reviews:**` line quoted inside a code fence is left
+ * untouched.
  */
 function writeReviewHash(body, hash) {
   const marker = `<!-- review-hash: ${hash} -->`;
   const text = typeof body === 'string' ? body : '';
-  if (MARKER_PATTERN.test(text)) return text.replace(MARKER_PATTERN, marker);
+  const existing = text.split('\n');
+  const found = findMarkerLine(existing);
+  if (found !== -1) {
+    existing[found] = existing[found].replace(MARKER_PATTERN, marker);
+    return existing.join('\n');
+  }
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   const lines = text.split(eol);
-  const at = lines.findIndex((l) => REVIEWS_LINE.test(l.replace(/\r$/, '').replace(/[ \t]+$/, '')));
+  // Anchor on an unfenced `**Reviews:**` line only: a marker inserted after a
+  // fenced example would sit inside the fence, where reads ignore it (#3620).
+  const fenced = computeFenceMask(lines.map((l) => l.replace(/\r$/, '')));
+  const at = lines.findIndex((l, i) => !fenced[i] && REVIEWS_LINE.test(l.replace(/\r$/, '').replace(/[ \t]+$/, '')));
   if (at !== -1) {
     lines.splice(at + 1, 0, marker);
     return lines.join(eol);

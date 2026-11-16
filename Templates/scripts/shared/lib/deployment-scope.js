@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Classify files and commits by deployment scope (deployed vs dev-only).
  * Uses minimize-config.json rules, deployment chain awareness, and known path patterns.
  * Used by generate-changelog.js to separate user-facing from internal changes.
@@ -111,7 +111,7 @@ const DEPLOYMENT_PATH_TABLE = Object.freeze([
     { pattern: /^framework-config\.json$/, distribution: 'dev-only', userProject: 'dev-only', why: 'This repo\'s own config; a user project writes its own.' },
     { pattern: /^CHARTER\.md$/, distribution: 'dev-only', userProject: 'dev-only', why: 'This repo\'s charter.' },
     { pattern: /^Skills\/(?!Packaged\/)/, distribution: 'dev-only', userProject: null, why: 'Skill source dirs; Skills/Packaged/ is what ships.' },
-    { pattern: /^Inception\//, distribution: 'dev-only', userProject: 'dev-only', why: 'Lifecycle documents for this repo.' },
+    { pattern: /^Project\//, distribution: 'dev-only', userProject: 'dev-only', why: 'Living project documents for this repo (#3650: the phase-neutral home of Architecture, Constraints and Test-Strategy).' },
     { pattern: /^Construction\//, distribution: 'dev-only', userProject: 'dev-only', why: 'Lifecycle documents for this repo.' },
     { pattern: /^Transition\//, distribution: 'dev-only', userProject: 'dev-only', why: 'Lifecycle documents for this repo.' },
     { pattern: /^\.claude\/scripts\/framework\//, distribution: null, userProject: 'dev-only',

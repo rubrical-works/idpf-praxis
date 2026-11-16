@@ -1,5 +1,5 @@
 # gh-pmu Configuration Reference
-**Version:** v0.118.0
+**Version:** v0.119.0
 **Source:** Reference/gh-pmu-Configuration.md
 **Load on demand** for `.gh-pmu.json` schema, release config, or `gh pmu` CLI operations.
 ## .gh-pmu.json Schema
@@ -80,7 +80,7 @@ Flags and operations spanning multiple commands; per-command behavior lives in e
 | `gh pmu move [#] --status done --recursive` | Update issue and all sub-issues |
 | `gh pmu triage --query "..." --apply status:backlog` | Bulk update matching issues |
 | `gh pmu intake --apply` | Add untracked issues to project |
-**Auto-close:** with the default Kanban template, moving an issue to `done` auto-closes it — `gh pmu move [#] --status done` suffices. Explicit `gh issue close` is needed only to set a close reason (`not_planned` vs `completed`), add a closing comment, or on a project without that workflow.
+**Auto-close:** with the default Kanban template, moving an issue to `done` auto-closes it via the project's built-in **Auto-close issue** workflow — confirming it is on is a setup step: `Docs/01-Getting-Started/06-Kanban-Template-Setup.md`, step 5. `gh pmu move [#] --status done` suffices. Explicit `gh issue close` is needed only to set a close reason (`not_planned` vs `completed`), add a closing comment, or on a project without that workflow.
 ### Slash Command Mapping
 | Instead of | Use |
 |------------|-----|

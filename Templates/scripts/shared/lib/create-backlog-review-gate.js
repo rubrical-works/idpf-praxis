@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Decide whether /create-backlog Phase 1c should gate on PRD review state. Exports evaluateReviewGate(). Reads the tracker's lifecycle checkbox and the review-state verdict together, so a reviewed PRD is not re-gated.
  * @checksum sha256:placeholder
  *
@@ -71,6 +71,22 @@ function normalizeState(reviewState) {
 }
 
 /**
+ * The latest review's recommendation (#3637): an explicit
+ * `input.latestRecommendation` wins, else review-state.js's verdict carries it
+ * in `signals.latestRecommendation`. Null when neither supplies a non-blank
+ * string: an empty or whitespace recommendation is an unparseable review, so
+ * it is unreadable, never a recommendation of "" (#3672). Returned trimmed.
+ */
+function readRecommendation(input) {
+  const readable = (x) => (typeof x === 'string' && x.trim() ? x.trim() : null);
+  const explicit = readable(input.latestRecommendation);
+  if (explicit !== null) return explicit;
+  const rs = input.reviewState;
+  const fromVerdict = rs && typeof rs === 'object' && rs.signals ? rs.signals.latestRecommendation : null;
+  return readable(fromVerdict);
+}
+
+/**
  * Decide whether Phase 1c should gate.
  *
  * @param {object} input
@@ -79,8 +95,11 @@ function normalizeState(reviewState) {
  * @param {boolean} [input.requireCheckbox] - require the checkbox as well as a clean
  *   review state. Off by default so a failed gate write cannot re-gate a PRD whose
  *   review genuinely completed; on when the caller wants the tracker body itself to
- *   be the authority — notably to keep "Ready with minor revisions", which earns the
- *   `reviewed` label but deliberately not the gate box, from passing by the back door.
+ *   be the authority. Since #3637 the default call already gates "Ready with minor
+ *   revisions" when the latest recommendation is readable; this option decides only
+ *   when it is not.
+ * @param {string} [input.latestRecommendation] - the latest review's recommendation;
+ *   defaults to `reviewState.signals.latestRecommendation` from review-state.js (#3637).
  * @returns {{ gate: boolean, reason: string, indeterminate: boolean,
  *             signals: { checkboxChecked: boolean, reviewState: string } }}
  */
@@ -102,6 +121,30 @@ function evaluateReviewGate(input = {}) {
   }
 
   if (reviewState === 'reviewed-clean') {
+    // #3637: with the box unchecked, the latest recommendation decides — the
+    // same "Ready for" predicate /review-prd Step 5 uses to write the box.
+    // "Ready with minor revisions" earns the `reviewed` label but not the box,
+    // so it gates; a "Ready for" review whose box write failed does not.
+    const latestRecommendation = readRecommendation(input);
+    signals.latestRecommendation = latestRecommendation;
+    if (!checkboxChecked && latestRecommendation !== null) {
+      if (!latestRecommendation.startsWith('Ready for')) {
+        return {
+          gate: true,
+          reason:
+            `Latest PRD review recommended "${latestRecommendation}" — the PRD reviewed box is written only on a "Ready for" recommendation, so this reviewed PRD is not yet decomposable. Address the open revisions and re-run /review-prd.`,
+          indeterminate: false,
+          signals,
+        };
+      }
+      return {
+        gate: false,
+        reason:
+          `PRD review completed cleanly ("${latestRecommendation}"); the PRD reviewed box is unchecked, so its box write likely failed.`,
+        indeterminate: false,
+        signals,
+      };
+    }
     if (input.requireCheckbox && !checkboxChecked) {
       return {
         gate: true,

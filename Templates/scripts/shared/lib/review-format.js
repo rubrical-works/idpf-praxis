@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Shared review format constants, emoji markers, section headers, and regex patterns for deterministic comment formatting and parsing. Exports EMOJI, SECTION_HEADERS, PATTERNS, and formatting helpers. Used by review-finalize.js and resolve-preamble.js.
  * @checksum sha256:placeholder
  *
@@ -159,6 +159,22 @@ function parseReviewComment(commentBody) {
 // Flat character class, no nested quantifier (security/detect-unsafe-regex).
 const FINDING_ID_PATTERN = /\s*<!-- id: ([a-z0-9][a-z0-9-]*) -->\s*$/;
 
+// ─── Criterion Name Key (#3624) ───
+
+/**
+ * A criterion display name reduced to a comparable key: lower-cased, each run
+ * of non-alphanumerics collapsed to one space, trimmed. One review cycle
+ * matches names in two places — review-finalize.js (advisory criteria) and
+ * resolve-preamble.js (name → criterion id) — and both must reduce a name the
+ * same way, so both import this one helper rather than keeping copies.
+ *
+ * @param {string} [name]
+ * @returns {string}
+ */
+function criterionNameKey(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 module.exports = {
   EMOJI,
   EMOJI_PASS,
@@ -175,6 +191,7 @@ module.exports = {
   FINDING_LINE_PATTERN,
   RECOMMENDATION_PATTERN,
   FINDING_ID_PATTERN,
+  criterionNameKey,
   formatFindingLine,
   parseReviewComment,
 };

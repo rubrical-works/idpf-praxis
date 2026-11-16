@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Shared epic-creation helper (#2408). Used by /add-story and
  * /split-story to create epics through a single, testable code path. Returns
  * the standard JSON envelope { ok, epicNumber, labelsVerified, branchAssigned,
  * branch, errors[], warnings[] }.
  *
  * Behaviors:
- *   - Charter validation: scans CHARTER.md "## Out of Scope" section for
- *     keyword overlap with the requested theme; emits structured warnings.
+ *   - No charter check of its own (#3645): the /create-backlog scope call on
+ *     the source PRD is the one check, so an epic theme is not matched against
+ *     Out of Scope by shared words.
  *   - Single source-of-truth body template (eliminates drift between callers).
  *   - Post-create label verification — ensures `gh pmu create --label epic`
  *     actually attached the label (catches silent label-miss).
@@ -32,9 +33,10 @@ const { execFileTimed: execFileSync } = require('./lib/exec.js');
 // #2599: assignee comes from the --assignee override, else a JS constant.
 // No configuration file is consulted (see lib/gh-pmu-config.js).
 const { resolveAssignee, DEFAULT_ASSIGNEE } = require('./lib/gh-pmu-config.js');
-const { parseCharterSections, matchItems } = require('./lib/charter-scope.js');
 
 const VALID_PRIORITIES = ['p0', 'p1', 'p2'];
+/** Characters of `gh pmu create` output quoted in an unparseable-output error (#3672). */
+const RAW_OUTPUT_LIMIT = 500;
 
 const ENVELOPE_SCHEMA = {
   ok: 'boolean — false on createIssue failure or missing epic label',
@@ -43,7 +45,7 @@ const ENVELOPE_SCHEMA = {
   branchAssigned: 'boolean — true when --assign-branch succeeded',
   branch: 'string|null — branch name if assignment was attempted',
   errors: 'string[] — hard failures',
-  warnings: 'string[] — charter concerns, branch-assign failures, etc.'
+  warnings: 'string[] — branch-assign failures and similar non-fatal notes'
 };
 
 // ─── Argument Parsing ───────────────────────────────────────
@@ -64,8 +66,13 @@ function parseArgs(argv) {
     } else if (a === '--theme' && i + 1 < argv.length) {
       out.theme = argv[++i];
     } else if (a === '--source-issue' && i + 1 < argv.length) {
-      const n = parseInt(argv[++i], 10);
-      if (Number.isNaN(n)) return { error: 'Invalid --source-issue value (must be numeric).' };
+      // #3668: strip '#', then the round-trip check review-preamble.js and
+      // resolve-preamble.js use — parseInt alone read '12abc' as 12.
+      const cleaned = String(argv[++i]).replace(/^#/, '');
+      const n = parseInt(cleaned, 10);
+      if (Number.isNaN(n) || n <= 0 || String(n) !== cleaned) {
+        return { error: 'Invalid --source-issue value (must be a positive integer).' };
+      }
       out.sourceIssue = n;
     } else if (a === '--priority' && i + 1 < argv.length) {
       const p = argv[++i];
@@ -113,27 +120,6 @@ Expand with detailed acceptance criteria as scope becomes clearer.
 `;
 }
 
-// ─── Charter Validation ─────────────────────────────────────
-
-// Matching is lib/charter-scope.js's (#3001), so the epic theme check and the
-// commands' charter checks cannot disagree about what overlaps — given the same
-// Out of Scope options checkScope passes (#3338).
-function validateCharterScope(theme, charterText) {
-  const warnings = [];
-  if (!charterText) {
-    warnings.push('No CHARTER.md content available — skipped scope check.');
-    return { warnings };
-  }
-  const { outOfScope } = parseCharterSections(charterText);
-  const [hit] = matchItems(theme, outOfScope, { outOfScope: true });
-  if (hit) {
-    warnings.push(
-      `Theme "${theme}" overlaps with charter Out of Scope item "${hit.item}" (matched: ${hit.words.join(', ')}).`
-    );
-  }
-  return { warnings };
-}
-
 // ─── Label / Issue-Number Helpers ───────────────────────────
 
 function hasEpicLabel(labels) {
@@ -157,7 +143,6 @@ function parseCreatedIssueNumber(text) {
 /**
  * @param {{theme:string, sourceIssue?:number, priority?:string, assignee?:string, assignBranch?:boolean}} args
  * @param {object} deps - Injected I/O for testability.
- *   readCharter()           → string|null
  *   createIssue({theme, body, priority, assignee}) → { number, labels, rawOutput }
  *   verifyLabels(number)    → label[]
  *   currentBranch()         → string|null
@@ -174,12 +159,7 @@ function run(args, deps) {
   const theme = args.theme;
   const priority = args.priority || 'p2';
 
-  // 1. Charter scope check (warnings only)
-  let charterText = null;
-  try { charterText = deps.readCharter(); } catch (_e) { charterText = null; }
-  warnings.push(...validateCharterScope(theme, charterText).warnings);
-
-  // 2. Create issue
+  // 1. Create issue
   const body = buildEpicBody({ theme, sourceIssue: args.sourceIssue });
   let created;
   try {
@@ -200,6 +180,18 @@ function run(args, deps) {
   epicNumber = created && created.number
     ? created.number
     : parseCreatedIssueNumber(created && created.rawOutput);
+
+  // An issue was probably created, but its number is unknown: say that, and
+  // hand back the raw output so the caller can find it — never a label miss
+  // on "#null" (#3672).
+  if (!epicNumber) {
+    const raw = String((created && created.rawOutput) || '').trim();
+    const shown = raw.length > RAW_OUTPUT_LIMIT ? `${raw.slice(0, RAW_OUTPUT_LIMIT)}…` : raw;
+    errors.push(
+      `gh pmu create succeeded but no issue number was found in its output: ${shown ? JSON.stringify(shown) : '(empty)'}`
+    );
+    return { ok: false, epicNumber: null, labelsVerified: false, branchAssigned: false, branch: null, errors, warnings };
+  }
 
   // 3. Verify epic label is actually present (always re-fetch — don't trust
   //    the createIssue return, since the whole point of the gate is to catch
@@ -246,11 +238,6 @@ function run(args, deps) {
 }
 
 // ─── Real I/O bindings (used only by main) ──────────────────
-
-function readCharterReal() {
-  const p = path.resolve(process.cwd(), 'CHARTER.md');
-  try { return fs.readFileSync(p, 'utf-8'); } catch (_e) { return null; }
-}
 
 /**
  * Build the `gh pmu create` argv for an epic.
@@ -338,7 +325,6 @@ function main() {
   }
 
   const envelope = run(args, {
-    readCharter: readCharterReal,
     createIssue: createIssueReal,
     verifyLabels: verifyLabelsReal,
     currentBranch: currentBranchReal,
@@ -355,7 +341,6 @@ module.exports = {
   parseArgs,
   buildCreateArgs,
   buildEpicBody,
-  validateCharterScope,
   hasEpicLabel,
   parseCreatedIssueNumber,
   run,

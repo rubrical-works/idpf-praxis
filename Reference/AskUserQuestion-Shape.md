@@ -1,5 +1,5 @@
 # AskUserQuestion Shape
-**Version:** v0.118.0
+**Version:** v0.119.0
 **Source:** Reference/AskUserQuestion-Shape.md
 **Purpose:** How a prompt sent through `AskUserQuestion` is laid out. On demand; rule `06-runtime-triggers.md` points here, and every `.claude/hooks/ask-question-shape-hook.js` correction closes with a pointer here (#3233, #3440).
 ## Why
@@ -9,9 +9,18 @@
 2. **The question is one sentence**, naming the decision, not the evidence: `QA #3145: record the verdict?`.
 3. **Long per-option content goes in that option's `preview` — single-select only.** `preview` renders only when `multiSelect` is false; for multi-select keep `description`s short.
 4. **Tool limits:** at most **4 options** per question, `header` at most **12 characters** — over either is rejected as "Invalid tool parameters" without saying which (#3198).
-The hook blocks only those two hard limits, naming the fix; limits in `.claude/metadata/ask-question-shape.json`. Its correction names each violation, the remedy and this document, nothing more (#3440). It does not check question length or block content (#3463): the tool accepts both, and each block reached the user as a hook error. Rules 1–3 and the rest are convention, pointed to not enforced.
-## Why the hook blocks rather than rewrites
-A rewrite cannot reach the user (#3447). Tested hands-on 2026-10-28 (Claude Code 2.1.312), twice, user watching: a PreToolUse hook returning `permissionDecision: "allow"` with a rewritten-question `updatedInput` showed **no prompt**; the call returned `The user did not answer the questions.` at once. The hooks docs (https://code.claude.com/docs/en/hooks) pair `updatedInput` with `"allow"` for a hook that supplies `answers`, and say nothing on whether a rewritten question is shown. A rewriting hook drops the prompt silently, worse than a visible block.
+The hook acts only on those two hard limits: a `header` over the limit is trimmed and the call goes through (#3638); more than 4 options blocks, naming the fix. Limits in `.claude/metadata/ask-question-shape.json`. Its correction names each violation, the remedy and this document, nothing more (#3440). It does not check question length or block content (#3463): the tool accepts both, and each block reached the user as a hook error. Rules 1–3 and the rest are convention, pointed to not enforced.
+## What the hook rewrites and what it blocks
+**An over-long `header` is rewritten (#3638).** It is only the chip label, so the hook trims it and lets the call through — no hook error, no retry: cut at the last word boundary within the limit (`Advisory path` → `Advisory`), hard cut when the first word alone is over it (`Thirteen-char` → `Thirteen-cha`); every other field unchanged. Write the header to fit anyway: the trim is mechanical and can drop the word that mattered.
+**Everything else over a limit blocks:** more than 4 options (the hook cannot choose which to merge or drop), a call with both problems (naming both), and an over-long header that is whitespace throughout.
+**The output shape decides whether the user sees the prompt.** Tested hands-on, user watching, each returning `hookSpecificOutput` with an `updatedInput`:
+| Paired with | Result | Tested |
+|---|---|---|
+| `permissionDecision: "allow"` | **No prompt.** The call returned `The user did not answer the questions.` at once | 2026-10-28 (Claude Code 2.1.312, #3447), twice, rewriting the question; 2026-11-12 (2.1.323, #3638), rewriting the header |
+| `permissionDecision: "ask"` | **Prompt shown with the rewritten header**; the answer came back normally | 2026-11-12 (2.1.323, #3638) |
+| `permissionDecision: "ask"`, one call with two questions (one single-select, one multi-select question), both headers over the limit | **Prompt shown, both headers rewritten, nothing shown before the questions**; both answers came back normally | 2026-11-13 (2.1.323, #3638), through the shipped hook |
+The hook returns `hookEventName: "PreToolUse"`, `permissionDecision: "ask"` and an `updatedInput` carrying the whole tool input. The hooks docs (https://code.claude.com/docs/en/hooks) pair `updatedInput` with `"allow"` for a hook that supplies `answers`, and do not describe the `ask` pairing — the test is the evidence. With `allow` a rewrite drops the prompt silently, worse than a visible block.
+Neither test checked: a deployed project (hook run from the hub junction); `updatedInput` with no `permissionDecision`.
 ## Templates
 A `/bluf`-shaped brief (#3440): **the question is the conclusion; support goes above it.** Fixed bold-label fields, one clause each; no honest answer → `not stated`, never inferred. `Question:` is the `question` string — one sentence naming the decision, under 200 chars (convention; no hook checks it, #3463); if it will not fit, move a clause up into a field. A hook-owned offer (startup hook) supplies `Question:` verbatim; the model writes only the fields.
 ### Offer

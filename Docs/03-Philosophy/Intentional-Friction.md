@@ -32,7 +32,7 @@ IDPF's friction exists to make the cost of starting work non-zero — specifical
 
 ### 1. Mandatory Charter
 
-**The friction:** Every session opens by reporting charter status. If `CHARTER.md` is missing or still holds template placeholders, the startup hook says so and prompts you to run `/charter`; when it is active, the assistant reads it and summarizes the project's scope and current focus before doing anything else.
+**The friction:** Every session opens by reporting charter status. If `CHARTER.md` is missing or still holds template placeholders, the startup hook says so and prompts you to run `/charter`; when it is active, the assistant reads it and summarizes what the project is before doing anything else. Current work is on the project board, not in the charter.
 
 **This gate asks rather than blocks, deliberately.** Scope is checked where work is created: `/proposal`, `/enhancement`, `/add-story`, `/create-prd` and `/create-backlog` each check the new work against the charter, and reviews apply a charter-alignment criterion. Work that matches no charter item, or matches an out-of-scope one, is raised as a question, and you may expand the charter scope, defer the work, proceed anyway, or revise it; a project can opt out entirely. The friction is that the charter is read aloud at the top of every session and that scope questions are raised against it, not that a missing charter halts the tool — with no charter, the checks skip with a one-line note pointing to `/charter`. A hard block would be the wrong shape here: the most common reason a charter is absent is that the project is new, which is exactly when refusing to work is least useful.
 

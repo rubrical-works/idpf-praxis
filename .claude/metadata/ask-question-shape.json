@@ -2,8 +2,8 @@
   "$schema": "./ask-question-shape-schema.json",
   "version": 1,
   "_meta": {
-    "description": "Limits and correction text for .claude/hooks/ask-question-shape-hook.js (#3233). maxOptions and maxHeaderLength are the tool's own hard limits (#3198), which it rejects as \"Invalid tool parameters\" without saying which, so the hook blocks with the fix named. Since #3463 the hook no longer blocks question length or block content: that is convention, documented in Reference/AskUserQuestion-Shape.md, and the tool accepts it.",
-    "issue": 3463
+    "description": "Limits and correction text for .claude/hooks/ask-question-shape-hook.js (#3233). maxOptions and maxHeaderLength are the tool's own hard limits (#3198), which it rejects as \"Invalid tool parameters\" without saying which, so the hook acts first. Since #3638 a header over maxHeaderLength is trimmed to it and the call goes through; more than maxOptions options blocks with the fix named. remedy.header is still used when a call blocks with a header problem in it: one that also has too many options, or a header with nothing to trim to. Since #3463 the hook no longer blocks question length or block content: that is convention, documented in Reference/AskUserQuestion-Shape.md, and the tool accepts it.",
+    "issue": 3638
   },
   "maxOptions": 4,
   "maxHeaderLength": 12,

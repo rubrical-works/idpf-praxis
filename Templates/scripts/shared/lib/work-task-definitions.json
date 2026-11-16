@@ -47,7 +47,7 @@
     {
       "order": 8,
       "subject": "Step 2b-ii: Tree-Wide Review Gate",
-      "condition": "context.type == 'epic' || (context.type == 'branch' && --nonstop) || non-epic selection of 1..N issues",
+      "condition": "context.type == 'epic' || (context.type == 'branch' && --nonstop) || non-epic selection of 2+ issues",
       "description": "Classifies every issue the run will process before the first acceptance criterion is worked, raising one question over the whole set. Without an entry this step is skipped after compaction, and on a non-epic selection no per-sub-issue gate exists to cover the loss — the review gate is bypassed with nothing reporting it. Body lives in {frameworkPath}/Reference/work-execution-conditional.md, loaded at Step 1d."
     },
     {
@@ -58,10 +58,10 @@
     },
     {
       "order": 10,
-      "subject": "Step 3: Work the Issue (Pre-Agent + Sub-Agent + Commit-per-AC gates apply)",
+      "subject": "Step 3: Work the Issue (Review-State + Pre-Work Status + Sub-Agent Review + commit-per-deliverable gates apply)",
       "condition": "always",
       "scope": "per-sub-issue",
-      "description": "Pre-Agent Status Gate is a compaction-recovery safeguard — re-verify in_progress before spawning any implementation Agent. Sub-Agent Review Gate: file content must be read and verified after every Agent return; agent summaries do not satisfy this gate. For direct-work paths (no Agent spawn), the Sub-Agent Review Gate is N/A; Step 4 file re-reads absorb the verification intent and are mandatory when strictTDD=true. Run scoped tests between AC commits for fast feedback — narrowed by the suite's declared selector (sweepSelect) when one exists, otherwise by the touched tree, reported either way; full-suite runs once per sub-issue at Step 4f before in_review. Commit-per-AC: do not start the next AC until this commit is made."
+      "description": "Review-State Gate first: classify the issue's review state before its first AC. Pre-Work Status Gate is a compaction-recovery safeguard — re-verify in_progress before the first AC is worked, inline or via an implementation Agent. Sub-Agent Review Gate: file content must be read and verified after every Agent return; agent summaries do not satisfy this gate. For direct-work paths (no Agent spawn), the Sub-Agent Review Gate is N/A; Step 4 file re-reads absorb the verification intent and are mandatory when strictTDD=true. Run scoped tests between AC commits for fast feedback — narrowed by the suite's declared selector (sweepSelect) when one exists, otherwise by the touched tree, reported either way; full-suite runs once per sub-issue at Step 4f before in_review. Commit-per-deliverable: commit when each AC's deliverable is complete (ACs that decompose one deliverable share a commit), and do not start the next AC until the previous deliverable is committed."
     },
     {
       "order": 11,

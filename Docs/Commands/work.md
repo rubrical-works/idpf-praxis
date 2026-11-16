@@ -12,7 +12,7 @@ Start working on one or more issues with branch validation, context gathering, a
 | `--assign` | No | Auto-assign issue(s) to current branch before starting |
 | `--nonstop` | No | For epics/branch trackers: skip per-sub-issue STOP and process all sub-issues continuously to `in_review` |
 | `--wait` | No | Wait for pending CI to pass before beginning work |
-| `--concurrent` | No | For epics/branch trackers: run file-disjoint sub-issues at once in framework-owned worktrees, grouped by their `**Depends on:**` lines, each merged back through a review gate (see Concurrent Mode) |
+| `--concurrent` | No | For an epic, a branch tracker, or a selection of two or more issues: run file-disjoint members at once in framework-owned worktrees, grouped by their `**Depends on:**` lines, each merged back through a review gate (see Concurrent Mode) |
 | `--agents N` | No | How many agents of any kind may run at once — implementers, their reviewers and fix cycles share the cap — and how many test runs; default 3. Requires `--concurrent` |
 | `--no-review` | No | Skip the independent review for this run, in every mode: the review of the issue's commits before In review, or, under `--concurrent`, the merge-back gate's independent reviewer (Tier 3; the mechanical checks and the parent's own read still run). The skip is reported |
 | `--unreviewed` | No | Waive the clean-review requirement for this run: work issues that were never reviewed, changed since their review, or have unresolved findings. Each waived issue and its state is named in the report. Not the same as `--no-review`, which skips the review of the finished commits |
@@ -30,12 +30,14 @@ Start working on one or more issues with branch validation, context gathering, a
 /work #100 --nonstop
 /work #100 --concurrent
 /work #100 --nonstop --concurrent --agents 2 --no-review
+/work #41 #45 #47 --concurrent
+/work --status ready --concurrent
 /work #42 --unreviewed
 ```
 
 ## Concurrent Mode
 
-`--concurrent` runs the sub-issues of an epic or branch tracker at the same time when they cannot collide. The plan comes from what each sub-issue declares: members whose `**Files to modify:**` blocks are disjoint and whose `**Depends on:**` lines are already satisfied form a group of at most `--agents N`, in dependency order. When two members declare the same file, the later one waits for a later group instead of joining the first, so they never run at once. Paths declared in `framework-config.json` `concurrency` as accumulators or derived artifacts do not count as overlap. Anything the plan cannot prove safe goes to a **sequential tail** and is worked one at a time, exactly as `/work` always has: no declared scope, an always-protected path when another member declares one under the same protected pattern, or a dependency that is unreadable or not yet merged.
+`--concurrent` runs the sub-issues of an epic or branch tracker — or a selection of issues you name, such as `/work #41 #45 --concurrent` or `/work --status ready --concurrent` — at the same time when they cannot collide. The plan comes from what each member declares: members whose `**Files to modify:**` blocks are disjoint and whose `**Depends on:**` lines are already satisfied form a group of at most `--agents N`, in dependency order. When two members declare the same file, the later one waits for a later group instead of joining the first, so they never run at once. Paths declared in `framework-config.json` `concurrency` as accumulators or derived artifacts do not count as overlap. Anything the plan cannot prove safe goes to a **sequential tail** and is worked one at a time, exactly as `/work` always has: no declared scope, an always-protected path when another member declares one under the same protected pattern, or a dependency that is unreadable or not yet merged.
 
 Each group member gets its own worktree and its own agent, which does only the TDD cycle there. The framework creates each worktree from the tip of your branch through its own `WorktreeCreate` hook, so Claude Code's `worktree.baseRef` setting does not apply; the preamble checks that the hook is in place and reports where worktrees will branch from. The parent session keeps everything else: the review-state and status gates, the peer announcements, the merge back onto your branch, the status moves and the STOP. Before a member merges, the **Merge-Back Review Gate** checks its branch three ways — every commit carries `Refs #N` and nothing is left uncommitted, the parent reads the diff file by file, and an independent reviewer agent reads it again without the implementer's summary. A failed gate gets exactly one fix cycle; a second failure halts the run with the worktree kept for you.
 
@@ -43,6 +45,8 @@ Each group member gets its own worktree and its own agent, which does only the T
 |---|---|---|
 | `--concurrent` | **One STOP per group**, after the group has merged back and every member is `in_review`; the tail then stops per member as usual | A group report, then the usual per-member reports |
 | `--nonstop --concurrent` | **No STOP** between groups or in the tail. Members start on a rolling schedule as a slot frees and their dependencies have merged back; a single runnable member with nothing else running is worked inline, with no worktree, agent or merge-back | Each member reported as it reaches `in_review`, then the nonstop summary, which repeats any leftover-worktree warning |
+
+**On a selection:** the members merge back onto the current branch's tracker, so the branch needs one — without it `/work` says so (`CONCURRENT_NO_TRACKER`) and works the members one at a time. A selection with fewer than two workable members is worked as plain `/work`. Every member's review state is checked before any agent starts. Issues that hand off to another command (a test plan, a QA issue) and epics or trackers in the list are left out of the plan and named. A selection run keeps its own run files, so it never collides with a concurrent run of the tracker itself, and `--nonstop` is still ignored on a selection.
 
 **Fallback to sequential:** a plan with **zero groups** — every member fell to the tail — runs exactly as sequential `/work` and tells you why no group formed. Without `--concurrent` nothing here applies; `--agents` on its own is reported as ignored, not treated as an error. Which flags to pick, and how to recover from a halt: [Workflow Guide, Stage 8](../01-Getting-Started/03-Workflow-Guide.md#stage-8-work-work) and [When Things Go Wrong](../01-Getting-Started/05-When-Things-Go-Wrong.md).
 

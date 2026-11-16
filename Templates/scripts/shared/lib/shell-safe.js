@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Shell-safe utilities for CodeQL compliance: sanitizeShellArg (whitelist
  * validation for shell-interpolated values), readFileSafe (TOCTOU-safe file reading),
  * and atomicWriteSync (write-to-temp-then-rename for config files).
@@ -37,9 +37,16 @@ function sanitizeShellArg(value, label = 'argument') {
     throw new Error(`${label} is required`);
   }
   const str = String(value);
-  // Reject shell metacharacters: backticks, $, (), {}, |, ;, &, <, >, !, \, newlines
-  if (/[`$(){}|;&<>!\\\n\r]/.test(str)) {
+  // Reject shell metacharacters: backticks, $, (), {}, |, ;, &, <, >, !, \,
+  // any whitespace (newlines included) and both quotes — the same set as
+  // input-validation.js SHELL_META (#3692). Whitespace splits one value into
+  // several arguments; a quote breaks out of the caller's quoting.
+  if (/[`$(){}|;&<>!\\\s'"]/.test(str)) {
     throw new Error(`${label} contains unsafe shell characters: ${str.substring(0, 30)}`);
+  }
+  // A leading '-' is read as an option even under execFile (#3692).
+  if (str.startsWith('-')) {
+    throw new Error(`${label} must not start with '-': ${str.substring(0, 30)}`);
   }
   return str;
 }

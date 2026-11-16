@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, and assigns labels (reviewed/pending) to the reviewed issue only — never to its sub-issues (#2869).
  * @checksum sha256:placeholder
  *
@@ -20,7 +20,7 @@ const EXEC_OPTS = { encoding: 'utf-8' };
 
 // ─── Shared Constants ───
 
-const { EMOJI, SECTION_HEADERS, REVIEW_TYPES, REVIEWS_MARKER_PATTERN } = require('./lib/review-format');
+const { EMOJI, SECTION_HEADERS, REVIEW_TYPES, REVIEWS_MARKER_PATTERN, criterionNameKey } = require('./lib/review-format');
 // The /work Step 4c parser, reused so "declared" means here exactly what the
 // gate that consumes the declaration will read (#2891). No second parser.
 const { parseDeclaredScope } = require('./scope-drift-check.js');
@@ -152,7 +152,8 @@ function normalizeFindings(data) {
       }
     }
 
-    // criteria.extensions: keyed object → userEvaluated or autoEvaluated
+    // criteria.extensions: keyed object → every entry is appended to autoEvaluated
+    // (userEvaluated is not populated by this transformation)
     if (data.criteria.extensions && typeof data.criteria.extensions === 'object') {
       for (const [id, entry] of Object.entries(data.criteria.extensions)) {
         autoEvaluated.push({
@@ -534,21 +535,34 @@ const BLOCKING_RECOMMENDATIONS = new Set(['Needs revision', 'Needs major rework'
 
 const READY_RECOMMENDATION = 'Ready for work';
 
-/** A criterion name reduced to a comparable key (same shape as resolve-preamble.js). */
-function criterionNameKey(name) {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
+/**
+ * Criterion ids and name keys (criterionNameKey) forming one advisory set.
+ * @typedef {{ ids: Set<string>, names: Set<string> }} AdvisorySet
+ */
+
+/**
+ * One issue type's advisory criteria — its always-advisory set. The #3609
+ * conditional set is retired (#3645): charter-scope.js returns no verdict, so
+ * a charter-alignment warning blocks like any other.
+ * @typedef {AdvisorySet} TypeAdvisorySet
+ */
+
+/**
+ * The advisory criteria for every type, as loadAdvisoryCriteria returns them.
+ * @typedef {{ ids: Set<string>, names: Set<string>, byType: Object<string, TypeAdvisorySet> }} AdvisoryCriteria
+ */
 
 /**
  * The criteria review-criteria.json marks `advisory: true` (#3587), by id and
  * by name, keyed by issue type (#3594): `byType[type]` holds only that type's
  * advisory criteria, so a criterion advisory for one type is never advisory
- * for another. `ids`/`names` are the union across types, kept for reporting.
- * Read from the project first, then beside this script (the hub). Nothing
- * readable → nothing advisory, so every warning blocks as before.
+ * for another. `ids`/`names` are the union of the always-advisory
+ * criteria across types, kept for reporting. Read from the project first,
+ * then beside this script (the hub). Nothing readable → nothing advisory, so
+ * every warning blocks as before.
  *
  * @param {string[]} [candidates] - review-criteria.json paths, tried in order
- * @returns {{ ids: Set<string>, names: Set<string>, byType: Object<string, { ids: Set<string>, names: Set<string> }> }}
+ * @returns {AdvisoryCriteria}
  */
 function loadAdvisoryCriteria(candidates) {
   const paths = candidates || [
@@ -562,16 +576,10 @@ function loadAdvisoryCriteria(candidates) {
     let data;
     try { data = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_e) { continue; }
     for (const [type, t] of Object.entries((data && data.typeSpecific) || {})) {
-      const own = { ids: new Set(), names: new Set(), conditional: { ids: new Set(), names: new Set() } };
+      const own = { ids: new Set(), names: new Set() };
       byType[type] = own;
       for (const c of (t && t.criteria) || []) {
         if (!c) continue;
-        // #3609: advisory only when the finding is flagged — kept apart from
-        // the always-advisory sets, so it never joins the reporting union.
-        if (c.conditionalAdvisory === true) {
-          if (c.id) own.conditional.ids.add(c.id);
-          if (c.name) own.conditional.names.add(criterionNameKey(c.name));
-        }
         if (c.advisory !== true) continue;
         if (c.id) { ids.add(c.id); own.ids.add(c.id); }
         if (c.name) { names.add(criterionNameKey(c.name)); own.names.add(criterionNameKey(c.name)); }
@@ -609,26 +617,31 @@ function advisoryForType(advisory, type) {
  * the reviewed type's own (`findings.type`), matched by id when the finding
  * has one and by display name only when it does not (#3594).
  *
+ * Only a warning is ever advisory (#3624): a fail is never lifted, even on an
+ * always-advisory criterion (`advisory: true`). A failing advisory criterion
+ * therefore keeps the recommendation as given — 'Needs minor revision' stays
+ * 'Needs minor revision', labeled `pending` — and is not listed among the
+ * advisory findings.
+ *
  * Repairs (#3544): when the review repaired anything, the label follows the
  * criteria, not the recommendation string — any non-pass criterion left
  * unrepaired is `pending`. With neither, this is determineLabel(recommendation).
  *
  * @param {{ findings?: object, repairs?: object[], acVerdicts?: object[], recommendation?: string }} findings
- * @param {{ advisory?: { ids: Set<string>, names: Set<string> } }} [options]
+ * @param {{ advisory?: AdvisoryCriteria|TypeAdvisorySet|AdvisorySet }} [options] - `advisory`
+ *   defaults to loadAdvisoryCriteria(). A typed set (`byType`) yields the
+ *   reviewed type's own set; a flat `{ ids, names }` set applies as given.
  */
 function decideReviewOutcome(findings, options = {}) {
   const advisory = advisoryForType(options.advisory || loadAdvisoryCriteria(), findings && findings.type);
   const recommendation = findings && findings.recommendation;
   const repairs = Array.isArray(findings && findings.repairs) ? findings.repairs : [];
   const nonPass = (x) => x && (x.status === 'warn' || x.status === 'fail');
-  // #3609: a criterion declaring conditionalAdvisory is advisory only on a
-  // warning the reviewer flagged `advisory: true`; the flag on any other
-  // criterion, or on a fail, is ignored.
-  const conditional = advisory.conditional || NO_ADVISORY;
-  const flagged = (x) => x.advisory === true && x.status === 'warn';
-  const isAdvisory = (x) => (x.id
-    ? advisory.ids.has(x.id) || (flagged(x) && conditional.ids.has(x.id))
-    : advisory.names.has(criterionNameKey(x.criterion)) || (flagged(x) && conditional.names.has(criterionNameKey(x.criterion))));
+  // #3624: only a warning is ever advisory — a fail always blocks. A
+  // per-finding `advisory` flag decides nothing (#3645): the criterion does.
+  const isAdvisory = (x) => x.status === 'warn' && (x.id
+    ? advisory.ids.has(x.id)
+    : advisory.names.has(criterionNameKey(x.criterion)));
   const verdicts = Array.isArray(findings && findings.acVerdicts) ? findings.acVerdicts : [];
   const acBlocked = verdicts.some(nonPass);
   const repaired = new Set(repairs.map((r) => r && r.criterion));
@@ -660,7 +673,7 @@ function decideReviewOutcome(findings, options = {}) {
  * (advisory criteria, repairs, blocking recommendations) are documented there.
  *
  * @param {{ findings?: object, repairs?: object[], acVerdicts?: object[], recommendation?: string }} findings
- * @param {{ advisory?: { ids: Set<string>, names: Set<string> } }} [options]
+ * @param {{ advisory?: AdvisoryCriteria|TypeAdvisorySet|AdvisorySet }} [options] - as decideReviewOutcome
  * @returns {'reviewed'|'pending'}
  */
 function decideReviewLabel(findings, options) {
@@ -674,8 +687,9 @@ function decideReviewLabel(findings, options) {
  */
 function applyReviewOutcome(findings, outcome) {
   const flagged = new Set(outcome.advisoryFindings);
-  // #3609: an input `advisory` flag the outcome did not honor is dropped, so
-  // the comment never marks a blocking finding "(advisory)".
+  // An input `advisory` flag the outcome did not honor is dropped, so the
+  // comment never marks a blocking finding "(advisory)" (#3645: the flag
+  // itself decides nothing; the criterion's `advisory: true` does).
   const unflag = (x) => {
     if (!x || !Object.prototype.hasOwnProperty.call(x, 'advisory')) return x;
     const rest = { ...x };
@@ -1039,6 +1053,7 @@ module.exports = {
   decideReviewOutcome,
   applyReviewOutcome,
   loadAdvisoryCriteria,
+  criterionNameKey,
   applyReviewLabel,
   checkReviewRecorded,
   checkFilesToModify,

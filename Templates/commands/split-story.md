@@ -1,5 +1,5 @@
 ---
-version: "v0.118.0"
+version: "v0.119.0"
 description: Split a story into smaller stories, using the IDPF framework.
 argument-hint: "<story-number> (e.g., 123) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -73,8 +73,7 @@ Parse envelope: `ok: false` → report `errors[]`, **STOP** (no orphan split sto
 | File | Required | Purpose |
 |------|----------|---------|
 | `CHARTER.md` | Recommended | Vision, goals, scope |
-| `Inception/Scope-Boundaries.md` | Optional | In/out of scope |
-| `Inception/Constraints.md` | Optional | Constraints |
+| `Project/Constraints.md` | Optional | Constraints |
 
 **No charter:**
 ```

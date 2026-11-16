@@ -26,12 +26,7 @@
     "issueHistory": {
       "enabled": true,
       "includeClosed": true,
-      "helper": "node .claude/scripts/shared/lib/issue-history-cache.js --term <term> [--term <term> ...] — fetches this repository's issues once (open and closed, paged) and matches every term locally against the title and the stripped body; returns one JSON surface with the hits per term (#3607). Pass every term of a sweep in one call.",
-      "fetch": {
-        "pageSize": 100,
-        "maxPages": 100
-      },
-      "cache": ".claude/.cache/issue-history/<owner>-<name>.json — gitignored, a disposable per-host copy that every invocation in a batch reads; refreshed incrementally by updatedAt before use, so GitHub stays the only source of truth. --refresh refetches in full.",
+      "helper": "node .claude/scripts/shared/lib/issue-history-search.js --term <term> [--term <term> ...] [--repo <owner/name> ...] — ONE gh api graphql request per sweep: an aliased search per term returning its first 100 results and its issueCount, every repository as a repo: qualifier and each probed for reachability; every result re-filtered locally against the title and the stripped body; nothing cached (#3631). Pass every term of a sweep, and in a batch every member's terms, in one call.",
       "excludedSections": {
         "sections": [
           "**Prior Art:**",
@@ -43,16 +38,16 @@
           "issueHistory",
           "companionRepos"
         ],
-        "scope": "Evidence matching only (#2874). Applied by issue-history-cache.js (#3607) to every fetched issue: an issue is evidence for a term only when the term matches its title or its stripped body. A hit that falls only inside an earlier sweep's **Prior Art:** section (any recognized form, heading at any level) or a log-changed-files.js ### Files Changed section is not prior art. This never removes a section a command reads as INPUT: /qa reads the parent's ### Files Changed section as its term source, and that is unchanged."
+        "scope": "Evidence matching only (#2874). Applied by issue-history-search.js (#3631) to every search result: an issue is evidence for a term only when the term matches its title or its stripped body. A hit that falls only inside an earlier sweep's **Prior Art:** section (any recognized form, heading at any level) or a log-changed-files.js ### Files Changed section is not prior art. This never removes a section a command reads as INPUT: /qa reads the parent's ### Files Changed section as its term source, and that is unchanged."
       },
-      "truncation": "A fetch that stops at fetch.maxPages full pages is reported as possibly truncated (truncated: true with a note), never as complete: more issues may exist past the cap. Applies to companionRepos surfaces too. Decided by issue-history-cache.js; an unreachable repository is reported skipped with its reason, never as zero hits."
+      "truncation": "Each term's search reads its first 100 results (GitHub's first limit). A term whose issueCount exceeds the results read is reported counted, not fully read (overCap: true, naming both numbers), never as complete. GitHub search matches whole tokens, so a term that is only part of a word can be missed where exact-substring matching would find it. Applies to companionRepos surfaces too. Decided by issue-history-search.js: an unreachable repository is reported skipped with its reason, never as zero hits, and a search that errors fails its term."
     },
     "companionRepos": {
       "enabled": true,
       "includeClosed": true,
       "source": "CHARTER.md Companion Repositories, via .claude/scripts/shared/lib/companion-projects.js",
       "capabilityField": "searchable",
-      "helper": "node .claude/scripts/shared/lib/issue-history-cache.js --repo <owner/name> [--repo <owner/name> ...] --term <term> [--term <term> ...] — one fetch per searchable companion, cached and matched exactly as issueHistory (#3607); each companion is its own surface in the result.",
+      "helper": "node .claude/scripts/shared/lib/issue-history-search.js --repo <owner/name> [--repo <owner/name> ...] --term <term> [--term <term> ...] — the same single request as issueHistory: pass this repository and every searchable companion together, so one sweep is one request (#3631); each repository is its own surface in the result.",
       "unreachable": "skip",
       "directionTreatment": {
         "_note": "Read from each companion's Direction (CHARTER.md, companion-projects.js DIRECTIONS; #3422). An undeclared direction reads as bidirectional, the behavior before the column existed.",

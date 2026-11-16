@@ -1,17 +1,41 @@
 {
   "$schema": "./charter-contract-schema.json",
-  "description": "What a valid CHARTER.md is, as data (#3481). The framework's charter helpers read their constants from here; cases[] is the conformance suite a downstream implementation of the placeholder rule runs to show it agrees.",
-  "version": 1,
+  "description": "What a valid CHARTER.md is, as data (#3481). The framework's charter helpers read their constants from here; cases[] is the conformance suite a downstream implementation of the placeholder rule and the shape rule runs to show it agrees. Version 2 (#3643) is the founding-only charter: seven required sections, no Current Focus, an Entity | Location Key Entities table, and no stored count or version (storedValues).",
+  "version": 2,
   "title": {
     "pattern": "^# Project Charter: \\S.*$",
     "form": "# Project Charter: {name}",
     "role": "generation",
     "description": "A generation requirement only: what /charter writes on line 1 of a new CHARTER.md, title.form with {name} as the project name, and what line 1 must match. It is not an input to the filled/unfilled decision: a charter is a template only by the placeholder rule, so a filled charter with any other title is filled (cases[] filled-charter-nonconforming-title). A consumer deciding whether a charter is filled must not test the title."
   },
-  "requiredSections": ["Vision", "Tech Stack", "In Scope", "Key Entities", "Current Focus", "Out of Scope"],
+  "requiredSections": ["Vision", "Problem Statement", "Target Users", "Tech Stack", "Key Entities", "In Scope", "Out of Scope"],
+  "optionalSections": ["Companion Repositories"],
+  "retiredSections": ["Current Focus", "Architecture"],
   "keyEntities": {
     "heading": "Key Entities",
-    "tableHeader": ["Entity", "Count", "Location"]
+    "tableHeader": ["Entity", "Location"]
+  },
+  "storedValues": {
+    "description": "What counts as a stored count or version (#3643). A charter changes only when what the project is for changes; a count or a version is derived from disk or read from the manifest that owns it, never stored here. Applied by the shape check and the legacy detection alike.",
+    "keyEntities": {
+      "countColumn": "Count",
+      "numberOnlyCell": { "pattern": "^\\d[\\d,]*\\+?$" },
+      "description": "A Count column, or a cell that is only a number."
+    },
+    "techStack": {
+      "version": { "pattern": "(?<=[A-Za-z][\\w.+#-]*\\s+)v?\\d+(?:\\.(?:\\d+|x))*(?![\\w/-])(?!\\.\\w)" },
+      "parenthesizedQuantity": { "pattern": "\\(\\s*\\d[\\d,]*\\+?\\s+[A-Za-z][^)]*\\)" },
+      "description": "A version after a technology name (Electron 41, Tailwind CSS v4, Node.js 24.x) or a parenthesized quantity ((5 workflows)). Every cell of the table is read."
+    },
+    "prose": {
+      "sections": ["Vision", "In Scope", "Out of Scope"],
+      "countedNoun": { "pattern": "(?<![\\w#/.:-])(?<!\\b(?:[Pp]hase|[Ss]tep|[Ss]tage|[Ss]tory|[Ee]pic|[Pp]art|[Vv]ersion|[Rr]elease|[Ll]evel|[Tt]ier|[Rr]ound|[Ss]print|[Mm]ilestone|[Ww]ave)\\s+)(?!(?:19|20)\\d{2}(?![\\d,]))\\d[\\d,]*\\+?\\s+[A-Za-z][\\w-]*" },
+      "description": "A number followed by the noun it counts (58 commands, 17 specialist files). Not a year (a four-digit 19xx or 20xx: \"Founded in 2024\") and not an ordinal after a sequence word (\"Phase 2\", \"Story 1.1\"); a count shaped like a year is the accepted miss."
+    },
+    "never": {
+      "excludedSections": ["Companion Repositories"],
+      "description": "Never a count or a version: a digit inside a word (i18n, S3, OAuth2), an issue reference (#2209), a path, anything inside inline or fenced code, and anything in the Companion Repositories table (board ids). The patterns' boundaries encode the first three; code is removed by placeholder.codeExclusion first; the excluded sections are not read."
+    }
   },
   "placeholder": {
     "pattern": "\\{\\{?[A-Za-z][A-Za-z0-9 _-]*\\}\\}?",
@@ -101,7 +125,7 @@
     {
       "id": "inline-code-double-brace",
       "description": "A double-braced token inside a double-backtick span is literal content; one outside code is a placeholder.",
-      "content": "Stamp ``0.118.0`` at build; vision: {{VISION}}\n",
+      "content": "Stamp ``0.119.0`` at build; vision: {{VISION}}\n",
       "expected": {
         "template": true,
         "placeholders": [
@@ -142,7 +166,7 @@
     {
       "id": "filled-charter",
       "description": "A filled charter in contract shape is not a template.",
-      "content": "# Project Charter: recipe-site\n\n## Vision\nA recipe sharing site.\n\n## Key Entities\n| Entity | Count | Location |\n|---|---|---|\n| Recipes | TBD | `data/` |\n",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nA recipe sharing site.\n\n## Key Entities\n| Entity | Location |\n|---|---|\n| Recipes | `data/` |\n",
       "expected": {
         "template": false,
         "placeholders": []
@@ -150,7 +174,7 @@
     },
     {
       "id": "phm-bootstrap-stub",
-      "description": "The bootstrap CHARTER.md Praxis Hub Manager writes for a hub root carrying this contract (tests/fixtures/phm-charter-template.json, rendered for gh-project-mgmt at px-manager deeb459b): the title form, then every requiredSections entry as an H2 holding {Fill in <Section>}. A template with six placeholders, in document order.",
+      "description": "The bootstrap CHARTER.md Praxis Hub Manager writes for a hub root carrying contract version 1 (tests/fixtures/phm-charter-template.json, rendered for gh-project-mgmt at px-manager deeb459b): the title form, then every requiredSections entry as an H2 holding {Fill in <Section>}. A template with six placeholders, in document order.",
       "content": "# Project Charter: gh-project-mgmt\n\n> This file triggers the `/charter` command on first session.\n> Replace this content with your project charter.\n\n## Vision\n{Fill in Vision}\n\n## Tech Stack\n{Fill in Tech Stack}\n\n## In Scope\n{Fill in In Scope}\n\n## Key Entities\n{Fill in Key Entities}\n\n## Current Focus\n{Fill in Current Focus}\n\n## Out of Scope\n{Fill in Out of Scope}\n",
       "expected": {
         "template": true,
@@ -186,6 +210,147 @@
       "expected": {
         "template": false,
         "placeholders": []
+      }
+    },
+    {
+      "id": "founding-only-charter",
+      "description": "A charter in the version 2 shape: the seven required sections, a names-only Tech Stack, an Entity | Location Key Entities table, Companion Repositories with a board id. Conforms; nothing is stored.",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nA place to share family recipes.\n\n## Problem Statement\nRecipes live in scattered notebooks.\n\n## Target Users\nHome cooks.\n\n## Tech Stack\n| Layer | Technology |\n|---|---|\n| Frontend | Svelte |\n| Storage | SQLite |\n\n## Key Entities\n| Entity | Location |\n|---|---|\n| Recipes | `data/recipes/` |\n\n## In Scope\n- Recipe sharing\n\n## Out of Scope\n- Meal delivery\n\n## Companion Repositories\n| Name | Repo | Board |\n|---|---|---|\n| recipe-api | example/recipe-api | 46 |\n",
+      "expected": {
+        "template": false,
+        "placeholders": [],
+        "shape": {
+          "conforms": true,
+          "missingSections": [],
+          "retiredSections": [],
+          "storedValues": []
+        }
+      }
+    },
+    {
+      "id": "retired-section-current-focus",
+      "description": "A charter carrying a retired section fails the shape: Current Focus was removed in version 2 — the board is the live system of record.",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nA place to share family recipes.\n\n## Problem Statement\nRecipes live in scattered notebooks.\n\n## Target Users\nHome cooks.\n\n## Tech Stack\n| Layer | Technology |\n|---|---|\n| Frontend | Svelte |\n| Storage | SQLite |\n\n## Key Entities\n| Entity | Location |\n|---|---|\n| Recipes | `data/recipes/` |\n\n## In Scope\n- Recipe sharing\n\n## Out of Scope\n- Meal delivery\n\n## Current Focus\n- Recipe import\n\n## Companion Repositories\n| Name | Repo | Board |\n|---|---|---|\n| recipe-api | example/recipe-api | 46 |\n",
+      "expected": {
+        "template": false,
+        "placeholders": [],
+        "shape": {
+          "conforms": false,
+          "missingSections": [],
+          "retiredSections": [
+            "Current Focus"
+          ],
+          "storedValues": []
+        }
+      }
+    },
+    {
+      "id": "key-entities-count-column",
+      "description": "A Key Entities table with a Count column fails the shape: the column is a stored count, and so is a cell that is only a number.",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nA place to share family recipes.\n\n## Problem Statement\nRecipes live in scattered notebooks.\n\n## Target Users\nHome cooks.\n\n## Tech Stack\n| Layer | Technology |\n|---|---|\n| Frontend | Svelte |\n| Storage | SQLite |\n\n## Key Entities\n| Entity | Count | Location |\n|---|---|---|\n| Recipes | 58 | `data/recipes/` |\n\n## In Scope\n- Recipe sharing\n\n## Out of Scope\n- Meal delivery\n\n## Companion Repositories\n| Name | Repo | Board |\n|---|---|---|\n| recipe-api | example/recipe-api | 46 |\n",
+      "expected": {
+        "template": false,
+        "placeholders": [],
+        "shape": {
+          "conforms": false,
+          "missingSections": [],
+          "retiredSections": [],
+          "storedValues": [
+            {
+              "section": "Key Entities",
+              "kind": "count-column",
+              "text": "Count"
+            },
+            {
+              "section": "Key Entities",
+              "kind": "number-cell",
+              "text": "58"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "stored-values-flagged",
+      "description": "Versions after technology names, a parenthesized quantity and counted nouns in prose are stored values. In \"Svelte 5 + Flowbite Svelte\" the version is flagged and both names are kept.",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nA framework of 58 commands and 17 specialist files.\n\n## Problem Statement\nRecipes live in scattered notebooks.\n\n## Target Users\nHome cooks.\n\n## Tech Stack\n| Layer | Technology |\n|---|---|\n| Desktop | Electron 41 |\n| Styling | Tailwind CSS v4 |\n| Runtime | Node.js 24.x |\n| UI | Svelte 5 + Flowbite Svelte |\n| CI | GitHub Actions (5 workflows) |\n\n## Key Entities\n| Entity | Location |\n|---|---|\n| Recipes | `data/recipes/` |\n\n## In Scope\n- Recipe sharing\n\n## Out of Scope\n- Meal delivery\n\n## Companion Repositories\n| Name | Repo | Board |\n|---|---|---|\n| recipe-api | example/recipe-api | 46 |\n",
+      "expected": {
+        "template": false,
+        "placeholders": [],
+        "shape": {
+          "conforms": false,
+          "missingSections": [],
+          "retiredSections": [],
+          "storedValues": [
+            {
+              "section": "Vision",
+              "kind": "counted-noun",
+              "text": "58 commands"
+            },
+            {
+              "section": "Vision",
+              "kind": "counted-noun",
+              "text": "17 specialist"
+            },
+            {
+              "section": "Tech Stack",
+              "kind": "version",
+              "text": "41"
+            },
+            {
+              "section": "Tech Stack",
+              "kind": "version",
+              "text": "v4"
+            },
+            {
+              "section": "Tech Stack",
+              "kind": "version",
+              "text": "24.x"
+            },
+            {
+              "section": "Tech Stack",
+              "kind": "version",
+              "text": "5"
+            },
+            {
+              "section": "Tech Stack",
+              "kind": "parenthesized-quantity",
+              "text": "(5 workflows)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "stored-values-never",
+      "description": "Never a count or a version: a digit inside a word (i18n, S3, OAuth2), an issue reference, a path, code, and the Companion Repositories board id.",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nRecipes with i18n support, stored in S3, behind OAuth2 sign-in (decided in #2209), kept under data/2024 and `v2/` paths.\n\n## Problem Statement\nRecipes live in scattered notebooks.\n\n## Target Users\nHome cooks.\n\n## Tech Stack\n| Layer | Technology |\n|---|---|\n| Frontend | Svelte |\n| Auth | OAuth2 |\n| Storage | S3 |\n\n## Key Entities\n| Entity | Location |\n|---|---|\n| Recipes | `data/recipes/` |\n\n## In Scope\n- Recipe sharing\n\n## Out of Scope\n- Meal delivery\n\n## Companion Repositories\n| Name | Repo | Board |\n|---|---|---|\n| recipe-api | example/recipe-api | 46 |\n",
+      "expected": {
+        "template": false,
+        "placeholders": [],
+        "shape": {
+          "conforms": true,
+          "missingSections": [],
+          "retiredSections": [],
+          "storedValues": []
+        }
+      }
+    },
+    {
+      "id": "missing-required-section",
+      "description": "A charter missing a required section does not conform, and names the section.",
+      "content": "# Project Charter: recipe-site\n\n## Vision\nA place to share family recipes.\n\n## Problem Statement\nRecipes live in scattered notebooks.\n\n## Tech Stack\n| Layer | Technology |\n|---|---|\n| Frontend | Svelte |\n| Storage | SQLite |\n\n## Key Entities\n| Entity | Location |\n|---|---|\n| Recipes | `data/recipes/` |\n\n## In Scope\n- Recipe sharing\n\n## Out of Scope\n- Meal delivery\n\n## Companion Repositories\n| Name | Repo | Board |\n|---|---|---|\n| recipe-api | example/recipe-api | 46 |\n",
+      "expected": {
+        "template": false,
+        "placeholders": [],
+        "shape": {
+          "conforms": false,
+          "missingSections": [
+            "Target Users"
+          ],
+          "retiredSections": [],
+          "storedValues": []
+        }
       }
     }
   ]

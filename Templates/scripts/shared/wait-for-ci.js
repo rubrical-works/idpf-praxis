@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
@@ -116,7 +116,7 @@ function sleep(ms) {
  *          |{ok: false, error: string}}
  */
 function parseArgs(argv) {
-    const result = { ok: true, branch: null, commit: null, timeoutMs: DEFAULT_TIMEOUT, requestedTimeoutMs: null, clamped: false, clampWarning: null };
+    const result = { ok: true, branch: null, commit: null, workflow: null, timeoutMs: DEFAULT_TIMEOUT, requestedTimeoutMs: null, clamped: false, clampWarning: null };
     let timeoutSeen = null;
 
     for (let i = 0; i < argv.length; i++) {
@@ -130,7 +130,7 @@ function parseArgs(argv) {
             value = token.slice(eq + 1);
         }
 
-        if (name !== '--branch' && name !== '--commit' && name !== '--sha' && name !== '--timeout') {
+        if (name !== '--branch' && name !== '--commit' && name !== '--sha' && name !== '--timeout' && name !== '--workflow') {
             return { ok: false, error: `Unknown argument: ${token}` };
         }
 
@@ -147,6 +147,10 @@ function parseArgs(argv) {
             result.branch = value;
         } else if (name === '--commit' || name === '--sha') {
             result.commit = value;
+        } else if (name === '--workflow') {
+            // #3676: wait on one workflow's runs — the run Step 4.4a dispatched,
+            // which a sibling push run finishing first must not stand in for.
+            result.workflow = value;
         } else {
             timeoutSeen = value;
         }
@@ -221,16 +225,19 @@ function resolveCommit(value, deps = {}) {
  * Build the `gh run list` command for the requested scope. headBranch/headSha
  * are requested so selectRun() can re-check what gh returned rather than
  * trusting the filter blindly.
- * @param {{branch: string|null, commit: string|null, limit?: number}} opts
+ * @param {{branch: string|null, commit: string|null, workflow?: string|null, limit?: number}} opts
  * @returns {string}
  */
-function buildRunListCommand({ branch, commit, limit = 10 }) {
+function buildRunListCommand({ branch, commit, workflow = null, limit = 10 }) {
     let cmd = `gh run list --limit ${Number(limit)}`;
     if (branch) {
         cmd += ` --branch "${assertShellSafe(branch, 'branch name')}"`;
     }
     if (commit) {
         cmd += ` --commit "${assertShellSafe(commit, 'commit sha')}"`;
+    }
+    if (workflow) {
+        cmd += ` --workflow "${assertShellSafe(workflow, 'workflow')}"`;
     }
     cmd += ' --json databaseId,status,conclusion,name,headBranch,headSha';
     return cmd;
@@ -405,7 +412,7 @@ function decideVerdict(runs, filter, target = selectRun(runs, filter)) {
 function schema() {
     return {
         script: 'wait-for-ci.js',
-        arguments: ['--branch <name>', '--commit <sha> | --sha <sha>', '--timeout <seconds>', '--schema'],
+        arguments: ['--branch <name>', '--commit <sha> | --sha <sha>', '--workflow <file name>', '--timeout <seconds>', '--schema'],
         modes: [
             { mode: '--pr-tested --pr <branch> --sha <merge commit>', meaning: 'Decide whether /prepare-release Step 4.4a may skip its post-merge wait (#3444). Prints {path: skip|wait, reason, runId, runs, workflows}; exits 0 on either path, 1 on bad arguments. Waits nothing.' }
         ],
@@ -471,7 +478,9 @@ async function run(argv = [], deps = {}) {
     let timeout = parsed.timeoutMs;
 
     try {
-        const command = buildRunListCommand(filter);
+        // --workflow narrows the listing server-side; matchesFilter() still
+        // re-checks branch and SHA on what gh returned (#3676).
+        const command = buildRunListCommand({ ...filter, workflow: parsed.workflow });
         let consecutiveFailures = 0;
         let registrationWaited = 0;
         // Held from the first successful selection on (#3241): once the gate
@@ -705,32 +714,48 @@ class UnsupportedBranchPattern extends Error {
     }
 }
 
-/** Glob for a GitHub Actions branch filter: `*` stays in one segment, `**` crosses. */
+/**
+ * Glob for one GitHub Actions branch pattern, without its `!` prefix: `*`
+ * stays in one segment, `**` crosses.
+ */
 function branchGlobMatches(pattern, branch) {
     const p = String(pattern);
     if (/[+[\]]/.test(p)) throw new UnsupportedBranchPattern(p);
-    if (p.startsWith('!')) return false;
     const re = p.replace(/[.^${}()|\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
     return new RegExp(`^${re}$`).test(branch);
 }
 
 /**
- * Whether any pattern in a filter list matches. Supported patterns are tried
- * first, so a match decides regardless of list order (#3484); only when none
- * matches does an unsupported pattern throw, since it might have.
+ * Whether a filter list matches a branch, by GitHub's rule: patterns apply in
+ * order, a matching pattern includes the branch and a matching `!pattern`
+ * removes it, so the last matching pattern decides (#3689) — `['**', '!main']`
+ * excludes main. An unsupported pattern makes the result unknown only where
+ * it could change it: one after it that matches still decides (#3484), and a
+ * negation cannot remove a branch nothing included. Throws the unsupported
+ * pattern when the result stays unknown.
  */
-function anyBranchMatches(patterns, branch) {
-    let unsupported = null;
-    for (const p of patterns) {
+function filterMatchesBranch(patterns, branch) {
+    let state = false; // true, false, or null when an unsupported pattern leaves it unknown
+    let cause = null;
+    for (const raw of patterns) {
+        const p = String(raw);
+        const negated = p.startsWith('!');
+        let hit;
         try {
-            if (branchGlobMatches(p, branch)) return true;
+            hit = branchGlobMatches(negated ? p.slice(1) : p, branch);
         } catch (e) {
             if (!(e instanceof UnsupportedBranchPattern)) throw e;
-            if (!unsupported) unsupported = e;
+            hit = null;
+        }
+        if (hit === true) {
+            state = !negated;
+        } else if (hit === null && state !== !negated) {
+            state = null;
+            cause = new UnsupportedBranchPattern(p);
         }
     }
-    if (unsupported) throw unsupported;
-    return false;
+    if (state === null) throw cause;
+    return state;
 }
 
 /**
@@ -743,8 +768,8 @@ function eventTriggersBranch(config, branch) {
     const branches = list(config.branches);
     const ignore = list(config['branches-ignore']);
     if (!branches && !ignore && (config.tags || config['tags-ignore'])) return false;
-    if (branches) return anyBranchMatches(branches, branch);
-    if (ignore) return !anyBranchMatches(ignore, branch);
+    if (branches) return filterMatchesBranch(branches, branch);
+    if (ignore) return !filterMatchesBranch(ignore, branch);
     return true;
 }
 
@@ -795,11 +820,25 @@ function workflowTriggers(text, branch) {
  * name — downstream projects name workflows freely, two may share a name,
  * and one may have none.
  *
- * @returns {{path: 'skip'|'wait', reason: string, runId: number|null, runs: object[], workflows: string[]}}
+ * A workflow that runs on pull_request into the default branch but not on
+ * push to it (#3676) is required too: it is the run that gated the merge,
+ * and no push run re-checks the merge commit. Where its pull_request filter
+ * cannot be evaluated, whether it ran on the PR head decides (#3484 keeps
+ * such a filter from forcing the wait on its own).
+ *
+ * Every result carries `dispatch` and `undispatchable` (#3676): the file
+ * names of the pull_request-only workflows a merge commit on the wait path
+ * gets no automatic run from — those that declare workflow_dispatch, which
+ * Step 4.4a starts on the default branch, and those it cannot start — and
+ * `planKnown`, false when that plan could not be derived (see planDispatch).
+ *
+ * @returns {{path: 'skip'|'wait', reason: string, runId: number|null, runs: object[], workflows: string[],
+ *           dispatch: string[], undispatchable: string[], planKnown: boolean}}
  */
 function decidePostMergeSkip(input) {
-    const wait = (reason, extra = {}) => ({ path: 'wait', reason, runId: null, runs: [], workflows: [], ...extra });
     const { mergeSha, prMergeSha, mergeTree, prHeadSha, prHeadTree, defaultBranch, workflows, prRuns, errors = [] } = input || {};
+    const plan = planDispatch({ workflows, defaultBranch, prRuns, prHeadSha });
+    const wait = (reason, extra = {}) => ({ path: 'wait', reason, runId: null, runs: [], workflows: [], ...plan, ...extra });
 
     if (errors.length) return wait(`lookup failed: ${errors.join('; ')}`);
     if (!mergeSha || !prMergeSha || !prHeadSha) return wait('lookup failed: merge commit or PR head SHA unknown');
@@ -809,31 +848,34 @@ function decidePostMergeSkip(input) {
     if (!Array.isArray(workflows)) return wait('lookup failed: workflow list unavailable');
     if (!Array.isArray(prRuns)) return wait('lookup failed: pull_request runs unavailable');
 
-    const onPush = [];
+    const required = [];
     for (const wf of workflows) {
         let events;
         try { events = workflowEvents(wf.text); } catch (e) {
             return wait(`lookup failed: ${wf.path} could not be parsed (${e.message})`);
         }
-        // Push first: a workflow that never runs on push to the default branch
-        // needs no PR run, so its pull_request filter is never read (#3484).
+        let push;
         let pullRequest;
         try {
-            if (!eventTriggers(events, 'push', defaultBranch)) continue;
+            push = eventTriggers(events, 'push', defaultBranch);
             pullRequest = eventTriggers(events, 'pull_request', defaultBranch);
         } catch (e) {
-            if (e instanceof UnsupportedBranchPattern) return wait(`${wf.path}: ${e.message}`, { workflows: [wf.path] });
-            return wait(`lookup failed: ${wf.path} triggers could not be evaluated (${e.message})`);
+            if (!(e instanceof UnsupportedBranchPattern)) return wait(`lookup failed: ${wf.path} triggers could not be evaluated (${e.message})`);
+            // A push filter that cannot be read, or one beside an unreadable
+            // pull_request filter, waits as before (#3472). A pull_request-only
+            // filter falls back to the run evidence (#3484, #3676).
+            if (push !== false) return wait(`${wf.path}: ${e.message}`, { workflows: [wf.path] });
+            pullRequest = ranOnPrHead(wf, prRuns, prHeadSha);
         }
-        if (!pullRequest) {
+        if (push && !pullRequest) {
             return wait(`${wf.path} runs on push to ${defaultBranch} but not on pull_request, so no PR run covers it`, { workflows: [wf.path] });
         }
-        onPush.push(wf);
+        if (push || pullRequest) required.push(wf);
     }
-    if (onPush.length === 0) return wait(`no workflow runs on push to ${defaultBranch}; nothing for a PR run to stand in for`);
+    if (required.length === 0) return wait(`no workflow runs on push to or pull_request into ${defaultBranch}; no run tested this tree`);
 
     const runs = [];
-    for (const wf of onPush) {
+    for (const wf of required) {
         const candidates = prRuns.filter((r) => r.workflowDatabaseId === wf.id && r.event === 'pull_request' && r.headSha === prHeadSha);
         const ok = candidates.find((r) => r.status === 'completed' && r.conclusion === 'success');
         if (!ok) return wait(`no successful pull_request run of ${wf.path} on PR head ${prHeadSha}`, { workflows: [wf.path] });
@@ -845,11 +887,59 @@ function decidePostMergeSkip(input) {
     }
     return {
         path: 'skip',
-        reason: `merge commit ${mergeSha} has the PR-tested tree ${mergeTree}; every push-triggered workflow passed on pull_request for ${prHeadSha}`,
+        reason: `merge commit ${mergeSha} has the PR-tested tree ${mergeTree}; every workflow gating ${defaultBranch} passed on pull_request for ${prHeadSha}`,
         runId: runs[0].runId,
         runs,
         workflows: runs.map((r) => r.workflow),
+        dispatch: [],
+        undispatchable: [],
+        planKnown: true,
     };
+}
+
+/** Whether a workflow has a pull_request run on the PR head (#3676). */
+function ranOnPrHead(wf, prRuns, prHeadSha) {
+    return Array.isArray(prRuns) && prRuns.some((r) => r.workflowDatabaseId === wf.id && r.event === 'pull_request' && r.headSha === prHeadSha);
+}
+
+/**
+ * The pull_request-only workflows a merge commit gets no push run from (#3676),
+ * by file name: `dispatch` declares workflow_dispatch, `undispatchable` does
+ * not. `planKnown` is false when the plan could not be derived — the workflow
+ * list or default branch is unknown, or a workflow cannot be parsed or its push
+ * filter read — so an empty plan is never mistaken for "no pull_request-only
+ * workflow" (Tier 3 review of #3676). Step 4.4a STOPs on it. Pure.
+ */
+function planDispatch({ workflows, defaultBranch, prRuns, prHeadSha }) {
+    const out = { dispatch: [], undispatchable: [], planKnown: true };
+    if (!Array.isArray(workflows) || !defaultBranch) return { ...out, planKnown: false };
+    for (const wf of workflows) {
+        let events;
+        let pullRequest;
+        try {
+            events = workflowEvents(wf.text);
+            if (eventTriggers(events, 'push', defaultBranch)) continue;
+        } catch {
+            out.planKnown = false;
+            continue;
+        }
+        try {
+            pullRequest = eventTriggers(events, 'pull_request', defaultBranch);
+        } catch (e) {
+            // Any other error, or the run-evidence fallback with no runs to
+            // read, leaves this workflow unclassified: the plan is unknown,
+            // never silently short a workflow (second Tier 3 review of #3676).
+            if (!(e instanceof UnsupportedBranchPattern) || !Array.isArray(prRuns)) {
+                out.planKnown = false;
+                continue;
+            }
+            pullRequest = ranOnPrHead(wf, prRuns, prHeadSha);
+        }
+        if (!pullRequest) continue;
+        const file = String(wf.path).split('/').pop();
+        (Object.prototype.hasOwnProperty.call(events, 'workflow_dispatch') ? out.dispatch : out.undispatchable).push(file);
+    }
+    return out;
 }
 
 /**

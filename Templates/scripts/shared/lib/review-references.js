@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * review-references.js — Back the `references-valid` review criterion: check
  * the paths, `#N` issues and `/commands` an issue body names against project
  * state (#3540).
@@ -40,6 +40,7 @@ const fs = require('fs');
 const path = require('path');
 const { computeFenceMask } = require('./checkbox-scan.js');
 const { parseDeclaredScope } = require('../scope-drift-check.js');
+const { readFlagValues } = require('./command-args.js');
 
 const CODE_SPAN = /`([^`\n]+)`/g;
 
@@ -342,19 +343,23 @@ function checkReferences(body, opts = {}) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  const arg = (name) => {
-    const i = argv.indexOf(name);
-    return i !== -1 ? argv[i + 1] : undefined;
-  };
+  // A flag in a value position is a missing value, never the value (#3627) —
+  // the guard resolve-precheck.js holds (#3600), from command-args.js.
+  const { arg, flagAsValue } = readFlagValues(argv);
   // One JSON envelope, never a stack trace — same contract as
   // resolve-precheck.js (#3579). exitCode, not process.exit(), so a piped
   // stdout write is not cut off.
-  const fail = (code, prefix, e) => {
-    const message = `${prefix}: ${e && e.message ? e.message : String(e)}`;
+  const emit = (code, message) => {
     process.stdout.write(JSON.stringify({ ok: false, error: { code, message } }, null, 2) + '\n');
     process.exitCode = 1;
   };
+  const fail = (code, prefix, e) => emit(code, `${prefix}: ${e && e.message ? e.message : String(e)}`);
   const bodyFile = arg('--body-file');
+  const root = arg('--root');
+  if (flagAsValue()) {
+    emit('INVALID_ARGUMENT', flagAsValue());
+    return;
+  }
   let body;
   try {
     body = bodyFile ? fs.readFileSync(bodyFile, 'utf8') : fs.readFileSync(0, 'utf8');
@@ -364,7 +369,7 @@ function main(argv = process.argv.slice(2)) {
   }
   // The check and its write sit in the envelope too (#3604).
   try {
-    const result = checkReferences(body, { root: arg('--root') || process.cwd() });
+    const result = checkReferences(body, { root: root || process.cwd() });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (e) {
     fail('CHECK_FAILED', 'Reference check failed', e);

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Centralize label-based issue type detection and review command routing. Exports getIssueType(). Used by review-preamble.js and work-preamble.js for type dispatch.
  * @checksum sha256:placeholder
  *
@@ -11,6 +11,17 @@
  * Pure function — no API calls, no side effects.
  */
 
+/**
+ * The label-to-command map, exported so `/work` routes to the same target
+ * `/review-issue` does (#2784).
+ *
+ * `work-preamble.js` reads the COMMAND from here while deciding for itself
+ * WHICH labels it honors — currently `test-plan` only, because `prd` and
+ * `proposal` have no equivalent of the Step 5a gate rollup for a redirected
+ * user to land in. Sharing the map and not the label set is the split that
+ * keeps the two commands from drifting to different targets for one label
+ * without forcing them to redirect on the same set.
+ */
 const REDIRECT_LABELS = {
   'test-plan': '/review-test-plan',
   'proposal': '/review-proposal',
@@ -18,6 +29,20 @@ const REDIRECT_LABELS = {
 };
 
 const TYPE_LABELS = ['bug', 'enhancement', 'story', 'epic'];
+
+/**
+ * The readable label names in `labels`: a string as-is, an object's `name`
+ * when it is a string, anything else dropped. The one normalization both
+ * readers use, so they cannot disagree about which labels an issue carries.
+ *
+ * @param {Array<string|{name: string}>} [labels]
+ * @returns {string[]}
+ */
+function readLabelNames(labels) {
+  return (labels || [])
+    .map(l => (typeof l === 'string' ? l : l && typeof l.name === 'string' ? l.name : null))
+    .filter(Boolean);
+}
 
 /**
  * Determine issue type and review routing from labels.
@@ -45,9 +70,7 @@ const TYPE_LABELS = ['bug', 'enhancement', 'story', 'epic'];
  */
 function getIssueType(issueData) {
   const rawLabels = (issueData && issueData.labels) || [];
-  const labels = rawLabels
-    .map(l => (typeof l === 'string' ? l : l && typeof l.name === 'string' ? l.name : null))
-    .filter(Boolean);
+  const labels = readLabelNames(rawLabels);
 
   if (rawLabels.length > 0 && labels.length === 0) {
     console.warn(
@@ -56,9 +79,10 @@ function getIssueType(issueData) {
     );
   }
 
-  // Redirect labels take precedence
+  // Redirect labels take precedence. An own-property check, as resolveIssueType
+  // uses, so a label such as `constructor` never reads an inherited member (#3672).
   for (const label of labels) {
-    if (REDIRECT_LABELS[label]) {
+    if (Object.prototype.hasOwnProperty.call(REDIRECT_LABELS, label)) {
       return { type: null, redirect: REDIRECT_LABELS[label] };
     }
   }
@@ -75,18 +99,6 @@ function getIssueType(issueData) {
 }
 
 /**
- * The label-to-command map, exported so `/work` routes to the same target
- * `/review-issue` does (#2784).
- *
- * `work-preamble.js` reads the COMMAND from here while deciding for itself
- * WHICH labels it honors — currently `test-plan` only, because `prd` and
- * `proposal` have no equivalent of the Step 5a gate rollup for a redirected
- * user to land in. Sharing the map and not the label set is the split that
- * keeps the two commands from drifting to different targets for one label
- * without forcing them to redirect on the same set.
- */
-
-/**
  * The issue's type for a review that is not redirected: `getIssueType`'s type,
  * else a redirect label's own name, else `generic`.
  *
@@ -95,15 +107,14 @@ function getIssueType(issueData) {
  * cannot disagree about what an issue is. The fallback reads REDIRECT_LABELS,
  * never a list of its own: a label added there is a type here too.
  *
- * @param {{labels?: Array<{name: string}>}} issueData
+ * @param {{labels?: Array<string|{name: string}>}} issueData
  * @returns {string}
  */
 function resolveIssueType(issueData) {
   const data = issueData && typeof issueData === 'object' ? issueData : {};
   const { type } = getIssueType(data);
   if (type) return type;
-  const redirect = (data.labels || [])
-    .map((l) => (l && l.name) || '')
+  const redirect = readLabelNames(data.labels)
     .find((name) => Object.prototype.hasOwnProperty.call(REDIRECT_LABELS, name));
   return redirect || 'generic';
 }

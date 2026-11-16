@@ -28,7 +28,7 @@
     "common": [
       { "situation": "Issue not found", "response": "\"Issue #N not found. Check the issue number?\"" },
       { "situation": "gh pmu failure", "response": "\"Failed to update issue: {error}\" → STOP" },
-      { "situation": "No Inception/ artifacts", "response": "\"No charter context. Proceeding with limited validation.\"" }
+      { "situation": "No Project/ documents", "response": "\"No charter context. Proceeding with limited validation.\"" }
     ]
   }
 }

@@ -1,5 +1,5 @@
 # Runtime Artifact Triggers
-**Version:** v0.118.0
+**Version:** v0.119.0
 **Key Principle:** Offer, don't force: offer to document decisions, plans and procedures as they arise; any can be declined.
 On a match, offer once: *"I noticed you [made a decision/etc.]. Would you like me to document this in [artifact location]? (yes/no)"*. Templates: `.claude/scripts/shared/lib/doc-templates.json` `templates`, keyed below — re-read from disk on acceptance.
 | Artifact | Triggers | Offer | Template key |
@@ -11,5 +11,5 @@ On a match, offer once: *"I noticed you [made a decision/etc.]. Would you like m
 | `Transition/Runbook.md` | operational procedures, "how to handle", "when X happens", incident/alert response, maintenance, a dependency advisory ("npm audit", "CVE", "advisory", "Dependabot") | "Would you like me to add this to Transition/Runbook.md?" | `transition/runbook` |
 | `Transition/User-Documentation.md` | user-facing feature complete, UI/UX change, new user workflow, external API change | "Would you like to update Transition/User-Documentation.md?" | `transition/user-documentation` |
 **Behavior:** accept "no"; offer a repeatedly declined type less, only when relevant. **After the user accepts:** generate from the template, show the content, ask for edits, save, report "Saved to [path]".
-**Prompts:** `AskUserQuestion` renders bold: context as markdown first, one-sentence question ≤200 chars (`{frameworkPath}/Reference/AskUserQuestion-Shape.md` § Templates).
+**Prompts:** `AskUserQuestion` renders bold: context as markdown first, one-sentence question ≤200 chars; option labels carry no number prefix — `{n}.{label}` is the printed table's first column only (`{frameworkPath}/Reference/AskUserQuestion-Shape.md` § Templates).
 **End of Runtime Artifact Triggers**

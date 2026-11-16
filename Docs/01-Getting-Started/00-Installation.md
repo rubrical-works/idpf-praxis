@@ -110,7 +110,8 @@ You only need to do this **once per GitHub owner** (user or organization) that w
 5. Name it something clear, e.g. `Praxis Kanban Template`, and click **Create project**.
 6. On the new project's board view, click **View** → **Fields**, toggle **Labels** to **Visible**, then **Save changes to view**. The Labels field is hidden by default; making it visible gives you per-card visual indicators.
 7. Add a **`QA required`** option to the **Status** field. Open **⋯** → **Settings** → **Status**, click **+ Add option**, and name it exactly `QA required` — capital Q, capital A, a **space**, lowercase r. Manual-verification sub-issues land here. The space is load-bearing: `gh pmu init` derives the config alias from the column name by lowercasing and turning spaces into underscores, so `QA required` yields `qa_required`, the alias the framework uses. `QA-required` would yield `qa-required` and every QA transition would fail.
-8. Record the project **name** (as entered above) or **number** (the integer at the end of `https://github.com/users/<you>/projects/<NUMBER>`). PHM will ask for this value the first time you open it.
+8. Confirm the built-in **Auto-close issue** workflow is enabled: **⋯** → **Workflows** → **Auto-close issue**. Leave it on. `/done` and `/complete-prd` close an issue by moving it to Done, and this workflow is what closes it; with it off, finished issues stay open in the Done column.
+9. Record the project **name** (as entered above) or **number** (the integer at the end of `https://github.com/users/<you>/projects/<NUMBER>`). PHM will ask for this value the first time you open it.
 
 Full walkthrough with verification checklist: `06-Kanban-Template-Setup.md`.
 

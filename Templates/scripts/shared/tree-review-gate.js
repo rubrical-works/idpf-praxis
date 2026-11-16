@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Run the /work Step 2b-ii tree-wide review gate chain as one call: enumerate an epic or branch tracker's children with the bare `gh pmu sub list N --json`, read each child's board status, classify every member through review-state.js, and hand the resolved set to branch-review-gate.js for the decision. `--record-bypass` writes the decline note into an epic body (never a branch tracker's). Every gh call goes through one injectable exec so the whole chain is testable against a mocked board (#2826).
  * @checksum sha256:placeholder
  *
@@ -172,10 +172,15 @@ function fetchBoardStatus(number, execFn, warnings) {
  * back as `indeterminate` with its own warning, which is relayed verbatim so
  * the caller can see why a member did not prompt.
  */
-function classifyMember(number, execFn, warnings) {
-  const verdict = reviewState.run(number, execFn);
-  for (const w of verdict.warnings || []) warnings.push(w);
-  return verdict.state;
+function classifyMember(number, execFn, warnings, relabeled) {
+  // A stale member is relabeled reviewed → pending where it is found (#3632),
+  // by review-state's one shared rule (#3666): runAndRelabel fetches, then
+  // classifyAndRelabel. A failed swap is already among its warnings and leaves
+  // the state as classified.
+  const out = reviewState.runAndRelabel(number, execFn);
+  for (const w of out.warnings || []) warnings.push(w);
+  if (out.relabel && out.relabel.swapped) relabeled.push({ number, removed: out.relabel.removed, added: out.relabel.added });
+  return out.state;
 }
 
 /**
@@ -184,12 +189,12 @@ function classifyMember(number, execFn, warnings) {
  * own board status is not a processability question (an epic mid-run is
  * `in_progress` by construction) and the call would be one more read per run.
  */
-function resolveMember({ number, title = '', isTracker = false, fetchStatus = true }, execFn, warnings) {
+function resolveMember({ number, title = '', isTracker = false, fetchStatus = true }, execFn, warnings, relabeled) {
   return {
     number,
     title,
     boardStatus: fetchStatus ? fetchBoardStatus(number, execFn, warnings) : null,
-    state: classifyMember(number, execFn, warnings),
+    state: classifyMember(number, execFn, warnings, relabeled),
     isTracker
   };
 }
@@ -205,10 +210,11 @@ function evaluateTree(args, execFn) {
   const setShape = selection ? 'selection' : 'tree';
   const members = [];
   const closed = [];
+  const relabeled = [];
 
   if (selection) {
     for (const number of args.issues) {
-      members.push(resolveMember({ number }, execFn, warnings));
+      members.push(resolveMember({ number }, execFn, warnings, relabeled));
     }
   } else {
     let children;
@@ -232,7 +238,7 @@ function evaluateTree(args, execFn) {
     // the aggregator when the caller declares it a tracker — no label check.
     members.push(resolveMember(
       { number: args.issue, isTracker: args.tracker === true, fetchStatus: false },
-      execFn, warnings
+      execFn, warnings, relabeled
     ));
 
     for (const child of children) {
@@ -244,7 +250,7 @@ function evaluateTree(args, execFn) {
         closed.push(child.number);
         continue;
       }
-      members.push(resolveMember({ number: child.number, title: child.title }, execFn, warnings));
+      members.push(resolveMember({ number: child.number, title: child.title }, execFn, warnings, relabeled));
     }
   }
 
@@ -274,6 +280,7 @@ function evaluateTree(args, execFn) {
       unknown: verdict.unknown,
       clean: verdict.clean,
       closed,
+      relabeled,
       members
     },
     warnings,

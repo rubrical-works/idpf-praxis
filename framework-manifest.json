@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.118.0",
+  "version": "0.119.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -686,7 +686,7 @@
           "hook-heartbeat.js",
           "input-validation.js",
           "issue-duplicates.js",
-          "issue-history-cache.js",
+          "issue-history-search.js",
           "issue-ref-match.js",
           "issue-reviewer-brief.js",
           "issue-type.js",
@@ -712,6 +712,7 @@
           "prior-art-marker.js",
           "prior-art-surfaces.js",
           "project-skills-check.js",
+          "push-ride-alongs.js",
           "qa-config-schema.json",
           "qa-config.json",
           "qa-issue.js",
@@ -812,7 +813,7 @@
         "event": "SessionStart",
         "matcher": "clear",
         "file": "clear-hook.js",
-        "timeout": 5
+        "timeout": 60
       },
       {
         "event": "SessionStart",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, reports the issue's type so an epic can be expanded, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -12,12 +12,9 @@
 const {
   EMOJI,
   SECTION_HEADERS,
-  REVIEW_HEADER_PATTERN,
-  MALFORMED_REVIEW_HEADER_PATTERN,
-  REVIEW_TYPES,
   FINDING_LINE_PATTERN,
-  RECOMMENDATION_PATTERN,
   FINDING_ID_PATTERN,
+  criterionNameKey,
 } = require('./lib/review-format');
 const { repairEntry } = require('./lib/review-repair.js');
 const fs = require('fs');
@@ -25,6 +22,7 @@ const path = require('path');
 const { resolveIssueType } = require('./lib/issue-type.js');
 const { normalizeEol } = require('./lib/normalize-eol.js');
 const { reportUnrecognizedFlags } = require('./lib/command-args.js');
+const { findLatestReview, extractRecommendation, classifyReviewState, STATES } = require('./review-state.js');
 
 // ─── Argument Parsing ───
 
@@ -62,36 +60,8 @@ function parseArgs(args) {
 
 // ─── Review Comment Matching ───
 
-function findLatestReview(comments) {
-  if (!comments || comments.length === 0) {
-    return { found: false };
-  }
-
-  let latest = null;
-  let malformedFound = false;
-
-  for (const comment of comments) {
-    const match = comment.body.match(REVIEW_HEADER_PATTERN);
-    if (match) {
-      const rawType = match[1];
-      const reviewNumber = parseInt(match[2], 10);
-      const reviewType = REVIEW_TYPES[rawType] || rawType.toLowerCase();
-
-      if (!latest || reviewNumber > latest.reviewNumber) {
-        latest = { found: true, reviewType, reviewNumber, body: comment.body };
-      }
-    } else if (comment.body.match(MALFORMED_REVIEW_HEADER_PATTERN)) {
-      // Track malformed reviews — only report if no well-formed review found
-      malformedFound = true;
-    }
-  }
-
-  if (!latest && malformedFound) {
-    return { found: true, malformed: true };
-  }
-
-  return latest || { found: false };
-}
+// findLatestReview moved to review-state.js (#3632), which reads the latest
+// review's recommendation to classify a relabeled stale issue; required below.
 
 // ─── Finding Parsing ───
 
@@ -183,20 +153,7 @@ function parseSuggestions(body) {
 
 // ─── Recommendation Extraction ───
 
-function extractRecommendation(body) {
-  const recIdx = body.indexOf('### Recommendation');
-  if (recIdx === -1) {
-    return { recommendation: null, reason: null };
-  }
-
-  const recSection = body.slice(recIdx);
-  const match = recSection.match(RECOMMENDATION_PATTERN);
-  if (match) {
-    return { recommendation: match[1], reason: match[2] || null };
-  }
-
-  return { recommendation: null, reason: null };
-}
+// extractRecommendation moved to review-state.js with findLatestReview (#3632).
 
 // ─── Classification ───
 
@@ -212,12 +169,10 @@ function slugify(criterion) {
  * compared lower-cased with punctuation dropped, so "AC present and testable?"
  * finds `ac-present-testable` where its slug never could. Built once per
  * root (#3603) — a later call with a different root gets that root's index,
- * never the first one's; a missing file contributes nothing.
+ * never the first one's; a missing file contributes nothing. Names reduce
+ * through review-format.js criterionNameKey, shared with review-finalize.js (#3624).
  */
 const _namesToIdsByRoot = new Map();
-function nameKey(name) {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
 function criterionNameIndex(root = process.cwd()) {
   const key = path.resolve(root);
   if (_namesToIdsByRoot.has(key)) return _namesToIdsByRoot.get(key);
@@ -225,10 +180,10 @@ function criterionNameIndex(root = process.cwd()) {
   const read = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { return null; } };
   const typeSpecific = (read('.claude/metadata/review-criteria.json') || {}).typeSpecific || {};
   for (const t of Object.values(typeSpecific)) {
-    for (const c of t.criteria || []) if (c && c.id && c.name) index.set(nameKey(c.name), c.id);
+    for (const c of t.criteria || []) if (c && c.id && c.name) index.set(criterionNameKey(c.name), c.id);
   }
   const common = (read('.claude/metadata/review-mode-criteria.json') || {}).criteria || {};
-  for (const [id, c] of Object.entries(common)) if (c && c.name) index.set(nameKey(c.name), id);
+  for (const [id, c] of Object.entries(common)) if (c && c.name) index.set(criterionNameKey(c.name), id);
   _namesToIdsByRoot.set(key, index);
   return index;
 }
@@ -236,7 +191,7 @@ function criterionNameIndex(root = process.cwd()) {
 /** The finding's criterion id: its marker, else its metadata name, else its slug. */
 function resolveCriterionId(f) {
   if (f.id) return f.id;
-  return criterionNameIndex().get(nameKey(f.criterion)) || slugify(f.criterion);
+  return criterionNameIndex().get(criterionNameKey(f.criterion)) || slugify(f.criterion);
 }
 
 const ISSUE_TYPES = new Set(['bug', 'enhancement', 'story', 'epic', 'generic']);
@@ -293,7 +248,7 @@ function classifyFindings(findings, ctx = {}) {
 
 // ─── Envelope Builders ───
 
-function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions, issueType, recommendation) {
+function buildSuccessEnvelope(reviewInfo, classified, suggestions, issueType, recommendation) {
   // `recommendation` is extractRecommendation()'s `{ recommendation, reason }`.
   const rec = recommendation && typeof recommendation === 'object' ? recommendation : null;
   const text = rec && typeof rec.recommendation === 'string' ? rec.recommendation : '';
@@ -321,6 +276,35 @@ function buildSuccessEnvelope(reviewInfo, classified, _findings, suggestions, is
   };
 }
 
+/**
+ * A latest review recommending Ready ends /resolve-review as "Already ready" —
+ * unless the body changed after that review (#3632). A stale issue, whether
+ * still `reviewed` or relabeled `pending` by review-state.js relabelStale(),
+ * has no findings to resolve and needs a re-review: `earlyExit` becomes false
+ * and `staleReview` names the command. Always sets `staleReview` (null when
+ * not stale), so an absent key never means "not checked".
+ *
+ * @param {object} envelope - buildSuccessEnvelope() result
+ * @param {{labels?: Array, body?: string, comments?: Array}} issueData
+ * @param {number} issue
+ * @returns {object} The envelope, updated
+ */
+function applyStaleReview(envelope, issueData, issue) {
+  const out = { ...envelope, staleReview: null };
+  if (!envelope.earlyExit) return out;
+  const verdict = classifyReviewState(issueData);
+  if (verdict.state !== STATES.STALE_REVIEWED) return out;
+  const reReview = `/review-issue #${issue} --force`;
+  const reviewNumber = envelope.context && envelope.context.reviewNumber;
+  out.earlyExit = false;
+  out.staleReview = {
+    reReview,
+    relabeled: Boolean(verdict.signals && verdict.signals.relabeled),
+    message: `#${issue}'s body has changed since review #${reviewNumber} recommended Ready, so there are no findings to resolve — re-review it: ${reReview}`,
+  };
+  return out;
+}
+
 function buildErrorEnvelope(errors) {
   return {
     ok: false,
@@ -345,13 +329,15 @@ async function main() {
   // Fetch comments and labels in one call — labels decide the type (#2872).
   let comments;
   let issueType;
+  let issueData;
   try {
     const { stdout } = await execAsync(
-      `gh issue view ${issue} --json comments,labels`,
+      `gh issue view ${issue} --json comments,labels,body`,
       { encoding: 'utf-8' }
     );
     const data = JSON.parse(stdout.trim());
     comments = data.comments || [];
+    issueData = { labels: data.labels, body: data.body, comments };
     issueType = resolveIssueType(data);
   } catch (e) {
     process.stdout.write(JSON.stringify(buildErrorEnvelope([{
@@ -386,7 +372,10 @@ async function main() {
 
   const suggestions = parseSuggestions(reviewResult.body);
 
-  const envelope = buildSuccessEnvelope(reviewResult, classified, findings, suggestions, issueType, recommendation);
+  const envelope = applyStaleReview(
+    buildSuccessEnvelope(reviewResult, classified, suggestions, issueType, recommendation),
+    issueData, issue
+  );
   reportUnrecognizedFlags(envelope, args);
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
 }
@@ -411,9 +400,11 @@ module.exports = {
   parseSuggestions,
   classifyFindings,
   criterionNameIndex,
+  criterionNameKey,
   statusForEmoji,
   extractRecommendation,
   buildSuccessEnvelope,
+  applyStaleReview,
   buildErrorEnvelope,
   reportUnrecognizedFlags,
 };

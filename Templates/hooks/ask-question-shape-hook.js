@@ -1,24 +1,38 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * ask-question-shape-hook.js
  *
- * PreToolUse hook (matcher: AskUserQuestion) that blocks a call over the
- * tool's own hard limits (#3233, #3463): more than `maxOptions` options, or a
- * `header` over `maxHeaderLength` characters (#3198). The tool rejects both
- * as "Invalid tool parameters" without saying which, so the hook blocks first
- * and names the fix.
+ * PreToolUse hook (matcher: AskUserQuestion) for a call over the tool's own
+ * hard limits (#3233, #3463): more than `maxOptions` options, or a `header`
+ * over `maxHeaderLength` characters (#3198). The tool rejects both as
+ * "Invalid tool parameters" without saying which, so the hook acts first.
  *
- * It does not block question length or block content (a table, list items,
+ * A header over the limit is rewritten, not blocked (#3638). The header is
+ * only the chip label above the question, so the hook trims it — at a word
+ * boundary where one falls within the limit, a hard cut otherwise — and lets
+ * the call through with every other field unchanged. No hook error reaches
+ * the user and the model does not retry.
+ *
+ * More than `maxOptions` options still blocks: the hook cannot choose which
+ * options to merge or drop. A call with both problems blocks and names both,
+ * as does an over-long header with nothing to trim to (whitespace only). The
+ * correction names each offending question and the remedy for each kind of
+ * problem, each once (#3452), then the pointer (#3440).
+ *
+ * It does not act on question length or block content (a table, list items,
  * several paragraphs) — not since #3463. Those were convention: the tool
  * accepts them, and every such block surfaced to the user as a hook error.
  * The convention (context printed first as markdown, a one-sentence
  * question, previews) lives in Reference/AskUserQuestion-Shape.md, which the
  * correction's closing pointer names.
  *
- * The correction names each offending question and the remedy for each kind
- * of problem, each once (#3452), then the pointer (#3440).
+ * Rewrite shape: `{hookSpecificOutput: {hookEventName: 'PreToolUse',
+ * permissionDecision: 'ask', updatedInput}}` on stdout, exit 0, with
+ * `updatedInput` the whole tool input. Probed hands-on (#3638 comment,
+ * 2026-11-12, Claude Code 2.1.323): `ask` shows the prompt with the rewritten
+ * header; `allow` shows no prompt and the call returns unanswered (#3447).
  *
  * Block shape: `{decision: 'block', reason}` on stdout, exit 0 — the shape the
  * #3233 hands-on probe confirmed reaches the model.
@@ -59,6 +73,8 @@ function usable(rules) {
 /**
  * Every hard limit one question exceeds, as short phrases, each tagged with
  * the kind of fix it needs (#3452).
+ * @param {object} question - one entry of the AskUserQuestion `questions` array
+ * @param {object} rules - the loaded shape rules (`maxOptions`, `maxHeaderLength`, …)
  * @returns {{text: string, kind: 'options'|'header'}[]}
  */
 function problemsWith(question, rules) {
@@ -72,12 +88,38 @@ function problemsWith(question, rules) {
   return problems;
 }
 
-/** The remedies for one question's problems, each kind once, in kind order. */
+/**
+ * The remedies for one question's problems, each kind once, in kind order.
+ * @param {{kind: string, text: string}[]} problems - what `problemsWith` returned
+ * @param {object} rules - the loaded shape rules, whose `remedy` texts are filled in
+ * @returns {string[]}
+ */
 function remediesFor(problems, rules) {
   const fill = (s) => s.replace(/\{maxHeaderLength\}/g, rules.maxHeaderLength).replace(/\{maxOptions\}/g, rules.maxOptions);
   return ['options', 'header']
     .filter((k) => problems.some((p) => p.kind === k))
     .map((k) => fill(rules.remedy[k]));
+}
+
+/**
+ * A header cut to at most `max` characters (#3638): at the last word boundary
+ * within the limit, or a hard cut when the first word alone is over it. The
+ * result has no surrounding whitespace; it is '' only when the header is
+ * whitespace throughout, which leaves nothing to trim to. The limit counts
+ * UTF-16 code units, as the tool's does; a cut never splits a surrogate pair.
+ * @param {string} header
+ * @param {number} max
+ * @returns {string}
+ */
+function trimHeader(header, max) {
+  const text = header.trim();
+  if (text.length <= max) return text;
+  // A cut through an astral character (an emoji) drops the whole character.
+  const head = text.slice(0, max).replace(/[\uD800-\uDBFF]$/, '');
+  // The cut falls between words: the whole head is kept.
+  if (/\s/.test(text[max])) return head.trimEnd();
+  const boundary = head.search(/\s+\S*$/);
+  return boundary > 0 ? head.slice(0, boundary) : head;
 }
 
 /**
@@ -98,14 +140,29 @@ function respond(rawInput, rules) {
   if (!Array.isArray(questions)) return SILENT;
 
   const findings = [];
-  questions.forEach((question, i) => {
-    if (!question || typeof question !== 'object') return;
+  // A header problem alone is rewritten (#3638); anything else blocks.
+  let mustBlock = false;
+  const rewritten = questions.map((question, i) => {
+    if (!question || typeof question !== 'object') return question;
     const problems = problemsWith(question, rules);
-    if (problems.length === 0) return;
+    if (problems.length === 0) return question;
     const remedies = remediesFor(problems, rules).join(' ');
     findings.push(`Question ${i + 1} ("${String(question.header || '').slice(0, 40)}"): ${problems.map((p) => p.text).join('; ')}. ${remedies}`);
+    const header = problems.some((p) => p.kind === 'header') ? trimHeader(question.header, rules.maxHeaderLength) : question.header;
+    if (header === '' || problems.some((p) => p.kind !== 'header')) mustBlock = true;
+    return Object.assign({}, question, { header });
   });
   if (findings.length === 0) return SILENT;
+
+  if (!mustBlock) {
+    // `ask`, never `allow`: with `allow` no prompt is shown (#3447, #3638 probe).
+    const hookSpecificOutput = {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'ask',
+      updatedInput: Object.assign({}, input.tool_input, { questions: rewritten }),
+    };
+    return { code: 0, stdout: JSON.stringify({ hookSpecificOutput }), stderr: '' };
+  }
 
   // Findings, their remedy and one pointer — never the whole convention (#3440).
   const reason = [
@@ -116,7 +173,7 @@ function respond(rawInput, rules) {
   return { code: 0, stdout: JSON.stringify({ decision: 'block', reason }), stderr: '' };
 }
 
-module.exports = { respond, loadRules, problemsWith, DATA_FILE };
+module.exports = { respond, loadRules, problemsWith, trimHeader, DATA_FILE };
 
 if (require.main === module) {
   // Heartbeat (#2917): records this hook's outcome for the startup Hook Health row.

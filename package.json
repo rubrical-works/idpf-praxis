@@ -1,6 +1,6 @@
 {
   "name": "idpf-praxis",
-  "version": "0.118.0",
+  "version": "0.119.0",
   "description": "IDPF — Interactive Development Process Frameworks",
   "scripts": {
     "lint": "eslint .",
@@ -25,10 +25,10 @@
   "devDependencies": {
     "@iarna/toml": "^2.2.5",
     "eslint": "^10.12.0",
-    "eslint-plugin-security": "^4.2.0",
+    "eslint-plugin-security": "^4.2.1",
     "globals": "^17.13.0",
     "jest": "^30.5.2",
-    "js-yaml": "^5.4.3"
+    "js-yaml": "^5.5.0"
   },
   "overrides": {
     "brace-expansion": "^5.0.9",

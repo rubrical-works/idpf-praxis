@@ -1,5 +1,5 @@
 # Review Execution Rule
-**Version:** v0.118.0
+**Version:** v0.119.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` (hybrid shell + rule). The shells `.claude/commands/review-issue.md` and `.claude/commands/resolve-review.md` carry arguments, prerequisites and error handling; this rule carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks.** The three retired points live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.
@@ -100,7 +100,7 @@ An unreached child keeps no review label; an errored child appears under `Not re
 node ./.claude/scripts/shared/resolve-preamble.js $ISSUE
 ```
 Parse JSON. `ok: false` → report `errors[0].message` → **STOP**.
-`earlyExit: true` (recommendation "Ready for") → "Already ready — no action needed." → **STOP**.
+`earlyExit: true` (recommendation "Ready for") → "Already ready — no action needed." → **STOP**. `staleReview` set (latest review Ready, body changed since — `reviewed` or relabeled `pending`; `earlyExit` then false) → report `staleReview.message`, naming the re-review `staleReview.reReview` → **STOP**; no findings to resolve.
 **Step 1d: Load Conditional Sections.** Trigger: `context.type === "epic"`. Read `{frameworkPath}/Reference/review-execution-conditional.md` and hold it. After the early-exit check, before 1a. No trigger → one-line skip note. Own task entry.
 **Step 1a: Peer Announcement — review resolved (advisory).** After the early-exit check: no findings means no resolution cycle. `node .claude/scripts/shared/announce.js --event review-resolved --issue $ISSUE`; gate and dispatch per § Peer Announcements. In the multi-issue form, `review-resolved` for the next issue is not sent before the current issue's re-review verdict. **Not terminal.**
 Extract: `context` (reviewType, reviewNumber, recommendation), `findings` (autoFixable, needsUserInput, passed), and `suggestions` — a sibling of `findings`, not a bucket in it.
@@ -120,7 +120,7 @@ AskUserQuestion({
     question: `For Issue: #${ISSUE} — ${finding.criterion} How should this be resolved?`,
     header: "Resolution",
     options: [
-      { label: "Accept suggestion", description: "Apply the change shown", preview: "<exact change>" },
+      { label: "Accept suggestion", description: "Apply the change shown", preview: "<BEFORE: text replaced / AFTER: text written>" },
       { label: "Provide alternative", description: "Specify your own resolution", preview: "<reviewer's alternative>" },
       { label: "Skip", description: "Leave unresolved" }
     ],
@@ -129,12 +129,14 @@ AskUserQuestion({
 });
 ```
 **One-line question; the change goes in the previews.** `Accept suggestion` previews the exact change, verbatim; `Provide alternative` the reviewer's alternative when one is named, else no `preview`.
+**Accept preview is BEFORE / AFTER, never the proposed text alone** (`{frameworkPath}/Reference/AskUserQuestion-Shape.md` § Previews that show a change): BEFORE quotes the replaced text verbatim, or states the section is absent, or quotes the placeholder replaced; AFTER is the exact text written.
+**A suggestion asserting runtime behavior** (reproduction steps, a command and its claimed result) **is run before the `AskUserQuestion`**: print the command and its captured output in the finding markdown; if it cannot be run, label the finding `unverified — <reason>` (`01-anti-hallucination.md` § Claim Labeling and Enumeration). Both directives govern `/review-issue` Step 3c's inline pass.
 - **Accept:** apply, `"✓ {change applied}"`
 - **Alternative:** ask conversationally, apply
 - **Skip:** `"⊘ Skipped: {finding}"`
 **Both prompts name the issue.** The number comes from the command's own `$ISSUE` argument, never a `resolve-preamble.js` context field.
 **Accepted suggestions that add or reword an AC are authored AC text — apply Step 1b before writing them.**
-**Body-modifying** (`repair` set): `repair.description` shapes its preview; an added AC skeleton is authored AC text — apply Step 1b before writing it.
+**Body-modifying** (`repair` set): `repair.description` shapes its BEFORE / AFTER preview; an added AC skeleton is authored AC text — apply Step 1b before writing it.
 **Title rewording:** Propose new title from content, print both titles as markdown, present "Accept", "Edit", "Skip"; one-line question prefixed `For Issue: #${ISSUE}`, proposed title in the `Accept` `preview`.
 **Flagged `severity-proportionate`:** re-read `.claude/metadata/bug-priority-rubric.json`, derive the priority as `/bug` Step 2c does and offer it with the matched class id and the board priority; **Accept** or an alternative `p0`–`p2` → `gh pmu move $ISSUE --priority <p>`. **Never auto-fix it** — `priority-set` fills only a *missing* priority.
 ### Step 3a: Report Suggestions

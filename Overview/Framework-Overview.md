@@ -1,5 +1,5 @@
 **Framework Overview**
-**Version:** v0.118.0
+**Version:** v0.119.0
 Comprehensive reference for AI assistants (Claude/Claude Code) and framework development. Change history: git log and CHANGELOG.md.
 **Framework Purpose and Scope**
 Supports AI-assisted software development across multiple methodologies and platforms. System Instructions are **REQUIRED** for all framework operation.
@@ -15,7 +15,7 @@ Transform proposals into implementation-ready PRDs, or extract PRDs from existin
 | **Extract** | `/create-prd --extract` | Extract PRD from codebase |
 | **Interactive** | `/create-prd` | Prompt for mode selection |
 **Features:** Charter validation against CHARTER.md scope; context-aware dynamic questions (not static worksheets); story transformation; MoSCoW priority validation; optional `.drawio.svg` UML diagrams; single-session completion
-**Inputs:** `Proposal/*.md`, `Inception/` artifacts, `CHARTER.md`
+**Inputs:** `Proposal/*.md`, `Project/` documents, `CHARTER.md`
 **Outputs:** `PRD/{name}/PRD-{name}.md` with optional `Diagrams/`
 **Downstream:** `Create-Backlog` generates GitHub issues from PRD
 **Related:** `codebase-analysis` skill for extraction mode
@@ -237,7 +237,7 @@ That is a separate channel, owned by the **project owner**: a hand-authored `.cl
 - **test-writing-patterns** (Standalone): AAA pattern, Given-When-Then, assertion strategies, test doubles (mock/stub/fake/spy), framework-agnostic.
 - **bdd-writing** (Standalone): Gherkin syntax, feature files, scenarios, step definitions, scenario outlines, data tables. Tools: Cucumber (JS/Java/Ruby), pytest-bdd, SpecFlow, Behave, RSpec. Drives the TDD outer loop.
 **PRD Skills:**
-- **create-prd**: transform proposals into PRDs using `Inception/` context — proposal analysis, charter alignment, user story generation, acceptance criteria. Supersedes deprecated IDPF-PRD; feeds into Create-Backlog.
+- **create-prd**: transform proposals into PRDs using `CHARTER.md` and `Project/` context — proposal analysis, charter alignment, user story generation, acceptance criteria. Supersedes deprecated IDPF-PRD; feeds into Create-Backlog.
 **Code Quality Skills:**
 - **anti-pattern-analysis**: systematic anti-pattern detection during code review — design/OOP patterns, code smells, architecture, database, testing and security patterns; language-specific guides (JavaScript, Python).
 **Beginner Setup:**

@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.118.0
+ * @framework-script 0.119.0
  * @description The argument rule for deployed commands (#3030): main input
  *   (prose, issue numbers, a single name) is typed bare and every other option
  *   is a `--flag`. Holds the table of bare forms the rule replaced, each
@@ -28,7 +28,8 @@ const leading = (word, replacement) => ({
  * old form sat. Keys are command names without the leading `/`.
  */
 const RETIRED_FORMS = {
-  charter: ['update', 'refresh'].map((w) => leading(w, `--${w}`)),
+  // /charter has no entry (#3651): its bare `update` / `refresh` rejection was
+  // dropped, so a bare word is an unrecognized argument like any other.
   // `watch` is not in the #3030 decisions table (it was missing from /ci's
   // argument-hint) but falls under the same rule, so it is retired with the rest.
   ci: ['list', 'validate', 'add', 'recommend', 'watch'].map((w) => leading(w, `--${w}`)),
@@ -106,10 +107,43 @@ function reportUnrecognizedFlags(envelope, args) {
   return envelope;
 }
 
+/**
+ * Read `--flag value` pairs where a flag in a value position is a missing
+ * value, never the value (#3600, shared #3627): `--body-file --root x` must
+ * not read a file named `--root`. A flag given last, with nothing after it,
+ * is a miss too (#3664): `--body-file` at the end of argv is a missing value,
+ * not an absent flag. `arg(name)` returns the value, or `undefined` when the
+ * flag is absent, followed by another `--` token, or last in argv;
+ * `flagAsValue()` names the first such miss, or `null` (an absent flag is
+ * never a miss). The caller turns a non-null `flagAsValue()` into its
+ * INVALID_ARGUMENT envelope.
+ * @param {string[]} argv
+ * @returns {{ arg: (name: string) => string|undefined, flagAsValue: () => string|null }}
+ */
+function readFlagValues(argv) {
+  let flagAsValue = null;
+  const arg = (name) => {
+    const i = argv.indexOf(name);
+    if (i === -1) return undefined;
+    const value = argv[i + 1];
+    if (value === undefined) {
+      if (!flagAsValue) flagAsValue = `${name} is missing its value`;
+      return undefined;
+    }
+    if (typeof value === 'string' && value.startsWith('--')) {
+      if (!flagAsValue) flagAsValue = `${name} is missing its value (found the flag ${value} instead)`;
+      return undefined;
+    }
+    return value;
+  };
+  return { arg, flagAsValue: () => flagAsValue };
+}
+
 module.exports = {
   RETIRED_FORMS,
   findRetired,
   wantsHelp,
   helpEnvelope,
   reportUnrecognizedFlags,
+  readFlagValues,
 };

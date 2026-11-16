@@ -4,7 +4,7 @@
 - **PRD:** PRD-{name}.md
 - **Created:** {date}
 - **Approval Issue:** #{to-be-created}
-- **Test Strategy:** Inception/Test-Strategy.md
+- **Test Strategy:** Project/Test-Strategy.md
 
 ## Test Strategy Overview
 

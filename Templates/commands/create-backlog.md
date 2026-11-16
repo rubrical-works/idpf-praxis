@@ -1,5 +1,5 @@
 ---
-version: "v0.118.0"
+version: "v0.119.0"
 description: Create GitHub epics and stories from a PRD, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -63,6 +63,7 @@ const verdict = evaluateReviewGate({ body, reviewState });
 An already-checked `- [x] PRD reviewed` box yields `gate: false` and proceeds normally, as before — that path is unchanged, it is simply no longer the only signal that can lift the gate.
 
 Two signals, failing in opposite directions: the checkbox is what a human sees in the body, `review-state.js` is what the review subsystem recorded. A clean review lifts the gate even if the checkbox write failed; a checked box lifts it even if the label was dropped. `findings-pending` gates regardless — a reviewer flagged criteria and they are still open.
+**Pass the whole `review-state.js` verdict as `reviewState`, not its `state` (#3637).** On `reviewed-clean` it carries `signals.latestRecommendation`; with the `PRD reviewed` box unchecked the helper applies `/review-prd` Step 5's predicate: **"Ready with minor revisions" gates** (it earns the `reviewed` label but not the box — reviewed, not yet decomposable), a **"Ready for …"** review whose box write failed does not. No readable recommendation → old behavior (clean state lifts the gate). Report `verdict.reason` as given.
 **`verdict.indeterminate: true` = passed WITHOUT confirming a review** (unreadable body, contradictory labels, `gh` outage). Fails open by design (#2577 — blocking would let an outage stop all backlog creation), but say so; never report it as a clean pass.
 
 3. **Warn** (unchecked):
@@ -73,6 +74,7 @@ Decomposing an unreviewed PRD may propagate unclear scope, missing ACs,
 or incomplete stories into the backlog.
 PRD Tracker: #$issue_num
 ```
+PRD **was** reviewed (`verdict.signals.reviewState` is `reviewed-clean` or `findings-pending`) → first line becomes `⚠️ PRD review is not complete: {verdict.reason}`, so a "Ready with minor revisions" PRD is not told it was never reviewed.
 
 `AskUserQuestion`:
 
@@ -125,13 +127,13 @@ Read `PRD/{name}/PRD-{name}.md` and extract Epics, Stories, Acceptance criteria.
 | Story `**Depends on:**` statement | Story body `**Depends on:**` line (resolved in Phase 6b) |
 | Priority (P0/P1/P2) | Priority field |
 
-**Step 3: Charter scope check (#3001)** — Write PRD title, summary and epic names to `.tmp-charter-scope-{random}.txt` (suffix shelled out); run `node .claude/scripts/shared/lib/charter-scope.js --command create-backlog --text-file <file>`; `rm` after. `skipped` → one line why, continue. `ask: true` → report `alignment` + `matchedItems`, offer `resolutionOptions` from `.claude/metadata/charter-enforcement.json` via `AskUserQuestion` before any epic is created (`expand` follows its `expansionFlow`). Relay `warnings`. Advisory: never blocks the backlog.
+**Step 3: Charter scope check (#3001)** — Write PRD title, summary and epic names to `.tmp-charter-scope-{random}.txt` (suffix shelled out); run `node .claude/scripts/shared/lib/charter-scope.js --command create-backlog --text-file <file>`; `rm` after. `skipped` → one line why, continue. Otherwise make the **scope call** from the returned `inputs` as `scopeCall` in `.claude/metadata/charter-enforcement.json` directs — the helper decides nothing (#3645) — and report it in its one-line format, `Charter scope: <verdict> — "<bullet quoted>" — <reason in one sentence>`, with a stated reason; `boardThemes.available: false` → say the board themes were unavailable and decide on the bullets alone. When that verdict's `alignment.<verdict>.ask` is true (under `quiet`, only for `conflicts`), offer `resolutionOptions` from `.claude/metadata/charter-enforcement.json` via `AskUserQuestion` before any epic is created (`expand` follows its `expansionFlow`). Relay `warnings`. Advisory: never blocks the backlog.
 
 ## Phase 4: Load Test Cases
 
 1. Read `PRD/{name}/Test-Plan-{name}.md`
 2. Match test cases to stories by title and AC text.
-3. Load test config from `Inception/Test-Strategy.md` (framework) and `Inception/Tech-Stack.md` (language):
+3. Load test config from `Project/Test-Strategy.md` (framework — locate it with `node .claude/scripts/shared/lib/charter-shape.js --locate Test-Strategy.md`; `legacy: true` → report its `message` (names `/charter --refresh`), never read the old path) and the `CHARTER.md` Tech Stack table (language):
 
 | Language | Framework | Test Syntax |
 |---|---|---|
@@ -216,6 +218,7 @@ For each PRD AC about to be materialized into a story body in Phase 6, apply the
 | **Annotate** | Gate is genuinely load-bearing (required human review or sign-off) | `- [ ] {acText} → GATE: {phase}` per `phaseFeasibility.annotationFormat` |
 
 Report both dispositions (`Annotated → GATE: review — "{acText}"` / `Dropped (owned by /prepare-release) — "{acText}"`) so the user sees what changed on the way in.
+**"Document updated" AC (#3646).** When each story or epic's scope changes the project's architecture, constraints, test strategy or a key decision, **ASK USER** whether to add an AC naming the living document it updates — `Project/Architecture.md`, `Project/Constraints.md`, `Project/Test-Strategy.md` or a `Construction/Design-Decisions/` entry (e.g. `- [ ] Project/Architecture.md updated to describe <the change>`). An AC may name `CHARTER.md` only when the work introduces a new kind of entity or adopts a new technology: a new Key Entities or Tech Stack row, with no count and no version. Never an AC updating a count or a version in `CHARTER.md` — counts are derived, versions live in manifests; `/review-issue` flags one (`charter-ac-stored-value`). Declined → nothing added.
 ## Phase 6: Create Story Issues
 
 For each story:
@@ -240,7 +243,7 @@ Link to epic: `gh pmu sub add {epic_number} {story_number} || true`. Cleanup: `r
 | **Depends on** | PRD story's `**Depends on:**` statement, written **verbatim** at creation (`Story 1.1`, `none`); rewritten to issue numbers by Phase 6b. A PRD story with no statement gets `none (not stated in the PRD)` |
 | **Description** | PRD user story (As a / I want / So that) |
 | **Relevant Skills** | No input. Renders `N/A` when configured — the list is project-wide, not story-specific (#2817) |
-| **E2E** | `framework-config.json` `testing.suites[]` → the suite whose `role` is `e2e` — the declaration (#2851). Inverts the #2817 row, which named `Inception/Test-Strategy.md` and forbade a config key: that Framework table is now **rendered from** this declaration, so reading it would be reading a view. No detection heuristic |
+| **E2E** | `framework-config.json` `testing.suites[]` → the suite whose `role` is `e2e` — the declaration (#2851). Inverts the #2817 row, which named the Test-Strategy document and forbade a config key: that Framework table is now **rendered from** this declaration, so reading it would be reading a view. No detection heuristic |
 | **Acceptance Criteria** | PRD AC checkbox list |
 | **Files to modify** | PRD `## Technical Notes` + per-story codebase analysis — see derivation below |
 | **Documentation** | Standard checkboxes **verbatim** — closed set, see below |
@@ -335,7 +338,7 @@ Replace `/add-story` base DoD:
 ## Phase 7: Update PRD Status
 
 1. Update PRD doc: `**Status:** Backlog Created`
-2. Prepend banner to PRD tracker body (via `gh pmu edit` + temp file):
+2. Prepend banner to PRD tracker body:
 
 ```markdown
 > **📋 PRD In Progress** — When all stories complete, run `/complete-prd {issue_number}` to verify and close.
@@ -350,6 +353,14 @@ Replace `/add-story` base DoD:
 
 {original PRD issue body}
 ```
+
+**Check `Ready for backlog creation` in the same write (#3636)** — this command owns that box. Write the composed body to `.tmp-$issue_num.md`; the script checks it by label, fence-aware, never by position, before the one edit:
+```bash
+node .claude/scripts/shared/review-ac-checkoff.js --check-box "Ready for backlog creation" --body-file .tmp-$issue_num.md
+gh pmu edit $issue_num -F .tmp-$issue_num.md
+rm .tmp-$issue_num.md
+```
+Report its `reason` (`checked`, `already-checked`, `absent`). Never tick it by hand, and never check `PRD reviewed` or `Test plan approved` here — `/review-prd` and `/done` own those.
 
 3. Summary comment:
 ```bash

@@ -1,5 +1,5 @@
 ---
-version: "v0.118.0"
+version: "v0.119.0"
 allowed-tools: Bash
 description: Switch the branch context, using the IDPF framework.
 argument-hint: "[branch-name] [--help]"
