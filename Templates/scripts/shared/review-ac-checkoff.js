@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(), and checkLifecycleBoxIn()/checkLifecycleBox() (CLI --check-box) for the PRD tracker lifecycle boxes other commands own (#3636). Used by /review-prd, /review-test-plan, /done and /create-backlog.
  * @checksum sha256:placeholder
  *

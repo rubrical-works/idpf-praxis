@@ -12,6 +12,7 @@ Start working on one or more issues with branch validation, context gathering, a
 | `--assign` | No | Auto-assign issue(s) to current branch before starting |
 | `--nonstop` | No | For epics/branch trackers: skip per-sub-issue STOP and process all sub-issues continuously to `in_review` |
 | `--wait` | No | Wait for pending CI to pass before beginning work |
+| `--reopen` | No | Work an issue that is already In review or Done by moving it back to `in_progress`. Without it, `/work` refuses such an issue and moves nothing |
 | `--concurrent` | No | For an epic, a branch tracker, or a selection of two or more issues: run file-disjoint members at once in framework-owned worktrees, grouped by their `**Depends on:**` lines, each merged back through a review gate (see Concurrent Mode) |
 | `--agents N` | No | How many agents of any kind may run at once — implementers, their reviewers and fix cycles share the cap — and how many test runs; default 3. Requires `--concurrent` |
 | `--no-review` | No | Skip the independent review for this run, in every mode: the review of the issue's commits before In review, or, under `--concurrent`, the merge-back gate's independent reviewer (Tier 3; the mechanical checks and the parent's own read still run). The skip is reported |
@@ -33,6 +34,7 @@ Start working on one or more issues with branch validation, context gathering, a
 /work #41 #45 #47 --concurrent
 /work --status ready --concurrent
 /work #42 --unreviewed
+/work #42 --reopen
 ```
 
 ## Concurrent Mode

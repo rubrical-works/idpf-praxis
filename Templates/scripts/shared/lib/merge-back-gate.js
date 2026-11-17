@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -1255,11 +1255,12 @@ const USAGE = [
   '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...] [--state F: the run-state file; its recorded regenerated commits count as --own]',
   '  batch-range --member N ... --base-of N=SHA ... --head H',
   '  clear-member --issue N [--ledger F] [--keep-tier1 | --tier1-only] — removes the member\'s gate files and brief; keeps all when the ledger\'s worktree for N still exists',
+  '  reclaim     --reclaim [N:]wt/<branch>:<path> ... — #3714: re-checks each worktree is on the tracker and clean, tears it down through worktree-teardown.js, deletes its branch with git branch -d and clears a recorded member\'s scratch',
   '  clear-run   --file F ... — removes the run\'s state and ledger; top-level .tmp-gate-/brief-/rolling-/concurrent- files only',
   '  Common: --root DIR (default: the current directory). Bodies not given by --body-file are read with gh pmu view N --body-stdout.',
 ].join('\n');
 
-const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own', '--file']);
+const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own', '--file', '--reclaim']);
 const BOOLEAN = new Set(['--no-review', '--resumed', '--post-comment', '--keep-tier1', '--tier1-only', '--nonstop']);
 
 /** `<subcommand> --flag value ...` → `{sub, opts}`; repeatable flags collect arrays. */
@@ -1354,8 +1355,73 @@ function parseMemberSpec(spec) {
 }
 
 /**
+ * Parse a `reclaim --reclaim` value, `[N:]wt/<branch>:<path>` (#3714): the
+ * issue is present for a ledger-recorded worktree, absent for one a cancelled
+ * run never recorded. The path may hold ':' (E:/...), so it is the remainder.
+ * @param {string} spec
+ * @returns {{issue: number|null, branch: string, worktreePath: string, error?: string}}
+ */
+function parseReclaimSpec(spec) {
+  const parts = String(spec).split(':');
+  let issue = null;
+  if (parts.length > 1 && !parts[0].startsWith('wt/')) {
+    if (!/^[1-9][0-9]*$/.test(parts[0])) return { error: `not an issue number: ${parts[0]}` };
+    issue = Number(parts.shift());
+  }
+  const branch = parts.shift() || '';
+  const worktreePath = parts.join(':');
+  if (!branch.startsWith('wt/')) return { error: `not a framework member branch: ${branch || '(none)'}` };
+  if (!worktreePath) return { error: `no worktree path for ${branch}` };
+  return { issue, branch, worktreePath };
+}
+
+/**
+ * Reclaim worktrees the user accepted (#3714). Per worktree: re-check that
+ * its branch is an ancestor of the tracker HEAD and its tree is clean
+ * (untracked files count), else `refused` and nothing touched; tear down
+ * through `teardown` (worktree-teardown.js); once `removed`, delete the
+ * branch with `git branch -d` (refuses an unmerged branch — reported, never
+ * forced) and, for a recorded member, clear its kept gate files and brief.
+ *
+ * @param {{root: string, worktrees: Array<{issue: number|null, branch: string, worktreePath: string}>,
+ *   git: Function, teardown: Function}} input
+ * @returns {Array<{issue: number|null, branch: string, worktreePath: string,
+ *   status: 'removed'|'kept'|'halted'|'refused', reason: string|null,
+ *   branchDeleted: boolean, branchError?: string, cleared: string[]}>}
+ */
+function reclaimWorktrees({ root, worktrees = [], git, teardown }) {
+  return worktrees.map(({ issue, branch, worktreePath }) => {
+    const out = { issue, branch, worktreePath, status: null, reason: null, branchDeleted: false, cleared: [] };
+    try {
+      git(['merge-base', '--is-ancestor', branch, 'HEAD']);
+    } catch (_e) {
+      return { ...out, status: 'refused', reason: `${branch} has commits not on the tracker — kept` };
+    }
+    let dirty;
+    try {
+      dirty = String(git(['status', '--porcelain', '--untracked-files=all'], { cwd: worktreePath }) || '').trim();
+    } catch (e) {
+      return { ...out, status: 'refused', reason: `cannot read the tree of ${worktreePath}: ${e.message} — kept` };
+    }
+    if (dirty) return { ...out, status: 'refused', reason: `${worktreePath} has uncommitted or untracked changes — kept` };
+    const t = teardown({ root, worktreePath });
+    out.status = t && t.status ? t.status : 'kept';
+    out.reason = t && t.reason ? t.reason : null;
+    if (!t || !t.ok) return out;
+    try {
+      git(['branch', '-d', branch]);
+      out.branchDeleted = true;
+    } catch (e) {
+      out.branchError = String(e && e.message ? e.message : e).trim();
+    }
+    if (issue) out.cleared = clearScratch({ root, files: memberScratch(issue) }).removed;
+    return out;
+  });
+}
+
+/**
  * @param {string[]} argv
- * @param {{git?: Function, runSuite?: Function, readBody?: Function, ghExec?: Function}} [seams]
+ * @param {{git?: Function, runSuite?: Function, readBody?: Function, ghExec?: Function, teardown?: Function}} [seams]
  * @returns {{code: number, envelope: object}}
  */
 function runCli(argv, seams = {}) {
@@ -1650,6 +1716,23 @@ function runCli(argv, seams = {}) {
     return { code: r.ok ? 0 : 2, envelope: { subcommand: sub, issue, kept: false, ...r } };
   }
 
+  if (sub === 'reclaim') {
+    // #3714: the accepted reclaim offer. Each worktree is re-checked first —
+    // its state may have changed since the preamble offered it — then torn
+    // down through worktree-teardown.js, never `git worktree remove` or rm.
+    const miss = requireOpts(opts, ['--reclaim']);
+    if (miss) return fail(miss);
+    const specs = opts['--reclaim'].map(parseReclaimSpec);
+    const bad = specs.find((s) => s.error);
+    if (bad) return fail(`--reclaim takes [N:]wt/<branch>:<path> — ${bad.error}`);
+    const teardown = seams.teardown || ((input) => require('./worktree-teardown.js').teardownWorktree(input));
+    const results = reclaimWorktrees({ root, worktrees: specs, git, teardown });
+    // Reclaimed means the worktree AND its branch are gone: a branch
+    // `git branch -d` refused is a failure to report, not a success.
+    const ok = results.every((r) => r.status === 'removed' && r.branchDeleted);
+    return { code: ok ? 0 : 1, envelope: { ok, subcommand: sub, results } };
+  }
+
   if (sub === 'clear-run') {
     // #3360: the run's state and ledger, once no member is left unmerged.
     const miss = requireOpts(opts, ['--file']);
@@ -1682,6 +1765,8 @@ module.exports = {
   undeclaredOverlap,
   parseCliArgs,
   parseMemberSpec,
+  parseReclaimSpec,
+  reclaimWorktrees,
   notRunFailure,
   runTier1,
   memberBase,

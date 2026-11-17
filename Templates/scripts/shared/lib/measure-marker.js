@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * measure-marker.js
  *
  * Collection-marker lifecycle for `/idpf-measure` (#2794).

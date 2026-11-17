@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * review-body-hash.js — The body hash a review records, so `review-state.js`
  * can tell a reviewed issue from one rewritten since its review (#3543).
  *

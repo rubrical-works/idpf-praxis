@@ -1,5 +1,5 @@
 ---
-version: "v0.119.0"
+version: "v0.120.0"
 allowed-tools: Bash, Read
 description: Emit a short conclusion-first brief for one or more issues, using the IDPF framework.
 argument-hint: "#issue [#issue...] [--help]"

@@ -1,5 +1,5 @@
 ---
-version: "v0.119.0"
+version: "v0.120.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
 argument-hint: "[epic-number] (e.g., 42 or #42) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -119,7 +119,7 @@ N/A
 - `{path/to/another/file}`
 
 **REQUIRED — `N/A` when empty.** List only files *this story’s* ACs implicate. Purely behavioral ACs → marker + `N/A`, never omission (atomic-template rule above). Step 4c treats `N/A` and absent identically.
-**Bold marker is load-bearing — do NOT normalize to a `###` heading.** Step 4c’s gate parses this with `extractFilesToModify` (`.claude/scripts/shared/scope-drift-check.js`), which matches only the literal line `**Files to modify:**`. A `### Files to Modify` heading declares zero paths silently → story reaches the gate with `Declared scope: none`. Same reason: no blank line between marker and first bullet (terminates the section); every path backticked (only backticked spans extracted). A table fails both at once — #2523.
+**Bold marker is load-bearing — do NOT normalize to a `###` heading.** Step 4c’s gate parses this with `extractFilesToModifySection` (`.claude/scripts/shared/scope-drift-check.js`), which recognizes only the bold headers `**Files to modify:**` and `**Files:**` on their own line. A `### Files to Modify` heading declares zero paths silently → story reaches the gate with `Declared scope: none`. One contiguous block — one bullet list or one table, never both — with no blank line inside it (once started, a blank line ends the section); every path backticked (only backticked spans extracted).
 ### Documentation (if applicable)
 - [ ] Design decisions documented (update existing or create `Construction/Design-Decisions/YYYY-MM-DD-{topic}.md`)
 - [ ] Tech debt logged (update existing or create `Construction/Tech-Debt/YYYY-MM-DD-{topic}.md`)
@@ -180,7 +180,7 @@ For each acceptance criterion implicating a code path, resolve the **candidate t
 **Advisory: does not block story creation**; no resolution outcome changes any status transition.
 **Step 3b: Emit candidates into `**Files to modify:**` (#2727)**
 Write resolved candidates into the story body's `**Files to modify:**` section beside the source paths, so `scope-drift-check.js` reads them as **declared scope** at `/work` Step 4c. Without it a test file written during RED reaches the drift gate as an *unexpected* path — flagged as drift rather than planned work, the gate doing its job on an incomplete declaration.
-**Format contract is `extractFilesToModify`'s and matches nothing else (#2523):** literal `**Files to modify:**` on its own line; one **backticked** path per `- ` bullet; **no blank line** inside the list (it terminates at the first blank line, `**bold:**` line, or `##` heading); **not a table** — markdown puts a blank line before a table, terminating the section and yielding empty declared scope.
+**Format contract is `extractFilesToModifySection`'s (#2523, #2813; same as rule 09 Step 2a-ii):** bold header `**Files to modify:**` or `**Files:**` on its own line; one **backticked** path per `- ` bullet or table row; **one contiguous block** — one bullet list or one table, never both (a blank line inside it ends it; a table after a bullet list is not read); a `**bold:**` line or `##` heading ends the section.
 Mark unresolved criteria with the Step 3a line rather than dropping them.
 **Step 4: Update test plan**
 ```markdown

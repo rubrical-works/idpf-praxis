@@ -1,5 +1,5 @@
 # /work Execution Rule
-**Version:** v0.119.0
+**Version:** v0.120.0
 **Source:** Reference/work-execution.md
 Auto-loaded execution rule for `/work` — hybrid shell + auto-loaded rule architecture. Shell `.claude/commands/work.md` covers arguments/prereqs/errors; this rule covers the Workflow. Two companions are read on demand, never auto-loaded: `{frameworkPath}/Reference/work-execution-conditional.md` (bodies that fire only for an epic, a branch tracker, `--nonstop`, `--concurrent` or a multi-issue selection — loaded at Step 1d) and `{frameworkPath}/Reference/work-execution-rationale.md` (why each directive is as it is — read when questioning one).
 ## Execution Instructions
@@ -18,8 +18,7 @@ Auto-loaded execution rule for `/work` — hybrid shell + auto-loaded rule archi
 7. **Per-sub-issue parent task lifecycle (epic/branch only):** Step 2b creates one parent task per remaining sub-issue. Mark the parent `in_progress` at the start of Step 3 for that sub-issue, and `completed` after Step 5. Per-AC subtasks nest under the active parent; delete or complete them before creating the next sub-issue's AC subtasks.
 8. **Resume inside a sub-issue (epic/branch):** its step has no task — re-derive it from checked ACs, the `**Doc judgment:**` line, `### Files Changed` and board status.
 ## Workflow
-### Step 0: Conditional — Clear Task List
-If not epic/branch tracker, clear task list.
+**Execution order is heading order, not label order:** 1d before 1a; 4d, 4e before 4c.
 ### Step 1: Context Gathering (Preamble Script)
 `node .claude/scripts/shared/work-preamble.js` with `--issue N`, `--issues "N,N,N"`, or `--status <status>`. `--assign` to auto-assign.
 Parse JSON: `ok: false` → report `errors[]`, STOP. `ok: true` → extract `context`, `gates`, `autoTask`, `warnings`, report.
@@ -28,7 +27,7 @@ Parse JSON: `ok: false` → report `errors[]`, STOP. `ok: true` → extract `con
 **`context.redirect` set → hand off and STOP.** Set for a label in `WORK_REDIRECT_LABELS` (`work-preamble.js`): `test-plan` → `/review-test-plan`, and `qa-required` → `/qa` for a **single issue only** — under an epic or branch tracker a `qa-required` sub-issue is **skipped** with a pointer at Step 2b, never redirected mid-loop. Mark the preamble task complete, create **no** Phase 2 tasks (Behavior Rule 1), invoke the mapped command via the Skill tool with the leading `/` stripped — never a hardcoded name — and report the label and the command handed to. **Neither Step 3 gate runs**, and the preamble makes no status move. `prd` and `proposal` deliberately do **not** redirect, and `qa-required` is deliberately absent from `issue-type.js`'s shared `REDIRECT_LABELS`.
 **--assign errors:** `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch`), `BRANCH_TRACKER_NOT_ASSIGNABLE` (target is a branch tracker — assign sub-issues instead). `--schema` for envelope reference.
 ### Step 1d: Load Conditional Sections
-Trigger: `context.type` is `epic` or `branch`, or `--nonstop`, or `--concurrent`, or a selection of two or more issues. Run `node .claude/scripts/shared/lib/work-conditional-sections.js --type <epic|branch|standard> [--nonstop] [--concurrent] [--selection N]` and hold its output for the run: only the sections of `{frameworkPath}/Reference/work-execution-conditional.md` this shape needs — a default-mode epic gets Steps 2b and 2b-ii only. Runs right after the preamble. Absent trigger → skip with Behavior Rule 2's note; a single-issue selection never needs it: Step 3's resident gate classifies one member the same way. Its own task entry, so recovery shows if it was due.
+Trigger: `context.type` is `epic` or `branch`, or `--nonstop`, or `--concurrent`, or a selection of two or more issues. Run `node .claude/scripts/shared/lib/work-conditional-sections.js --type <epic|branch|standard> [--nonstop] [--concurrent] [--selection N]` and hold its output for the run: only the sections of `{frameworkPath}/Reference/work-execution-conditional.md` this shape needs — a default-mode epic gets Steps 2b and 2b-ii only. Runs right after the preamble. Absent trigger → skip with Behavior Rule 2's note; a single-issue selection never needs it: Step 3's resident gate classifies one member the same way.
 ### Step 1a: CI Wait (--wait)
 **Trigger:** `context.wait == true`.
 ```bash
@@ -55,6 +54,7 @@ Body: conditional file § Step 2b-ii, loaded at Step 1d when `context.type` is `
 ### Step 2c: Proposed Work Order (`--nonstop` epic/branch only — #2622)
 Body: conditional file § Step 2c, loaded at Step 1d when `context.proposedOrder` is present (`--nonstop` on an epic or branch tracker).
 ### Step 3: Work the Issue
+#### Step 3-i: Review-State and Pre-Work Status Gates
 **Review-State Gate (mandatory, every issue — #2577, #3537):** **Before the first acceptance criterion of any issue is worked**, classify that issue's review state and act on it:
 ```bash
 node .claude/scripts/shared/review-state.js --issue $ISSUE
@@ -72,6 +72,7 @@ The trigger is the **workflow moment**, not the actor or mechanism: it fires ide
 **A deferred start is completed here.** When Step 1 returned `gates.moveDeferred` and the run reached this gate — the review passed or was waived — also move `moveDeferred.prdTracker` when set, and on an epic the epic itself, to `in_progress`.
 **Finished work is not reopened.** An issue already In review or Done is never moved back to `in_progress`: a sub-issue in either status is skipped (`context.skipped`), and `/work N` on one returns `ALREADY_IN_REVIEW` / `ALREADY_DONE` with no move unless `--reopen` is passed, which moves it and reports `gates.reopenedFrom`. A sub-issue whose status cannot be read is skipped too (`SUB_ISSUE_STATUS_UNREADABLE`; halts under `--nonstop`), and a failed sub-issue enumeration is `SUB_ISSUE_LOAD_FAILED` before any move.
 Same trigger as the Review-State Gate — the **workflow moment**, on either path, for every issue and **each sub-issue** at its turn, not research/review/Explore Agents. **Not** satisfied by the Step 1 preamble having run: for epics and branch trackers it moves only the tracker.
+#### Step 3-ii: Peer Announcement — event 1
 **Peer Announcement — event 1 (advisory):** **after** both gates above pass and before the first acceptance criterion is worked, announce that work is starting.
 **Gated by project config.** Resolve **once per `/work` invocation** — before event 1, reused unchanged for event 2 and for every sub-issue: `node .claude/scripts/shared/lib/cross-session-config.js`. **Read the resolver; never re-derive the defaults inline, and never read `process.env`** — the resolver applies `IDPF_X_SESSION > framework-config.json crossSessionMessaging > enabled by default` itself.
 | Resolved value | Effect |
@@ -91,6 +92,7 @@ From `announcement`: `shouldSend === true` → **`SendMessage`** once per `annou
 - **`shouldSend` is a dispatch decision, not a delivery guarantee** — never report a peer as *informed* on the strength of it.
 - **Placement is the AC:** after both gates, never at Step 1. **Fires per sub-issue** under `--nonstop`, at the same moment as the two gates — not once per invocation naming the tracker.
 - **Never a gate.** Fire-and-forget; a throwing helper or failed send is reported and work proceeds.
+#### Step 3-iii: Per-AC Cycle
 For each AC (or batch of related ACs): mark `in_progress` → TDD cycle (RED → GREEN → REFACTOR) → run the project's tests **scoped to the touched directory tree** — all scoped tests must pass → mark `completed` → **COMMIT** `Refs #$ISSUE — <description>`.
 **Scoping is expressed in the project's own terms.** Take the suites `resolveSuites()` returns and route the touched tree through `scopedInvocations()` from `.claude/scripts/shared/lib/test-runner.js` (see Step 4f), which narrows each **in whatever way each runner expresses narrowing**. Where a runner offers no way to narrow, or the narrowing is not obvious, run that command unnarrowed: a slower correct run beats a faster invented one. The gate is the full sweep at Step 4f, which is not optional.
 **A suite declaring `sweepSelect` is narrowed by its selector.** Run `selectorInvocations()` over the AC's changed files and pass each result to `scopedInvocations()` as `selections`, exactly as Step 4f passes them to `sweepInvocations()`. Each run then reports `selected N of M`, or `touched tree — <reason>` when it fell back; an empty selection is listed in `selectedNone` — it ran nothing and is not a pass.
@@ -162,7 +164,7 @@ A protected path must be named in the body's declaration, not merely appear in t
 | 0 | advisory | Report warnings only; continue to Step 4f |
 | 1 | blocking (violations) | **HALT.** Report violations + resolution options below. Do NOT proceed to Step 4f/5. |
 **On HALT, three resolutions:**
-1. Add the offending paths to the issue body's `Files to modify:` section (then re-run Step 4c). For an `always-protected` path this is the **only** body-side resolution — appending it to `### Files Changed` does not clear the halt.
+1. Add the offending paths to the issue body's `Files to modify:` section (then re-run Step 4c). For an `always-protected` path this is the **only** body-side resolution — appending it to `### Files Changed` does not clear the halt. **On a reviewed issue this makes its review stale**, as `Files to modify:` is hashed: run `review-state.js --issue $ISSUE`, report `stale-reviewed` and its `pending` relabel, and name `/review-issue #$ISSUE --force` to restore `reviewed`.
 2. `git revert` (or unstage) the out-of-scope change and re-run.
 3. Add `Scope-Override: <reason>` to the most recent commit message OR an issue comment, then re-run. The override and reason are echoed in the next report.
 Always-protected paths: authoritative list in `.claude/metadata/scope-drift-protected-paths.json` (`framework-config.json`, `framework-manifest.json`, `.claude/metadata/**`, `.gh-pmu.json`, `.gh-pmu.checksum`, `CHARTER.md`). The gate is additive — `log-changed-files.js` and the Files Changed update still happen regardless of its outcome.
@@ -231,7 +233,7 @@ Send and close out exactly as at event 1, **subject to the same `groups.work` ga
 - **The empty payload stays truthful.** Zero `Refs #$ISSUE` commits still emits, worded so nothing is implied to have landed.
 - **A throwing helper must not abort this sequence.** Parts (1), (2) and (3) run regardless; the announcement is advisory.
 **(3) STOP.** Wait for "done". Do NOT close.
-**Review-lifecycle events are defined in `09-review-execution.md` alone;** `/work` fires none, and a guard test fails if an event name appears in more than one rule source.
+**Review-lifecycle events are defined in `09-review-execution.md` alone;** `/work` fires none.
 **CRITICAL — Autonomous Epic/Branch processing:** For `context.type == "epic"`/`"branch"`, process sub-issues in `context.processingOrder` — the `**Depends on:**` topological sort, the tracker body's **Processing Order:** (else ascending) breaking ties. Skip sub-issues already in `in_review` or `done`, and **`qa-required` sub-issues** — `context.skipped` carries them with `reason: 'qa-required'`; report each as `Sub-issue #N is qa-required → run /qa #N` at its turn, count them in the final summary, and never redirect mid-loop. Under `--nonstop`, Step 2c may have written an accepted order into that **Processing Order:** section; the order processed is whatever `parseProcessingOrder` reads.
 **Default mode** (per GitHub Workflow §4): one sub-issue per invocation — `in_progress` → Steps 3–4 → `in_review` → **STOP**. The next is a fresh `/work #<tracker>`, never continued in-session; `/done` on an epic sub-issue names it (`Next: /work #<epic>`). The `in_progress` transition is **executed by the Step 3 Pre-Work Status Gate** as each sub-issue's turn begins — this line describes the lifecycle, it does not implement it.
 **`--nonstop`, `--concurrent` and `--nonstop --concurrent`:** bodies in the conditional file § Step 6: `--nonstop` and `--concurrent` Processing — no STOP between sub-issues under `--nonstop`, halt immediately on any test/AC/QA/`gh pmu` failure or a `findings-pending` verdict, resume from the `in_progress` sub-issue parent, else the first member of `context.resumeOrder` (never `gh pmu sub list` alone), the unswept marker, the group and rolling schedules and a resumed `--concurrent` run. `--agents` without `--concurrent` is reported as ignored.

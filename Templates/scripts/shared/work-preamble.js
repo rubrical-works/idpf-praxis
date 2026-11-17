@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -20,12 +20,12 @@ const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js'
 // never an external package (#2418).
 const { REDIRECT_LABELS } = require('./lib/issue-type.js');
 // #3126: --agents validation at parse time, and the --concurrent grouping plan.
-const { parseAgentsValue, buildPlan, resolveWorktreeHook, classifyResume, parseWorktreeList, matchKeptWorktrees } = require('./lib/concurrency-plan.js');
+const { parseAgentsValue, buildPlan, resolveWorktreeHook, classifyResume, parseWorktreeList, matchKeptWorktrees, isFrameworkWorktree, classifyReclaim } = require('./lib/concurrency-plan.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 // #3128: processing order is a topological sort of the **Depends on:** graph.
 const { topoOrder } = require('./lib/topo-order.js');
 // #3129: the parent's step sequence and member spawn requests for --concurrent.
-const { buildRun, nextSteps, memberTasks, memberBriefs, extractBriefSections, MEMBER_TEMPLATES, pruneRunLedger } = require('./lib/concurrent-orchestration.js');
+const { buildRun, nextSteps, memberTasks, memberBriefs, extractBriefSections, MEMBER_TEMPLATES, pruneRunLedger, reclaimOfferStep } = require('./lib/concurrent-orchestration.js');
 // #3259: the status move waits on the Review-State Gate's decision, computed
 // from the same classifier and aggregator the gate itself uses.
 // #3632/#3666: required as a module so classifyAndRelabel is called through
@@ -1133,6 +1133,36 @@ async function readResumeWorktreesFromDisk(tracker) {
   return { worktrees, ledger };
 }
 
+/**
+ * Each framework worktree's reclaim state (#3714), for classifyReclaim:
+ * `merged` — its branch is an ancestor of the tracker HEAD (an empty one at
+ * the tip qualifies); `clean` — no uncommitted or untracked change in it.
+ * Read-only git. A worktree either read fails for is left out, so it is
+ * never offered.
+ *
+ * @param {Array<{worktreePath: string, branch: string|null}>} worktrees
+ * @param {{cwd?: string}} [opts] - the tracker checkout (default: the current directory)
+ * @returns {Promise<Object<string, {merged: boolean, clean: boolean}>>}
+ */
+async function readWorktreeStatesFromGit(worktrees, { cwd = process.cwd() } = {}) {
+  const states = {};
+  for (const w of worktrees.filter(isFrameworkWorktree)) {
+    let merged;
+    try {
+      await execFileAsync('git', ['merge-base', '--is-ancestor', w.branch, 'HEAD'], { cwd });
+      merged = true;
+    } catch (e) {
+      // Exit 1 is git's "not an ancestor"; anything else is an unreadable state.
+      if (e && e.code === 1) merged = false; else continue;
+    }
+    try {
+      const { stdout } = await execFileAsync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: w.worktreePath });
+      states[w.worktreePath] = { merged, clean: String(stdout).trim() === '' };
+    } catch (_e) { /* unreadable: never offered */ }
+  }
+  return states;
+}
+
 /** Write the pruned run ledger back to `.tmp-concurrent-<tracker>.json` (#3350). */
 function writeResumeLedgerToDisk(tracker, ledger) {
   fs.writeFileSync(path.join(process.cwd(), `.tmp-concurrent-${tracker}.json`), JSON.stringify(ledger, null, 2));
@@ -1282,7 +1312,17 @@ async function planConcurrentRun({ active, processingOrder, dependencyGraph, run
     } catch (_e) { /* the in-memory prune still applies to this run */ }
     warnings.push({ code: 'RUN_LEDGER_PRUNED', dropped: pruned.dropped, message: `Pruned ${pruned.dropped.length} run-ledger ${pruned.dropped.length === 1 ? 'entry' : 'entries'} with no worktree and no active member: ${pruned.dropped.map((n) => `#${n}`).join(', ')}.` });
   }
-  const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees, ledger: pruned.ledger, members: numbers.filter((n) => !merged.includes(n)) });
+  // #3714: a worktree that holds nothing — its branch on the tracker, its
+  // tree clean — is reclaimable, recorded or not: reported apart from the
+  // unmatched and kept ones, never held, and offered for teardown first.
+  const states = await (options.readWorktreeStates || readWorktreeStatesFromGit)(found.worktrees);
+  const { reclaimable } = classifyReclaim({ worktrees: found.worktrees, ledger: pruned.ledger, states });
+  const normPath = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const reclaimPaths = new Set(reclaimable.map((w) => normPath(w.worktreePath)));
+  for (const w of reclaimable) {
+    warnings.push({ code: 'RECLAIMABLE_WORKTREE', message: `Worktree ${w.worktreePath} (${w.branch}${w.issue ? `, #${w.issue}` : ', not in the run ledger'}) holds nothing: its branch is on the tracker and its tree is clean. It is offered for teardown before any spawn.` });
+  }
+  const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees.filter((w) => !reclaimPaths.has(normPath(w.worktreePath))), ledger: pruned.ledger, members: numbers.filter((n) => !merged.includes(n)) });
   for (const k of worktreeMatch.kept) {
     warnings.push({ code: 'KEPT_WORKTREE', message: `#${k.issue} has a worktree kept from an earlier run at ${k.worktreePath} (${k.branch}); it is held, not re-spawned, since it may hold fixes. Check it, then merge it with \`node .claude/scripts/shared/lib/merge-back-gate.js merge-back --tracker <tracker branch> --member ${k.issue}:${k.branch}:${k.worktreePath}\`, or tear it down with worktree-teardown.js, and re-run.` });
   }
@@ -1312,6 +1352,11 @@ async function planConcurrentRun({ active, processingOrder, dependencyGraph, run
     tracker: runKey,
     noReview: !!options.noReview
   });
+  concurrencyPlan.reclaimable = reclaimable;
+  // The offer comes before every other step, so no member is spawned first;
+  // a selection run puts its review gate ahead of it, still before any spawn.
+  const offer = reclaimOfferStep(reclaimable);
+  if (offer) concurrentRun.steps.unshift(offer);
   return { concurrencyPlan, concurrentRun };
 }
 
@@ -2445,7 +2490,7 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, unreviewed (true only under --unreviewed, #3537: the Review-State Gate is waived for this run; absent otherwise), type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason, worktreeBase { registered, layer, base } } — worktreeBase is present in both cases (#3568): layer names the first settings layer registering the hook (project, project-local, user) or null, and base is "tracker tip" when registered, "sequential fallback" when not; zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks, specialistNotice } (#3129; specialistNotice, #3501, is the one specialist notice of the run for the parent to report — a string when no specialist was loaded, else null — on both schedules) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE. With --concurrent on a selection (--issues, several #N, or --status — #3681) the batch envelope carries concurrencyPlan and concurrentRun at its top level, built the same way over the workable members (ok, not redirected) in selection order with **Depends on:** edges among them; concurrencyPlan adds tracker (the current branch\'s tracker, the merge-back target) and excluded ([{ number, reason, detail }]: reason "redirect" with the command, or the member\'s error code such as TREE_IN_BATCH). Its concurrentRun.steps open with one selection-review-gate step (step "2b-ii", members in plan order) before any spawn, naming the replan --stopped command for a member the gate stops or excludes. Its state files are keyed <tracker>-selection (.tmp-concurrent-<tracker>-selection.json and the .tmp-run-/.tmp-rolling- files), never a tracker-rooted run\'s. Fewer than two workable members warns CONCURRENT_IGNORED, no open tracker warns CONCURRENT_NO_TRACKER — no plan either way, the members run sequentially; a **Depends on:** cycle among members fails the batch with DEPENDENCY_CYCLE; --nonstop stays NONSTOP_IGNORED, so the schedule is "groups".'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, unreviewed (true only under --unreviewed, #3537: the Review-State Gate is waived for this run; absent otherwise), type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason, worktreeBase { registered, layer, base } } — worktreeBase is present in both cases (#3568): layer names the first settings layer registering the hook (project, project-local, user) or null, and base is "tracker tip" when registered, "sequential fallback" when not; zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks, specialistNotice } (#3129; specialistNotice, #3501, is the one specialist notice of the run for the parent to report — a string when no specialist was loaded, else null — on both schedules) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE. A .tmp-wt-* worktree on a wt/* branch that holds nothing — its branch an ancestor of the tracker HEAD, its tree clean, untracked files included — is reclaimable whether the ledger records it or not (#3714): warned RECLAIMABLE_WORKTREE instead of UNMATCHED_WORKTREE or KEPT_WORKTREE, never held, listed in concurrencyPlan.reclaimable ([{ branch, worktreePath, issue, recorded }]), and offered by a reclaim-offer step ahead of every spawn whose accept command is merge-back-gate.js reclaim (decline runs nothing). With --concurrent on a selection (--issues, several #N, or --status — #3681) the batch envelope carries concurrencyPlan and concurrentRun at its top level, built the same way over the workable members (ok, not redirected) in selection order with **Depends on:** edges among them; concurrencyPlan adds tracker (the current branch\'s tracker, the merge-back target) and excluded ([{ number, reason, detail }]: reason "redirect" with the command, or the member\'s error code such as TREE_IN_BATCH). Its concurrentRun.steps open with one selection-review-gate step (step "2b-ii", members in plan order) before any spawn, naming the replan --stopped command for a member the gate stops or excludes. Its state files are keyed <tracker>-selection (.tmp-concurrent-<tracker>-selection.json and the .tmp-run-/.tmp-rolling- files), never a tracker-rooted run\'s. Fewer than two workable members warns CONCURRENT_IGNORED, no open tracker warns CONCURRENT_NO_TRACKER — no plan either way, the members run sequentially; a **Depends on:** cycle among members fails the batch with DEPENDENCY_CYCLE; --nonstop stays NONSTOP_IGNORED, so the schedule is "groups".'
     },
     gates: {
       name: 'gates',
@@ -2589,6 +2634,7 @@ module.exports = {
   buildAcSectionWarning,
   buildOptions,
   buildConcurrentRun,
+  readWorktreeStatesFromGit,
   resolveRunBriefContext,
   decideStartMove,
   parseProcessingOrder,

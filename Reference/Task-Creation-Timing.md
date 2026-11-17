@@ -1,5 +1,5 @@
 # Task Creation Timing for Routed Commands
-**Version:** v0.119.0
+**Version:** v0.120.0
 **Source:** Reference/Task-Creation-Timing.md
 **Purpose:** Prevent orphaned tasks when commands have routing decisions.
 ## Availability Precondition
@@ -15,7 +15,7 @@ Why, how it was measured, and why nothing enforces it: `{frameworkPath}/Referenc
 | `/review-issue` | `context.redirect`, `earlyExit` | review-proposal, review-prd, review-test-plan |
 | `/resolve-review` | `earlyExit`, `context.type` | No findings -> early exit; epic -> expand children first, epic last, per-member tasks in one batch after the epic's preamble |
 | `/review-proposal`, `/review-prd`, `/review-test-plan` | `earlyExit` | Already reviewed -> early exit |
-| `/work` | `context.type` | Epic, standard, branch tracker |
+| `/work` | `context.redirect`, `context.type` | `test-plan` → /review-test-plan, `qa-required` → /qa (single issue); epic, standard, branch tracker |
 | `/done` | `context.issue.labels`, `discovery` | Epic detection, discovery mode |
 Commands without routing decisions (`/bug`, `/enhancement`, `/proposal`) may create all tasks upfront. § Emission applies to every command.
 ## Post-Compaction Behavior

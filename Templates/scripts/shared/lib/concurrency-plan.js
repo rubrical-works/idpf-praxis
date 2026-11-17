@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * concurrency-plan.js — Disjointness over declared scope, and the
  * `--concurrent` grouping plan (#3126, PRD Concurrent-Work Story 1.9)
  *
@@ -736,6 +736,49 @@ function matchKeptWorktrees({ worktrees = [], ledger = null, members = [] } = {}
   return { kept, unmatched, ledgerFound: !!ledger };
 }
 
+/** A framework member worktree: a `.tmp-wt-*` directory on a `wt/*` branch. */
+function isFrameworkWorktree(w) {
+  if (!w || !w.branch || !w.branch.startsWith('wt/')) return false;
+  const base = String(w.worktreePath || '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop();
+  return base.startsWith('.tmp-wt-');
+}
+
+/**
+ * Which framework worktrees hold nothing and may be offered for teardown
+ * (#3714). A cancelled run leaves worktrees no ledger records; a denied
+ * teardown leaves merged members the ledger does. Both are reclaimable when
+ * the branch is fully on the tracker (`merged`: its HEAD is an ancestor of
+ * the tracker tip — an empty worktree at the tip qualifies) AND the tree is
+ * clean, uncommitted and untracked files included. A worktree with commits
+ * off the tracker or a dirty tree — a held member of a halted run among them —
+ * is never offered; neither is one whose state could not be read. Pure: the
+ * caller reads `states` (keyed by worktree path) from git.
+ *
+ * @param {{worktrees: Array<{worktreePath: string, branch: string|null}>,
+ *   ledger: {members?: Array<{issue: number, branch: string, worktreePath: string}>}|null,
+ *   states: Object<string, {merged: boolean, clean: boolean}>}} input
+ * @returns {{reclaimable: Array<{branch: string, worktreePath: string, issue: number|null, recorded: boolean}>,
+ *   notReclaimable: Array<{branch: string, worktreePath: string}>}}
+ */
+function classifyReclaim({ worktrees = [], ledger = null, states = {} } = {}) {
+  const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const stateOf = new Map(Object.entries(states || {}).map(([k, v]) => [norm(k), v]));
+  const entries = (ledger && Array.isArray(ledger.members)) ? ledger.members : [];
+  const reclaimable = [];
+  const notReclaimable = [];
+  for (const w of worktrees) {
+    if (!isFrameworkWorktree(w)) continue;
+    const s = stateOf.get(norm(w.worktreePath));
+    if (!s || s.merged !== true || s.clean !== true) {
+      notReclaimable.push({ branch: w.branch, worktreePath: w.worktreePath });
+      continue;
+    }
+    const e = entries.find((x) => x.branch === w.branch || norm(x.worktreePath) === norm(w.worktreePath));
+    reclaimable.push({ branch: w.branch, worktreePath: w.worktreePath, issue: e ? e.issue : null, recorded: !!e });
+  }
+  return { reclaimable, notReclaimable };
+}
+
 module.exports = {
   DEFAULT_MAX_AGENTS,
   PROTECTED_PATHS_FILE,
@@ -746,6 +789,8 @@ module.exports = {
   classifyResume,
   parseWorktreeList,
   matchKeptWorktrees,
+  isFrameworkWorktree,
+  classifyReclaim,
   WORKTREE_HOOK_SCRIPT,
   settingsRegisterWorktreeHook,
   resolveWorktreeHook,

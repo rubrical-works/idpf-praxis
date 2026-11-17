@@ -65,82 +65,103 @@
     },
     {
       "order": 11,
+      "subject": "Step 3-i: Review-State and Pre-Work Status Gates",
+      "condition": "always",
+      "scope": "per-sub-issue",
+      "description": "Before the first AC: classify the review state (reviewing first when unreviewed) and confirm in_progress. Its own task so a compaction resume can tell whether the gates already ran; each decision is also recorded in the announce ledger."
+    },
+    {
+      "order": 12,
+      "subject": "Step 3-ii: Peer Announcement — event 1",
+      "condition": "always",
+      "scope": "per-sub-issue",
+      "description": "After both gates pass, announce work-started through announce.js. Its own task so a resume does not re-announce a start already dispatched, or skip one never sent."
+    },
+    {
+      "order": 13,
+      "subject": "Step 3-iii: Per-AC Cycle",
+      "condition": "always",
+      "scope": "per-sub-issue",
+      "description": "TDD cycle per AC, scoped tests, commit per deliverable. Its own task, with the runtime AC subtasks under it, so the resume point is the first incomplete AC rather than the whole of Step 3."
+    },
+    {
+      "order": 14,
       "subject": "Step 3b: Documentation Judgment",
       "condition": "always",
       "scope": "per-sub-issue",
       "description": "Construction/ artifacts (Design-Decisions, Tech-Debt) capture the why behind the work. Re-read doc-templates.json from disk — never paraphrase from memory."
     },
     {
-      "order": 12,
+      "order": 15,
       "subject": "Step 4: Verify Acceptance Criteria",
       "condition": "always",
       "scope": "per-sub-issue",
       "description": "Ground in file state — re-read each modified file before evaluating its corresponding AC. Prevents batch fatigue hallucination where pattern-matching against memory replaces reading the file."
     },
     {
-      "order": 13,
+      "order": 16,
       "subject": "Step 4a: QA Extraction",
       "condition": "created at Phase 2; executes only if unverifiable ACs found",
       "scope": "per-sub-issue",
       "description": "Unverifiable ACs become QA sub-issues automatically. Re-read .claude/scripts/shared/lib/qa-config.json from disk."
     },
     {
-      "order": 14,
+      "order": 17,
       "subject": "Step 4b: Force-Move Prohibition Check",
       "condition": "always",
       "scope": "per-sub-issue",
       "description": "Story/enhancement issues you implemented this session must NOT be force-moved past unchecked AC boxes. Detection: label + this-session-in-progress check."
     },
     {
-      "order": 15,
+      "order": 18,
       "subject": "Step 4d: Minimize Touched Command Specs",
       "condition": "dev-repo AND any commit in this sub-issue touched CommandsSrc/",
       "scope": "per-sub-issue",
       "description": "CommandsSrc/ edits require LLM-driven minimization to regenerate Stage 1 + Stage 2 outputs. Generative task — must invoke /fw-minimize-files via Skill tool, not a script call. Synced source + outputs is the contract the deploy pipeline depends on."
     },
     {
-      "order": 16,
+      "order": 19,
       "subject": "Step 4e: Register Added Helpers",
       "condition": "dev-repo AND any commit in this sub-issue added a new .js under .claude/scripts/shared/[lib/]",
       "scope": "per-sub-issue",
       "description": "Helper registration is off-band from helper creation — framework-manifest.json deploymentFiles.scripts.[shared|lib].files + constants.js INSTALLED_FILES_MANIFEST.scripts[Lib].files + @framework-script JSDoc tag all require parallel updates or CI (deployment-parity.test.js, manifest-validation.test.js) fails. Detection: git diff --name-status filtered by 'A' + path prefix .claude/scripts/shared/."
     },
     {
-      "order": 17,
+      "order": 20,
       "subject": "Step 4c: Log Changed Files to Issue Body",
       "condition": "always",
       "scope": "per-sub-issue",
       "description": "Issue body becomes a permanent record of what shipped. Useful for post-release audits. Runs after Steps 4d/4e, so their commits are logged and gated in the same pass (#3261); re-run it after a Step 4f fix commit, before Step 5."
     },
     {
-      "order": 18,
+      "order": 21,
       "subject": "Step 4f: Full-Suite Regression Sweep",
       "condition": "always",
       "scope": "per-sub-issue-unless-nonstop",
       "description": "Scoped per-AC tests can miss cross-cutting regressions; the full sweep at the sub-issue boundary catches them before in_review. Runs once per sub-issue after Step 4c (which follows 4d/4e), before Step 5. Failure blocks the in_review move; commit a fix, re-run, and once it passes re-run Step 4c before Step 5 (#3261). Under --nonstop on an epic or branch tracker it runs once at the end of the run instead, over every processed sub-issue's changed files, after the last sub-issue and before Step 6a; sub-issues move to in_review on their scoped tests, and a failure halts the run with attribution while they stay in_review. Mark this task completed after that sweep."
     },
     {
-      "order": 19,
+      "order": 22,
       "subject": "Step 4g: Independent Review",
       "condition": "always (a skip — --no-review, workReview, no commits, skill absent — is reported, never a pass)",
-      "description": "An unanchored diff-review of the issue's own Refs #N commits through merge-back-gate.js review-plan/review-outcome, before the in_review move (#3457). Runs once per sub-issue, under --nonstop too; a first fail buys one fix cycle, a second halts before Step 5.",
-      "scope": "per-sub-issue"
+      "scope": "per-sub-issue",
+      "description": "An unanchored diff-review of the issue's own Refs #N commits through merge-back-gate.js review-plan/review-outcome, before the in_review move (#3457). Runs once per sub-issue, under --nonstop too; a first fail buys one fix cycle, a second halts before Step 5."
     },
     {
-      "order": 20,
+      "order": 23,
       "subject": "Step 5: Move to in_review",
       "condition": "always",
       "scope": "per-sub-issue",
       "description": "Status transition is the handoff to user review."
     },
     {
-      "order": 21,
+      "order": 24,
       "subject": "Step 6: STOP Boundary — Cleanup, Report, Wait",
       "condition": "always",
       "description": "Three-part sequence executed in order: (1) prune invocation-owned tasks from the task list (Step/AC/Sub-issue/preamble prefixes; leave user tasks intact), (2) emit the in_review report, (3) STOP and wait for 'done'. Cleanup is part of the STOP sequence, not a sibling step after it — the task list is the runtime step machine and accumulated tasks pollute compaction recovery if left across the STOP boundary. Hard stop after part (3); closing an issue is irreversible from the workflow's perspective."
     },
     {
-      "order": 22,
+      "order": 25,
       "subject": "Step 6a: Post-Nonstop Audit",
       "condition": "--nonstop",
       "description": "Six audits before the epic moves to in_review, over the processed set (--processed): commit density (warning), AC checkbox (blocking), test coverage (advisory, skill-delegated — invoke tdd-refactor-coverage-audit per sub-issue; degrades gracefully when the skill is absent), announcement pairing (warning; with groups.work on, a processed child with no events is a finding), doc judgment (warning) and Review-State Gate decisions (warning). An end-of-run Step 4f sweep failure blocks beside the AC checkbox audit (#3271). Body lives in {frameworkPath}/Reference/work-execution-conditional.md, loaded at Step 1d."

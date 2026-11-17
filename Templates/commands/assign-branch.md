@@ -1,5 +1,5 @@
 ---
-version: "v0.119.0"
+version: "v0.120.0"
 allowed-tools: Bash, AskUserQuestion
 description: Assign issues to a branch or remove them from it, using the IDPF framework.
 argument-hint: "[#issue...] [--branch <name>] [--add-ready] [--remove] [--confirm-remove] [--help]"

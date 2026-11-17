@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *

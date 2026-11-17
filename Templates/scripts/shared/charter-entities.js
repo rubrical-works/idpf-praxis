@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * @description Charter entity extraction and derived counts (#3420, #3644).
  * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
  * memory and counts each Key Entities row against disk when asked. Nothing

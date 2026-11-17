@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -1238,7 +1238,36 @@ function memberTasks({ plan = {}, members = {}, rolling = false } = {}) {
   return tasks;
 }
 
+/**
+ * The reclaim offer (#3714): worktrees a cancelled or teardown-denied run left
+ * that hold nothing — on the tracker, clean — offered for teardown before any
+ * member is spawned. Offer, never force: `accept` is the one command an
+ * accepted offer runs (`merge-back-gate.js reclaim`, which re-checks each
+ * worktree, tears it down through worktree-teardown.js, deletes its branch
+ * with `git branch -d` and clears a recorded member's scratch); `decline` is
+ * null — declining runs nothing. Pure.
+ *
+ * @param {Array<{branch: string, worktreePath: string, issue: number|null}>} reclaimable
+ * @returns {object|null} null when nothing is reclaimable
+ */
+function reclaimOfferStep(reclaimable) {
+  const list = Array.isArray(reclaimable) ? reclaimable : [];
+  if (list.length === 0) return null;
+  const spec = (w) => `${w.issue ? `${w.issue}:` : ''}${w.branch}:${w.worktreePath}`;
+  // Quoted: a project root may contain a space, which would split the path.
+  const accept = `${GATE_CLI} reclaim ${list.map((w) => `--reclaim "${spec(w)}"`).join(' ')}`;
+  const named = list.map((w) => `${w.worktreePath} (${w.branch}${w.issue ? `, #${w.issue}` : ', unrecorded'})`).join('; ');
+  return {
+    kind: 'reclaim-offer', step: 'reclaim', owner: 'parent', scope: 'run',
+    worktrees: list.map((w) => ({ ...w })),
+    accept,
+    decline: null,
+    instruction: `Before any member is spawned, offer teardown of ${list.length} reclaimable worktree${list.length === 1 ? '' : 's'} — on the tracker with a clean tree, so each holds nothing: ${named}. Ask once with AskUserQuestion, naming them; make sure no other session's run is using one. Accepting runs \`${accept}\` and reports each result — removed (its wt/* branch deleted, a recorded member's gate files and brief cleared), or refused, kept or halted with its reason. Declining runs nothing: every worktree, branch and file stays as it is.`,
+  };
+}
+
 module.exports = {
+  reclaimOfferStep,
   PARENT_STEPS,
   MEMBER_STEPS,
   STEP_INSTRUCTION_EXEMPT,

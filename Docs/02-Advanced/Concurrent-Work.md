@@ -1,6 +1,6 @@
 # Concurrent Work Within One Epic
 
-**Version:** v0.119.0
+**Version:** v0.120.0
 **Topic:** How `/work --concurrent` runs several sub-issues of one epic or branch tracker at the same time without giving up the gates, the attribution or the audit trail a sequential run leaves behind.
 
 ---
@@ -128,6 +128,8 @@ module.exports = [
 **Dependency resolution.** Member worktrees carry no `node_modules` of their own; Node resolves `require()` by walking upward from the worktree to the project root, which is why a worktree under the root works without an install. That is Node-style upward lookup, not a general property — other ecosystems (a Python virtualenv, a Go module cache, a .NET restore) need their own provisioning inside the worktree, which the `WorktreeCreate` hook does not do for them (#3123 AC7).
 
 Never remove a worktree with `rm -rf` or `git worktree remove --force`: a hub link inside it would be followed. The framework's teardown unlinks first, verifies, then removes without `--force`; a halt keeps every worktree for inspection and `git worktree list` shows them.
+
+**Leftover worktrees that hold nothing are offered for cleanup.** At the start of a `--concurrent` run, a `.tmp-wt-*` worktree whose `wt/*` branch is already contained in the tracker tip and whose tree is clean (untracked files included) is reported as `RECLAIMABLE_WORKTREE` — typically an empty one left by a cancelled run, or a member that merged back but whose teardown was denied. Before any agent starts (after a selection's review gate), `/work` asks once, naming each such worktree. Accepting re-checks each one, tears it down through the framework's teardown, deletes its `wt/*` branch with `git branch -d` (a refused delete is reported as a failure) and clears any gate files the run kept for that member; declining changes nothing. A worktree with commits not on the tracker, or with uncommitted changes — such as a held member of a halted run — is never offered: it is still reported for you to inspect, and a worktree no run recorded is still warned `UNMATCHED_WORKTREE`.
 
 ---
 

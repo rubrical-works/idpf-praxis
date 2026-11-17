@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * @description Run the /work Step 2b-ii tree-wide review gate chain as one call: enumerate an epic or branch tracker's children with the bare `gh pmu sub list N --json`, read each child's board status, classify every member through review-state.js, and hand the resolved set to branch-review-gate.js for the decision. `--record-bypass` writes the decline note into an epic body (never a branch tracker's). Every gh call goes through one injectable exec so the whole chain is testable against a mocked board (#2826).
  * @checksum sha256:placeholder
  *
@@ -55,7 +55,7 @@ const fs = require('fs');
 const { execTimed } = require('./lib/exec.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const reviewState = require('./review-state.js');
-const { evaluateBranchReviewGate } = require('./lib/branch-review-gate.js');
+const { evaluateBranchReviewGate, NOT_PROCESSABLE } = require('./lib/branch-review-gate.js');
 
 /** The line the decline note begins with; its presence is what makes a second decline a no-op. */
 const BYPASS_NOTE_MARKER = '**Review gate bypassed:**';
@@ -172,7 +172,16 @@ function fetchBoardStatus(number, execFn, warnings) {
  * back as `indeterminate` with its own warning, which is relayed verbatim so
  * the caller can see why a member did not prompt.
  */
-function classifyMember(number, execFn, warnings, relabeled) {
+function classifyMember(number, execFn, warnings, relabeled, { relabel = true } = {}) {
+  // A member the run will not process — in `--skipped`, or In review or Done
+  // on the board — is classified read-only (#3715): it is outside the set this
+  // gate decides, and a relabel there turns a Ready review into `pending` with
+  // no finding behind it and nothing in the run report naming it.
+  if (!relabel) {
+    const ro = reviewState.run(number, execFn);
+    for (const w of ro.warnings || []) warnings.push(w);
+    return ro.state;
+  }
   // A stale member is relabeled reviewed → pending where it is found (#3632),
   // by review-state's one shared rule (#3666): runAndRelabel fetches, then
   // classifyAndRelabel. A failed swap is already among its warnings and leaves
@@ -189,14 +198,26 @@ function classifyMember(number, execFn, warnings, relabeled) {
  * own board status is not a processability question (an epic mid-run is
  * `in_progress` by construction) and the call would be one more read per run.
  */
-function resolveMember({ number, title = '', isTracker = false, fetchStatus = true }, execFn, warnings, relabeled) {
+function resolveMember({ number, title = '', isTracker = false, fetchStatus = true, skipSet = new Set() }, execFn, warnings, relabeled) {
+  const boardStatus = fetchStatus ? fetchBoardStatus(number, execFn, warnings) : null;
+  const finished = NOT_PROCESSABLE.includes(String(boardStatus || '').trim().toLowerCase());
   return {
     number,
     title,
-    boardStatus: fetchStatus ? fetchBoardStatus(number, execFn, warnings) : null,
-    state: classifyMember(number, execFn, warnings, relabeled),
+    boardStatus,
+    state: classifyMember(number, execFn, warnings, relabeled, { relabel: !skipSet.has(number) && !finished }),
     isTracker
   };
+}
+
+/** The numbers in `--skipped`, which arrives as `[{number, status}]` or bare numbers. */
+function skippedSet(skipped) {
+  const out = new Set();
+  for (const e of Array.isArray(skipped) ? skipped : []) {
+    if (typeof e === 'number') out.add(e);
+    else if (e && typeof e.number === 'number') out.add(e.number);
+  }
+  return out;
 }
 
 /**
@@ -211,10 +232,11 @@ function evaluateTree(args, execFn) {
   const members = [];
   const closed = [];
   const relabeled = [];
+  const skipSet = skippedSet(args.skipped);
 
   if (selection) {
     for (const number of args.issues) {
-      members.push(resolveMember({ number }, execFn, warnings, relabeled));
+      members.push(resolveMember({ number, skipSet }, execFn, warnings, relabeled));
     }
   } else {
     let children;
@@ -250,7 +272,7 @@ function evaluateTree(args, execFn) {
         closed.push(child.number);
         continue;
       }
-      members.push(resolveMember({ number: child.number, title: child.title }, execFn, warnings, relabeled));
+      members.push(resolveMember({ number: child.number, title: child.title, skipSet }, execFn, warnings, relabeled));
     }
   }
 

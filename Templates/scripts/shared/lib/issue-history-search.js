@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * issue-history-search.js
  *
  * Issue-history retrieval for the prior-art sweep (#3631). Replaces the

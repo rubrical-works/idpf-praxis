@@ -101,6 +101,8 @@ What to do:
 3. Resume with `/work <epic> --nonstop --concurrent` (or without `--nonstop` to get a STOP after each group). Stories already `in_review` are skipped, a story whose fix cycle was interrupted is re-read from its worktree and re-reviewed once, and the plan is rebuilt from the same inputs.
 4. If you would rather abandon a story's branch, say so: the assistant tears the worktree down through the framework's own teardown, which unlinks before removing and refuses anything that is not a framework worktree. Never `rm -rf` a worktree — a hub link inside it would be followed.
 
+A leftover `.tmp-wt-*` worktree that holds nothing — its branch already merged into the tracker and its tree clean, such as an empty one from a cancelled run — is reported as `RECLAIMABLE_WORKTREE` when the next `--concurrent` run starts, and `/work` offers to tear it down and delete its branch before any agent starts. Declining leaves it in place. A worktree that still holds work, like the failed story's above, is never offered.
+
 ---
 
 ## The Partial Completion Trap

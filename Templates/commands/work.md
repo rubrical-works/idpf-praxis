@@ -1,20 +1,16 @@
 ---
-version: "v0.119.0"
+version: "v0.120.0"
 description: Start working on issues with validation and automatic task extraction, using the IDPF framework.
 argument-hint: "#issue [#issue...] [--assign] [--nonstop] [--wait] [--no-review] [--unreviewed] [--concurrent [--agents N]] | --status <status> [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
+
 <!-- MANAGED -->
 # /work
-`/work` command spec (hybrid shell + auto-loaded execution rule). Execution logic lives in `.claude/rules/08-work-execution.md` and auto-loads once per session.
-
----
+`/work` command spec (hybrid shell + auto-loaded execution rule). Shell = arguments, prerequisites, error handling; execution logic lives in `.claude/rules/08-work-execution.md` (auto-loaded once per session) and is never restated here.
 ## Prerequisites
-- `gh pmu` extension installed
-- `.gh-pmu.json` configured in repository root
-- Issue assigned to a branch (use `/assign-branch` first, or pass `--assign`)
-
----
+- `gh pmu` extension installed; `.gh-pmu.json` in repository root
+- Issue assigned to a branch (`/assign-branch` first, or `--assign`)
 ## Arguments
 | Argument | Required | Description |
 |----------|----------|-------------|
@@ -24,90 +20,43 @@ copyright: "Rubrical Works (c) 2026"
 | `--assign` | No | Assign issue(s) to current branch before starting work |
 | `--nonstop` | No | Epic/branch tracker: skip per-sub-issue STOP, process all to `in_review` continuously |
 | `--wait` | No | Wait for pending CI to pass before starting work |
-| `--reopen` | No | Work an issue already In review or Done: move it back to `in_progress`. Without it `/work` refuses it (`ALREADY_IN_REVIEW`/`ALREADY_DONE`), moving nothing |
-| `--concurrent` | No | Epic, branch tracker, or a selection of two or more issues (`#A #B`, `--issues`, `--status`): run file-disjoint members at once in framework-owned worktrees, grouped by the `**Depends on:**` graph, each merged back through the Merge-Back Review Gate (see Concurrent Mode) |
-| `--agents N` | No | Cap on agents of any kind at once — implementers, reviewers and fix cycles share it — and on unit-test concurrency (default 3; requires `--concurrent`) |
-| `--no-review` | No | Skip the independent review this run, in every mode: Step 4g's review, or the gate's Tier 3 under `--concurrent` (Tiers 1–2 still run); the skip is reported |
+| `--reopen` | No | Move an In review/Done issue back to `in_progress`; without it `/work` refuses it (`ALREADY_IN_REVIEW`/`ALREADY_DONE`) |
+| `--concurrent` | No | Epic, branch tracker, or selection of 2+ issues: run file-disjoint members at once in framework worktrees, grouped by the `**Depends on:**` graph, merged back via the Merge-Back Review Gate (rule 08 Step 6) |
+| `--agents N` | No | Cap on agents of any kind at once (implementers, reviewers, fix cycles) and on unit-test concurrency (default 3; requires `--concurrent` — `--agents` alone is reported as ignored, never an error) |
+| `--no-review` | No | Skip the independent review this run, in every mode: Step 4g's review, or the Merge-Back Review Gate's Tier 3 under `--concurrent` (Tiers 1–2 still run); the skip is reported |
 | `--unreviewed` | No | Waive the clean-review requirement this run (never reviewed, changed since review, or unresolved findings); each waived issue and its state is reported. Not `--no-review` |
 | `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
 
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js work`, report its output, and STOP.
 
 **Retired forms:** `all in <status>` is no longer accepted — reject it with a message naming `--status`, and do nothing else; `work-preamble.js` refuses it the same way. The `work all in <status>` trigger phrase is unchanged and routes to `/work --status <status>`.
-
----
 ## Execution Logic
-
-Follow `.claude/rules/08-work-execution.md` (auto-loaded at session start). That rule defines:
+Rule 08 defines:
 - Phase 1 / Phase 2 task creation
 - Step 1: preamble via `work-preamble.js`
-- Steps 0, 1, 1d, 1a, 1b, 1c, 2, 2a, 2b, 2b-ii, 2c, 3, 3b, 4, 4a, 4b, 4d, 4e, 4c, 4f, 4g, 5, 6, 6a
+- Steps 1, 1d, 1a, 1b, 1c, 2, 2a, 2b, 2b-ii, 2c, 3, 3-i, 3-ii, 3-iii, 3b, 4, 4a, 4b, 4d, 4e, 4c, 4f, 4g, 5, 6, 6a
 - Review-State / Pre-Work Status / Sub-Agent Review / commit-per-deliverable gates
 - Autonomous epic & branch tracker processing (default vs. `--nonstop`)
 - STOP boundary and post-STOP cleanup
 
----
-## Redirect: test-plan approval issues (#2784)
-**Trigger: the preamble envelope sets `context.redirect`.** `work-preamble.js` sets it for a label in `WORK_REDIRECT_LABELS` — `test-plan`, and `qa-required` for a single issue only (under an epic or branch tracker a `qa-required` sub-issue is skipped with a pointer at Step 2b, never redirected mid-loop). The label-to-command map is `.claude/rules/08-work-execution.md` Step 1, not restated here. `test-plan` takes its command from `issue-type.js`'s shared label map, so `/work` and `/review-issue` cannot route one label to different places.
-**On a redirect, immediately after Step 1:** mark the Phase 1 preamble task `completed`; create **no** Phase 2 tasks (Behavior Rule 1 in `08-work-execution.md` covers it); invoke the mapped command via the Skill tool, deriving the name from `context.redirect` with the leading `/` stripped — never a hardcoded string — `Skill(<context.redirect without the leading />, "#$ISSUE")`; **STOP.**
-**Report the label and the command,** so a user who typed `/work` and got a review is not left guessing — `#$ISSUE carries the `<label>` label — handing off to <context.redirect>.` For `test-plan`:
+Where each behavior is defined:
+| Topic | Owning step |
+|---|---|
+| Redirect | Rule 08 Step 1 (`context.redirect`: `test-plan` → `/review-test-plan`; `qa-required` → `/qa` for a single issue). The report format is below |
+| Branch sync | Rule 08 Step 1c (`branch-sync-check.js`, once per invocation) |
+| Concurrent mode | Rule 08 Steps 2c, 3 and 6; `{frameworkPath}/Reference/work-execution-conditional.md` §§ Step 2c, Step 3 and Step 6 |
+| Review-State Gate | Rule 08 Step 3, per issue; Step 2b-ii up front for an epic, a branch tracker under `--nonstop`, or a selection of two or more issues |
+| Peer announcements | Rule 08 Step 3 (event 1, after both gates) and Step 6 (event 2, inside the STOP sequence) |
+
+**Redirect report** (format left to this shell by rule 08 Step 1): `#$ISSUE carries the `<label>` label — handing off to <context.redirect>.` For `test-plan`:
 ```
 #$ISSUE carries the `test-plan` label — handing off to /review-test-plan.
 The six approval gates are evaluated by its Step 5a rollup, not worked as acceptance criteria.
 ```
-**Neither Step 3 gate runs for a redirected issue,** and the preamble makes no status move: the command that owns the work owns the transition.
-**Why redirect rather than evaluate here.** The six gates in `.claude/metadata/test-plan-approval-gates.json` are already computed, confirmed and checked off by `/review-test-plan` Step 5a — both surfaces, by declared text rather than index. Classified `standard`, `/work` loaded them as `autoTask` items; none matches a QA-extraction keyword, so Step 4a extracted no QA sub-issue and Step 4b saw six unchecked ACs with no marker. A second evaluator here would give one checklist two implementations.
-**`prd` and `proposal` do not redirect,** deliberately: they share the fall-through and the map, but neither `/review-prd` nor `/review-proposal` has an equivalent rollup to land in, so a redirect there hands the user a review with nothing to confirm. A separate decision, not folded in.
-
----
-## Branch Sync
-After the preamble and before the first commit, `/work` runs `branch-sync-check.js` once per invocation — the same check the startup hook runs, at the moment integrating another developer's push is cheapest (#2635):
-- **Behind, no conflicting paths** → offer `git pull --ff-only`; declining leaves the tree untouched.
-- **Behind, conflicting paths present** → no pull offer; report the paths, ask whether to continue or stop.
-- **Diverged** → report and STOP — the previous `/done` did not push, or another session committed here. Recovery: `/sync-branch`, or `/done` on the issue still in review.
-- **Ahead, up-to-date, no upstream** → no action.
-
-Full table and rationale: `.claude/rules/08-work-execution.md` Step 1c. Fast-forward and rebase both run through `.claude/scripts/shared/lib/rebase-guard.js`, the guard `/done` Step 2 and `/sync-branch` share (#3014).
-
----
-## Concurrent Mode (#3117)
-`--concurrent` on an epic, branch tracker or selection of two or more issues runs file-disjoint members at once. The preamble's `concurrencyPlan` groups members with met `**Depends on:**` edges, at most `--agents N` per group in dependency-layer order; two members with overlapping declared scope never share a group — the later is **deferred** to a later group, and its dependents wait for it. Declared `concurrency` accumulator and derived-artifact paths are not overlap. Only undeclared scope, an always-protected path another member also matches under the same pattern (`scope-drift-protected-paths.json`), or an unreadable or unmet dependency falls to a **sequential tail** worked as standard `/work`. The parent owns every gate, announcement, merge-back and status move; a member agent owns only Step 3 in its worktree (`concurrent-orchestration.js`), created by the framework's `WorktreeCreate` hook at the tracker tip — Claude Code's `worktree.baseRef` does not apply; the preamble verifies the hook (#3224) and reports its decision in `concurrencyPlan.worktreeBase`. Before merge-back the **Merge-Back Review Gate** (`merge-back-gate.js`) runs Tiers 1–3; `--no-review` skips Tier 3, reported. One fix cycle per fail; a second fail halts, worktree kept.
-| Mode | STOP cadence | Reporting |
-|---|---|---|
-| `--concurrent` | **One STOP per group** after merge-back, every member `in_review`; tail STOPs per member | Group report, then per member |
-| `--nonstop --concurrent` | **No STOP**, **no fixed groups** — rolling schedule: a member starts when a slot frees and every member it depends on has merged back; the parent advances it with `concurrent-orchestration.js next-steps`; a lone runnable member, none running, is worked inline — no worktree, agent or merge-back | Per member as it reaches `in_review`; nonstop summary last, repeating any leftover-worktree report |
-**On a selection (#3681):** workable members (not redirected or refused) are planned the same way, merging back onto the current branch's tracker; the batch envelope carries `concurrencyPlan` and `concurrentRun`. Step 2b-ii's selection review gate runs first, before any spawn. Redirected and `TREE_IN_BATCH` members are listed in `concurrencyPlan.excluded`, never spawned. Run files are keyed `<tracker>-selection`, never colliding with a tracker-rooted run. Fewer than two workable members → `CONCURRENT_IGNORED`; no open tracker → `CONCURRENT_NO_TRACKER`; either way the members run sequentially. `--nonstop` stays ignored on a selection.
-**Fallback:** a plan with **zero groups** runs exactly as sequential and says why. **Default unchanged:** without `--concurrent` nothing here applies; `--agents` alone is reported as ignored; `--no-review` alone skips the Step 4g review. Rules: `.claude/rules/08-work-execution.md` Steps 2c, 3, 6a; `Reference/work-execution-conditional.md` §§ 2c, 6a.
-
----
-## Review-State Gate
-Before the first acceptance criterion of an issue is worked — and independently for each sub-issue of an epic or branch tracker — `/work` classifies that issue's review state via `review-state.js` and acts — a clean review is required (#3537):
-- **Never reviewed, or changed since review** → `/work` reviews it first through one `idpf-issue-reviewer` agent, always `--step-wise`, no status move. Reviewed → continue; findings → as below; a failed review stops the issue.
-- **Reviewed, findings unresolved** → STOP, offer `/resolve-review #N`; accepting hands off, status unchanged. `--nonstop` **halts on `findings-pending`** per its existing failure semantics.
-- **Reviewed clean, or indeterminate** → proceed without prompting.
-
-**Declining STOPs too** — only `--unreviewed` waives the requirement, naming each waived issue and its state. The review writes the `**Files to modify:**` declaration scope drift and `--concurrent` planning depend on. Full state matrix and rationale: `.claude/rules/08-work-execution.md` Step 3.
-
-**On an epic (#2748), a branch tracker under `--nonstop` (#2749), or a non-epic selection of two or more issues (#2750), a second gate runs first.** For a selection — `/work 44 47 68`, `/work --status ready` — every member is classified up front and one question covers the whole selection, which may also drop the members with unresolved findings, reporting which were dropped. A single issue (`/work 44`) is the degenerate selection: Step 3's resident gate classifies it the same way, so no second gate runs and no drop is offered — it would proceed with nothing. Step 2b-ii classifies **every** issue the run will process — the processable set, with `in_review`/`done` members and the preamble's `skipped[]` removed — before the first sub-issue is worked, reviews the unreviewed members first, saying how many before any review runs, then raises **one** question for those with unresolved findings: resolve now (hand off to `/resolve-review`), stop, or — a selection only — exclude them. The per-sub-issue gate above still runs and does not re-prompt for a member Step 2b-ii already decided; it remains the safeguard for a sub-issue added after that step ran, or a run resumed after compaction into the middle of the set. Every other shape — epic, batch, single issue, branch tracker without `--nonstop` — is unchanged. Decision helper: `.claude/scripts/shared/lib/branch-review-gate.js`.
-
----
-## Peer Announcements (#2662)
-Tells other sessions in this working directory when `/work` starts and finishes an issue, so two sessions committing into one tree is visible rather than surfacing as misattributed `Refs #N` commits.
-| Event | When |
-|---|---|
-| 1 — started | Step 3, **after** both gates pass; per **sub-issue** under `--nonstop` |
-| 2 — completed | Inside the Step 6 STOP sequence, after the report and **before** the STOP directive where one exists, carrying the `Refs #N` commits; per **sub-issue** under `--nonstop` as each reaches `in_review`, not once at the end |
-Peers from `peers-check.js`, payloads from `peer-announce.js`, delivery via `SendMessage` — the helper composes and resolves recipients, it cannot send.
-**Every event 1 is matched by exactly one event 2 (#2699).** Both fire per sub-issue under `--nonstop`, so a peer holding an event 1 with no event 2 knows one is still due rather than lost. Event 2's cadence is a **workflow moment**, not a position relative to the STOP directive `--nonstop` removes for all but the final sub-issue — anchoring to the STOP alone leaves two conforming readings a receiver cannot tell apart, and `issues: [$ISSUE]` stays singular by design.
-**Gated by project config (#2702).** Resolve **once per invocation**, before event 1, and reuse for event 2: `node .claude/scripts/shared/lib/cross-session-config.js`. `groups.work` false → events 1 and 2 **emit nothing** — no `SendMessage`, **no skip notice**; both Step 3 gates still run and Step 6 still prunes, reports and STOPs. `notices` false → dispatch unchanged, the dispatch-caveat and skip-reason lines not printed. Absent object, or any omitted key → enabled.
-**Read the resolver; never re-derive the default inline** — six consumers share the absence rule, and a second copy in each is how they drift: five would get the `discovery: false` implication right and the sixth would not.
-**A disabled group prints no per-invocation skip notice, deliberately.** The suppression is the user's own choice, so restating it every run is the noise the setting exists to remove. Discoverability lives in the startup `Peers:` row and `/x-session-config` instead — the deliberate exception to *a gate that quietly does nothing is indistinguishable from one that passed*, since here the silence **is** the requested behavior.
-**Advisory, never a gate.** Fire-and-forget; availability is **per peer** (skips named by reason — no messaging address, or registered but not tool-reachable — stated once for the set, never abandoned wholesale); a throwing helper does not abort the enclosing sequence; event 2 with zero commits says nothing landed. Rules: `.claude/rules/08-work-execution.md` Steps 3 and 6.
-**Dispatched is not delivered (#2674).** `shouldSend` and a successful `SendMessage` mean *dispatched*, never received: the receiver may hold, decline, or let it expire, none of it visible here. Detection is closed — no permission-mode field in the registry or `ListAgents` — and closed on principle: recipient disposition belongs to each **send**, resolved after the fact, not to the **peer** found at scan time. The notice states the dispatch and names the three outcomes it cannot tell apart.
----
+Reasoning per directive: `{frameworkPath}/Reference/work-execution-rationale.md`, under the step it explains.
 ## Error Handling
-**STOP errors:** Issue not found, no branch assignment, `gh pmu` failure, `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch`), `BRANCH_TRACKER_NOT_ASSIGNABLE` (target is a branch tracker — assign sub-issues instead).
-**Non-blocking:** PRD tracker not found, framework file missing, no acceptance criteria, issue already in_progress.
+**STOP errors** (preamble `ok: false`; nothing moved): issue not found, no branch assignment (`NO_BRANCH`), `gh pmu` failure, `ALREADY_ASSIGNED` (different branch), `WORKSTREAM_CONFLICT` (use `/assign-branch`), `BRANCH_TRACKER_NOT_ASSIGNABLE` (assign sub-issues instead), `ALREADY_IN_REVIEW`/`ALREADY_DONE` (pass `--reopen`), `SUB_ISSUE_LOAD_FAILED` (sub-issue enumeration failed), `ALL_MEMBERS_FAILED` (every batch member failed — report each error).
+**Member skipped, run continues:** `TREE_IN_BATCH` (epic or branch tracker in a batch — run it alone); `SUB_ISSUE_STATUS_UNREADABLE` (sub-issue board status unreadable — halts under `--nonstop`).
+**Non-blocking warnings:** `CONCURRENT_IGNORED`, `CONCURRENT_NO_TRACKER` (no plan; members run sequentially), `NO_ACCEPTANCE_CRITERIA_SECTION`, `EMPTY_ACCEPTANCE_CRITERIA_SECTION` (reported, issue worked as one unit), PRD tracker not found, framework file missing, issue already in_progress.
 
----
 **End of /work Command**

@@ -1,5 +1,5 @@
 # Project Artifact Lifecycle
-**Version:** 1.1
+**Version:** 1.2
 **Source:** Reference/Project-Artifact-Lifecycle.md
 **Purpose:** Classify the project-level artifacts PHM-bootstrapped projects accumulate, so contributors know what to commit, what to gitignore, and who writes each file (#2382). Originally the four root-level files; now also project-owned files under `.claude/` a project owner authors by hand (#2506) — the commit-vs-ignore question is identical.
 ## Classification Table
@@ -8,7 +8,7 @@
 | `.gh-pmu.json` | ~4 KB | PHM (bootstrap) + `gh pmu init` | Per-project `gh pmu` config: board number, field mappings (Status/Priority), release tracks, framework declaration, repository coordinates | **Commit** | Canonical project config. Teammates cloning must get the same board integration; without it `/work`, `/done`, issue creation, and every gh pmu command break. |
 | `.gh-pmu.checksum` | ~66 B | `gh pmu` CLI | SHA-256 digest of `.gh-pmu.json` — tamper-evident seal detecting out-of-band edits | **Commit** | Recomputable, so it *could* be ignored; committing promotes the seal to an audit trail. Git history shows when config was rotated, and a checksum mismatch on a teammate's clone signals an edit made outside `gh pmu`. |
 | `.gh-pmu-integrity-check.json` | ~40 B | `gh pmu` CLI | `{"lastCheck": ISO8601}` — when integrity verification last ran | **Ignore** (recommended) | Marginal call. Overwritten every check; committing creates noisy diffs, ignoring loses audit value. CI and local machines write different timestamps and generate merge churn. |
-| `.idpf-update-check.json` | ~45 B | `idpf` hub update-checker (PHM-side, runtime) | `{"lastCheck": ISO8601}` — when the project last polled the hub for updates | **Ignore** | Pure runtime state, rewritten by every `idpf --check-updates`. Not useful across contributors. |
+| `.idpf-update-check.json` | ~45 B | `.claude/scripts/shared/upgrade-check.js`, run at session start by `.claude/hooks/startup-hook.js` (`buildChecks()`), skipped when self-hosted. Whether Praxis Hub Manager also writes it is unverified — px-manager not checked | `{"lastCheck": ISO8601}` — the 14-day throttle for the third-party dependency upgrade check (ecosystems from root manifest files, versions from package registries). `lastCheck` does not advance when nothing could be checked, so the next session retries (#3050) | **Ignore** | Pure runtime state, rewritten by each machine's session start at most every 14 days. Not useful across contributors. |
 | `.claude/x-session.json` | ~300 B | Praxis Hub Manager (at install, with the quiet install default) + `/x-session-config` (every invocation) | The eight cross-session peer-messaging levers. Schema: `.claude/metadata/x-session.schema.json` | **Ignore** | Per-developer preference, not team policy: how loud inbound announcements are, and whether this machine's sessions discover peers, belong to one developer's setup. Moved here from `framework-config.json` (#2774) for exactly that reason — that file is committed team state six other commands rewrite, so a personal setting either landed in the team's history or became a permanent local diff. PHM regenerates it at install and merges newly-added levers in, so ignoring loses nothing, and an absent file resolves to fully enabled rather than an error. |
 | `.claude/.overwatch/.overwatch.json` (root `.overwatch.json` before #2957, read as fallback one release) | ~200 B | `/overwatch` — written at loop start, removed at loop stop **only when its `pid` matches the running process** (#2769) | `{pid, procStart, startedAt, cwd, version}`; its presence sets every session in this directory to quiet inbound-announcement narration | **Ignore** | Per-machine runtime state: the `pid` is only interpretable on the machine that wrote it and `cwd` scopes it to one checkout, so a committed marker would tell every clone a monitor is live that never was. Abnormal termination leaves it behind by design — no crash hook — and the next monitor's start-time overwrite is the recovery. |
 | `.claude/.overwatch/config.json` | ~30 B | `/overwatch --on`/`--off` (#2957); never a monitor run | Per-project `/overwatch` defaults, today `autoCreate`. Schema: `.claude/metadata/overwatch-config.schema.json` | **Ignore** (whole `.claude/.overwatch/`) | Per-developer preference like `.claude/x-session.json`; absent file resolves to defaults, so a fresh clone needs nothing. One directory rule covers config and marker. PHM's generated `.gitignore` needs a px-manager change; until then deployed projects show the directory untracked. |
@@ -34,10 +34,15 @@ PHM's project-bootstrap template should include:
 .idpf-update-check.json
 .gh-pmu-integrity-check.json
 
+# Per-developer cross-session messaging preferences (#2774); PHM regenerates
+# it at install, and an absent file resolves to fully enabled.
+.claude/x-session.json
+
 # Tag-push authorization marker — created and deleted within a single
 # /prepare-release or /prepare-beta run. Committing one would authorize
 # every clone permanently, which is the inverse of the gate it feeds.
-.claude/x-session.json
+.release-authorized
+
 # /overwatch directory (#2957): marker + config.json, per-developer.
 .claude/.overwatch/
 # Pre-move root marker (#2957), one release: readPresence falls back to it.
@@ -45,7 +50,6 @@ PHM's project-bootstrap template should include:
 # Its pre-rename name (#2928), retained for one release: readPresence still
 # falls back to it, so a monitor started before the rename leaves this name.
 .hall-monitor.json
-.release-authorized
 ```
 It must **NOT** include `.gh-pmu.json` or `.gh-pmu.checksum` — canonical config + seal, both committed.
 It must also **NOT** ignore `.claude/Organizational-Expectations.md`. A blanket `.claude/` rule would swallow it, so any `.claude/`-wide pattern needs an explicit negation (`!.claude/Organizational-Expectations.md`) — hand-authored, never regenerated, so ignoring it costs the rules and their history.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.119.0
+ * @framework-script 0.120.0
  * @description Session-start charter health check (#3423, #3644, #3647). Derives the Key Entities counts with charter-entities.js and checks charter shape and the legacy shape with charter-shape.js; the row carries a one-line derived count summary and names /charter --refresh on a shape finding or a legacy shape. Read-only and advisory: never writes CHARTER.md, never prompts.
  * @checksum sha256:placeholder
  *
