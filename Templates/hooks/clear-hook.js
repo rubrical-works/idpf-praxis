@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * Clear Hook — SessionStart:clear
  * Fires when the user runs /clear in Claude Code.
  *
@@ -23,12 +23,14 @@ try {
 
 /** Same contract as startup-hook.js: never block the session, always answer. */
 function fallback(err) {
-  heartbeat.fail(err);
-  process.stderr.write(`clear-hook failed: ${err.message}\n`);
+  // #3698: a non-Error throw or rejection (a string, undefined) has no .message.
+  const msg = err && err.message ? err.message : String(err);
+  heartbeat.fail(err instanceof Error ? err : new Error(msg));
+  process.stderr.write(`clear-hook failed: ${msg}\n`);
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
-      additionalContext: `Session Initialized\n- Error: clear-hook failed: ${err.message}`,
+      additionalContext: `Session Initialized\n- Error: clear-hook failed: ${msg}`,
     },
   }) + '\n');
   process.exitCode = 0;

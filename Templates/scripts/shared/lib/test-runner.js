@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -31,7 +31,7 @@
 
 'use strict';
 
-const { sanitizeShellArg } = require('./shell-safe.js');
+const { quoteShellPath } = require('./shell-safe.js');
 
 /** Scoping modes that ship in v1. `filter` is reserved and deliberately absent. */
 const SCOPING_MODES = Object.freeze(['path', 'package', 'none', 'custom']);
@@ -40,11 +40,12 @@ const SCOPING_MODES = Object.freeze(['path', 'package', 'none', 'custom']);
 const DEFAULT_SCOPING_MODE = 'none';
 
 /**
- * Vendored glob matcher, the same one `scope-drift-check.js` carries (#2418).
+ * Vendored glob matcher, derived from the one `scope-drift-check.js` carries
+ * (#2418); the two differ since #3407 fixed the segment handling here.
  *
- * Supports literals, `*` within a segment and `**` across segments — the whole
- * pattern set a `match[]` entry uses. Brace expansion, negation and `?` are
- * NOT supported; if a caller ever needs them, switch this helper rather than
+ * Supports literals, `*` and `?` within a segment and `**` across whole
+ * segments — the whole pattern set a `match[]` entry uses. Brace expansion and
+ * negation are NOT supported; if a caller ever needs them, switch this helper rather than
  * re-introducing an external dependency that cannot resolve from the hub.
  */
 function globToRegex(pattern) {
@@ -54,13 +55,23 @@ function globToRegex(pattern) {
     const c = pattern[i];
     if (c === '*') {
       if (pattern[i + 1] === '*') {
-        re += '.*';
         i += 2;
-        if (pattern[i] === '/') i++;
+        if (pattern[i] === '/') {
+          // Zero or more WHOLE segments (#3407): `.*` here would also match
+          // a prefix of the next segment's name.
+          re += '(?:.*/)?';
+          i++;
+        } else {
+          re += '.*';
+        }
       } else {
         re += '[^/]*';
         i++;
       }
+    } else if (c === '?') {
+      // One character within a segment — never a regex quantifier (#3407).
+      re += '[^/]';
+      i++;
     } else if ('.+^$()|{}[]\\'.includes(c)) {
       re += '\\' + c;
       i++;
@@ -233,30 +244,39 @@ const PLACEHOLDER_RE = /\{(?:files|dir|stem|package)\}/;
 /**
  * Expand `{files}`, `{dir}`, `{stem}` and `{package}` into a command string.
  *
- * Every substituted value goes through `sanitizeShellArg`, which REJECTS shell
+ * Every substituted value goes through `quoteShellPath`, which REJECTS shell
  * metacharacters rather than escaping them. A rejection the caller can see and
  * report beats a command that merely looks composed — the value comes from
  * `git diff` output, which is attacker-influenced in any repository that takes
- * contributions.
+ * contributions. A path carrying only a space, brackets or parentheses
+ * (`pages/[id].tsx`, `docs/My Notes.md`, `app/(auth)/page.tsx`) is legitimate
+ * and is emitted as one double-quoted word (#3742, #3749);
+ * `sanitizeShellArg`'s strict set rejected it.
  *
- * @throws {Error} From `sanitizeShellArg`, when a value is not shell-safe.
+ * A placeholder is validated only when the template uses it (#3750): an unused
+ * `{stem}` of `.gitignore` (empty) or `~tmp` must not reject a `{files}`-only
+ * run whose every substituted value is safe.
+ *
+ * @throws {Error} From `quoteShellPath`, when a used value is not shell-safe.
  */
 function expandPlaceholders(template, files) {
   const first = files[0] || '';
   const slash = first.lastIndexOf('/');
-  const dir = slash === -1 ? '.' : first.slice(0, slash);
   const base = first.slice(slash + 1);
   const dot = base.lastIndexOf('.');
-  const stem = dot === -1 ? base : base.slice(0, dot);
-  const pkg = first.split('/')[0] || '';
 
-  const safeFiles = files.map((f) => sanitizeShellArg(f, 'changed file')).join(' ');
+  const values = {
+    files: () => files.map((f) => quoteShellPath(f, 'changed file')).join(' '),
+    dir: () => quoteShellPath(slash === -1 ? '.' : first.slice(0, slash), 'directory'),
+    stem: () => quoteShellPath(dot === -1 ? base : base.slice(0, dot), 'stem'),
+    package: () => quoteShellPath(first.split('/')[0] || '', 'package'),
+  };
 
-  return template
-    .replace(/\{files\}/g, safeFiles)
-    .replace(/\{dir\}/g, sanitizeShellArg(dir, 'directory'))
-    .replace(/\{stem\}/g, sanitizeShellArg(stem, 'stem'))
-    .replace(/\{package\}/g, sanitizeShellArg(pkg, 'package'));
+  const cache = {};
+  return template.replace(/\{(files|dir|stem|package)\}/g, (_m, name) => {
+    if (!(name in cache)) cache[name] = values[name]();
+    return cache[name];
+  });
 }
 
 /**
@@ -335,8 +355,12 @@ function resolveSuites(cwd = process.cwd()) {
  * @returns {{runs: object[], collapsed: {suiteIds: string[]}[], unmatched: string[],
  *            reason: string|null, notRun: {suiteId: string, reason: string}[],
  *            warnings: string[]}} `notRun` names each suite a placeholder
- *   expansion error skipped (#3175). `reason` is
- *   `'no-suites-matched'` when nothing ran — which must stay distinguishable
+ *   expansion error skipped (#3175), and each selector-declaring suite
+ *   whose selector fell back with no touched file to fall back to (#3407).
+ *   `reason` is
+ *   `'no-suites-matched'` when nothing ran (`'matched-suites-skipped'` when
+ *   the matched suites were all skipped by `onScoped`, `'selected-none'` when
+ *   a selector reached a suite and chose no test) — which must stay distinguishable
  *   from "everything passed", since both are an empty result and conflating
  *   them is a silent skip. Suites whose scoped command and `cwd` match share
  *   one run carrying every id and the union of their files (#3025).
@@ -413,13 +437,26 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
         continue;
       }
       if (picked.none) {
+        // #3407: the selector read every changed file and chose nothing —
+        // the files were matched, just not to any test.
+        changedFiles.forEach((f) => matchedAny.add(f));
         selectedNone.push(picked.none);
         continue;
       }
       fallback = picked.fallback;
     }
 
-    if (files.length === 0) continue;
+    if (files.length === 0) {
+      // #3407: a selector reached this suite and then fell back, but there is
+      // no touched tree to fall back to — so nothing ran. Named, since every
+      // fallback is reported; a suite with no selector was simply not reached.
+      if (fallback && declaresSelector(suite) && changedFiles.length > 0) {
+        const reason = `${fallback.report}, and none of the changed files match this suite`;
+        notRun.push({ suiteId: suite.id, reason });
+        warnings.push(`Suite "${suite.id}" was not run: ${reason}`);
+      }
+      continue;
+    }
     files.forEach((f) => matchedAny.add(f));
 
     let command;
@@ -457,9 +494,11 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
     collapsed: merged.collapsed,
     unmatched: changedFiles.filter((f) => !matchedAny.has(f)),
     // #3300: suites that matched but were all skipped by onScoped are not
-    // "no suites matched" — the two have different remedies.
+    // "no suites matched" — the two have different remedies. #3407: nor are
+    // suites whose selector chose nothing; that is 'selected-none'.
     reason: runs.length === 0 && changedFiles.length > 0
-      ? (scopedSkipped.length > 0 ? 'matched-suites-skipped' : 'no-suites-matched')
+      ? (scopedSkipped.length > 0 ? 'matched-suites-skipped'
+        : selectedNone.length > 0 ? 'selected-none' : 'no-suites-matched')
       : null,
     deferred,
     invalid,

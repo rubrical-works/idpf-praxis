@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description File bug and enhancement issues on the local board — one entry
  * or a batch — with the standard template (#3049). The single creation path
  * for `/bug`, `/enhancement` and `/code-review` Step 8.
@@ -54,6 +54,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileTimed } = require('./lib/exec.js');
 const { resolveAssignee } = require('./lib/gh-pmu-config.js');
+const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 
 /** Gates `/bug` and `/enhancement` Step 2a apply by judgment; never applied here. */
 const JUDGED_GATES = ['verificationGate', 'phaseFeasibility'];
@@ -288,7 +289,12 @@ function applyScopeAdditions(body, { files = [], acceptanceCriteria = [] } = {})
   const lines = String(body).replace(/\r\n/g, '\n').split('\n');
   const text = lines.join('\n');
   const newPaths = files.filter((p) => typeof p === 'string' && p.trim() && !text.includes(`\`${p.trim()}\``)).map((p) => p.trim());
-  const newAcs = acceptanceCriteria.filter((a) => typeof a === 'string' && a.trim() && !text.includes(a.trim())).map((a) => `- [ ] ${a.trim()}`);
+  // A criterion is already present only as a checklist line of its own, gate
+  // annotation aside — never as a substring of other body text (#3518).
+  // Checklist lines come from the one shared scanner, never a second regex.
+  const existingAcs = new Set(scanCheckboxes(text)
+    .map((box) => String(box.text || '').replace(/\s*→\s*(?:QA|GATE):.*$/, '').trim()));
+  const newAcs = acceptanceCriteria.filter((a) => typeof a === 'string' && a.trim() && !existingAcs.has(a.trim())).map((a) => `- [ ] ${a.trim()}`);
   // `toItems(block)` renders the additions in the existing block's own format,
   // so the declaration stays one contiguous block (#3523).
   const insert = (headings, count, toItems, heading) => {
@@ -315,16 +321,24 @@ function applyScopeAdditions(body, { files = [], acceptanceCriteria = [] } = {})
  * then — only for confirmed scope additions — edit its body through the
  * body-file flow (`gh pmu view --body-stdout` → edit → `gh pmu edit -F`).
  * Never files an issue. NEVER THROWS.
+ *
+ * The two writes fail independently (#3519): a result that failed after the
+ * comment went up carries `commentPosted: true`, and a retry given
+ * `prior.commentPosted` skips the comment and redoes only the body edit.
  */
-function updateOne(entry, result, d) {
+function updateOne(entry, result, d, prior) {
   const n = entry.duplicateOf.issue;
   const suffix = d.randomSuffix();
   const commentFile = path.join(d.cwd, `.tmp-dup-comment-${suffix}.md`);
   const bodyFile = path.join(d.cwd, `.tmp-${n}-${suffix}.md`);
   const out = { ...result, action: 'updated', number: n, bodyUpdated: false };
+  let commentPosted = Boolean(prior && prior.commentPosted);
   try {
-    d.writeFile(commentFile, renderDuplicateComment(entry));
-    d.runGh(['issue', 'comment', String(n), '-F', commentFile]);
+    if (!commentPosted) {
+      d.writeFile(commentFile, renderDuplicateComment(entry));
+      d.runGh(['issue', 'comment', String(n), '-F', commentFile]);
+      commentPosted = true;
+    }
     const { files, acceptanceCriteria } = entry.duplicateOf;
     if ((Array.isArray(files) && files.length) || (Array.isArray(acceptanceCriteria) && acceptanceCriteria.length)) {
       const current = String(d.runGh(['pmu', 'view', String(n), '--body-stdout']));
@@ -337,7 +351,9 @@ function updateOne(entry, result, d) {
     }
     return { ...out, ok: true };
   } catch (err) {
-    return { ...result, number: null, error: firstLine(err) };
+    const failed = { ...result, number: null, error: firstLine(err) };
+    if (commentPosted) failed.commentPosted = true;
+    return failed;
   } finally {
     for (const f of [commentFile, bodyFile]) {
       try { if (fs.existsSync(f)) d.removeFile(f); } catch { /* best effort; the startup sweep collects .tmp-* */ }
@@ -350,7 +366,7 @@ function updateOne(entry, result, d) {
  * An unparseable success is still a success: the issue exists, so it is
  * reported with a warning rather than as a failure that invites a re-file.
  */
-function fileOne(entry, index, d) {
+function fileOne(entry, index, d, prior) {
   const result = {
     index,
     type: entry && entry.type,
@@ -363,7 +379,7 @@ function fileOne(entry, index, d) {
   };
   const problem = validateEntry(entry);
   if (problem) return { ...result, error: problem };
-  if (entry.duplicateOf !== undefined) return updateOne(entry, result, d);
+  if (entry.duplicateOf !== undefined) return updateOne(entry, result, d, prior);
 
   const suffix = d.randomSuffix();
   const bodyFile = path.join(d.cwd, `.tmp-${entry.type}-body-${suffix}.md`);
@@ -441,7 +457,7 @@ function fileQueue(manifestPath, deps) {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
   const results = [];
   for (const item of queuedEntries(manifest)) {
-    const r = { id: item.id, ...fileOne(item.entry, results.length, d) };
+    const r = { id: item.id, ...fileOne(item.entry, results.length, d, { commentPosted: item.commentPosted === true }) };
     if (r.ok) {
       // A confirmed duplicate updated an existing issue (#3516): `updated`, not
       // `filed`, so the report and the record can list it separately.
@@ -450,6 +466,7 @@ function fileQueue(manifestPath, deps) {
       item.issue = r.number;
       item[updated ? 'updatedAt' : 'filedAt'] = new Date().toISOString();
       delete item.error;
+      delete item.commentPosted;
       const src = item.entry && item.entry.source && item.entry.source.file;
       const fileEntry = src && manifest.files ? manifest.files[src] : null;
       if (fileEntry && r.number !== null) {
@@ -459,6 +476,8 @@ function fileQueue(manifestPath, deps) {
     } else {
       item.status = 'failed';
       item.error = r.error;
+      // The duplicate's comment is on the issue; the retry must not post it again (#3519).
+      if (r.commentPosted) item.commentPosted = true;
     }
     writeManifest(manifestPath, manifest);
     results.push(r);

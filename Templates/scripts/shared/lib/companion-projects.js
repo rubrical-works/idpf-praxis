@@ -17,7 +17,7 @@
  * projects from the hub framework root, so an undeclared external `require`
  * would throw MODULE_NOT_FOUND at module load.
  *
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * Refs #2665
  */
 
@@ -155,13 +155,12 @@ function locateTable(content) {
 }
 
 /**
- * Parse the Companion Repositories table into entries.
- * @returns {{entries: Array<object>, sectionFound: boolean}}
- *
- * `sectionFound` is reported separately from an empty `entries` array for the
- * same reason `/work` Step 3 distinguishes NO_ACCEPTANCE_CRITERIA_SECTION from
- * EMPTY_ACCEPTANCE_CRITERIA_SECTION: "no table" and "an empty table" have
- * different causes, and collapsing them hides one of them.
+ * Read one Direction value -- a table cell or a caller-supplied field.
+ * Case and surrounding whitespace are not part of the value.
+ * @returns {{direction: string, directionDeclared: boolean, unrecognized: string|null}}
+ *          A recognized value is returned in lower case, declared. Anything
+ *          else reads as DEFAULT_DIRECTION, undeclared; `unrecognized` is the
+ *          trimmed text when there was any, and null for an empty value.
  */
 function parseDirection(cell) {
   const raw = String(cell == null ? '' : cell).trim();
@@ -170,6 +169,17 @@ function parseDirection(cell) {
   return { direction: DEFAULT_DIRECTION, directionDeclared: false, unrecognized: raw || null };
 }
 
+/**
+ * Parse the Companion Repositories table into entries.
+ * @returns {{entries: Array<object>, sectionFound: boolean, warnings: string[]}}
+ *          `warnings` names each row whose Direction cell is not a recognized
+ *          value; that row's entry also carries the cell as `directionRaw`.
+ *
+ * `sectionFound` is reported separately from an empty `entries` array for the
+ * same reason `/work` Step 3 distinguishes NO_ACCEPTANCE_CRITERIA_SECTION from
+ * EMPTY_ACCEPTANCE_CRITERIA_SECTION: "no table" and "an empty table" have
+ * different causes, and collapsing them hides one of them.
+ */
 function parseCompanionTable(content) {
   const t = locateTable(String(content || ''));
   if (!t) return { entries: [], sectionFound: false, warnings: [] };
@@ -180,6 +190,7 @@ function parseCompanionTable(content) {
     const cells = splitTableRow(t.lines[i]);
     const name = (cells[0] || '').replace(/`/g, '').trim();
     if (!name) continue;
+    const { direction, directionDeclared, unrecognized } = parseDirection(cells[7]);
     entries.push({
       name,
       responsibility: cells[1] || '',
@@ -188,9 +199,13 @@ function parseCompanionTable(content) {
       board: cells[4] || '',
       searchable: parseBool(cells[5]),
       fileIssues: parseBool(cells[6]),
-      ...(({ direction, directionDeclared }) => ({ direction, directionDeclared }))(parseDirection(cells[7]))
+      direction,
+      directionDeclared,
+      // Only an unrecognized cell carries its raw text (#3432): the rewriters
+      // re-render every row from these entries, and without it a value nobody
+      // touched was written back as an empty cell.
+      ...(unrecognized ? { directionRaw: unrecognized } : {})
     });
-    const { unrecognized } = parseDirection(cells[7]);
     if (unrecognized) {
       warnings.push(`Companion ${cells[3] || name}: Direction "${unrecognized}" is not one of ${DIRECTIONS.join(', ')}; read as ${DEFAULT_DIRECTION}.`);
     }
@@ -255,8 +270,13 @@ function validateCompanion(entry) {
   if (board && !BOARD_PATTERN.test(board)) {
     errors.push(`Board must be owner/number (got "${board}").`);
   }
-  if (e.direction !== undefined && e.direction !== null && e.direction !== '' && !DIRECTIONS.includes(e.direction)) {
-    errors.push(`Direction must be one of ${DIRECTIONS.join(', ')} (got "${e.direction}").`);
+  // Same reading as the table parser (#3432): case and surrounding space are
+  // not part of the value, so 'Upstream' is accepted here as it is there.
+  // Whitespace-only is blank, and blank is valid (#3735): it means "no
+  // direction", which registerCompanion writes as an empty, undeclared cell.
+  const unrecognizedDirection = parseDirection(e.direction).unrecognized;
+  if (unrecognizedDirection) {
+    errors.push(`Direction must be one of ${DIRECTIONS.join(', ')} (got "${unrecognizedDirection}").`);
   }
   return { ok: errors.length === 0, errors };
 }
@@ -271,8 +291,9 @@ function renderRow(entry) {
     formatBool(entry.searchable),
     formatBool(entry.fileIssues),
     // An undeclared direction stays an empty cell: writing the default would
-    // turn it into a choice nobody made (#3422).
-    entry.directionDeclared === false ? '' : (entry.direction || '')
+    // turn it into a choice nobody made (#3422). An unrecognized cell is
+    // written back as it was read rather than erased (#3432).
+    entry.directionDeclared === false ? (entry.directionRaw || '') : (entry.direction || '')
   ].map(escapeCell).join(' | ') + ' |';
 }
 
@@ -341,6 +362,16 @@ function detectLineEnding(source) {
  * one identity, after which every consumer keyed on `repo` silently depends on
  * iteration order.
  *
+ * Direction on an update (#3735) -- the key's presence is the signal:
+ * - absent (`entry` has no `direction` key, or it is `undefined`): the
+ *   existing row's Direction cell is left as it was -- declared, empty or
+ *   unrecognized;
+ * - explicit blank (`''`, or whitespace only): the cell is cleared, so the
+ *   row reads back as `bidirectional`, undeclared. This is how a declared
+ *   direction is withdrawn; it also clears an unrecognized cell;
+ * - a recognized value: replaces the cell, stored in lower case.
+ * On a new row, absent and blank both write an empty cell.
+ *
  * @returns {{ok: boolean, content: string, action: 'added'|'updated'|null, errors: string[]}}
  *          `content` is returned unchanged on failure; the caller persists it.
  */
@@ -375,7 +406,26 @@ function registerCompanion(content, entry) {
   const merged = existingIdx === -1
     ? { ...entry, repo: targetRepo }
     : { ...entries[existingIdx], ...entry, repo: targetRepo };
-  if (entry.direction) merged.directionDeclared = true;
+  // The raw cell is parser state, never caller input: a caller-supplied value
+  // must not reach the table unvalidated, and a declared direction replaces it.
+  const given = parseDirection(entry.direction);     // validated above: declared or empty
+  // Absent leaves the row alone; an explicit blank clears it (#3735).
+  const directionGiven = Object.prototype.hasOwnProperty.call(entry, 'direction') && entry.direction !== undefined;
+  const leaveAlone = existingIdx !== -1 && !directionGiven;
+  const keptRaw = leaveAlone ? entries[existingIdx].directionRaw : null;
+  delete merged.directionRaw;
+  if (keptRaw) merged.directionRaw = keptRaw;
+  if (given.directionDeclared) {
+    merged.direction = given.direction;              // stored in lower case (#3432)
+    merged.directionDeclared = true;
+  } else if (leaveAlone) {
+    merged.direction = entries[existingIdx].direction;
+    merged.directionDeclared = entries[existingIdx].directionDeclared;
+  } else {
+    // Blank on any row, or absent on a new row: an empty, undeclared cell.
+    delete merged.direction;
+    merged.directionDeclared = false;
+  }
 
   const next = entries.slice();
   if (existingIdx === -1) next.push(merged); else next[existingIdx] = merged;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Check for third-party framework/dependency upgrades. Detects ecosystems from manifest files at the project root (never from CHARTER.md or Tech-Stack.md prose), queries package registries for latest versions, and throttles checks to once every 14 days via .idpf-update-check.json. Non-blocking; used during session startup.
  * @checksum sha256:placeholder
  *
@@ -21,6 +21,13 @@ const { validateNpmPackageName } = require('./lib/input-validation.js');
 
 const COOLDOWN_DAYS = 14;
 const CONFIG_FILE = '.idpf-update-check.json';
+
+// Per-lookup timeout, and the overall budget for all lookups. The budget sits
+// under startup-hook.js's 40 s final kill stage so the check reports instead
+// of being killed (#3050). Declared here, ahead of queryLatestVersion's read,
+// so no reference precedes the declaration (#3706).
+const LOOKUP_TIMEOUT_MS = 10000;
+const LOOKUP_BUDGET_MS = 25000;
 
 /**
  * Ecosystem registry — maps ecosystem names to their dependency files
@@ -266,15 +273,13 @@ function parsePackageJson(content) {
   try {
     const pkg = JSON.parse(content);
 
-    if (pkg.dependencies) {
-      for (const [name, version] of Object.entries(pkg.dependencies)) {
-        deps.push({ name, installed: stripVersionPrefix(version), type: 'dependency' });
-      }
-    }
-
-    if (pkg.devDependencies) {
-      for (const [name, version] of Object.entries(pkg.devDependencies)) {
-        deps.push({ name, installed: stripVersionPrefix(version), type: 'devDependency' });
+    for (const [section, type] of [['dependencies', 'dependency'], ['devDependencies', 'devDependency']]) {
+      if (!pkg[section] || typeof pkg[section] !== 'object') continue;
+      for (const [name, version] of Object.entries(pkg[section])) {
+        // A non-string value is skipped per entry; it used to throw and the
+        // single catch dropped every dependency in the file (#3706).
+        if (typeof version !== 'string') continue;
+        deps.push({ name, installed: stripVersionPrefix(version), type });
       }
     }
   } catch {
@@ -375,12 +380,6 @@ function queryLatestVersion(registry, packageName, env = {}) {
   }
 }
 
-// Per-lookup timeout, and the overall budget for all lookups. The budget sits
-// under startup-hook.js's 40 s final kill stage so the check reports instead
-// of being killed (#3050).
-const LOOKUP_TIMEOUT_MS = 10000;
-const LOOKUP_BUDGET_MS = 25000;
-
 /**
  * Query every dependency under one overall time budget.
  * Lookups run in order; each gets min(LOOKUP_TIMEOUT_MS, budget remaining),
@@ -430,6 +429,8 @@ function checkDependencies(items, {
  * dependency (no parser or registry for them), nothing was queried, so the
  * message says so rather than "up-to-date" (#3672); lastCheck still advances,
  * as for no ecosystems at all — the answer cannot change until the manifests do.
+ * When some ecosystems contributed items and others none, the message names
+ * the ones that contributed none as not checked (#3706).
  * @param {{checked: object[], outdated: object[], failed: object[], ecosystems?: string[]}} result
  * @returns {{message: string, writeLastCheck: boolean, failed: object[]}}
  */
@@ -453,6 +454,11 @@ function summarizeCheck({ checked, outdated, failed, ecosystems = [] }) {
     ? `Found ${outdated.length} outdated package(s)`
     : (failed.length > 0 ? `No outdated package(s) among ${checked.length} checked` : 'All packages are up-to-date')];
   if (failed.length > 0) parts.push(`${failed.length} package(s) could not be checked`);
+  // A mixed project (package.json + Cargo.toml) must name the ecosystem that
+  // contributed no dependency, not let the others' result stand for it (#3706).
+  const contributed = new Set([...checked, ...failed].map(d => d.ecosystem));
+  const unchecked = ecosystems.filter(e => !contributed.has(e));
+  if (unchecked.length > 0) parts.push(`${unchecked.length} ecosystem(s) not checked: ${unchecked.join(', ')}`);
   return { message: parts.join('; '), writeLastCheck: true, failed: failedList };
 }
 

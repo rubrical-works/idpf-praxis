@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description The /code-review reviewer split (#3167). Exports partitionQueue(), mergeShardResults() and validateShardResult(): shard the Step 4 queue for at most N reviewer Agents, then validate and merge their results with the parent assigning every --diff tag.
  * @checksum sha256:placeholder
  *
@@ -183,6 +183,18 @@ function mergeShardResults(shards, results, options = {}) {
 }
 
 /**
+ * One changed-range span as `[start, end]`. Accepts both shapes a caller can
+ * hold (#3747): the `{ start, end }` objects `branch-diff.js`
+ * `changedFilesSinceBase()` returns, and `[start, end]` pairs. The single
+ * normalization point, so the standalone and release-gate paths cannot diverge.
+ * @param {{start: number, end: number}|number[]} span
+ * @returns {number[]}
+ */
+function toSpan(span) {
+  return Array.isArray(span) ? span : [span.start, span.end];
+}
+
+/**
  * The Agent request for one shard reviewer (#3504): the read-only
  * `idpf-code-reviewer` type, with the parent's not-found fallback step
  * (#3500). The prompt carries facts only — the shard's files, the Step 5
@@ -194,7 +206,9 @@ function mergeShardResults(shards, results, options = {}) {
  * @param {string[]} input.files        the shard's files, from partitionQueue()
  * @param {string} input.criteria       the Step 5 criteria, as text
  * @param {string} [input.domainQuestions] Step 5c questions, under --with
- * @param {Object<string, number[][]>} [input.ranges] path → [[start, end], …], under --diff
+ * @param {Object<string, Array<{start: number, end: number}|number[]>>} [input.ranges] path → spans, under
+ *   --diff; each span is a `{ start, end }` object (the `changedFilesSinceBase()` shape) or a
+ *   `[start, end]` pair, both rendered as `start-end` (#3747)
  * @param {string} [input.root]          project root for the brief context (default: cwd)
  * @returns {{description: string, subagent_type: string, prompt: string, onNotFound?: string}}
  */
@@ -226,7 +240,7 @@ function buildShardRequest({ shard, files = [], criteria = '', domainQuestions =
   if (ranges && Object.keys(ranges).length > 0) {
     lines.push('', '### Changed ranges (context only)');
     for (const [file, spans] of Object.entries(ranges)) {
-      lines.push(`- \`${file}\`: ${(spans || []).map(([a, b]) => `${a}-${b}`).join(', ')}`);
+      lines.push(`- \`${file}\`: ${(spans || []).map(toSpan).map(([a, b]) => `${a}-${b}`).join(', ')}`);
     }
   }
   lines.push('', '### Result', `Reply with ONE JSON document valid against ${SCHEMA_REL}: filesReviewed[] and findings[] — and nothing else.`);
@@ -249,7 +263,8 @@ function buildShardRequest({ shard, files = [], criteria = '', domainQuestions =
  * @param {object} input
  * @param {{ref: string, sha: string}} input.base  the base the gate resolved
  * @param {Array<{path: string, lines: number}>} input.files  the Step 4 queue
- * @param {Object<string, number[][]>} [input.ranges]  path → [[start, end], …]
+ * @param {Object<string, Array<{start: number, end: number}|number[]>>} [input.ranges]  path → spans, either
+ *   shape buildShardRequest() accepts
  * @param {string} input.criteria  the Step 5 criteria, as text
  * @param {string} [input.domainQuestions]  Step 5c questions
  * @param {string[]} [input.skills]  skill file paths, relative to root
@@ -265,9 +280,8 @@ function buildGateShardRequests({ base, files = [], ranges = {}, criteria = '', 
     files: shardFiles,
     criteria,
     domainQuestions,
-    // branch-diff.js returns {start, end}; the brief takes [start, end] — accept both.
-    ranges: Object.fromEntries(shardFiles.filter((f) => ranges[f]).map((f) => [f,
-      ranges[f].map((r) => (Array.isArray(r) ? r : [r.start, r.end]))])),
+    // Either span shape passes through: buildShardRequest() normalizes (#3747).
+    ranges: Object.fromEntries(shardFiles.filter((f) => ranges[f]).map((f) => [f, ranges[f]])),
     base,
     skills,
     root,

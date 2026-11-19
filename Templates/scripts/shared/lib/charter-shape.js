@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Charter shape analysis for the /charter --refresh shape step (#3418).
  * @checksum sha256:placeholder
  *
@@ -40,15 +40,17 @@
  *                         Read-only. Analysis output: {"exists", "inShape", "inScope", "currentFocus",
  *                         "staleness", "findings", "summary"[, "proposal"]}, exit 0.
  *   --plan                read-only dry run of the whole repair → {"ok", "writes": false, "lossless", "rewrite",
- *                         "deletions"}; a failing dry-run step is "ok": false with the step's "error" inside
- *                         lossless.steps, exit 1; else exit 0.
+ *                         "reorder", "deletions"}; a failing dry-run step is "ok": false with the step's "error"
+ *                         inside lossless.steps, exit 1; else exit 0.
  *   --repair              WRITES: runs the lossless steps → {"ok", "alreadyRepaired", "steps", "summary"};
  *                         a failing step is status "error", later steps "not-run", exit 1; else exit 0.
  *   --locate <file>       read-only: where a living document is → {"path", "legacy", "message"}, exit 0;
  *                         an unknown name → {"ok": false, "error", "accepted"}, exit 1.
  *   --rewrite-tables      WRITES CHARTER.md — the consented table rewrite → {"status", "tables", "message"}, exit 0.
- *   --delete <id,id,...>  WRITES — deletes exactly the consented plan ids → {"deleted", "kept", "refused",
- *                         "inceptionRemoved"}, exit 0.
+ *   --reorder-sections    WRITES CHARTER.md — the consented reorder of required sections into contract order
+ *                         (#3711) → {"status", "changed", "before", "after", "moved", "message"}, exit 0.
+ *   --delete <id,id,...>  WRITES — deletes exactly the consented plan ids → {"ok", "deleted", "kept", "refused",
+ *                         "failed", "inceptionRemoved"}; a failed removal is "ok": false, exit 1; else exit 0.
  *   --today <YYYY-MM-DD>  --repair/--plan: the date in the Key Decisions record's file name.
  *   --destination <name>=<path>  --repair/--plan, repeatable: a chosen destination for a colliding
  *                         document (Architecture.md, Constraints.md, Test-Strategy.md) or Key-Decisions.
@@ -57,19 +59,22 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
-const { parseCharterSections } = require('./charter-scope');
+const { parseCharterSections, sectionBullets } = require('./charter-scope');
 const { escapeRegExp } = require('./input-validation');
-const { loadCharterContract, checkContractShape, headingMatches } = require('./charter-template');
+const { loadCharterContract, checkContractShape, headingMatches, tableCells, fencedLines, sectionsOutOfOrder } = require('./charter-template');
 
 /**
  * The shape the step targets — the charter contract's `requiredSections`
  * (#3481). One declared place, so a change of target shape (#2937) is one edit
  * to the contract.
  */
-const TARGET_SHAPE = [...loadCharterContract().requiredSections];
+const targetShape = () => [...loadCharterContract().requiredSections];
 
-/** Declared thresholds, from the contract. A one-line capability rarely needs more. */
-const SHAPE_THRESHOLDS = { ...loadCharterContract().shapeThresholds };
+/**
+ * Declared thresholds, from the contract. A one-line capability rarely needs
+ * more. Both are read at call time, never at require time (#3482).
+ */
+const shapeThresholds = () => ({ ...loadCharterContract().shapeThresholds });
 
 /**
  * Phrases that state an exclusion. "not" alone is deliberately absent: it is
@@ -168,13 +173,6 @@ function latestGitTag(root) {
   }
 }
 
-/** Bullets under a legacy `## Current Focus` heading; [] when there is none. */
-function currentFocusBullets(charterText) {
-  const m = String(charterText || '').match(/^##\s+Current Focus[^\n]*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/im);
-  if (!m) return [];
-  return m[1].split('\n').map((l) => l.match(/^\s*[-*]\s+(.*\S)\s*$/)).filter(Boolean).map((x) => x[1]);
-}
-
 /**
  * Measure a charter against the target shape.
  * @param {string|null} charterText - CHARTER.md content, or null when absent
@@ -184,11 +182,12 @@ function analyzeCharterShape(charterText, opts = {}) {
   if (charterText === null || charterText === undefined) {
     return { exists: false, inShape: null, findings: [], summary: 'No CHARTER.md — nothing to shape.' };
   }
-  const thresholds = { ...SHAPE_THRESHOLDS, ...(opts.thresholds || {}) };
+  const thresholds = { ...shapeThresholds(), ...(opts.thresholds || {}) };
   const { inScope } = parseCharterSections(charterText);
   // Read here, not by the scope helper (#3653): Current Focus is a retired
   // section, read only by this legacy analysis for its stale-version signal.
-  const currentFocus = currentFocusBullets(charterText);
+  // The shared section reader (#3434), not a second copy of its regex.
+  const currentFocus = sectionBullets(charterText, 'Current Focus');
   const findings = [];
 
   const overThreshold = inScope
@@ -416,7 +415,7 @@ function insertLines(out, at, texts, eol) {
  */
 function proposeShape(charterText, opts = {}) {
   const sources = opts.sources || [];
-  const thresholds = { ...SHAPE_THRESHOLDS, ...(opts.thresholds || {}) };
+  const thresholds = { ...shapeThresholds(), ...(opts.thresholds || {}) };
   // Lines are matched without their terminators — on a CRLF charter the
   // heading match never fired (#3429) — and each keeps its own: rewriting
   // every line to one ending put untouched lines in the consent diff (#3437).
@@ -427,12 +426,20 @@ function proposeShape(charterText, opts = {}) {
   let section = null;
   let lastOutOfScope = -1;
   const out = [];
+  // A fenced line is content (#3695): never a heading, never a bullet to cut.
+  const fenced = fencedLines(lines);
 
   lines.forEach((line, idx) => {
     const keep = (text) => out.push({ text, eol: ends[idx] });
+    if (fenced[idx]) {
+      if (section === 'out' && line.trim()) lastOutOfScope = out.length;
+      keep(line);
+      return;
+    }
     const heading = line.match(/^##\s+(.*)$/);
     if (heading) {
-      section = /^In Scope/i.test(heading[1]) ? 'in' : /^Out of Scope/i.test(heading[1]) ? 'out' : null;
+      // Sections are identified by the contract heading rule (#3695), as detection identifies them.
+      section = headingMatches(heading[1], 'In Scope') ? 'in' : headingMatches(heading[1], 'Out of Scope') ? 'out' : null;
       // The heading and every non-blank line under it mark where moved
       // exclusions go — a prose-only section is still the section (#3437).
       if (section === 'out') lastOutOfScope = out.length;
@@ -771,8 +778,22 @@ const COMPANION_HEADING = 'Companion Repositories';
 /** headingSpan option: look a contract section up by the contract's heading rule (#3687). */
 const CONTRACT_HEADING = Object.freeze({ contract: true });
 
+/**
+ * A file's text, or null when it does not exist. Read in a try/catch, never
+ * existsSync then readFileSync (#3703, the check-then-read #3446 avoids): a
+ * file removed between the two calls is absent, not a thrown ENOENT. Any
+ * other read error still throws.
+ * @param {string} file
+ * @returns {string|null}
+ */
 function readText(file) {
-  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    // ENOTDIR too: a path through a file was reported absent before as well.
+    if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) return null;
+    throw err;
+  }
 }
 
 function eolOf(text) {
@@ -805,23 +826,6 @@ function headingSpan(lines, name, depth, opts = {}) {
   let end = start + 1;
   while (end < lines.length && (fenced[end] || !stop.test(lines[end]))) end++;
   return { start, end };
-}
-
-/** Per line: true when it sits inside (or opens or closes) a fenced code block. */
-function fencedLines(lines) {
-  const out = new Array(lines.length).fill(false);
-  let fence = null;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^\s{0,3}(`{3,}|~{3,})/);
-    if (fence) {
-      out[i] = true;
-      if (m && m[1][0] === fence[0] && m[1].length >= fence.length) fence = null;
-    } else if (m) {
-      out[i] = true;
-      fence = m[1];
-    }
-  }
-  return out;
 }
 
 /** A span's body lines with the blank lines at either edge removed. */
@@ -918,7 +922,9 @@ function safeDestination(root, rel) {
   if (typeof rel !== 'string' || !rel.trim() || path.isAbsolute(rel)) return null;
   const abs = path.resolve(root, rel);
   const back = path.relative(path.resolve(root), abs);
-  if (!back || back.startsWith('..') || path.isAbsolute(back)) return null;
+  // '..' is tested as a whole path segment, so an in-root '..notes/' is kept
+  // (#3696) — the same rule as review-references.js checkPaths (#3579).
+  if (!back || back === '..' || back.startsWith('..' + path.sep) || path.isAbsolute(back)) return null;
   return back.split(path.sep).join('/');
 }
 
@@ -933,6 +939,7 @@ function moveProjectDocuments(root, opts = {}) {
   const id = 'project-documents';
   const chosen = opts.destinations || {};
   const moved = [];
+  const failed = [];
   const collisions = [];
   const rejected = [];
   for (const file of PROJECT_DOCUMENTS) {
@@ -955,9 +962,16 @@ function moveProjectDocuments(root, opts = {}) {
     // file in the same run are reported as `git mv` and `move` (#3663).
     const method = gitTracked(root, source) ? 'git mv' : 'move';
     if (!opts.dryRun) {
-      fs.mkdirSync(path.dirname(path.join(root, target)), { recursive: true });
-      if (method === 'git mv') execFileSync('git', ['mv', '--', source, target], { cwd: root, stdio: 'pipe', timeout: GIT_TIMEOUT_MS });
-      else fs.renameSync(path.join(root, source), path.join(root, target));
+      // A failed move stops the step, but the documents already moved stay in
+      // the report (#3703): a throw out of this loop once dropped them.
+      try {
+        fs.mkdirSync(path.dirname(path.join(root, target)), { recursive: true });
+        if (method === 'git mv') execFileSync('git', ['mv', '--', source, target], { cwd: root, stdio: 'pipe', timeout: GIT_TIMEOUT_MS });
+        else fs.renameSync(path.join(root, source), path.join(root, target));
+      } catch (err) {
+        failed.push({ file, source, target, reason: err && err.message ? err.message : String(err) });
+        break;
+      }
     }
     moved.push({ file, source, target, method });
   }
@@ -966,42 +980,20 @@ function moveProjectDocuments(root, opts = {}) {
   const method = methods.length === 0 ? null : methods.length === 1 ? methods[0] : 'mixed';
   const parts = [];
   if (moved.length) parts.push(`moved ${moved.map((m) => `${m.source} → ${m.target} (${m.method})`).join(', ')}`);
+  for (const f of failed) parts.push(`error: ${f.source} → ${f.target} failed: ${f.reason}`);
   for (const c of collisions) parts.push(`collision: ${c.target} already exists — ${c.source} not moved; choose another destination`);
   for (const x of rejected) parts.push(`destination ${x.destination} for ${x.file} rejected: ${x.reason}`);
-  const status = collisions.length || rejected.length ? 'collision' : moved.length ? (opts.dryRun ? 'would' : 'done') : 'already';
-  return { id, status, method, moved, collisions, rejected, message: parts.length ? parts.join('; ') : 'already repaired' };
+  // 'error' stops runLosslessRepair after this step, as a throw did.
+  const status = failed.length ? 'error' : collisions.length || rejected.length ? 'collision' : moved.length ? (opts.dryRun ? 'would' : 'done') : 'already';
+  return { id, status, method, moved, failed, collisions, rejected, message: parts.length ? parts.join('; ') : 'already repaired' };
 }
 
 const INVENTORY_HEADING = 'Inventory Notes';
 const INVENTORY_INTRO = 'Explanatory notes copied from the `CHARTER.md` tables by the in-place repair, keyed by entity or layer name.';
 
-/**
- * The cells of one markdown table row. An escaped pipe (`\|`) or a pipe inside
- * a code span belongs to its cell, so a note holding one is copied whole.
- */
-function tableCells(line) {
-  const row = line.trim().replace(/^\|/, '');
-  const cells = [];
-  let cell = '';
-  let inCode = false;
-  for (let i = 0; i < row.length; i++) {
-    const ch = row[i];
-    if (ch === '\\' && row[i + 1] === '|') {
-      cell += '\\|';
-      i++;
-    } else if (ch === '`') {
-      inCode = !inCode;
-      cell += ch;
-    } else if (ch === '|' && !inCode) {
-      cells.push(cell.trim());
-      cell = '';
-    } else {
-      cell += ch;
-    }
-  }
-  if (cell.trim()) cells.push(cell.trim());
-  return cells;
-}
+// tableCells and fencedLines are charter-template.js's (#3695): one splitter
+// and one fence mask for detection and repair alike, so a code-span pipe keeps
+// a note whole here and in the storedValues rule.
 
 /** The header and body rows of the first table in a `##` section; null when absent. */
 function sectionTable(lines, name) {
@@ -1115,8 +1107,12 @@ const KEY_DECISIONS_KEY = 'Key-Decisions';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-/** Directories never searched for the Key Decisions marker: tooling and dependencies, not project documents. */
-const MARKER_SKIP_DIRS = new Set(['node_modules']);
+/**
+ * Files the Key Decisions marker walk examines before it stops (#3696). It
+ * runs on every repair, every --plan and from planDeletions; past the cap the
+ * step reports the walk as truncated rather than reading on without bound.
+ */
+const MAX_KEY_DECISIONS_WALK_FILES = 20000;
 
 /** The first line of the design decision this step writes. */
 const KEY_DECISIONS_TITLE = '# Key Decisions from the founding charter';
@@ -1144,16 +1140,22 @@ function isKeyDecisionsCopy(text, body) {
  * chosen on an earlier run is found without being named again. A file that
  * only quotes the marker is not the copy (#3674): `body` is the section still
  * in Charter-Details.md, and the copy must hold it.
+ *
+ * The project-wide walk skips dot-directories, SKIP_DIRS and scratch copies
+ * (SCRATCH_DIR_PREFIX), and stops after `maxFiles` files (#3696).
+ * @returns {{path: string|null, truncated: boolean}}
  */
-function findKeyDecisionsCopy(root, chosen, body = []) {
+function findKeyDecisionsCopy(root, chosen, body = [], { maxFiles = MAX_KEY_DECISIONS_WALK_FILES } = {}) {
   const holds = (rel) => isKeyDecisionsCopy(readText(path.join(root, rel)), body);
   const dir = path.join(root, DECISIONS_DIR);
   if (fs.existsSync(dir)) {
     for (const name of fs.readdirSync(dir)) {
-      if (name.endsWith('.md') && holds(`${DECISIONS_DIR}/${name}`)) return `${DECISIONS_DIR}/${name}`;
+      if (name.endsWith('.md') && holds(`${DECISIONS_DIR}/${name}`)) return { path: `${DECISIONS_DIR}/${name}`, truncated: false };
     }
   }
-  if (chosen && chosen.endsWith('.md') && holds(chosen)) return chosen;
+  if (chosen && chosen.endsWith('.md') && holds(chosen)) return { path: chosen, truncated: false };
+  let seen = 0;
+  let truncated = false;
   const walk = (rel) => {
     let entries;
     try {
@@ -1161,19 +1163,22 @@ function findKeyDecisionsCopy(root, chosen, body = []) {
     } catch {
       return null;
     }
-    for (const e of entries) {
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (truncated) return null;
       const child = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
-        if (e.name.startsWith('.') || MARKER_SKIP_DIRS.has(e.name) || child === DECISIONS_DIR) continue;
+        if (e.name.startsWith('.') || e.name.startsWith(SCRATCH_DIR_PREFIX) || SKIP_DIRS.has(e.name) || child === DECISIONS_DIR) continue;
         const found = walk(child);
         if (found) return found;
-      } else if (e.isFile() && e.name.endsWith('.md') && child !== CHARTER_DETAILS && holds(child)) {
-        return child;
+        continue;
       }
+      if (!e.isFile()) continue;
+      if (++seen > maxFiles) { truncated = true; return null; }
+      if (e.name.endsWith('.md') && child !== CHARTER_DETAILS && holds(child)) return child;
     }
     return null;
   };
-  return walk('');
+  return { path: walk(''), truncated };
 }
 
 /**
@@ -1190,21 +1195,27 @@ function moveKeyDecisions(root, opts = {}) {
   const lines = details === null ? null : details.split(/\r?\n/);
   const span = lines && headingSpan(lines, KEY_DECISIONS, 2);
   const body = span ? spanBody(lines, span) : [];
-  const found = findKeyDecisionsCopy(root, safeChosen, body);
-  if (found) return { id, status: 'already', target: found, message: 'already repaired' };
-  if (!body.length) return { id, status: 'already', target: null, message: `already repaired — no ${KEY_DECISIONS} section to move` };
+  const maxFiles = opts.maxKeyDecisionsWalkFiles === undefined ? MAX_KEY_DECISIONS_WALK_FILES : opts.maxKeyDecisionsWalkFiles;
+  const search = findKeyDecisionsCopy(root, safeChosen, body, { maxFiles });
+  if (search.path) return { id, status: 'already', target: search.path, message: 'already repaired' };
+  // A truncated walk may have stopped short of an earlier copy: every result
+  // below says so, rather than the walk reading on without bound (#3696).
+  const step = (r) => (search.truncated
+    ? { ...r, walkTruncated: true, message: `${r.message} (the search for an earlier copy was truncated after ${maxFiles} files)` }
+    : r);
+  if (!body.length) return step({ id, status: 'already', target: null, message: `already repaired — no ${KEY_DECISIONS} section to move` });
   const date = opts.today === undefined ? todayIso() : opts.today;
   // The date becomes part of a file name: only a calendar date is accepted.
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { id, status: 'blocked', target: null, message: `--today must be a YYYY-MM-DD date; got ${JSON.stringify(date)} — ${KEY_DECISIONS} not moved` };
+    return step({ id, status: 'blocked', target: null, message: `--today must be a YYYY-MM-DD date; got ${JSON.stringify(date)} — ${KEY_DECISIONS} not moved` });
   }
   let target = `${DECISIONS_DIR}/${date}-charter-key-decisions.md`;
   if (chosen !== undefined) {
-    if (!safeChosen) return { id, status: 'collision', target: null, message: `destination ${chosen} for ${KEY_DECISIONS} rejected: outside the project root` };
+    if (!safeChosen) return step({ id, status: 'collision', target: null, message: `destination ${chosen} for ${KEY_DECISIONS} rejected: outside the project root` });
     target = safeChosen;
   }
   if (fs.existsSync(path.join(root, target))) {
-    return { id, status: 'collision', target, message: `collision: ${target} already exists — ${KEY_DECISIONS} not moved; choose another destination and re-run with --destination ${KEY_DECISIONS_KEY}=<path>` };
+    return step({ id, status: 'collision', target, message: `collision: ${target} already exists — ${KEY_DECISIONS} not moved; choose another destination and re-run with --destination ${KEY_DECISIONS_KEY}=<path>` });
   }
   const text = [
     KEY_DECISIONS_TITLE,
@@ -1217,12 +1228,12 @@ function moveKeyDecisions(root, opts = {}) {
     KEY_DECISIONS_MARKER,
     '',
   ].join(eolOf(details));
-  if (opts.dryRun) return { id, status: 'would', target, message: `would move ${KEY_DECISIONS} to ${target}` };
+  if (opts.dryRun) return step({ id, status: 'would', target, message: `would move ${KEY_DECISIONS} to ${target}` });
   const abs = path.join(root, target);
   // A chosen destination may sit in a directory of its own that does not exist yet.
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, text);
-  return { id, status: 'done', target, message: `moved ${KEY_DECISIONS} to ${target}` };
+  return step({ id, status: 'done', target, message: `moved ${KEY_DECISIONS} to ${target}` });
 }
 
 /** The lossless steps, in the order they run. */
@@ -1261,6 +1272,9 @@ function runLosslessRepair(root, opts = {}) {
       failed = id;
       step = { id, status: 'error', message: `error: ${err && err.message ? err.message : String(err)}` };
     }
+    // A step may report its own failure with the partial work it did (#3703),
+    // rather than throwing it away: it stops the run the same way.
+    if (!failed && step && step.status === 'error') failed = id;
     if (id === 'project-documents' && !failed) ctx.moved = step.moved;
     steps.push(step);
   }
@@ -1396,6 +1410,89 @@ function applyTableRewrite(root, { consent } = {}) {
   return { status: 'done', tables: plan.tables, message: 'rewrote Key Entities to Entity | Location and Tech Stack to technology names' };
 }
 
+/**
+ * The section reorder (#3711), as a plan: required sections moved whole into
+ * contract order. Each `##` section travels with the optional or unknown
+ * sections that follow it (Companion Repositories after Key Entities stays
+ * after Key Entities), so every non-required section keeps the neighbor it
+ * had. Only the sections checkContractShape names out of order move — the
+ * fewest — and each lands after the nearest earlier required section that
+ * stays. Section content is untouched; only the blank lines between sections
+ * are normalized to one. Writes nothing.
+ * @param {string} charterText
+ * @returns {{changed: boolean, before: string[], after: string[], moved: string[], text: string}}
+ */
+function planSectionOrder(charterText) {
+  const text = String(charterText || '');
+  const eol = eolOf(text);
+  const lines = text.split(/\r?\n/);
+  const fenced = fencedLines(lines);
+  const starts = [];
+  lines.forEach((l, i) => { if (!fenced[i] && /^##\s+\S/.test(l) && !/^###/.test(l)) starts.push(i); });
+  const headingOf = (i) => lines[i].replace(/^##\s+/, '').replace(/\s*#*\s*$/, '');
+  const before = starts.map(headingOf);
+  const unchanged = { changed: false, before, after: before, moved: [], text };
+  if (!starts.length) return unchanged;
+
+  const required = loadCharterContract().requiredSections;
+  const seen = new Set();
+  const blocks = starts.map((s, k) => {
+    const end = k + 1 < starts.length ? starts[k + 1] : lines.length;
+    const match = required.find((r) => headingMatches(headingOf(s), r));
+    const name = match && !seen.has(match) ? match : null;
+    if (name) seen.add(name);
+    return { name, heading: headingOf(s), lines: lines.slice(s, end) };
+  });
+  const moved = sectionsOutOfOrder(blocks.filter((b) => b.name).map((b) => b.name), required);
+  if (!moved.length) return unchanged;
+
+  // Groups: a required section and the non-required sections after it; any
+  // before the first required section stay first, with the preamble.
+  const lead = [];
+  const groups = [];
+  for (const b of blocks) {
+    if (b.name) groups.push({ name: b.name, blocks: [b] });
+    else if (groups.length) groups[groups.length - 1].blocks.push(b);
+    else lead.push(b);
+  }
+  const rank = (n) => required.indexOf(n);
+  const order = groups.filter((g) => !moved.includes(g.name));
+  for (const g of groups.filter((x) => moved.includes(x.name)).sort((a, b) => rank(a.name) - rank(b.name))) {
+    // After the last kept or already-placed section earlier in contract order;
+    // first of all when none is.
+    let at = 0;
+    order.forEach((o, i) => { if (rank(o.name) < rank(g.name)) at = i + 1; });
+    order.splice(at, 0, g);
+  }
+
+  const trimEnd = (ls) => { const out = [...ls]; while (out.length && !out[out.length - 1].trim()) out.pop(); return out; };
+  const trailing = lines.length - trimEnd(lines).length;
+  const sections = [...lead, ...order.flatMap((g) => g.blocks)];
+  const head = trimEnd(lines.slice(0, starts[0]));
+  const out = head.length ? [...head, ''] : [];
+  sections.forEach((b, i) => {
+    out.push(...trimEnd(b.lines));
+    if (i < sections.length - 1) out.push('');
+  });
+  for (let i = 0; i < trailing; i++) out.push('');
+  return { changed: true, before, after: sections.map((b) => b.heading), moved, text: out.join(eol) };
+}
+
+/**
+ * Applies the section reorder — only with `consent` (#3711), as the table
+ * rewrite is: the spec shows the BEFORE / AFTER heading lists and asks first.
+ */
+function applySectionOrder(root, { consent } = {}) {
+  const file = path.join(root, 'CHARTER.md');
+  const text = readText(file);
+  if (text === null) return { status: 'blocked', message: 'No CHARTER.md — nothing to reorder.' };
+  const { text: next, ...plan } = planSectionOrder(text);
+  if (!plan.changed) return { status: 'already', ...plan, message: 'already in contract order' };
+  if (!consent) return { status: 'declined', ...plan, message: 'section reorder declined — CHARTER.md left as it is' };
+  fs.writeFileSync(file, next);
+  return { status: 'done', ...plan, message: `moved ${plan.moved.join(', ')} into contract order` };
+}
+
 /** The charter's legacy sections and where their content went. */
 const LEGACY_SECTIONS = ['Current Focus', 'Architecture'];
 
@@ -1443,6 +1540,49 @@ function listFiles(dir, rel = '') {
 }
 
 /**
+ * Text normalized for the Architecture coverage check (#3710): markdown
+ * emphasis (`*`, `_`) and backticks removed, whitespace collapsed. Exact text
+ * otherwise — no paraphrase or semantic matching.
+ * @param {string} text
+ * @returns {string}
+ */
+function normalizeForCoverage(text) {
+  return String(text).replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** A paragraph's first words, for naming it in a report. */
+function leadingText(paragraph, max = 60) {
+  const t = normalizeForCoverage(paragraph);
+  return t.length > max ? `${t.slice(0, max)}…` : t;
+}
+
+/**
+ * Which paragraphs of the legacy Architecture section the destination
+ * document holds (#3710). A paragraph is a run of non-blank lines; it is
+ * covered when its normalized text appears in the normalized document — the
+ * § Deployment Architecture section is part of the document, so the whole
+ * document is the search. An empty section has nothing to lose.
+ * @param {string[]} bodyLines - the section body, heading excluded
+ * @param {string} doc - Project/Architecture.md text ('' when absent)
+ * @returns {{total: number, uncovered: string[]}}
+ */
+function architectureCoverage(bodyLines, doc) {
+  const paragraphs = [];
+  let current = [];
+  for (const line of bodyLines) {
+    if (line.trim()) current.push(line);
+    else if (current.length) { paragraphs.push(current.join('\n')); current = []; }
+  }
+  if (current.length) paragraphs.push(current.join('\n'));
+  const haystack = normalizeForCoverage(doc);
+  const uncovered = paragraphs.filter((p) => {
+    const needle = normalizeForCoverage(p);
+    return needle && !haystack.includes(needle);
+  });
+  return { total: paragraphs.length, uncovered };
+}
+
+/**
  * Every deletion the repair would offer: each legacy charter section and each
  * remaining Inception/ file, with its length and where its content went
  * (`derived`, `moved` or `nowhere`). Writes nothing. A living document step 2
@@ -1460,12 +1600,21 @@ function planDeletions(root) {
       const text = lines.slice(span.start, span.end).join('\n');
       let destination = 'derived';
       let detail = "the board's open epics and PRD trackers show the current themes";
+      let verified = true;
       if (name === 'Architecture') {
-        const held = /^#{2,3}\s+Deployment Architecture\b/m.test(archDoc);
-        destination = held ? 'moved' : 'nowhere';
-        detail = held ? 'Project/Architecture.md § Deployment Architecture holds the fuller version' : 'no Project/Architecture.md § Deployment Architecture holds it';
+        // Content coverage, not a heading test (#3710): an empty or unrelated
+        // § Deployment Architecture once made a section whose text was found
+        // nowhere report `moved`, and --delete accepted it.
+        const coverage = architectureCoverage(spanBody(lines, span), archDoc);
+        verified = coverage.uncovered.length === 0;
+        destination = verified ? 'moved' : 'nowhere';
+        detail = verified
+          ? 'every paragraph is in Project/Architecture.md'
+          : `${coverage.uncovered.length} of ${coverage.total} paragraph${coverage.total === 1 ? '' : 's'} not found in Project/Architecture.md: ${coverage.uncovered.map((p) => `"${leadingText(p)}"`).join('; ')}`;
       }
-      items.push({ id: `section:${name}`, kind: 'section', path: `CHARTER.md § ${name}`, lines: span.end - span.start, bytes: Buffer.byteLength(text), destination, detail, verified: true });
+      // An Architecture section with uncovered content is unverified, so
+      // applyDeletions refuses it as content not yet at its destination (#3710).
+      items.push({ id: `section:${name}`, kind: 'section', path: `CHARTER.md § ${name}`, lines: span.end - span.start, bytes: Buffer.byteLength(text), destination, detail, verified });
     }
   }
   const inc = path.join(root, 'Inception');
@@ -1508,11 +1657,15 @@ function planDeletions(root) {
 function applyDeletions(root, { consent } = {}) {
   const plan = planDeletions(root);
   const byId = new Map(plan.items.map((i) => [i.id, i]));
-  const wanted = Array.isArray(consent) ? consent : [];
+  // An id consented twice is deleted once: a second pass would unlink a file
+  // already gone and throw ENOENT part-way through (#3696).
+  const wanted = Array.isArray(consent) ? [...new Set(consent)] : [];
   const hadInception = fs.existsSync(path.join(root, 'Inception'));
   const deleted = [];
   const refused = [];
+  const failed = [];
   const sections = [];
+  const why = (err) => (err && err.message ? err.message : String(err));
   for (const id of wanted) {
     const item = byId.get(id);
     if (!item) {
@@ -1528,28 +1681,44 @@ function applyDeletions(root, { consent } = {}) {
       continue;
     }
     const rel = item.path;
-    if (gitTracked(root, rel)) execFileSync('git', ['rm', '-q', '--', rel], { cwd: root, stdio: 'pipe', timeout: GIT_TIMEOUT_MS });
-    else fs.unlinkSync(path.join(root, rel));
-    deleted.push(id);
+    // Irreversible and consent-gated: a removal that fails is recorded with its
+    // reason and the loop goes on, so the envelope always lists what was
+    // already deleted (#3703) — a throw here once lost that list entirely.
+    try {
+      if (gitTracked(root, rel)) execFileSync('git', ['rm', '-q', '--', rel], { cwd: root, stdio: 'pipe', timeout: GIT_TIMEOUT_MS });
+      else fs.unlinkSync(path.join(root, rel));
+      deleted.push(id);
+    } catch (err) {
+      failed.push({ id, reason: why(err) });
+    }
   }
   if (sections.length) {
-    const file = path.join(root, 'CHARTER.md');
-    const text = fs.readFileSync(file, 'utf8');
-    const lines = text.split(/\r?\n/);
-    for (const item of sections) {
-      const span = headingSpan(lines, item.id.slice('section:'.length), 2, CONTRACT_HEADING);
-      if (!span) continue;
-      lines.splice(span.start, span.end - span.start);
-      deleted.push(item.id);
+    // The sections are removed in one write of CHARTER.md: if the read or the
+    // write fails, none of them is removed, and each is reported failed (#3703).
+    try {
+      const file = path.join(root, 'CHARTER.md');
+      const text = fs.readFileSync(file, 'utf8');
+      const lines = text.split(/\r?\n/);
+      const removed = [];
+      for (const item of sections) {
+        const span = headingSpan(lines, item.id.slice('section:'.length), 2, CONTRACT_HEADING);
+        if (!span) continue;
+        lines.splice(span.start, span.end - span.start);
+        removed.push(item.id);
+      }
+      fs.writeFileSync(file, lines.join(eolOf(text)));
+      deleted.push(...removed);
+    } catch (err) {
+      for (const item of sections) failed.push({ id: item.id, reason: why(err) });
     }
-    fs.writeFileSync(file, lines.join(eolOf(text)));
   }
   const inc = path.join(root, 'Inception');
   // `git rm` of the last tracked file removes the empty directory itself.
   if (fs.existsSync(inc) && listFiles(inc).length === 0) fs.rmSync(inc, { recursive: true });
   const inceptionRemoved = hadInception && !fs.existsSync(inc);
-  const kept = plan.items.map((i) => i.id).filter((id) => !deleted.includes(id) && !refused.some((r) => r.id === id));
-  return { deleted, kept, refused, inceptionRemoved };
+  const kept = plan.items.map((i) => i.id).filter((id) => !deleted.includes(id) && !refused.some((r) => r.id === id) && !failed.some((f) => f.id === id));
+  // ok: false makes the CLI exit 1 while still printing every list (#3703).
+  return { ok: failed.length === 0, deleted, kept, refused, failed, inceptionRemoved };
 }
 
 /**
@@ -1559,12 +1728,17 @@ function applyDeletions(root, { consent } = {}) {
  */
 function planRepair(root, opts = {}) {
   const lossless = runLosslessRepair(root, { ...opts, dryRun: true });
+  const charter = readText(path.join(root, 'CHARTER.md')) || '';
+  // The reorder plan without the rewritten text: --plan shows headings (#3711).
+  const reorder = planSectionOrder(charter);
+  delete reorder.text;
   // A dry-run step that failed makes the plan a failure: the CLI exits 1 on it.
   return {
     ok: lossless.ok,
     writes: false,
     lossless,
-    rewrite: planTableRewrite(readText(path.join(root, 'CHARTER.md')) || ''),
+    rewrite: planTableRewrite(charter),
+    reorder,
     deletions: planDeletions(root),
   };
 }
@@ -1612,12 +1786,20 @@ function parseArgs(argv) {
     else if (argv[i] === '--plan') opts.plan = true;
     else if (argv[i] === '--locate') opts.locate = argv[++i];
     else if (argv[i] === '--rewrite-tables') opts.rewriteTables = true;
+    else if (argv[i] === '--reorder-sections') opts.reorderSections = true;
     else if (argv[i] === '--delete') opts.del = String(argv[++i] || '').split(',').map((x) => x.trim()).filter(Boolean);
     else if (argv[i] === '--today') opts.today = argv[++i];
     else if (argv[i] === '--destination') {
       // --destination Architecture.md=Project/Architecture-Inception.md
-      const [file, ...rest] = String(argv[++i] || '').split('=');
-      opts.destinations = { ...(opts.destinations || {}), [file]: rest.join('=') };
+      const value = String(argv[++i] || '');
+      const eq = value.indexOf('=');
+      // Without a name, an '=' and a path the value was stored as an empty
+      // path and reported as "outside the project root" (#3703).
+      if (eq <= 0 || eq === value.length - 1) {
+        opts.error = `--destination expects <name>=<path> (e.g. Architecture.md=Project/Architecture-Inception.md); got ${JSON.stringify(value)}`;
+        continue;
+      }
+      opts.destinations = { ...(opts.destinations || {}), [value.slice(0, eq)]: value.slice(eq + 1) };
     }
   }
   return opts;
@@ -1710,6 +1892,8 @@ module.exports = {
   LOSSLESS_STEPS,
   planTableRewrite,
   applyTableRewrite,
+  planSectionOrder,
+  applySectionOrder,
   planDeletions,
   applyDeletions,
   planRepair,
@@ -1720,14 +1904,17 @@ module.exports = {
   PIN_SUBJECT,
   MIN_PINNED_LITERAL,
   MAX_PINNING_WALK_FILES,
+  MAX_KEY_DECISIONS_WALK_FILES,
   HOME_SOURCES,
   wordCount,
   exclusionPhrase,
-  SHAPE_THRESHOLDS,
-  TARGET_SHAPE,
   EXCLUSION_PHRASES,
   RELOCATION_TARGETS,
 };
+
+// The contract-derived constants are read on access, never at require time (#3482).
+Object.defineProperty(module.exports, "TARGET_SHAPE", { enumerable: true, get: targetShape });
+Object.defineProperty(module.exports, "SHAPE_THRESHOLDS", { enumerable: true, get: shapeThresholds });
 
 /**
  * The CLI dispatch. Every path ends in one JSON envelope on stdout: a thrown
@@ -1736,11 +1923,14 @@ module.exports = {
  */
 function runCli(argv) {
   const opts = parseArgs(argv);
+  // process.exitCode, never an immediate exit right after a write (#3703): on
+  // an async pipe that can cut a large report off. Every path returns instead.
   const emit = (o) => {
     process.stdout.write(JSON.stringify(o, null, 2) + '\n');
     // A repair that stopped on a failing step still prints its step report.
-    process.exit(o && o.ok === false ? 1 : 0);
+    process.exitCode = o && o.ok === false ? 1 : 0;
   };
+  if (opts.error) return emit({ ok: false, error: opts.error });
   // --plan writes nothing. --rewrite-tables and --delete are the consented
   // actions: the spec runs them only after the user has agreed to each.
   if (opts.locate !== undefined) {
@@ -1750,15 +1940,16 @@ function runCli(argv) {
     try {
       located = locateProjectDocument(opts.root, opts.locate);
     } catch (err) {
-      process.stdout.write(JSON.stringify({ ok: false, error: err.message, accepted: PROJECT_DOCUMENTS }, null, 2) + '\n');
-      process.exit(1);
+      return emit({ ok: false, error: err.message, accepted: PROJECT_DOCUMENTS });
     }
-    emit(located);
+    return emit(located);
   }
-  if (opts.plan) emit(planRepair(opts.root, opts));
-  if (opts.repair) emit(runLosslessRepair(opts.root, opts));
-  if (opts.rewriteTables) emit(applyTableRewrite(opts.root, { consent: true }));
-  if (opts.del) emit(applyDeletions(opts.root, { consent: opts.del }));
+  if (opts.plan) return emit(planRepair(opts.root, opts));
+  if (opts.repair) return emit(runLosslessRepair(opts.root, opts));
+  if (opts.rewriteTables) return emit(applyTableRewrite(opts.root, { consent: true }));
+  // Consented like the table rewrite: run only after the user agrees (#3711).
+  if (opts.reorderSections) return emit(applySectionOrder(opts.root, { consent: true }));
+  if (opts.del) return emit(applyDeletions(opts.root, { consent: opts.del }));
   const file = path.join(opts.root, 'CHARTER.md');
   const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
   const latestTag = opts.latestTag === undefined ? latestGitTag(opts.root) : opts.latestTag;
@@ -1774,6 +1965,6 @@ if (require.main === module) {
     runCli(process.argv.slice(2));
   } catch (err) {
     process.stdout.write(JSON.stringify({ ok: false, error: err && err.message ? err.message : String(err) }, null, 2) + '\n');
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

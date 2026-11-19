@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(), and checkLifecycleBoxIn()/checkLifecycleBox() (CLI --check-box) for the PRD tracker lifecycle boxes other commands own (#3636). Used by /review-prd, /review-test-plan, /done and /create-backlog.
  * @checksum sha256:placeholder
  *
@@ -165,7 +165,9 @@ function parseArgs(argv) {
   const args = { issue: null, findingsFile: null, moveStatus: null, type: null };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--issue' && argv[i + 1]) {
-      args.issue = parseInt(argv[i + 1], 10);
+      // Raw text (#3694): validated by the caller, never parseInt's prefix —
+      // '12abc' was read as issue 12.
+      args.issue = argv[i + 1];
       i++;
     } else if (argv[i] === '--findings' && argv[i + 1]) {
       args.findingsFile = argv[i + 1];
@@ -606,7 +608,14 @@ if (require.main === module && process.argv.includes('--check-box')) {
     console.error('Usage: node review-ac-checkoff.js --issue N --findings FILE [--move-status STATUS]');
     process.exit(1);
   }
-  validateIssueNumber(args.issue);
+  // Caught (#3694), as the --check-box branch is (#3665): callers parse
+  // stdout as JSON, and an uncaught throw printed a stack trace.
+  try {
+    args.issue = validateIssueNumber(args.issue);
+  } catch (e) {
+    console.log(JSON.stringify({ ok: false, error: e.message }, null, 2));
+    process.exit(1);
+  }
   if (args.moveStatus) args.moveStatus = sanitizeShellArg(args.moveStatus, 'status');
 
   let findings;

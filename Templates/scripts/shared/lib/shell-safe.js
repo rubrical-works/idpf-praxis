@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Shell-safe utilities for CodeQL compliance: sanitizeShellArg (whitelist
  * validation for shell-interpolated values), readFileSafe (TOCTOU-safe file reading),
  * and atomicWriteSync (write-to-temp-then-rename for config files).
@@ -18,6 +18,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
+// No import cycle: input-validation.js requires only 'path' (#3702).
+const { SHELL_META, rejectUnsafeLeadingChar } = require('./input-validation.js');
 
 /**
  * Validate and return a shell-safe argument. Rejects values containing
@@ -37,18 +39,56 @@ function sanitizeShellArg(value, label = 'argument') {
     throw new Error(`${label} is required`);
   }
   const str = String(value);
-  // Reject shell metacharacters: backticks, $, (), {}, |, ;, &, <, >, !, \,
-  // any whitespace (newlines included) and both quotes — the same set as
-  // input-validation.js SHELL_META (#3692). Whitespace splits one value into
-  // several arguments; a quote breaks out of the caller's quoting.
-  if (/[`$(){}|;&<>!\\\s'"]/.test(str)) {
+  // The character set and the leading-dash guard are imported from
+  // input-validation.js, not repeated, so the two cannot drift (#3692, #3702).
+  // A leading '-' is read as an option even under execFile; a leading '~' is
+  // tilde-expanded.
+  if (SHELL_META.test(str)) {
     throw new Error(`${label} contains unsafe shell characters: ${str.substring(0, 30)}`);
   }
-  // A leading '-' is read as an option even under execFile (#3692).
-  if (str.startsWith('-')) {
-    throw new Error(`${label} must not start with '-': ${str.substring(0, 30)}`);
-  }
+  rejectUnsafeLeadingChar(str, label);
   return str;
+}
+
+// Characters a file path may legitimately carry that SHELL_META rejects:
+// a space (`docs/My Notes.md`) and brackets (`pages/[id].tsx`) (#3742), and
+// parentheses — Next.js route groups (`app/(auth)/page.tsx`) (#3749). Inside
+// double quotes none is special to sh or to cmd.exe, which is what
+// `shell: true` spawns.
+const QUOTABLE_PATH_CHARS = /[ [\]()]/g;
+
+// Characters SHELL_META admits that are still not literal under cmd.exe:
+// `%` (expands %VAR% even inside double quotes, so no quoting helps) and `^`
+// (the escape character in a bare word) (#3751).
+const CMD_UNSAFE_PATH_CHARS = /[%^]/;
+
+/**
+ * Validate a file path and return it as ONE shell word. A path that passes
+ * the strict set is returned bare, unchanged; one carrying only the extra
+ * characters in QUOTABLE_PATH_CHARS, or starting with `#` (a comment under
+ * sh when bare), is wrapped in double quotes. Everything else SHELL_META
+ * rejects — quotes, `$`, backtick, `\`, `;`, tabs, newlines, `*` and `?` —
+ * is still rejected, as are `%` and `^` (#3751) and a leading '-' or '~'.
+ *
+ * sanitizeShellArg keeps the strict set for refs and identifiers; this is for
+ * paths interpolated into a command string (test-runner placeholders).
+ *
+ * @param {string} value - The path to validate
+ * @param {string} label - Human-readable label for error messages
+ * @returns {string} The path, bare or double-quoted
+ * @throws {Error} If value is empty, starts with '-'/'~', or carries an unsafe character
+ */
+function quoteShellPath(value, label = 'path') {
+  if (value == null || String(value).trim() === '') {
+    throw new Error(`${label} is required`);
+  }
+  const str = String(value);
+  rejectUnsafeLeadingChar(str, label);
+  const rest = str.replace(QUOTABLE_PATH_CHARS, '');
+  if (SHELL_META.test(rest) || CMD_UNSAFE_PATH_CHARS.test(rest)) {
+    throw new Error(`${label} contains unsafe shell characters: ${str.substring(0, 30)}`);
+  }
+  return rest === str && !str.startsWith('#') ? str : `"${str}"`;
 }
 
 /**
@@ -130,6 +170,7 @@ function secureTempFile(prefix = 'idpf-', ext = '.tmp') {
 
 module.exports = {
   sanitizeShellArg,
+  quoteShellPath,
   readFileSafe,
   readJsonSafe,
   atomicWriteSync,

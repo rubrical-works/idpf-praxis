@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Analyze a project and generate CI improvement recommendations based on detected languages, test tooling, deployment targets, and deprecated action versions. Produces structured recommendation objects consumed by ci-recommend-ui.js and ci-apply.js.
  * @checksum sha256:placeholder
  *
@@ -190,11 +190,12 @@ function inventoryWorkflows(projectDir) {
  * duplicate check share one definition of "has a test step". Matched as a
  * token starting at a boundary (#3438) — `test` preceded by anything but a
  * letter or digit, so `test:unit`, `unit-test` and `test_all.sh` count and
- * `latest` and `attest` do not; a word suffix is part of the name (#3441), so
- * `testall`, `test2` and `testing` count — plus the runners whose names end
- * in "test".
+ * `latest` and `attest` do not; a test-name suffix is part of the name
+ * (#3441), so `tests`, `testall`, `test2` and `testing` count — only those
+ * suffixes (#3467), so `testdata`, `testimonials` and `testament` do not —
+ * plus the runners whose names end in "test".
  */
-const TEST_COMMAND = /(?:^|[^a-z0-9])(?:test\w*|jest|vitest|pytest|unittest|nextest|ctest|gotestsum)(?:$|[^a-z0-9])/i;
+const TEST_COMMAND = /(?:^|[^a-z0-9])(?:test\d+|tests|testing|testall|test|jest|vitest|pytest|unittest|nextest|ctest|gotestsum)(?:$|[^a-z0-9])/i;
 
 /** @param {object} step @returns {boolean} */
 function isTestStep(step) {

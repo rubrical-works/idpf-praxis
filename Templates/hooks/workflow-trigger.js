@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -52,8 +52,49 @@ process.on('uncaughtException', (e) => {
 // Heartbeat (#2917): records this hook's outcome under the project root for the
 // startup Hook Health row. Installed only when run as the hook — the test suite
 // requires this module and must not write a heartbeat for its own process.
+//
+// --branch-lookup (#3406) is this file's second entry point: the hook spawns
+// itself in that mode to run several `gh pmu view` lookups in parallel. That
+// child is not a hook run — it reads no prompt and writes no heartbeat.
+const BRANCH_LOOKUP_FLAG = '--branch-lookup';
+const isBranchLookup = require.main === module && process.argv[2] === BRANCH_LOOKUP_FLAG;
+// The hook is registered with a 10 s timeout, and the harness kills a hook that
+// overruns it before any output is delivered. The child stops waiting at the
+// deadline; the parent's own timeout is the backstop for a child that hangs.
+// Both sit well inside 10 s so the INVOKE is still written.
+const BRANCH_LOOKUP_DEADLINE_MS = 5000;
+const BRANCH_LOOKUP_PARENT_TIMEOUT_MS = 6500;
+// The single-issue, batch and no-argument done paths (#3743) share one budget
+// for their synchronous gh calls, inside the same 10 s: the first lookup gets
+// at most GH_FIRST_LOOKUP_MS, each later call what is left of GH_BUDGET_MS, and
+// a call that would get less than GH_MIN_CALL_MS is skipped — every one after
+// the first is optional, and /work re-does it.
+const GH_BUDGET_MS = 8000;
+const GH_FIRST_LOOKUP_MS = 5000;
+const GH_MIN_CALL_MS = 500;
+
+/**
+ * One hook run's budget for synchronous gh calls (#3743).
+ *
+ * `timeout(cap)` is the timeout to give the next call — `cap`, or what is left
+ * of the budget if less — or null when too little is left, so the caller skips
+ * the call rather than start one the harness would kill mid-way.
+ *
+ * @param {number} totalMs
+ * @returns {{ timeout: (cap: number) => (number|null) }}
+ */
+function createGhBudget(totalMs) {
+    const deadline = Date.now() + totalMs;
+    return {
+        timeout(cap) {
+            const left = deadline - Date.now();
+            return left >= GH_MIN_CALL_MS ? Math.min(cap, left) : null;
+        }
+    };
+}
+
 let heartbeat = { fail() {}, setCwd() {} };
-if (require.main === module) {
+if (require.main === module && !isBranchLookup) {
   try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('workflow-trigger'); } catch (_) { /* reported by the load check */ }
 }
 // crash.log above is unchanged: an uncaught error still writes it and exits 1,
@@ -184,8 +225,20 @@ const ANALYSIS_KEYWORDS = TRIGGER_DATA.analysisKeywords;
 
 let input = '';
 
-process.stdin.on('data', chunk => input += chunk);
-process.stdin.on('end', () => {
+if (isBranchLookup) {
+    // No process.exit: stdout to a pipe may be asynchronous, and the process
+    // ends by itself once every lookup has answered or been timed out.
+    lookupBranches(
+        process.argv.slice(3).filter((a) => /^\d+$/.test(a)),
+        require('child_process').exec,
+        BRANCH_LOOKUP_DEADLINE_MS
+    ).then((statuses) => process.stdout.write(JSON.stringify(statuses)));
+} else {
+    process.stdin.on('data', chunk => input += chunk);
+    process.stdin.on('end', handlePrompt);
+}
+
+function handlePrompt() {
     try {
         const data = JSON.parse(input);
         heartbeat.setCwd(data && data.cwd);
@@ -300,19 +353,18 @@ process.stdin.on('end', () => {
             // Try to extract issue number using flexible patterns:
             // 1. Explicit #N reference anywhere: "work on #123", "work #123 now"
             // 2. Number after work [on] [issue]: "work 123", "work on 45", "work issue 789"
-            // Every number is collected (#3384): a single match routed the
-            // first and dropped the rest with no warning. Bare numbers stay
-            // anchored to the run right after `work [on] [issue]` (#2782);
-            // #N references count anywhere, as the done route reads them.
-            const explicitIssues = (prompt.match(/#(\d+)/g) || []).map((n) => n.slice(1));
-            const implicitIssues = [];
-            const afterWork = /^work /i.test(prompt) ? prompt.replace(/^work (?:on )?(?:issue )?/i, '') : '';
-            for (const token of afterWork.split(/[\s,]+/)) {
-                if (!/^\d+$/.test(token)) break;
-                implicitIssues.push(token);
-            }
-            const issueNumbers = [...new Set([...implicitIssues, ...explicitIssues])];
+            // Every number in the issue run is collected (#3384); a #N outside
+            // it is prose and is named rather than worked (#3406) — see
+            // parseWorkIssues.
+            const { issues: issueNumbers, ignored: ignoredRefs } = parseWorkIssues(prompt);
             const issueNumber = issueNumbers.length ? issueNumbers[0] : null;
+            const notRoutedNote = ignoredRefs.length
+                ? `[NOT ROUTED: ${ignoredRefs.map((n) => `#${n}`).join(', ')} ${ignoredRefs.length === 1 ? 'is' : 'are'} referenced outside the issue list that follows "work", so ${ignoredRefs.length === 1 ? 'it was' : 'they were'} not added to this run. Tell the user; to work ${ignoredRefs.length === 1 ? 'it' : 'them'} too, name ${ignoredRefs.length === 1 ? 'it' : 'them'} right after "work".]`
+                : '';
+            const withWorkNotes = (context) => withRoutingNote(
+                notRoutedNote ? `${context.replace(/\n+$/, '')}\n\n${notRoutedNote}\n` : context,
+                'work'
+            );
 
             // Try to extract batch status: "work all in Ready", "work the issues in backlog".
             // Validated against .gh-pmu.json rather than matched loosely (#2782) — see
@@ -335,32 +387,20 @@ process.stdin.on('end', () => {
             const withWorkFlags = (invocation) => (workFlags ? `${invocation} ${workFlags}` : invocation);
 
             // Several issues (#3384): the branch check runs for each, and the
-            // block names every unassigned one. No [AUTO-TASK] — one issue's
-            // criteria would read as the whole run's, and /work's preamble
-            // extracts each issue's itself. A failed lookup fails open, as the
-            // single-issue path does.
+            // block names every one known to be unassigned. No [AUTO-TASK] —
+            // one issue's criteria would read as the whole run's, and /work's
+            // preamble extracts each issue's itself. A failed lookup fails
+            // open, as the single-issue path does.
             if (issueNumbers.length > 1) {
                 const assignRequested = workFlags.split(/\s+/).includes('--assign');
-                const unassigned = [];
-                if (!assignRequested) {
-                    for (const n of issueNumbers) {
-                        try {
-                            const data = JSON.parse(execSync(
-                                `gh pmu view ${n} --json=fieldValues`,
-                                { encoding: 'utf-8', timeout: 10000 }
-                            ));
-                            const branch = data.fieldValues?.Branch;
-                            if (!branch || branch === 'null') unassigned.push(n);
-                        } catch (_error) {
-                            // Unknown is not unassigned: /work's preamble checks again.
-                        }
-                    }
-                }
+                // One bounded call, lookups in parallel (#3406): a synchronous
+                // lookup per issue could outlast the hook's own timeout.
+                const unassigned = assignRequested ? [] : unassignedAmong(issueNumbers);
                 if (unassigned.length) {
                     const refs = unassigned.map((n) => `#${n}`).join(', ');
                     const output = {
                         decision: 'block',
-                        reason: `${unassigned.length === 1 ? 'Issue' : 'Issues'} ${refs} ${unassigned.length === 1 ? 'has' : 'have'} no branch assignment.\n\nUse: /assign-branch ${refs.replace(/,/g, '')} release/vX.Y.Z\n\nOr pass --assign to assign them to the current branch.`
+                        reason: `${unassigned.length === 1 ? 'Issue' : 'Issues'} ${refs} ${unassigned.length === 1 ? 'has' : 'have'} no branch assignment.\n\nUse: /assign-branch ${refs.replace(/,/g, '')} --branch release/vX.Y.Z\n\nOr pass --assign to assign them to the current branch.`
                     };
                     console.log(JSON.stringify(output));
                     process.exit(0);
@@ -369,7 +409,7 @@ process.stdin.on('end', () => {
                     systemMessage: `Success`,
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: withRoutingNote(`[INVOKE: ${withWorkFlags(`/work ${issueNumbers.join(' ')}`)}]\n`, 'work')
+                        additionalContext: withWorkNotes(`[INVOKE: ${withWorkFlags(`/work ${issueNumbers.join(' ')}`)}]\n`)
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -379,12 +419,15 @@ process.stdin.on('end', () => {
             // Single issue work (has issue number)
             if (issueNumber) {
 
+            // One budget for every gh call below (#3743): at 10 s each, four
+            // calls could outlast the hook's own 10 s timeout.
+            const ghBudget = createGhBudget(GH_BUDGET_MS);
             try {
                 // Query issue's Branch field via gh pmu view
                 const result = execSync(
                     // Explicit field list: gh pmu 1.7.0 rejects a bare --json (#3254)
                     `gh pmu view ${issueNumber} --json=fieldValues,body,labels`,
-                    { encoding: 'utf-8', timeout: 10000 }
+                    { encoding: 'utf-8', timeout: ghBudget.timeout(GH_FIRST_LOOKUP_MS) }
                 );
 
                 const issueData = JSON.parse(result);
@@ -402,7 +445,7 @@ process.stdin.on('end', () => {
                     // the harness rejected it and the message never appeared.
                     const output = {
                         decision: 'block',
-                        reason: `Issue #${issueNumber} has no branch assignment.\n\nUse: /assign-branch #${issueNumber} release/vX.Y.Z\n\nOr use: gh pmu move ${issueNumber} --branch "release/vX.Y.Z"`
+                        reason: `Issue #${issueNumber} has no branch assignment.\n\nUse: /assign-branch #${issueNumber} --branch release/vX.Y.Z\n\nOr use: gh pmu move ${issueNumber} --branch "release/vX.Y.Z"`
                     };
                     console.log(JSON.stringify(output));
                     process.exit(0);
@@ -415,19 +458,22 @@ process.stdin.on('end', () => {
                 // Check issue body for **PRD Tracker:** #NNN and move to in_progress if needed
                 const body = issueData.body || '';
                 const prdTrackerMatch = body.match(/\*\*PRD Tracker:\*\*\s*#(\d+)/);
-                if (prdTrackerMatch) {
+                // Optional: skipped once the budget is spent (#3743).
+                const prdViewTimeout = prdTrackerMatch ? ghBudget.timeout(GH_BUDGET_MS) : null;
+                if (prdTrackerMatch && prdViewTimeout) {
                     const prdNumber = prdTrackerMatch[1];
                     try {
                         const prdResult = execSync(
                             `gh pmu view ${prdNumber} --json=status`,
-                            { encoding: 'utf-8', timeout: 10000 }
+                            { encoding: 'utf-8', timeout: prdViewTimeout }
                         );
                         const prdData = JSON.parse(prdResult);
                         const prdStatus = (prdData.status || '').toLowerCase();
-                        if (prdStatus === 'backlog' || prdStatus === 'ready') {
+                        const prdMoveTimeout = ghBudget.timeout(GH_BUDGET_MS);
+                        if ((prdStatus === 'backlog' || prdStatus === 'ready') && prdMoveTimeout) {
                             execSync(
                                 `gh pmu move ${prdNumber} --status in_progress`,
-                                { encoding: 'utf-8', timeout: 10000 }
+                                { encoding: 'utf-8', timeout: prdMoveTimeout }
                             );
                             contextMessage += `\nPRD tracker #${prdNumber} moved to In Progress\n`;
                         }
@@ -446,10 +492,13 @@ process.stdin.on('end', () => {
                     // (#3052), so `.length` on it was undefined and the list was
                     // never emitted. A bare array is still accepted.
                     let unavailable = null;
-                    try {
+                    // Optional: skipped once the budget is spent (#3743).
+                    const subTimeout = ghBudget.timeout(GH_BUDGET_MS);
+                    if (!subTimeout) unavailable = 'hook time budget spent';
+                    if (subTimeout) try {
                         const subResult = execSync(
                             `gh pmu sub list ${issueNumber} --json`,
-                            { encoding: 'utf-8', timeout: 10000 }
+                            { encoding: 'utf-8', timeout: subTimeout }
                         );
                         const parsed = JSON.parse(subResult);
                         const children = Array.isArray(parsed) ? parsed : parsed?.children;
@@ -488,7 +537,7 @@ process.stdin.on('end', () => {
                     systemMessage: `Success`,
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: withRoutingNote(contextMessage, 'work')
+                        additionalContext: withWorkNotes(contextMessage)
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -500,7 +549,7 @@ process.stdin.on('end', () => {
                     systemMessage: `Success`,
                     hookSpecificOutput: {
                         hookEventName: 'UserPromptSubmit',
-                        additionalContext: withRoutingNote(`[INVOKE: ${withWorkFlags(`/work ${issueNumber}`)}]`, 'work')
+                        additionalContext: withWorkNotes(`[INVOKE: ${withWorkFlags(`/work ${issueNumber}`)}]`)
                     }
                 };
                 console.log(JSON.stringify(output));
@@ -519,7 +568,8 @@ process.stdin.on('end', () => {
                 const result = execSync(
                     // Explicit field list: gh pmu 1.7.0 rejects a bare --json (#3254)
                     `gh pmu list --status ${statusFilter} --json=number,title`,
-                    { encoding: 'utf-8', timeout: 15000 }
+                    // Inside the hook's 10 s (#3743); was 15 s, past it.
+                    { encoding: 'utf-8', timeout: createGhBudget(GH_BUDGET_MS).timeout(GH_FIRST_LOOKUP_MS) }
                 );
 
                 const data = JSON.parse(result);
@@ -581,7 +631,8 @@ process.stdin.on('end', () => {
             try {
                 const inReviewResult = execSync(
                     'gh pmu list --status in_review',
-                    { encoding: 'utf-8', timeout: 10000 }
+                    // Inside the hook's 10 s (#3743), with room left for the output.
+                    { encoding: 'utf-8', timeout: createGhBudget(GH_BUDGET_MS).timeout(GH_FIRST_LOOKUP_MS) }
                 );
 
                 const hasReviewIssues =
@@ -716,7 +767,62 @@ process.stdin.on('end', () => {
         heartbeat.fail(_e);
         process.exit(0);
     }
-});
+}
+
+/**
+ * Branch-assignment status for several issues, looked up in parallel (#3406).
+ *
+ * Every lookup starts at once and carries `deadlineMs` as its own timeout, so
+ * the whole set takes as long as the slowest lookup and never longer than the
+ * deadline — not the sum, which is what one synchronous call per issue cost.
+ *
+ * An issue whose lookup failed, timed out or did not parse is LEFT OUT of the
+ * result: unknown is not unassigned, and /work's preamble checks again.
+ *
+ * @param {string[]} issues - Issue numbers
+ * @param {Function} exec - child_process.exec, or a stand-in with its signature
+ * @param {number} deadlineMs
+ * @returns {Promise<Object<string, 'assigned'|'unassigned'>>}
+ */
+function lookupBranches(issues, exec, deadlineMs) {
+    return Promise.all(issues.map((n) => new Promise((resolve) => {
+        exec(
+            `gh pmu view ${n} --json=fieldValues`,
+            { encoding: 'utf-8', timeout: deadlineMs, windowsHide: true },
+            (error, stdout) => {
+                if (error) return resolve([n, null]);
+                try {
+                    const branch = JSON.parse(stdout).fieldValues?.Branch;
+                    resolve([n, !branch || branch === 'null' ? 'unassigned' : 'assigned']);
+                } catch (_e) {
+                    resolve([n, null]);
+                }
+            }
+        );
+    }))).then((pairs) => Object.fromEntries(pairs.filter(([, status]) => status)));
+}
+
+/**
+ * The issues among `issueNumbers` known to have no branch assignment (#3406).
+ *
+ * ONE synchronous call, to this file's own --branch-lookup mode, bounded by a
+ * timeout inside the hook's. Any failure — a timeout, a non-zero exit, output
+ * that does not parse — returns [], which fails open to the INVOKE.
+ *
+ * @param {string[]} issueNumbers - Digits only; they reach a command line
+ * @returns {string[]}
+ */
+function unassignedAmong(issueNumbers) {
+    try {
+        const statuses = JSON.parse(execSync(
+            `"${process.execPath}" "${__filename}" ${BRANCH_LOOKUP_FLAG} ${issueNumbers.join(' ')}`,
+            { encoding: 'utf-8', timeout: BRANCH_LOOKUP_PARENT_TIMEOUT_MS, windowsHide: true }
+        ));
+        return issueNumbers.filter((n) => statuses[n] === 'unassigned');
+    } catch (_error) {
+        return [];
+    }
+}
 
 /**
  * Read the recognized flags for a command from the externalized allowlist.
@@ -738,6 +844,67 @@ function getRecognizedFlags(command) {
         .filter((e) => !(e && typeof e === 'object' && e.attach === 'none'))
         .map(flagNameOf)
         .filter(Boolean);
+}
+
+/**
+ * The issues a `work …` prompt asks to work, and the references it does not (#3406).
+ *
+ * Issues are read from the contiguous run of issue tokens right after
+ * `work [on] [issue[s]]` — `#N` or `N`, separated by spaces, commas, a slash
+ * or an `and`/`&` between two issue tokens. The run ends at the first other token, or
+ * after a token closed by sentence punctuation (`#12.`).
+ *
+ * The run's first token sets its form (#3732): a run that starts with `#N`
+ * takes only `#`-prefixed tokens after it, so `work #12, 2 tests fail there`
+ * and `work #12 and 3 other things` route `/work 12` — a prose count never
+ * joins the list. A run that starts with a bare number stays a bare-number run
+ * (`work 42 43`, and `work 42 #43`).
+ *
+ * Separators are decided here, in the split and the token pattern, and nowhere
+ * else (#3732): the chosen behavior is to ROUTE, not to emit a NOT ROUTED
+ * note. A slash separates issue tokens and a token may sit in parentheses, so
+ * `work #12/#13` and `work (#12) and (#13)` both route `/work 12 13`, as they
+ * did before #3406. Any other punctuation still ends the run.
+ *
+ * A `#N` after that run is prose. Collecting it (#3384 read `#N` anywhere, as
+ * the done route does) turned `work #12, it depends on #10 which is done` into
+ * `/work 12 10`, and /work moves board status — a stray reference started
+ * work nobody asked for. Such references are returned as `ignored` so the
+ * caller can name them instead of dropping them silently.
+ *
+ * With no run at all, a lone `#N` anywhere is still the issue ("work on
+ * fixing the bug in #100", #946). Several references and no run say nothing
+ * about which is meant, so none is routed and the prompt reaches the model
+ * untouched.
+ *
+ * @param {string} prompt
+ * @returns {{issues: string[], ignored: string[]}}
+ */
+function parseWorkIssues(prompt) {
+    const referenced = [...new Set((prompt.match(/#(\d+)/g) || []).map((n) => n.slice(1)))];
+    const tokens = /^work /i.test(prompt)
+        ? prompt.replace(/^work (?:on )?(?:issues |issue )?/i, '').split(/[\s,/]+/).filter(Boolean)
+        : [];
+    const issueToken = /^\(?(#?)(\d+)\)?([.;:!?]?)$/;
+    const run = [];
+    let hashRun = false;
+    const continues = (token) => {
+        const m = (token || '').match(issueToken);
+        return m && (!hashRun || m[1] === '#') ? m : null;
+    };
+    for (let i = 0; i < tokens.length; i++) {
+        if (run.length && /^(?:and|&)$/i.test(tokens[i]) && continues(tokens[i + 1])) continue;
+        const m = continues(tokens[i]);
+        if (!m) break;
+        if (!run.length) hashRun = m[1] === '#';
+        run.push(m[2]);
+        if (m[3]) break;
+    }
+    const issues = [...new Set(run)];
+    if (issues.length) {
+        return { issues, ignored: referenced.filter((n) => !issues.includes(n)) };
+    }
+    return { issues: referenced.length === 1 ? referenced : [], ignored: [] };
 }
 
 /**
@@ -1232,3 +1399,6 @@ To see framework-specific commands, either:
 
 3. **Quick start:** Type \`commands\` to see workflow triggers and slash commands.`;
 }
+
+// For the test suite, which requires this module (#3406).
+module.exports = { lookupBranches, parseWorkIssues };

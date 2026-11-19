@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  *
  * Cooldown-aware npm audit gate (#2537; deployed to user projects by #3016).
  *
@@ -57,6 +57,22 @@
  * `.claude/scripts/shared/` tree does not exist on a CI runner; this repo's
  * own `test.yml` runs it from here directly.
  *
+ * **Advisory exceptions.** `.audit-exceptions.json` in the project root
+ * lists advisories the gate must not count:
+ * `{ "exceptions": [{ "id": "GHSA-…", "reason": "…", "expires": "YYYY-MM-DD" }] }`.
+ * For an advisory that cannot be fixed and does not apply, e.g. a dev-only
+ * dependency's advisory with no patched release, which would otherwise fail
+ * `fail-unfixable` until upstream acts. A vulnerable package is dropped only
+ * when every high advisory it reaches, directly or through the packages npm
+ * names in its `via`, is excepted; one unexcepted high advisory keeps it, and
+ * its dependents. Moderate and low advisories never fail the gate, so they never
+ * keep a package counted.
+ * `reason` and `expires` are required, so an exception is a dated decision,
+ * never a permanent silence: an expired entry is not applied and the message
+ * says so. A malformed file fails the run (exit 2) instead of being ignored. No
+ * file means no exceptions, exactly the gate as it was. Every applied exception
+ * is named in the output, on a pass too.
+ *
  * CLI:
  *   node audit-cooldown-check.js [--json] [--root <dir>]
  */
@@ -64,6 +80,36 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+
+// The npm package-name grammar, vendored from `lib/input-validation.js`
+// `validateNpmPackageName` (#3739): this file is copied alone into a project's
+// `.github/scripts/`, so it cannot require a sibling module. The two copies
+// are held equal by a parity test (#3748).
+const NPM_SEGMENT = /^[A-Za-z0-9~-][A-Za-z0-9._~-]*$/;
+
+/**
+ * True when `name` is a registry-valid npm package name: at most 214
+ * characters, an optional `@scope/` prefix, and URL-safe segments. Capitals
+ * are admitted: the registry still serves legacy names such as `JSONStream`,
+ * and npm audit reports them under that name (#3757).
+ * Nothing that passes carries whitespace or a shell metacharacter, and none
+ * starts with '-', which npm would read as an option (#3748), or with '~',
+ * which sh tilde-expands to a home directory (#3752); a scoped segment may,
+ * as npm allows — a scoped name starts with '@'.
+ *
+ * @param {*} name
+ * @returns {boolean}
+ */
+function isNpmPackageName(name) {
+  if (typeof name !== 'string' || !name || name.length > 214 || name[0] === '-' || name[0] === '~') return false;
+  let pkg = name;
+  if (name[0] === '@') {
+    const slash = name.indexOf('/');
+    if (slash < 0 || !NPM_SEGMENT.test(name.slice(1, slash))) return false;
+    pkg = name.slice(slash + 1);
+  }
+  return NPM_SEGMENT.test(pkg);
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -159,8 +205,6 @@ function compareVersions(a, b) {
  * or `"*"`. Only the top of the range matters: the fix is the first published
  * version above it.
  *
- * @param {string|null} range
- * @param {string|null} [installed] Installed version, when known.
  * A `||` range (#3303) is a set of disjoint sub-ranges, and a project sits in
  * one of them: its fix is the first version above *that* sub-range's bound, so
  * with `installed` given the bound is the one of the sub-range containing it
@@ -171,6 +215,8 @@ function compareVersions(a, b) {
  * `candidateFixes` does not rely on that, it takes one candidate per sub-range
  * via `subRangeBounds` and lets `classifyAudit` defer only when all are blocked.
  *
+ * @param {string|null} range
+ * @param {string|null} [installed] Installed version, when known.
  * @returns {{version:string, inclusive:boolean}|null} null when undeterminable
  *   — `"*"` means every version is vulnerable, which is emphatically not the
  *   same as "cooldown-blocked".
@@ -356,6 +402,150 @@ function classifyAudit({ highCount, fixes = [], unpaired = [], minReleaseAge = 0
   };
 }
 
+const EXCEPTIONS_FILE = '.audit-exceptions.json';
+const ADVISORY_ID = /^GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}$/;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse `.audit-exceptions.json`. Pure.
+ *
+ * @param {string|null} text Raw file body; null when there is no file.
+ * @param {string|Date} now Reference time; an entry expires after its date.
+ * @returns {{active:Array<{id,reason,expires}>, expired:Array<{id,reason,expires}>, error:?string}}
+ */
+function parseExceptions(text, now) {
+  const none = { active: [], expired: [], error: null };
+  if (text === null || text === undefined) return none;
+  let doc;
+  try { doc = JSON.parse(text); } catch (e) {
+    return { ...none, error: `${EXCEPTIONS_FILE} is not valid JSON: ${e.message}` };
+  }
+  if (!doc || !Array.isArray(doc.exceptions)) {
+    return { ...none, error: `${EXCEPTIONS_FILE} needs an "exceptions" array` };
+  }
+  const today = (now instanceof Date ? now : new Date(String(now))).toISOString().slice(0, 10);
+  const active = [];
+  const expired = [];
+  for (const [i, e] of doc.exceptions.entries()) {
+    const id = e && typeof e.id === 'string' ? e.id.trim() : '';
+    if (!ADVISORY_ID.test(id)) {
+      return { ...none, error: `${EXCEPTIONS_FILE} entry ${i}: "id" must be a GHSA advisory id` };
+    }
+    if (!e.reason || typeof e.reason !== 'string' || !e.reason.trim()) {
+      return { ...none, error: `${EXCEPTIONS_FILE} entry ${i} (${id}): "reason" is required` };
+    }
+    if (typeof e.expires !== 'string' || !DATE_ONLY.test(e.expires) || Number.isNaN(Date.parse(e.expires))) {
+      return { ...none, error: `${EXCEPTIONS_FILE} entry ${i} (${id}): "expires" must be a YYYY-MM-DD date` };
+    }
+    const entry = { id, reason: e.reason.trim(), expires: e.expires };
+    (e.expires < today ? expired : active).push(entry);
+  }
+  return { active, expired, error: null };
+}
+
+/**
+ * The advisory id an npm `via` object names, from its advisory URL.
+ *
+ * @param {object} via
+ * @returns {string|null}
+ */
+function advisoryIdOf(via) {
+  const m = via && typeof via.url === 'string' ? via.url.match(/(GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4})\/?$/i) : null;
+  return m ? m[1] : null;
+}
+
+/**
+ * Drop the vulnerable packages whose every high advisory is excepted. Pure.
+ *
+ * Only high and critical advisories count, as they do for `countHigh`: a
+ * moderate advisory a package also reaches never fails the gate, so it never
+ * keeps the package counted. A `via` string names another vulnerable package,
+ * so a package's advisories are its own plus those of every package it names,
+ * transitively. A high advisory with no recognizable id is never excepted, and
+ * a package that reaches no high advisory at all is left counted.
+ *
+ * @param {object} auditJson Parsed `npm audit --json`.
+ * @param {string[]} ids Active exception ids.
+ * @returns {{audit:object, excepted:string[], used:string[]}} The report
+ *   without the excepted packages, their names, and the ids (as `ids` spells
+ *   them) that excepted at least one package.
+ */
+function applyExceptions(auditJson, ids) {
+  const vulns = (auditJson && auditJson.vulnerabilities) || {};
+  const wanted = new Set((ids || []).map((id) => String(id).toLowerCase()));
+  if (!wanted.size) return { audit: auditJson, excepted: [], used: [] };
+  const isHigh = (s) => s === 'high' || s === 'critical';
+  // The high advisories a package reaches: lowercased ids, or null for one
+  // with no recognizable id. A cycle adds no advisory of its own.
+  const reach = (name, seen, out) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    const v = vulns[name];
+    for (const x of (v && Array.isArray(v.via) ? v.via : [])) {
+      if (typeof x === 'string') reach(x, seen, out);
+      else if (x && isHigh(x.severity)) {
+        const id = advisoryIdOf(x);
+        out.add(id ? id.toLowerCase() : null);
+      }
+    }
+  };
+  const kept = {};
+  const excepted = [];
+  const matched = new Set();
+  for (const [name, v] of Object.entries(vulns)) {
+    const found = new Set();
+    reach(name, new Set(), found);
+    const all = found.size > 0 && [...found].every((id) => id !== null && wanted.has(id));
+    if (all) {
+      excepted.push(name);
+      for (const id of found) matched.add(id);
+    } else kept[name] = v;
+  }
+  const used = ids.filter((id) => matched.has(String(id).toLowerCase()));
+  return { audit: { ...auditJson, vulnerabilities: kept }, excepted, used };
+}
+
+/**
+ * The project's `.audit-exceptions.json` body, or null when there is none.
+ *
+ * @param {string} root Project root.
+ * @returns {string|null}
+ */
+function readExceptionsFile(root) {
+  try { return fs.readFileSync(path.join(root, EXCEPTIONS_FILE), 'utf8'); } catch (_e) { return null; }
+}
+
+/**
+ * The lines naming applied, unused and expired exceptions, appended to the
+ * verdict. Only the exceptions that excepted a package this run are listed
+ * as applied, with the packages they excepted; the other active ones are
+ * named separately as not used this run.
+ *
+ * @param {{active:object[], expired:object[]}} exceptions Parsed exceptions.
+ * @param {string[]} excepted Package names `applyExceptions` dropped.
+ * @param {string[]} [used] Exception ids `applyExceptions` reported as used.
+ * @returns {string} Empty when there is nothing to say.
+ */
+function describeExceptions({ active, expired }, excepted, used = []) {
+  const lines = [];
+  const usedSet = new Set(used.map((id) => String(id).toLowerCase()));
+  const isUsed = (e) => usedSet.has(e.id.toLowerCase());
+  const entryLine = (e) => `  - ${e.id} until ${e.expires}: ${e.reason}`;
+  if (excepted.length) {
+    lines.push(`Excepted by ${EXCEPTIONS_FILE} (${excepted.length} package(s) not counted: ${excepted.join(', ')}):`);
+    lines.push(...active.filter(isUsed).map(entryLine));
+  }
+  const unused = active.filter((e) => !isUsed(e));
+  if (unused.length) {
+    lines.push(`Active exception(s) not used this run (${unused.length}) — matched no package:`);
+    lines.push(...unused.map(entryLine));
+  }
+  for (const e of expired) {
+    lines.push(`Expired exception NOT applied: ${e.id} (expired ${e.expires}) — renew it or remove it.`);
+  }
+  return lines.join('\n');
+}
+
 // ─── I/O (used only by main) ────────────────────────────────
 
 /**
@@ -375,7 +565,8 @@ function extractJson(body) {
 function npmJson(args, cwd) {
   // A single command string rather than (file, args[]) with shell:true, which
   // triggers DEP0190. Every token is a literal defined in this file or a
-  // package name npm itself reported — no caller input reaches the shell.
+  // package name npm reported that candidateFixes has checked against the npm
+  // package-name grammar (#3739) — no unvalidated input reaches the shell.
   const cmd = `${NPM} ${args.join(' ')}`;
   try {
     return extractJson(execSync(cmd, {
@@ -430,12 +621,32 @@ function candidateFixes(auditJson, root, { lookup = npmJson } = {}) {
     // #3389: a `||` range is bounded by the sub-range the project is on. With
     // the installed version unknown, every sub-range's fix is a candidate, so
     // the run defers only when all of them are inside the cooldown.
+    // #3409: every vulnerable copy npm names in `nodes` is placed, not the
+    // top-level one alone — a nested copy in another sub-range makes that
+    // sub-range's fix a candidate too. The range narrows only when every
+    // copy's version is readable and sits in a sub-range.
     const installed = installedVersionOf(name, root);
+    const nodes = Array.isArray(v.nodes) ? v.nodes : [];
+    const copies = nodes.length ? nodes.map((n) => nodeVersion(root, n)) : [installed];
     const parts = typeof v.range === 'string' && v.range.includes('||') ? v.range.split('||') : null;
-    const home = parts && installed ? parts.find((p) => subRangeContains(p, installed)) : null;
-    const bounds = parts && !home ? subRangeBounds(v.range) : [parseUpperBound(home || v.range)];
+    const placed = parts
+      ? copies.map((version) => ({ version, part: version ? parts.find((p) => subRangeContains(p, version)) : null }))
+      : [];
+    const homes = placed.length && placed.every((c) => c.part)
+      ? [...new Map(placed.map((c) => [c.part, c])).values()]
+      : null;
+    const bounds = homes
+      ? homes.map((h) => parseUpperBound(h.part))
+      : (parts ? subRangeBounds(v.range) : [parseUpperBound(v.range)]);
     if (bounds.some((b) => !b)) {
       unpaired.push({ name, reason: 'no-range-bound' });
+      continue;
+    }
+    // #3739: `name` is a key of parsed `npm audit --json` and npmJson runs it
+    // through a shell command string, so only a name inside the npm
+    // package-name grammar is looked up; anything else is lookup-failed.
+    if (!isNpmPackageName(name)) {
+      unpaired.push({ name, reason: 'lookup-failed' });
       continue;
     }
     const meta = lookup(['view', name, 'versions', 'time', '--json'], root);
@@ -444,19 +655,23 @@ function candidateFixes(auditJson, root, { lookup = npmJson } = {}) {
       continue;
     }
     const times = meta.time || {};
-    const targets = [...new Set(bounds.map((b) => pickCandidate(meta.versions, b)).filter(Boolean))];
-    if (!targets.length) {
+    // One fix per distinct target; with the `nodes` copies placed, `from` is
+    // the version of the copy in that target's sub-range. Without `nodes` npm
+    // named no copy, so `from` stays the literal 'installed' whether or not
+    // the top-level copy narrowed the range.
+    const fallbackFrom = (nodes.length ? installed : null) || 'installed';
+    const targets = new Map();
+    bounds.forEach((b, i) => {
+      const to = pickCandidate(meta.versions, b);
+      if (to && !targets.has(to)) targets.set(to, homes && nodes.length ? homes[i].version : fallbackFrom);
+    });
+    if (!targets.size) {
       unpaired.push({ name, reason: 'no-eligible-version' });
       continue;
     }
 
-    for (const to of targets) {
-      fixes.push({
-        name,
-        from: (v.nodes && v.nodes.length ? installed : null) || 'installed',
-        to,
-        publishedAt: times[to] || null
-      });
+    for (const [to, from] of targets) {
+      fixes.push({ name, from, to, publishedAt: times[to] || null });
     }
   }
   return { fixes, unpaired };
@@ -469,15 +684,62 @@ function candidateFixes(auditJson, root, { lookup = npmJson } = {}) {
  * file, which in a user project sits in the hub, and the require cache would
  * pin the first answer for the process.
  *
+ * `name` is a key of `vulnerabilities` in parsed `npm audit --json` output, so
+ * it is read only when it resolves strictly inside `<root>/node_modules`
+ * (#3736): a name carrying `..` segments, an absolute path or a non-string is
+ * null without reading anything. A scoped name (`@scope/pkg`) stays inside.
+ *
  * @param {string} name Package name as npm reported it.
  * @param {string} root Project root.
  * @returns {string|null}
  */
 function installedVersionOf(name, root) {
+  const dir = containedPath(path.join(path.resolve(root), 'node_modules'), name);
+  return dir ? versionAt(dir) : null;
+}
+
+/**
+ * Version of the copy an npm `nodes` entry names, or null (#3409).
+ *
+ * The entry comes from parsed `npm audit --json` output, so it is read only
+ * when it resolves to a directory strictly inside the project root: an entry
+ * carrying `..` segments, an absolute path or a non-string is an unknown copy
+ * (null), which leaves every sub-range's fix a candidate.
+ *
+ * @param {string} root Project root.
+ * @param {*} node A `nodes` entry, e.g. `node_modules/a/node_modules/b`.
+ * @returns {string|null}
+ */
+function nodeVersion(root, node) {
+  const dir = containedPath(path.resolve(root), node);
+  return dir ? versionAt(dir) : null;
+}
+
+/**
+ * `rel` resolved against `base` when it lands strictly inside `base`, else
+ * null (#3409, #3736). Empty, non-string, `..`-escaping and absolute-elsewhere
+ * values are all null; `base` itself is not "inside".
+ *
+ * @param {string} base Absolute containing directory.
+ * @param {*} rel Untrusted relative path.
+ * @returns {string|null}
+ */
+function containedPath(base, rel) {
+  if (typeof rel !== 'string' || !rel) return null;
+  const inner = path.relative(base, path.resolve(base, rel));
+  if (!inner || inner === '..' || inner.startsWith('..' + path.sep) || path.isAbsolute(inner)) return null;
+  return path.join(base, inner);
+}
+
+/**
+ * Version in the `package.json` of a package directory, or null (#3409).
+ *
+ * @param {string} dir Package directory; callers pass it through `containedPath`.
+ * @returns {string|null}
+ */
+function versionAt(dir) {
   try {
-    const pkg = JSON.parse(fs.readFileSync(
-      path.join(root, 'node_modules', name, 'package.json'), 'utf8'
-    ));
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
     return pkg.version || null;
   } catch (_e) {
     return null;
@@ -538,17 +800,30 @@ function main() {
     process.exit(1);
   }
 
-  const highCount = countHigh(audit);
+  const now = new Date();
+  const exceptions = parseExceptions(readExceptionsFile(root), now);
+  if (exceptions.error) {
+    console.error(`npm audit: ${exceptions.error} — failing closed.`);
+    process.exit(2);
+  }
+  const { audit: counted, excepted, used } = applyExceptions(audit, exceptions.active.map((e) => e.id));
+
+  const highCount = countHigh(counted);
   const { fixes, unpaired } = highCount
-    ? candidateFixes(audit, root)
+    ? candidateFixes(counted, root)
     : { fixes: [], unpaired: [] };
 
   const result = classifyAudit({
-    highCount, fixes, unpaired, minReleaseAge, now: new Date()
+    highCount, fixes, unpaired, minReleaseAge, now
   });
+  const note = describeExceptions(exceptions, excepted, used);
+  if (note) result.message += '\n' + note;
 
   if (process.argv.includes('--json')) {
-    console.log(JSON.stringify({ ...result, highCount, minReleaseAge, fixes, unpaired }, null, 2));
+    console.log(JSON.stringify({
+      ...result, highCount, minReleaseAge, fixes, unpaired,
+      exceptions: { active: exceptions.active, expired: exceptions.expired, excepted, used }
+    }, null, 2));
   } else {
     (result.exitCode === 0 ? console.log : console.error)(result.message);
   }
@@ -558,8 +833,9 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  classifyAudit, candidateFixes, UNPAIRED_REASONS,
+  classifyAudit, candidateFixes, UNPAIRED_REASONS, isNpmPackageName,
   parseMinReleaseAge, clearsAt, ageInDays, countHigh,
   compareVersions, parseUpperBound, pickCandidate,
-  resolveProjectRoot, readMinReleaseAge, installedVersionOf
+  resolveProjectRoot, readMinReleaseAge, installedVersionOf,
+  parseExceptions, applyExceptions, advisoryIdOf, describeExceptions, EXCEPTIONS_FILE
 };

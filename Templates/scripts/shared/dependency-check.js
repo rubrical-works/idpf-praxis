@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
- * @description Detect missing, partial, or stale node_modules at session startup, and probe whether each runner the project's testing.suites[] names is on PATH (#3012). Stats node_modules/<name>/package.json for each declared package and compares package-lock.json mtime against node_modules/.package-lock.json; the runner probe goes through lib/runner-probe.js (where / command -v) and never spawns the runner. Read-only and advisory — performs no installation and spawns no npm subprocess.
+ * @framework-script 0.121.0
+ * @description Detect missing, partial, or stale node_modules at session startup, and probe whether each runner the project's testing.suites[] names is on PATH (#3012). Stats node_modules/<name>/package.json for each declared package and compares package-lock.json against node_modules/.package-lock.json by content (dependency version/resolved/integrity, root version ignored — #3723), with mtime as a pre-check; the runner probe goes through lib/runner-probe.js (where / command -v) and never spawns the runner. Read-only and advisory — performs no installation and spawns no npm subprocess.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -91,21 +91,68 @@ function resolveScope(projectDir) {
  */
 const STALE_TOLERANCE_MS = 30000;
 
+/** The fields that identify what npm installed for one `packages` entry. */
+const ENTRY_FIELDS = ['version', 'resolved', 'integrity'];
+
+/** A lockfile's `packages` map without the root `""` entry, or null. */
+function packagesOf(file) {
+  const doc = readJson(file);
+  if (!doc || typeof doc.packages !== 'object' || doc.packages === null) return null;
+  const { '': _root, ...packages } = doc.packages;
+  return packages;
+}
+
 /**
- * Lockfile meaningfully newer than the installed tree's copy means npm ci has
- * not run since dependencies last changed. Absent either file, staleness is
- * unknowable and is not reported — a startup check must not invent a warning
- * from a missing file.
+ * Does the installed tree differ from what package-lock.json describes (#3723)?
+ *
+ * Compared by CONTENT, not mtime: /prepare-release rewrites package-lock.json
+ * only to bump the root "version", and an mtime comparison then reported every
+ * post-release session stale and offered an `npm ci` that changed nothing. The
+ * root `""` entry carries the project's own version, so it is ignored.
+ *
+ * One direction at a time, because the hidden lockfile is not expected to hold
+ * every lockfile entry:
+ * - every installed entry must appear in package-lock.json with the same
+ *   version/resolved/integrity;
+ * - a lockfile entry missing from the tree counts only when it is neither
+ *   `optional` nor `devOptional` (npm never installs platform-gated optional
+ *   packages), and not `dev` on a tree installed without dev dependencies.
+ *
+ * The mtime comparison stays as a cheap pre-check: a lockfile no newer than
+ * the installed copy (within STALE_TOLERANCE_MS) is not stale without parsing.
+ *
+ * Absent or unparseable, either file makes staleness unknowable and it is not
+ * reported — a startup check must not invent a warning from a missing file.
  */
-function isStale(root) {
+function isStale(root, { omitDev = false } = {}) {
   const lock = path.join(root, 'package-lock.json');
   const installedLock = path.join(root, 'node_modules', '.package-lock.json');
   try {
     const drift = fs.statSync(lock).mtime.getTime() - fs.statSync(installedLock).mtime.getTime();
-    return drift > STALE_TOLERANCE_MS;
+    if (drift <= STALE_TOLERANCE_MS) return false;
   } catch (_e) {
     return false;
   }
+
+  const wanted = packagesOf(lock);
+  const installed = packagesOf(installedLock);
+  if (!wanted || !installed) return false;
+
+  for (const [key, entry] of Object.entries(installed)) {
+    const expected = wanted[key];
+    if (!expected) return true;
+    if (ENTRY_FIELDS.some((f) => (entry || {})[f] !== expected[f])) return true;
+  }
+
+  for (const [key, entry] of Object.entries(wanted)) {
+    if (installed[key]) continue;
+    const e = entry || {};
+    if (e.optional || e.devOptional) continue;
+    if (e.dev && omitDev) continue;
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -208,7 +255,9 @@ function checkDependencies(options = {}) {
   // understates a clone that has never installed anything.
   if (resolved === 0) return { ...base, state: 'missing' };
   if (missing.length > 0) return { ...base, state: 'partial' };
-  if (isStale(root)) return { ...base, state: 'stale' };
+  // A framework root installs production-only (`npm ci --omit=dev`), so its
+  // tree legitimately lacks the lockfile's dev entries.
+  if (isStale(root, { omitDev: scope === 'framework' })) return { ...base, state: 'stale' };
 
   return { ...base, state: 'healthy' };
 }

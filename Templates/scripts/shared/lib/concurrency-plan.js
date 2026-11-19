@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * concurrency-plan.js — Disjointness over declared scope, and the
  * `--concurrent` grouping plan (#3126, PRD Concurrent-Work Story 1.9)
  *
@@ -710,6 +710,32 @@ function parseWorktreeList(text) {
 }
 
 /**
+ * One worktree path in comparable form (#3718): backslashes to `/`, any
+ * trailing slash stripped, lower-cased, so the separators and drive-letter
+ * case git and the harness report never decide a match. Pure.
+ *
+ * @param {string|null|undefined} p
+ * @returns {string}
+ */
+function normalizeWorktreePath(p) {
+  return String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+/**
+ * The run-ledger entry recorded for a worktree (#3718), matched by branch or
+ * by normalized path; `null` when none names it. Pure.
+ *
+ * @param {Array<{issue: number, branch: string, worktreePath: string}>|null} entries
+ * @param {{branch: string|null, worktreePath: string}} worktree
+ * @returns {object|null}
+ */
+function ledgerEntryFor(entries, worktree) {
+  const w = worktree || {};
+  const target = normalizeWorktreePath(w.worktreePath);
+  return (Array.isArray(entries) ? entries : []).find((x) => x.branch === w.branch || normalizeWorktreePath(x.worktreePath) === target) || null;
+}
+
+/**
  * Which `wt/*` worktrees a resumed run finds, matched to members through the
  * run ledger the parent wrote at each spawn (#3264). Branches are harness-
  * named, so the ledger is the only map back to an issue. A worktree the
@@ -723,13 +749,12 @@ function parseWorktreeList(text) {
  * @returns {{kept: object[], unmatched: object[], ledgerFound: boolean}}
  */
 function matchKeptWorktrees({ worktrees = [], ledger = null, members = [] } = {}) {
-  const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
   const entries = (ledger && Array.isArray(ledger.members)) ? ledger.members : [];
   const kept = [];
   const unmatched = [];
   for (const w of worktrees) {
     if (!w.branch || !w.branch.startsWith('wt/')) continue;
-    const e = entries.find((x) => x.branch === w.branch || norm(x.worktreePath) === norm(w.worktreePath));
+    const e = ledgerEntryFor(entries, w);
     if (!e) unmatched.push({ branch: w.branch, worktreePath: w.worktreePath });
     else if (members.includes(e.issue)) kept.push({ issue: e.issue, branch: w.branch, worktreePath: w.worktreePath });
   }
@@ -761,19 +786,18 @@ function isFrameworkWorktree(w) {
  *   notReclaimable: Array<{branch: string, worktreePath: string}>}}
  */
 function classifyReclaim({ worktrees = [], ledger = null, states = {} } = {}) {
-  const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-  const stateOf = new Map(Object.entries(states || {}).map(([k, v]) => [norm(k), v]));
+  const stateOf = new Map(Object.entries(states || {}).map(([k, v]) => [normalizeWorktreePath(k), v]));
   const entries = (ledger && Array.isArray(ledger.members)) ? ledger.members : [];
   const reclaimable = [];
   const notReclaimable = [];
   for (const w of worktrees) {
     if (!isFrameworkWorktree(w)) continue;
-    const s = stateOf.get(norm(w.worktreePath));
+    const s = stateOf.get(normalizeWorktreePath(w.worktreePath));
     if (!s || s.merged !== true || s.clean !== true) {
       notReclaimable.push({ branch: w.branch, worktreePath: w.worktreePath });
       continue;
     }
-    const e = entries.find((x) => x.branch === w.branch || norm(x.worktreePath) === norm(w.worktreePath));
+    const e = ledgerEntryFor(entries, w);
     reclaimable.push({ branch: w.branch, worktreePath: w.worktreePath, issue: e ? e.issue : null, recorded: !!e });
   }
   return { reclaimable, notReclaimable };
@@ -788,6 +812,8 @@ module.exports = {
   buildPlan,
   classifyResume,
   parseWorktreeList,
+  normalizeWorktreePath,
+  ledgerEntryFor,
   matchKeptWorktrees,
   isFrameworkWorktree,
   classifyReclaim,

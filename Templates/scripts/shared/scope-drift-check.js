@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Step 4c state-drift gate (#2404). Compares the files touched by
  * the current sub-issue's commits against a declared scope parsed from the
  * issue body, and against an always-protected paths list from
@@ -30,6 +30,7 @@ const { issueRefGrepPattern, collectTouchedPaths } = require('./lib/issue-ref-ma
 // under .claude/scripts/shared/ — twice, exported from neither — so lifting it
 // here is what let five other scripts stop being fence-blind.
 const { extractSection, hasHeader } = require('./lib/checkbox-scan.js');
+const { validateIssueNumber } = require('./lib/input-validation.js');
 
 // Vendored glob matcher (#2418). The framework root ships without a populated
 // node_modules in deployed projects, so external `require()` calls crash
@@ -175,12 +176,18 @@ function parseArgs(argv) {
   const out = { issue: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--issue' && argv[i + 1]) {
-      out.issue = parseInt(argv[++i], 10);
+      // #3694: the text is validated, not parseInt's prefix — '12abc' and
+      // '12.5' were read as issue 12.
+      try {
+        out.issue = validateIssueNumber(argv[++i]);
+      } catch (_e) {
+        out.issue = null;
+      }
     } else if (argv[i] === '--since-commit' && argv[i + 1]) {
       out.sinceCommit = argv[++i];
     }
   }
-  if (!out.issue || Number.isNaN(out.issue)) {
+  if (!out.issue) {
     return { error: 'Missing or invalid --issue <number> argument.' };
   }
   return out;

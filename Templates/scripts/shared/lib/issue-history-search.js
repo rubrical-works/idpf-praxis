@@ -1,6 +1,9 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
+ * @description Issue-history retrieval for the prior-art sweep: every term over every repository in one gh api graphql request, matched locally against title and stripped body. Exports searchIssueHistory(), buildRequest(), matchIssue() and main().
+ * @checksum sha256:placeholder
+ *
  * issue-history-search.js
  *
  * Issue-history retrieval for the prior-art sweep (#3631). Replaces the
@@ -159,16 +162,34 @@ function sendRequest(query, run) {
  */
 function searchIssueHistory({ repos: requestedRepos = [], terms: requested = [], run = defaultRun } = {}) {
   // A batch pools its members' terms, so the same term can arrive twice.
-  const terms = [...new Set(requested)];
+  const allTerms = [...new Set(requested)];
+  // A term that normalizes to '' (quote-only, whitespace-only) would search
+  // the empty phrase: it is failed here and never sent (#3701).
+  const terms = allTerms.filter((term) => normalizeTerm(term));
+  const emptyTermReport = (term) => ({ term, status: 'failed', reason: 'term is empty once quotes and whitespace are normalized; not searched' });
   // Repository names are case-insensitive: a repeat (or a case variant) would
   // probe twice and leave the first surface reporting zero hits (#3672).
   const seenRepos = new Set();
-  const repos = requestedRepos.filter((repo) => {
+  const allRepos = requestedRepos.filter((repo) => {
     const key = String(repo).toLowerCase();
     if (seenRepos.has(key)) return false;
     seenRepos.add(key);
     return true;
   });
+  // A library caller is validated here, not only by main(): a name that is not
+  // owner/name would make the request invalid GraphQL and fail every surface (#3701).
+  const isValidRepo = (repo) => typeof repo === 'string' && REPO_PATTERN.test(repo);
+  const repos = allRepos.filter(isValidRepo);
+  const invalidSurface = (repo) => ({ repo, status: 'skipped', reason: `invalid repository: must be owner/name; got ${JSON.stringify(repo)}` });
+  // Surfaces and term reports in the order requested, invalid entries included.
+  const orderSurfaces = (validSurfaces) => {
+    const byName = new Map(repos.map((repo, i) => [repo, validSurfaces[i]]));
+    return allRepos.map((repo) => (isValidRepo(repo) ? byName.get(repo) : invalidSurface(repo)));
+  };
+  const orderTerms = (reports) => {
+    const byTerm = new Map(terms.map((term, i) => [term, reports[i]]));
+    return allTerms.map((term) => byTerm.get(term) || emptyTermReport(term));
+  };
   const request = buildRequest({ repos, terms });
   const warnings = [];
   let response;
@@ -180,8 +201,8 @@ function searchIssueHistory({ repos: requestedRepos = [], terms: requested = [],
       ok: true,
       requests: 1,
       rateLimit: null,
-      terms: terms.map((term) => ({ term, status: 'failed', reason: `request failed: ${errMessage(e)}` })),
-      surfaces: repos.map((repo) => ({ repo, status: 'skipped', reason })),
+      terms: orderTerms(terms.map((term) => ({ term, status: 'failed', reason: `request failed: ${errMessage(e)}` }))),
+      surfaces: orderSurfaces(repos.map((repo) => ({ repo, status: 'skipped', reason }))),
       warnings,
     };
   }
@@ -194,9 +215,17 @@ function searchIssueHistory({ repos: requestedRepos = [], terms: requested = [],
   }
 
   const surfaces = request.probes.map(({ alias, repo }) => (data[alias]
-    ? { repo, status: 'ok', hits: {} }
+    // No prototype: a `__proto__` term is an own key, not a prototype swap (#3701).
+    ? { repo, status: 'ok', hits: Object.create(null) }
     : { repo, status: 'skipped', reason: `unreachable: ${errorsByAlias.get(alias) || 'repository not returned'}` }));
+  // Keyed by the name as requested AND the canonical name the probe returned:
+  // a renamed or transferred repository's probe follows the redirect, while
+  // its search nodes carry the canonical name (#3701).
   const byRepo = new Map(surfaces.map((s) => [s.repo.toLowerCase(), s]));
+  request.probes.forEach(({ alias }, i) => {
+    const canonical = data[alias] && data[alias].nameWithOwner;
+    if (typeof canonical === 'string' && canonical) byRepo.set(canonical.toLowerCase(), surfaces[i]);
+  });
 
   const termReports = terms.map((term) => {
     const own = request.searches.filter((s) => s.term === term);
@@ -213,8 +242,13 @@ function searchIssueHistory({ repos: requestedRepos = [], terms: requested = [],
       issueCount += Number(result.issueCount) || 0;
       read += nodes.length;
       for (const n of nodes) {
-        const surface = byRepo.get(String((n.repository && n.repository.nameWithOwner) || '').toLowerCase());
-        if (!surface || surface.status !== 'ok' || !matchIssue(n, term)) continue;
+        const nodeRepo = String((n.repository && n.repository.nameWithOwner) || '');
+        const surface = byRepo.get(nodeRepo.toLowerCase());
+        if (!surface) {
+          warnings.push(`term ${JSON.stringify(term)}: result #${n.number} belongs to ${nodeRepo || 'an unnamed repository'}, which matches no requested repository; not counted`);
+          continue;
+        }
+        if (surface.status !== 'ok' || !matchIssue(n, term)) continue;
         surface.hits[term].push({ number: n.number, title: n.title || '', state: String(n.state || '').toUpperCase() });
       }
     }
@@ -225,7 +259,7 @@ function searchIssueHistory({ repos: requestedRepos = [], terms: requested = [],
 
   for (const s of surfaces) if (s.status === 'ok') for (const term of Object.keys(s.hits)) s.hits[term].sort((a, b) => b.number - a.number);
 
-  return { ok: true, requests: 1, rateLimit: data.rateLimit || null, terms: termReports, surfaces, warnings };
+  return { ok: true, requests: 1, rateLimit: data.rateLimit || null, terms: orderTerms(termReports), surfaces: orderSurfaces(surfaces), warnings };
 }
 
 /** This repository, from .gh-pmu.json `repositories[0]`. */
@@ -252,7 +286,7 @@ function main(argv = process.argv.slice(2), deps = {}) {
     else if (a === '--root') root = argv[++i];
     else return fail(`unknown argument: ${a}`);
   }
-  if (!terms.length || terms.some((t) => typeof t !== 'string' || !t.trim())) return fail('pass at least one non-empty --term <text>');
+  if (!terms.length || terms.some((t) => typeof t !== 'string' || !normalizeTerm(t))) return fail('pass at least one non-empty --term <text> (quotes and whitespace alone are empty)');
   if (!repos.length) {
     const own = defaultRepo(root);
     if (!own) return fail('no --repo given and .gh-pmu.json names no repository');

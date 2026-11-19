@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Session-start charter health check (#3423, #3644, #3647). Derives the Key Entities counts with charter-entities.js and checks charter shape and the legacy shape with charter-shape.js; the row carries a one-line derived count summary and names /charter --refresh on a shape finding or a legacy shape. Read-only and advisory: never writes CHARTER.md, never prompts.
  * @checksum sha256:placeholder
  *
@@ -77,6 +77,14 @@ function checkCharterHealth(cwd, opts = {}) {
     // yield is filtered out below by EXCLUDED_SHAPE_KINDS (#3671).
     const report = analyzeCharterShape(text, { latestTag: opts.latestTag === undefined ? null : opts.latestTag });
     const shape = (report.findings || []).filter((f) => !EXCLUDED_SHAPE_KINDS.has(f.kind));
+    // #3711: required sections out of contract order are a shape finding the
+    // /charter --refresh reorder repairs. Read from the contract's shape rule
+    // here, not added to analyzeCharterShape, whose findings drive the Step 5b
+    // bullet proposal — which has nothing to propose for an order.
+    const { checkContractShape } = require('./lib/charter-template.js');
+    for (const name of checkContractShape(text).outOfOrderSections) {
+      shape.push({ kind: 'section-order', item: name, detail: `${name} is out of contract order` });
+    }
     // #3647: the legacy shape, reported every session until repaired. Only
     // what remains is listed, so a partly accepted repair shrinks the row.
     const legacy = detectLegacyShape(text, cwd).items;

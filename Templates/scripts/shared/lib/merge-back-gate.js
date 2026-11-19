@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -32,9 +32,24 @@
  * declared suite command verbatim. One disk read remains outside the CLI:
  * evaluateMember and planSequentialReview call projectContext(root), which
  * reads framework-config.json and resolves the specialist, unless the caller
- * injects a resolved `briefContext` ({domains, frameworkPath}) (#3575). Its subcommands (tier1, tier3-plan,
- * outcome, merge-back, group-tier1) are what the concurrent run's gate steps
- * name; `--help` with no subcommand prints the usage.
+ * injects a resolved `briefContext` ({domains, frameworkPath}) (#3575).
+ *
+ * The same Tier 3 review also gates sequential `/work` (#3457): Step 4g
+ * plans it over the issue's own `Refs #N` commits since the branch base and
+ * settles it with no worktree and no merge.
+ *
+ * Subcommands — what the gate steps name; `--help` or no subcommand prints
+ * the usage with each one's options:
+ *   Concurrent `/work`, per member:
+ *     tier1, tier3-plan, outcome, merge-back
+ *   Concurrent `/work`, per group or batch:
+ *     group-tier1, batch-range
+ *   Sequential `/work` (Step 4g):
+ *     review-plan, review-outcome
+ *   Either:
+ *     tree-snapshot — the tree before the reviewer spawns
+ *   Cleanup:
+ *     clear-member, clear-run, reclaim
  */
 
 const path = require('path');
@@ -106,6 +121,21 @@ function memberBase({ git, trackerTip, branch }) {
 }
 
 /**
+ * What a deferred suite's Tier 1 entry says (#3730): it was not run before
+ * merge, why, and where it runs instead.
+ *
+ * @param {string} suiteId
+ * @param {'exclusive'|'cannot-narrow'} reason
+ * @returns {string}
+ */
+function deferredNote(suiteId, reason) {
+  const why = reason === 'exclusive'
+    ? 'it is exclusive, so it never runs inside a worktree'
+    : "its command cannot be narrowed to the member's files (declare scoped.mode: path with a {files} command to run it here)";
+  return `${suiteId} was not run before merge: ${why}; it runs once on the tracker after merge-back.`;
+}
+
+/**
  * Tier 1 — mechanical checks over one member's branch.
  *
  * @param {{issue: number, body: string, trackerTip: string, branch: string,
@@ -117,7 +147,7 @@ function memberBase({ git, trackerTip, branch }) {
  * @returns {{tier: 1, ok: boolean, failures: Array<{check: string, message: string}>,
  *   commits: Array<{sha: string, attributed: boolean}>, uncommitted: string[],
  *   scope: object, filesChanged: string, acceptanceCriteria: object, suiteRuns: object[],
- *   deferredSuites: Array<{suiteId: string, concurrency: string, reason: 'exclusive'|'cannot-narrow'}>}}
+ *   deferredSuites: Array<{suiteId: string, concurrency: string, reason: 'exclusive'|'cannot-narrow', note: string}>}}
  */
 function runTier1({
   issue, body, trackerTip, branch, worktreePath, git,
@@ -170,12 +200,17 @@ function runTier1({
   // a worktree lacks (gitignored node_modules, imported skills) and fail
   // whatever the member changed (#3159). It is deferred to the parent's
   // deferred-suites run on the tracker, never dropped.
+  // Each deferred entry says in words that it never ran before the merge
+  // (#3730): `reason` alone read as a classification, and a suite that
+  // declares no narrowed command — a linter, until this repo declared one —
+  // left no tier checking it before merge-back. A suite opts in by declaring
+  // `scoped.mode: path` with a `{files}` command.
   const suiteRuns = [];
   const scoped = scopedInvocations({ suites, changedFiles: scope.touched, inWorktree: true });
-  const deferredSuites = (scoped.deferred || []).map((d) => ({ ...d, reason: 'exclusive' }));
+  const deferredSuites = (scoped.deferred || []).map((d) => ({ ...d, reason: 'exclusive', note: deferredNote(d.suiteId, 'exclusive') }));
   for (const run of scoped.runs.filter((r) => !r.narrowed)) {
     for (const suiteId of run.suiteIds || [run.suiteId]) {
-      deferredSuites.push({ suiteId, concurrency: 'parallel', reason: 'cannot-narrow' });
+      deferredSuites.push({ suiteId, concurrency: 'parallel', reason: 'cannot-narrow', note: deferredNote(suiteId, 'cannot-narrow') });
     }
   }
   for (const run of scoped.runs.filter((r) => r.narrowed)) {
@@ -188,7 +223,9 @@ function runTier1({
   }
   const failed = suiteRuns.filter((r) => !r.ok);
   if (failed.length > 0) {
-    failures.push({ check: 'suites', message: `Suite run(s) failed in the worktree: ${failed.map((r) => `${r.suiteIds.join('+')} (exit ${r.exitCode})`).join(', ')}.` });
+    // The command is named (#3730), so the fix cycle's implementer can re-run
+    // exactly what failed in its own worktree.
+    failures.push({ check: 'suites', message: `Suite run(s) failed in the worktree: ${failed.map((r) => `${r.suiteIds.join('+')} (exit ${r.exitCode}: ${r.command})`).join(', ')}.` });
   }
   const notRun = notRunFailure(scoped);
   if (notRun) failures.push(notRun);
@@ -254,8 +291,12 @@ function diffReviewSkillPresent(root = process.cwd()) {
  * an input, so the read stays independent (diff-review § Input Contract).
  *
  * @param {{issue: number, acceptanceCriteria?: string[], filesToModify?: string[],
- *   range: string, charterPath?: string, noReview?: boolean, skillPresent?: boolean,
- *   domains?: string[], frameworkPath?: string}} input
+ *   range: string, commits?: string[], charterPath?: string, noReview?: boolean,
+ *   skillPresent?: boolean, domains?: string[], frameworkPath?: string}} input
+ *   `commits` are the issue's own commit SHAs inside `range`, oldest first
+ *   (#3457): when given, the prompt confines the review to them, since a
+ *   sequential range can hold other issues' commits; omitted or empty, the
+ *   whole range is under review.
  *   `domains` and `frameworkPath` are the project's resolved domain ids and
  *   absolute framework path, named in the prompt (#3501).
  */
@@ -450,16 +491,29 @@ function dirMayHoldRunPath(dir, runPath) {
  *   change inside it is outside the contract; any other change is listed as
  *   `external` (another session's) and does not fail. Host-written paths
  *   (HOST_WRITTEN_PATHS) are listed as `hostWritten` either way.
- * @returns {{ok: boolean, outsideContract: string[], hostWritten?: string[], external?: string[]}}
+ *   `runWorktrees` (#3729): the root-relative worktree directories the run
+ *   ledger names. Under the rolling schedule the parent spawns the next
+ *   member, or tears a merged one down, while a sibling's reviewer runs; such
+ *   a directory appearing or disappearing is the run's own, so it is listed
+ *   under `runWorktrees` and never fails. A directory no ledger names — any
+ *   other `.tmp-wt-*` included — is judged as before.
+ * @returns {{ok: boolean, outsideContract: string[], hostWritten?: string[], external?: string[], runWorktrees?: {appeared: string[], removed: string[]}}}
  */
-function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-gate-${issue}-tier3.json`, siblings = [], runPaths } = {}) {
+function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-gate-${issue}-tier3.json`, siblings = [], runPaths, runWorktrees } = {}) {
   const lines = (s) => String(s).split(/\r?\n/).filter((l) => l.trim() !== '');
   const prior = new Set(lines(before));
   const allowed = new Set([outputPath, `.tmp-gate-${issue}-tree-before.txt`]);
   // #3559: member.json too — a sibling still running writes its result file at
   // the root during this member's Tier 3 window.
   for (const m of siblings) for (const f of ['tier1.json', 'tier3.json', 'tree-before.txt', 'member.json']) allowed.add(`.tmp-gate-${m}-${f}`);
-  const changed = [...new Set(lines(after).filter((l) => !prior.has(l)).map(porcelainPath).filter((p) => !allowed.has(p)))].sort();
+  // #3729: only a directory line (`dir/`) can be a ledgered worktree.
+  const ledgered = new Set((runWorktrees || []).map(normalizeDir));
+  const isRunWorktree = (p) => p.endsWith('/') && ledgered.has(normalizeDir(p));
+  const posterior = new Set(lines(after));
+  const added = [...new Set(lines(after).filter((l) => !prior.has(l)).map(porcelainPath))];
+  const appeared = added.filter(isRunWorktree).sort();
+  const removed = [...new Set(lines(before).filter((l) => !posterior.has(l)).map(porcelainPath).filter(isRunWorktree))].sort();
+  const changed = added.filter((p) => !allowed.has(p) && !isRunWorktree(p)).sort();
   // #3263: a path the host itself writes (a permission grant) is not the
   // reviewer's. With the run's paths given, a change outside them is another
   // session's — reported as external; only a change inside them fails, which
@@ -472,7 +526,37 @@ function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-
   const inRun = (p) => (p.endsWith('/') ? runPaths.some((r) => dirMayHoldRunPath(p, String(r))) : scopeDrift.matchesAny(p, runPaths));
   const outsideContract = scoped ? rest.filter(inRun) : rest;
   const external = scoped ? rest.filter((p) => !inRun(p)) : [];
-  return { ok: outsideContract.length === 0, outsideContract, ...(hostWritten.length ? { hostWritten } : {}), ...(external.length ? { external } : {}) };
+  return {
+    ok: outsideContract.length === 0, outsideContract,
+    ...(hostWritten.length ? { hostWritten } : {}), ...(external.length ? { external } : {}),
+    ...(appeared.length || removed.length ? { runWorktrees: { appeared, removed } } : {}),
+  };
+}
+
+/** A directory path in comparable form (#3729), as concurrency-plan.js normalizeWorktreePath compares worktrees. */
+const normalizeDir = (p) => require('./concurrency-plan.js').normalizeWorktreePath(p);
+
+/**
+ * The worktree directories the run ledger (`.tmp-concurrent-<tracker>.json`,
+ * written by `record-spawn`) names, root-relative (#3729). An absent ledger
+ * names none; an unreadable one names none and says why, so the tree check
+ * stays strict rather than guessing. A path outside `root` is dropped: it
+ * can never be a line in the root's status.
+ *
+ * @returns {{worktrees: string[], error: string|null}}
+ */
+function readLedgerWorktrees(root, ledgerPath) {
+  let ledger;
+  try {
+    ledger = JSON.parse(require('fs').readFileSync(path.resolve(root, ledgerPath), 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') return { worktrees: [], error: null };
+    return { worktrees: [], error: `cannot read run ledger ${ledgerPath}: ${e.message}` };
+  }
+  const members = ledger && Array.isArray(ledger.members) ? ledger.members : [];
+  const worktrees = members.map((m) => (m && typeof m.worktreePath === 'string' ? rootRelative(root, m.worktreePath.replace(/\\/g, '/')) : null))
+    .filter((p) => p && !p.startsWith('..') && !path.isAbsolute(p));
+  return { worktrees, error: null };
 }
 
 /**
@@ -484,7 +568,7 @@ function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-
  * itself through `parseReview`. Each failure fails Tier 3 the way an
  * unreadable review does.
  */
-function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, exists, text, treeBefore, treeBeforeIntact = true, treeAfter, siblings = [], runPaths, schema, root } = {}) {
+function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, exists, text, treeBefore, treeBeforeIntact = true, treeAfter, siblings = [], runPaths, runWorktrees, schema, root } = {}) {
   const fail = (error, message, extra = {}) => ({ tier: 3, skipped: false, ok: false, verdict: null, findings: [], error, errors: [message], ...extra });
   // The snapshot is the trust anchor for every check below (#3220): changed
   // after it was taken, it proves nothing, so nothing else is read.
@@ -501,16 +585,19 @@ function evaluateTier3({ issue, outputPath = `.tmp-gate-${issue}-tier3.json`, ex
   if (priorLines.some((l) => porcelainPath(l) === outputPath)) {
     return fail('tier-3-stale-output', `${outputPath} already existed before the reviewer started, so it may be an earlier cycle's review. Clear it with tree-snapshot --clear before the spawn.`);
   }
-  const tree = checkReviewerTree({ before: treeBefore, after: treeAfter, issue, outputPath, siblings, runPaths });
+  const tree = checkReviewerTree({ before: treeBefore, after: treeAfter, issue, outputPath, siblings, runPaths, runWorktrees });
   if (!tree.ok) {
     return fail('tier-3-wrote-outside-contract',
       `The working tree changed outside the reviewer's contract during the review: ${tree.outsideContract.join(', ')}. `
       + 'Reviewers in a group share the root, so this fails Tier 3 for every member whose review window overlapped.',
-      { outsideContract: tree.outsideContract });
+      { outsideContract: tree.outsideContract, ...(tree.runWorktrees ? { runWorktrees: tree.runWorktrees } : {}) });
   }
   const review = parseReview(text, { issue, schema, root });
-  // Reported, never failed (#3263).
-  return { ...review, ...(tree.external ? { external: tree.external } : {}), ...(tree.hostWritten ? { hostWritten: tree.hostWritten } : {}) };
+  // Reported, never failed (#3263, #3729).
+  return {
+    ...review, ...(tree.external ? { external: tree.external } : {}), ...(tree.hostWritten ? { hostWritten: tree.hostWritten } : {}),
+    ...(tree.runWorktrees ? { runWorktrees: tree.runWorktrees } : {}),
+  };
 }
 
 /**
@@ -1250,7 +1337,7 @@ const USAGE = [
   '  review-plan --issue N [--base SHA] [--body-file F] [--no-review] [--nonstop] — sequential /work (#3457): the issue\'s Refs #N commits since the branch base, or the reported skip',
   '  review-outcome --issue N --tier3 F --tree-before F --tree-before-sha SHA [--body-file F] [--fix-cycles N] [--review-retries N] [--post-comment]',
   '  tree-snapshot --out F [--clear F ...]',
-  '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...] [--post-comment]',
+  '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] [--ledger F: the run ledger; a worktree it names appearing or disappearing during the review is reported as runWorktrees, never failed] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...] [--post-comment]',
   '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...] [--body-file N=F ...] — with two or more members, fails before merging when they share a path outside their declared scope',
   '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...] [--state F: the run-state file; its recorded regenerated commits count as --own]',
   '  batch-range --member N ... --base-of N=SHA ... --head H',
@@ -1261,6 +1348,8 @@ const USAGE = [
 ].join('\n');
 
 const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own', '--file', '--reclaim']);
+/** A commit SHA as review-plan --base accepts it (#3468): 4-40 hex characters, nothing git could read as an option or a range. */
+const BASE_SHA_PATTERN = /^[0-9a-fA-F]{4,40}$/;
 const BOOLEAN = new Set(['--no-review', '--resumed', '--post-comment', '--keep-tier1', '--tier1-only', '--nonstop']);
 
 /** `<subcommand> --flag value ...` → `{sub, opts}`; repeatable flags collect arrays. */
@@ -1351,7 +1440,10 @@ function readJsonFile(root, file) {
 function parseMemberSpec(spec) {
   const [n, branch, ...rest] = String(spec).split(':');
   const worktreePath = rest.length ? rest.join(':') : '';
-  return { issue: Number(n), branch, worktreePath: worktreePath || null };
+  // #3694: the text is tested, not the conversion — Number('') is 0 and
+  // Number('1e2') is 100, so a malformed N reads as NaN and is refused.
+  const { isIssueNumber } = require('./input-validation.js');
+  return { issue: isIssueNumber(n) ? Number(n) : NaN, branch, worktreePath: worktreePath || null };
 }
 
 /**
@@ -1375,48 +1467,88 @@ function parseReclaimSpec(spec) {
   return { issue, branch, worktreePath };
 }
 
+/** A thrown value's message, trimmed — git errors end in a newline. */
+const errText = (e) => String(e && e.message ? e.message : e).trim();
+
 /**
- * Reclaim worktrees the user accepted (#3714). Per worktree: re-check that
- * its branch is an ancestor of the tracker HEAD and its tree is clean
- * (untracked files count), else `refused` and nothing touched; tear down
- * through `teardown` (worktree-teardown.js); once `removed`, delete the
- * branch with `git branch -d` (refuses an unmerged branch — reported, never
- * forced) and, for a recorded member, clear its kept gate files and brief.
+ * Reclaim worktrees the user accepted (#3714). Per worktree: resolve a
+ * relative path against `root`; read the branch the worktree has checked
+ * out and refuse a detached HEAD or one differing from the `--reclaim`
+ * branch (#3716); re-check that branch is an ancestor of the tracker HEAD
+ * (exit 1 — commits off the tracker; any other failure — unresolvable) and
+ * its tree is clean (untracked files count), else `refused` and nothing
+ * touched; tear down through `teardown` (worktree-teardown.js); once
+ * `removed`, delete the branch the teardown reports with `git branch -d`
+ * (refuses an unmerged branch — reported, never forced) and, for a recorded
+ * member, clear its kept gate files and brief. A throw while reclaiming one
+ * worktree is that worktree's `error` result; the rest are still processed.
  *
  * @param {{root: string, worktrees: Array<{issue: number|null, branch: string, worktreePath: string}>,
  *   git: Function, teardown: Function}} input
  * @returns {Array<{issue: number|null, branch: string, worktreePath: string,
- *   status: 'removed'|'kept'|'halted'|'refused', reason: string|null,
+ *   status: 'removed'|'kept'|'halted'|'refused'|'error', reason: string|null,
  *   branchDeleted: boolean, branchError?: string, cleared: string[]}>}
  */
 function reclaimWorktrees({ root, worktrees = [], git, teardown }) {
-  return worktrees.map(({ issue, branch, worktreePath }) => {
+  return worktrees.map(({ issue, branch, worktreePath: given }) => {
+    // #3716: a relative path names a worktree under the tracker root, so it
+    // is resolved there before any git call runs in it or the teardown sees it.
+    const worktreePath = path.isAbsolute(given) ? given : path.resolve(root, given);
     const out = { issue, branch, worktreePath, status: null, reason: null, branchDeleted: false, cleared: [] };
     try {
-      git(['merge-base', '--is-ancestor', branch, 'HEAD']);
-    } catch (_e) {
-      return { ...out, status: 'refused', reason: `${branch} has commits not on the tracker — kept` };
-    }
-    let dirty;
-    try {
-      dirty = String(git(['status', '--porcelain', '--untracked-files=all'], { cwd: worktreePath }) || '').trim();
+      return reclaimOne({ root, out, git, teardown });
     } catch (e) {
-      return { ...out, status: 'refused', reason: `cannot read the tree of ${worktreePath}: ${e.message} — kept` };
+      return { ...out, status: 'error', reason: `reclaiming ${worktreePath} threw: ${errText(e)}` };
     }
-    if (dirty) return { ...out, status: 'refused', reason: `${worktreePath} has uncommitted or untracked changes — kept` };
-    const t = teardown({ root, worktreePath });
-    out.status = t && t.status ? t.status : 'kept';
-    out.reason = t && t.reason ? t.reason : null;
-    if (!t || !t.ok) return out;
-    try {
-      git(['branch', '-d', branch]);
-      out.branchDeleted = true;
-    } catch (e) {
-      out.branchError = String(e && e.message ? e.message : e).trim();
-    }
-    if (issue) out.cleared = clearScratch({ root, files: memberScratch(issue) }).removed;
-    return out;
   });
+}
+
+/** One worktree's reclaim, for `reclaimWorktrees()`; `out` is its result skeleton. */
+function reclaimOne({ root, out, git, teardown }) {
+  const { issue, branch, worktreePath } = out;
+  // #3716: the re-check guards the worktree, so it reads the branch the
+  // worktree has checked out — a stale or hand-edited argument naming
+  // another branch must not pass the ancestor check on the wrong branch.
+  // `symbolic-ref -q` exits 1, silently, on a detached HEAD.
+  let checkedOut;
+  try {
+    checkedOut = String(git(['symbolic-ref', '--short', '-q', 'HEAD'], { cwd: worktreePath }) || '').trim();
+  } catch (e) {
+    if (e && e.status === 1) return { ...out, status: 'refused', reason: `${worktreePath} has a detached HEAD, not ${branch} — kept` };
+    return { ...out, status: 'refused', reason: `cannot read the branch of ${worktreePath}: ${errText(e)} — kept` };
+  }
+  if (checkedOut !== branch) {
+    return { ...out, status: 'refused', reason: `${worktreePath} has ${checkedOut || '(no branch)'} checked out, not ${branch} as --reclaim names — kept` };
+  }
+  try {
+    git(['merge-base', '--is-ancestor', checkedOut, 'HEAD']);
+  } catch (e) {
+    // Exit 1 is git's "not an ancestor"; anything else (128: a bad ref)
+    // means the branch could not be resolved at all.
+    if (e && e.status === 1) return { ...out, status: 'refused', reason: `${checkedOut} has commits not on the tracker — kept` };
+    return { ...out, status: 'refused', reason: `cannot resolve ${checkedOut} against the tracker: ${errText(e)} — kept` };
+  }
+  let dirty;
+  try {
+    dirty = String(git(['status', '--porcelain', '--untracked-files=all'], { cwd: worktreePath }) || '').trim();
+  } catch (e) {
+    return { ...out, status: 'refused', reason: `cannot read the tree of ${worktreePath}: ${errText(e)} — kept` };
+  }
+  if (dirty) return { ...out, status: 'refused', reason: `${worktreePath} has uncommitted or untracked changes — kept` };
+  const t = teardown({ root, worktreePath });
+  out.status = t && t.status ? t.status : 'kept';
+  out.reason = t && t.reason ? t.reason : null;
+  if (!t || !t.ok) return out;
+  // #3716: delete the branch the teardown found on the worktree it removed
+  // (the branch read above when it reports none), never the argument's.
+  try {
+    git(['branch', '-d', t.branch || checkedOut]);
+    out.branchDeleted = true;
+  } catch (e) {
+    out.branchError = errText(e);
+  }
+  if (issue) out.cleared = clearScratch({ root, files: memberScratch(issue) }).removed;
+  return out;
 }
 
 /**
@@ -1438,6 +1570,9 @@ function runCli(argv, seams = {}) {
   // is 7, so the text is tested, not the conversion. One rule, shared with
   // validateIssueNumber (#3675).
   const { isIssueNumber } = require('./input-validation.js');
+  // #3694: every subcommand reading --issue tests it here, before any git or
+  // gh call — Number('abc') is NaN and Number('1e2') silently became #100.
+  if (opts['--issue'] !== undefined && !isIssueNumber(opts['--issue'])) return fail('--issue takes an issue number');
 
   if (sub === 'tier1') {
     const miss = requireOpts(opts, ['--issue', '--branch', '--worktree', '--tracker-tip']);
@@ -1518,12 +1653,16 @@ function runCli(argv, seams = {}) {
           if (Array.isArray(d)) { runPaths.push(...d); scopesRead += 1; }
         } catch (_e) { /* that sibling's scope stays unknown */ }
       }
+      // #3729: the run ledger's worktrees — a member spawned or torn down by
+      // the rolling schedule during this review is the run's, not the reviewer's.
+      const ledger = opts['--ledger'] ? readLedgerWorktrees(root, opts['--ledger']) : { worktrees: [], error: null };
       tier3 = evaluateTier3({
         issue, outputPath: rootRelative(root, opts['--tier3']), exists, text: exists ? fs.readFileSync(out, 'utf8') : '',
         treeBefore, treeBeforeIntact: sha256(treeBefore) === String(opts['--tree-before-sha']).toLowerCase(),
-        treeAfter: git(TREE_STATUS_ARGS), root, siblings,
+        treeAfter: git(TREE_STATUS_ARGS), root, siblings, runWorktrees: ledger.worktrees,
         ...(scopesRead === 1 + siblings.length ? { runPaths } : {}),
       });
+      if (ledger.error) tier3 = { ...tier3, ledgerError: ledger.error };
     }
     const decision = decideOutcome({
       member: { issue, worktreePath: opts['--worktree'], branch: opts['--branch'] },
@@ -1545,6 +1684,10 @@ function runCli(argv, seams = {}) {
     if (miss) return fail(miss);
     const issue = num(opts['--issue']);
     let base = opts['--base'];
+    // #3468: the base reaches git as `${base}..HEAD`, where a value starting
+    // with '-' is read as an option — only a hex SHA may be one, the rule
+    // log-changed-files.js applies to --since-commit (#3290).
+    if (base !== undefined && !BASE_SHA_PATTERN.test(base)) return fail('--base takes a 4-40 character hex commit SHA');
     if (!base) {
       const r = require('./branch-diff.js').resolveBranchBase({ cwd: root });
       if (!r.ok) return fail(`cannot resolve the branch base: ${r.error || r.reason || 'unknown'} — pass --base SHA`, 1);
@@ -1777,6 +1920,7 @@ module.exports = {
   formatReviewComment,
   parseReview,
   checkReviewerTree,
+  readLedgerWorktrees,
   HOST_WRITTEN_PATHS,
   dirtyTrackerPaths,
   parsePorcelain,

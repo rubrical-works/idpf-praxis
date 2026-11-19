@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Charter scope inputs shared by the commands that create work (#3001, #3645).
  * @checksum sha256:placeholder
  *
@@ -29,26 +29,48 @@
  *        [--text "<work item>" | --text-file <path>] [--paths a,b] [--quiet] [--root <dir>]
  *   With neither text flag, the work item is read from stdin (#3351).
  *   → {"depth", "inputs", "guidance", "quiet", "skipped", "warnings"}, exit 0
+ *   A missing flag value or an unreadable work item prints
+ *   {"ok": false, "error": {"code", "message"}}, exit 1 (#3434).
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { classifyCharterFile } = require('./charter-template');
+const { classifyCharterFile, tryLoadCharterContract, headingMatches, fencedLines } = require('./charter-template');
+const { readFlagValues } = require('./command-args');
 
 const DATA_REL = path.join('.claude', 'metadata', 'charter-enforcement.json');
 const DEFAULT_DEPTH = 'summary';
 const BOARD_TIMEOUT_MS = 15000;
 
+/**
+ * The bullets under the first `## <heading>` section; [] when there is none —
+ * the one section reader, shared with charter-shape.js. The section is
+ * identified by charter-template.js `headingMatches` (#3695): the heading is
+ * the name, or the name then a space, ignoring case, compared as text — never
+ * as a regex (#3434). Lines inside a fenced code block (charter-template.js
+ * `fencedLines`) are content: never a heading, never a bullet.
+ * @param {string} charterText
+ * @param {string} heading
+ * @returns {string[]}
+ */
 function sectionBullets(charterText, heading) {
-  const re = new RegExp(`^##\\s+${heading}[^\\n]*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'im');
-  const m = String(charterText || '').match(re);
-  if (!m) return [];
-  return m[1]
-    .split('\n')
-    .map((l) => l.match(/^\s*[-*]\s+(.*\S)\s*$/))
-    .filter(Boolean)
-    .map((x) => x[1]);
+  const lines = String(charterText || '').split(/\r?\n/);
+  const fenced = fencedLines(lines);
+  const bullets = [];
+  let state = 'before';
+  for (let i = 0; i < lines.length && state !== 'after'; i++) {
+    if (fenced[i]) continue;
+    const h2 = lines[i].match(/^##\s+(.+?)\s*$/);
+    if (h2) {
+      if (state === 'in') state = 'after';
+      else if (headingMatches(h2[1], heading)) state = 'in';
+      continue;
+    }
+    const bullet = state === 'in' && lines[i].match(/^\s*[-*]\s+(.*\S)\s*$/);
+    if (bullet) bullets.push(bullet[1]);
+  }
+  return bullets;
 }
 
 /** The charter's scope bullets: In Scope and Out of Scope. */
@@ -104,6 +126,22 @@ function readBoardThemes(root, opts = {}) {
   return { epics: titles('epic'), prdTrackers: titles('prd') };
 }
 
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * The first shape problem in the parsed data file, or null when the fields
+ * checkScope reads are present and typed (#3434).
+ * @param {*} data
+ * @returns {string|null}
+ */
+function configShapeProblem(data) {
+  if (!isPlainObject(data)) return 'is not a JSON object';
+  if (!isPlainObject(data.checkpoints)) return 'has no checkpoints object';
+  if (!isPlainObject(data.optOut) || typeof data.optOut.file !== 'string') return 'has no optOut.file string';
+  if (!Array.isArray(data.exclusions)) return 'has no exclusions array';
+  return null;
+}
+
 /**
  * Assemble the inputs for the scope call on a work item. Decides nothing.
  * @param {{text: string, command?: string, paths?: string[], quiet?: boolean, root?: string,
@@ -125,6 +163,12 @@ function checkScope(opts = {}) {
     data = readJson(path.join(root, DATA_REL));
   } catch (err) {
     return result({ skipped: { reason: 'no-config', detail: `${DATA_REL} unreadable: ${err.message}` } });
+  }
+  // #3434: validate the shape once, after parsing — a missing or mistyped
+  // required field is the same bad-config skip the depths check uses (#3627).
+  const shapeProblem = configShapeProblem(data);
+  if (shapeProblem) {
+    return result({ skipped: { reason: 'bad-config', detail: `${DATA_REL} ${shapeProblem}` } });
   }
   guidance = data.scopeCall || null;
   const checkpoint = data.checkpoints[opts.command];
@@ -148,6 +192,15 @@ function checkScope(opts = {}) {
     }
   }
   const charterPath = path.join(root, 'CHARTER.md');
+  // #3482: the template rule is read from charter-contract.json. When that
+  // cannot be loaded the charter cannot be classified — a skip naming the
+  // contract, never a throw. An absent charter is still reported as no-charter.
+  if (fs.existsSync(charterPath)) {
+    const contract = tryLoadCharterContract();
+    if (!contract.ok) {
+      return result({ skipped: { reason: 'contract-unavailable', detail: `${contract.error.code}: ${contract.error.message}` } });
+    }
+  }
   const charter = classifyCharterFile(charterPath);
   if (!charter.exists) return result({ skipped: { reason: 'no-charter', detail: 'CHARTER.md not found' } });
   if (charter.template) return result({ skipped: { reason: 'template-charter', detail: 'CHARTER.md is an unfilled template' } });
@@ -172,26 +225,57 @@ function checkScope(opts = {}) {
   return result({ inputs });
 }
 
+/**
+ * Parse the CLI flags. A flag in a value position, or a value flag given
+ * last, is a missing value, never the value (#3434, via command-args.js).
+ * @returns {{opts: object, textFile?: string, error: string|null}}
+ */
 function parseArgs(argv) {
+  const { arg, flagAsValue } = readFlagValues(argv);
   const opts = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--command') opts.command = argv[++i];
-    else if (a === '--text') opts.text = argv[++i];
-    else if (a === '--text-file') opts.text = fs.readFileSync(argv[++i], 'utf8');
-    else if (a === '--paths') opts.paths = argv[++i].split(',').filter(Boolean);
-    else if (a === '--quiet') opts.quiet = true;
-    else if (a === '--root') opts.root = argv[++i];
-  }
-  return opts;
+  const command = arg('--command');
+  const text = arg('--text');
+  const textFile = arg('--text-file');
+  const paths = arg('--paths');
+  const root = arg('--root');
+  if (command !== undefined) opts.command = command;
+  if (text !== undefined) opts.text = text;
+  if (paths !== undefined) opts.paths = paths.split(',').filter(Boolean);
+  if (root !== undefined) opts.root = root;
+  if (argv.includes('--quiet')) opts.quiet = true;
+  return { opts, textFile, error: flagAsValue() };
 }
 
-module.exports = { checkScope, parseCharterSections, readBoardThemes, globToRegex };
-
-if (require.main === module) {
-  const opts = parseArgs(process.argv.slice(2));
+function main(argv = process.argv.slice(2)) {
+  // One JSON envelope, never a stack trace (#3434) — the contract
+  // review-references.js holds. exitCode, not process.exit(), so a piped
+  // stdout write is not cut off.
+  const emit = (code, message) => {
+    process.stdout.write(JSON.stringify({ ok: false, error: { code, message } }, null, 2) + '\n');
+    process.exitCode = 1;
+  };
+  const why = (e) => (e && e.message ? e.message : String(e));
+  const { opts, textFile, error } = parseArgs(argv);
+  if (error) {
+    emit('INVALID_ARGUMENT', error);
+    return;
+  }
   // Neither --text nor --text-file: the text arrives on stdin (#3351), as
   // declared-scope-check.js reads its body, so a caller writes no temp file.
-  if (opts.text === undefined) opts.text = fs.readFileSync(0, 'utf8');
-  process.stdout.write(JSON.stringify(checkScope(opts), null, 2) + '\n');
+  try {
+    if (textFile !== undefined) opts.text = fs.readFileSync(textFile, 'utf8');
+    else if (opts.text === undefined) opts.text = fs.readFileSync(0, 'utf8');
+  } catch (e) {
+    emit('TEXT_UNREADABLE', `Could not read the work item from ${textFile || 'stdin'}: ${why(e)}`);
+    return;
+  }
+  try {
+    process.stdout.write(JSON.stringify(checkScope(opts), null, 2) + '\n');
+  } catch (e) {
+    emit('CHECK_FAILED', `Charter scope check failed: ${why(e)}`);
+  }
 }
+
+module.exports = { checkScope, parseCharterSections, sectionBullets, readBoardThemes, globToRegex, main };
+
+if (require.main === module) main();

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Poll GitHub Actions workflow status with adaptive timeout. Monitors workflow runs
  * by commit SHA with 15-second polling intervals and 5-minute default timeout. Detects running/queued
  * jobs and extends timeout by 30s increments up to a 15-minute hard cap. Returns structured JSON with
@@ -396,12 +396,6 @@ function decideVerdict(runs, filter, target = selectRun(runs, filter)) {
 // --- Main ---
 
 /**
- * Run the CI gate and return an exit code.
- * @param {string[]} argv - Arguments after the node/script pair
- * @param {object} [deps] - Injectable boundaries: `fetchRuns(cmd)` and `sleep(ms)`
- * @returns {Promise<number>} process exit code
- */
-/**
  * The exit-code contract, beside the code that implements it (#2765).
  *
  * The /work rule used to enumerate these five codes and their gate actions
@@ -426,6 +420,12 @@ function schema() {
     };
 }
 
+/**
+ * Run the CI gate and return an exit code.
+ * @param {string[]} argv - Arguments after the node/script pair
+ * @param {object} [deps] - Injectable boundaries: `fetchRuns(cmd)` and `sleep(ms)`
+ * @returns {Promise<number>} process exit code
+ */
 async function run(argv = [], deps = {}) {
     const fetchRuns = deps.fetchRuns || defaultFetchRuns;
     const fetchRun = deps.fetchRun || defaultFetchRun;
@@ -702,14 +702,15 @@ function defaultFetchRun(runId, deps = {}) {
 // merge commit will trigger. Every gap resolves to `wait`, the existing gate.
 
 /**
- * A branch filter this check does not evaluate (#3472). `+` and `[...]` carry
- * meaning in a GitHub filter; read as literals they decided "[mM]ain" does not
- * trigger on main. Rather than re-implement GitHub's matcher, the decision
+ * A branch filter this check does not evaluate (#3472). `+`, `?` and `[...]`
+ * carry meaning in a GitHub filter; read as literals they decided "[mM]ain"
+ * does not trigger on main, and an unescaped `?` built an invalid RegExp whose
+ * reason named no pattern (#3700). Rather than re-implement GitHub's matcher, the decision
  * waits and names the pattern.
  */
 class UnsupportedBranchPattern extends Error {
     constructor(pattern) {
-        super(`branch filter '${pattern}' uses + or [...], which this check does not evaluate`);
+        super(`branch filter '${pattern}' uses +, ? or [...], which this check does not evaluate`);
         this.pattern = pattern;
     }
 }
@@ -720,7 +721,7 @@ class UnsupportedBranchPattern extends Error {
  */
 function branchGlobMatches(pattern, branch) {
     const p = String(pattern);
-    if (/[+[\]]/.test(p)) throw new UnsupportedBranchPattern(p);
+    if (/[+?[\]]/.test(p)) throw new UnsupportedBranchPattern(p);
     const re = p.replace(/[.^${}()|\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
     return new RegExp(`^${re}$`).test(branch);
 }
@@ -841,6 +842,7 @@ function decidePostMergeSkip(input) {
     const wait = (reason, extra = {}) => ({ path: 'wait', reason, runId: null, runs: [], workflows: [], ...plan, ...extra });
 
     if (errors.length) return wait(`lookup failed: ${errors.join('; ')}`);
+    if (!defaultBranch) return wait('lookup failed: default branch unknown');
     if (!mergeSha || !prMergeSha || !prHeadSha) return wait('lookup failed: merge commit or PR head SHA unknown');
     if (mergeSha !== prMergeSha) return wait(`main moved after the merge: MERGE_SHA ${mergeSha} is not the PR's merge commit ${prMergeSha}`);
     if (!mergeTree || !prHeadTree) return wait('lookup failed: a tree could not be resolved');

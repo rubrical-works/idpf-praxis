@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Remove CI features from GitHub Actions workflow files. Locates feature configuration across workflow YAML files and cleanly removes associated sections (top-level keys, job steps, triggers). Part of the /ci remove subcommand.
  * @checksum sha256:placeholder
  *
@@ -41,18 +41,20 @@ function ownsTopLevelBlock(featureId, value) {
 }
 
 /**
- * Find which workflow file contains a given feature.
+ * Find every workflow file in which a feature is detected, in directory order.
  * @param {string} projectDir - Path to project root
  * @param {string} featureId - Feature identifier
- * @returns {{ file: string, patterns: string[] }|null} File path where feature is found
+ * @returns {Array<{ file: string, patterns: string[] }>}
  */
-function findFeatureInWorkflows(projectDir, featureId) {
+function findAllFeatureWorkflows(projectDir, featureId) {
   const registry = loadFeatureRegistry();
   const feature = registry[featureId];
-  if (!feature) return null;
+  if (!feature) return [];
 
   const workflowsDir = path.join(projectDir, '.github', 'workflows');
-  if (!fs.existsSync(workflowsDir)) return null;
+  if (!fs.existsSync(workflowsDir)) return [];
+
+  const found = [];
 
   const files = fs.readdirSync(workflowsDir)
     .filter(f => f.endsWith('.yml') || f.endsWith('.yaml'));
@@ -72,13 +74,71 @@ function findFeatureInWorkflows(projectDir, featureId) {
       }
 
       if (matchedPatterns.length > 0) {
-        return { file: filePath, patterns: matchedPatterns };
+        found.push({ file: filePath, patterns: matchedPatterns });
       }
     } catch (_e) {
       continue;
     }
   }
 
+  return found;
+}
+
+/**
+ * Find which workflow file contains a given feature.
+ * @param {string} projectDir - Path to project root
+ * @param {string} featureId - Feature identifier
+ * @returns {{ file: string, patterns: string[] }|null} The first file where the feature is detected
+ */
+function findFeatureInWorkflows(projectDir, featureId) {
+  return findAllFeatureWorkflows(projectDir, featureId)[0] || null;
+}
+
+/**
+ * Among the detected files, the first whose top-level block is this feature's
+ * own (#3410). Detection alone stopped at the first match, so a block owned by
+ * the other concurrency feature hid this feature's block in a later file.
+ * @param {Array<{ file: string, patterns: string[] }>} candidates
+ * @param {string} featureId
+ * @param {string} topLevelKey
+ * @returns {{ file: string, patterns: string[] }|null}
+ */
+function findOwnedTopLevelBlock(candidates, featureId, topLevelKey) {
+  for (const candidate of candidates) {
+    try {
+      const doc = yaml.parseDocument(fs.readFileSync(candidate.file, 'utf8'));
+      if (doc.has(topLevelKey) && ownsTopLevelBlock(featureId, doc.toJS()[topLevelKey])) {
+        return candidate;
+      }
+    } catch (_e) {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Among the detected files, the first holding a job step the feature's
+ * removalPatterns match (#3733). Detection is a whole-file regex, so a step
+ * feature is detected where none of its steps is, and stopping at the first
+ * detected file hid the removable step in a later one.
+ * @param {Array<{ file: string, patterns: string[] }>} candidates
+ * @param {Object} feature - Feature definition with removalPatterns
+ * @returns {{ file: string, patterns: string[] }|null}
+ */
+function findOwnedStep(candidates, feature) {
+  for (const candidate of candidates) {
+    try {
+      const parsed = yaml.parse(fs.readFileSync(candidate.file, 'utf8'));
+      const jobs = parsed && parsed.jobs ? Object.values(parsed.jobs) : [];
+      if (jobs.some((job) => job && Array.isArray(job.steps)
+        && job.steps.some((step) => stepMatches(step, feature.removalPatterns)))) {
+        return candidate;
+      }
+    } catch (_e) {
+      continue;
+    }
+  }
   return null;
 }
 
@@ -101,7 +161,15 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
   }
 
   // Find where the feature lives
-  const found = findFeatureInWorkflows(projectDir, featureId);
+  const feature = registry[featureId];
+  const candidates = findAllFeatureWorkflows(projectDir, featureId);
+  const topLevelKey = FEATURE_TOP_LEVEL_KEYS[featureId];
+  // Refuse on the first detected file only when no detected file holds a block
+  // (#3410) or a step (#3733) this feature owns.
+  const owned = topLevelKey
+    ? findOwnedTopLevelBlock(candidates, featureId, topLevelKey)
+    : (feature.removalPatterns ? findOwnedStep(candidates, feature) : null);
+  const found = owned || candidates[0];
   if (!found) {
     return {
       success: false,
@@ -109,8 +177,6 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
     };
   }
 
-  const feature = registry[featureId];
-  const topLevelKey = FEATURE_TOP_LEVEL_KEYS[featureId];
   // Detection runs regexes over the whole file, so a feature can be detected
   // where removal has no way to reach (#3045): report that, never "Removed".
   if (!topLevelKey && !feature.removalPatterns) {

@@ -1,5 +1,5 @@
 ---
-version: "v0.120.0"
+version: "v0.121.0"
 description: Merge a branch to main through the IDPF framework's gated checks.
 argument-hint: "[--skip-gates] [--dry-run] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -119,7 +119,7 @@ Append `--issue <N>` when Pre-Checks found a tracker. The script composes the te
 ```bash
 node .claude/scripts/shared/merge-pr.js --pr "$(gh pr view --json number --jq .number)" --method merge
 ```
-**The merge is scripted (#3491).** `merge-pr.js` re-reads the PR after any failed attempt, retries transient GitHub failures (`lib/gh.js` `isTransientError`) with backoff, and falls back to the REST merge endpoint with the same method once GraphQL attempts are exhausted; a non-transient failure (not mergeable, conflict, required check, head modified) fails at once. Report its envelope: `path` (`graphql`, `rest-fallback`, `already-merged` — merged by an attempt whose response was lost, a success), `mergeCommit`, and every `attempts[]` entry with its `requestId`. `ok: false` → report `reason` and `error` verbatim and STOP — never retry by hand, never `--admin`.
+**The merge is scripted (#3491).** `merge-pr.js` re-reads the PR after any failed attempt, retries transient GitHub failures (`lib/gh.js` `isTransientError`) with backoff, and falls back to the REST merge endpoint with the same method once GraphQL attempts are exhausted; a non-transient failure (not mergeable, conflict, required check, head modified) fails at once. Report its envelope: `path` (`graphql`, `rest-fallback`, `already-merged` — merged by an attempt whose response was lost, a success), `mergeCommit`, and every `attempts[]` entry with its `requestId`. `ok: false` → report `reason` and `error` verbatim and STOP — never retry by hand, never `--admin`. **One exception — `reason: state-unknown` (#3520):** the merge call exited 0 but the PR's state could not be read, so the merge may have landed. Re-run the same `merge-pr.js` command once: a PR that did merge is then reported `ok: true`. A second `state-unknown` is reported verbatim and STOPs.
 
 ```bash
 git checkout main

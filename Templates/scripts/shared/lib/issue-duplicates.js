@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Duplicate check for `/code-review` Step 8 (#3516): classify each
  * approved finding against open `bug` and `enhancement` issues before it is
  * filed, as `new`, `duplicate` or `related`.
@@ -70,6 +70,28 @@ function sourceFile(entry) {
   return entry && entry.source && typeof entry.source.file === 'string' ? entry.source.file : null;
 }
 
+const PATH_CHAR = /[A-Za-z0-9_\-/\\.]/;
+
+/**
+ * Whether `text` names `file` as a whole path token (#3518): `src/a.js` is
+ * named by `` `src/a.js` ``, `./src/a.js` or "in src/a.js." — not by
+ * `src/a.json`, `src/a.js.map` or `lib/src/a.js`, which are other files.
+ */
+function namesPath(text, file) {
+  const hay = String(text || '');
+  for (let at = hay.indexOf(file); at !== -1; at = hay.indexOf(file, at + 1)) {
+    let start = at;
+    if (hay.slice(Math.max(0, start - 2), start) === './') start -= 2;
+    const before = start > 0 ? hay[start - 1] : '';
+    const end = at + file.length;
+    const after = hay[end] || '';
+    // A trailing dot is sentence punctuation unless more of a name follows it.
+    const continues = after === '.' ? /[A-Za-z0-9_]/.test(hay[end + 1] || '') : PATH_CHAR.test(after);
+    if (!(before && PATH_CHAR.test(before)) && !continues) return true;
+  }
+  return false;
+}
+
 /**
  * Classify one entry against a list of open issues.
  *
@@ -84,7 +106,7 @@ function classifyEntry(entry, issues, { issueRefs = [] } = {}) {
   for (const issue of Array.isArray(issues) ? issues : []) {
     const reasons = [];
     const haystack = `${issue.title || ''}\n${issue.body || ''}`;
-    if (file && haystack.includes(file)) reasons.push(`path ${file} named in #${issue.number}`);
+    if (file && namesPath(haystack, file)) reasons.push(`path ${file} named in #${issue.number}`);
     if (issueRefs.includes(issue.number)) reasons.push(`#${issue.number} is in ${file || 'the file'}'s manifest issueRefs`);
     const linked = reasons.length > 0;
     const sim = similarity(entry && entry.title, issue.title);

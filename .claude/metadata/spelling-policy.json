@@ -374,6 +374,10 @@
       "reason": "Captured GitHub issue bodies replayed through buildPlan (#3287); same reason as tests/fixtures/issue-bodies/** — a fixture must match what it captured."
     },
     {
+      "glob": ".code-review-manifest.json",
+      "reason": "Machine-written by /code-review: finding text describes or quotes the code under review, so it is captured text the framework does not author (#3061); same reason as tests/fixtures/issue-bodies/** — a record must match what it captured."
+    },
+    {
       "glob": "tests/reference/american-spelling.test.js",
       "reason": "The guard asserts on British spellings by design."
     },

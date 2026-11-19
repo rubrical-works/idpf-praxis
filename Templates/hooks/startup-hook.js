@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -104,7 +104,10 @@ const { resolveSpecialist, isSafeSpecialistName } = require('../scripts/shared/l
 // Charter-Enforcement.md (#2893). This hook used to restate its own regex,
 // matching only {{UPPER_SNAKE}}, so the bootstrap charter Praxis Hub Manager
 // writes — {Capitalized Words} placeholders — reported Active.
-const { isCharterTemplate } = require('../scripts/shared/lib/charter-template.js');
+// #3482: the rule is read from charter-contract.json lazily, so this top-level
+// require cannot fail on a missing or malformed contract; tryLoadCharterContract
+// reports that as a structured failure, which the Charter Status row names.
+const { isCharterTemplate, tryLoadCharterContract } = require('../scripts/shared/lib/charter-template.js');
 
 // #3038: projectSkills entries with no .claude/skills/<name>/ on disk. Shares
 // /sync-branch's definition of missing (#3033), which is Praxis Hub Manager's.
@@ -134,7 +137,18 @@ function gatherSessionInfo(cwd) {
   // Charter detection: file existence + template-marker check
   const charterPath = path.join(cwd, 'CHARTER.md');
   let charterStatus = 'Pending';
+  let charterContractError = null;
   if (fs.existsSync(charterPath)) {
+    // #3482: without the contract the charter cannot be classified. Reported
+    // as Undetermined with the failure — never as Pending, which would send the
+    // session to /charter, itself unable to run without the contract.
+    const contract = tryLoadCharterContract();
+    if (!contract.ok) {
+      charterStatus = 'Undetermined';
+      charterContractError = contract.error;
+    }
+  }
+  if (fs.existsSync(charterPath) && !charterContractError) {
     try {
       const content = fs.readFileSync(charterPath, 'utf8');
       charterStatus = isCharterTemplate(content) ? 'Pending' : 'Active';
@@ -169,6 +183,7 @@ function gatherSessionInfo(cwd) {
     skillsCheck,
     frameworkPath,
     charterStatus,
+    charterContractError,
     ghPmuVersion,
     // Reads .claude/x-session.json first, then the legacy framework-config.json
     // key, then the environment layer above both (#2774). Takes the project
@@ -189,13 +204,38 @@ function gatherSessionInfo(cwd) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Retired-file removal (#3420)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Remove files the framework has retired — today, `domain-entities.json`
+ * (#3420). It was derived from CHARTER.md, so deleting it loses nothing.
+ *
+ * One of the two startup steps that mutate the tree, beside
+ * sweepStaleTempFiles below; the same reasoning licenses both.
+ *
+ * Never throws: a failed removal degrades to no row.
+ *
+ * @param {string} cwd - Project root
+ * @returns {object|null} The helper's removal result, or `null` on failure
+ */
+function removeRetiredFiles(cwd) {
+  try {
+    return require('../scripts/shared/charter-entities.js').removeRetiredEntitiesFile(cwd);
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Stale scratch-file sweep (#2771)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Remove stale `.tmp-*` scratch files from the project root.
  *
- * THE ONE STARTUP STEP THAT MUTATES THE TREE. Every other check is advisory,
+ * ONE OF THE TWO STARTUP STEPS THAT MUTATE THE TREE — this sweep and
+ * removeRetiredFiles above (#3434). Every other check is advisory,
  * per `06-runtime-triggers.md`'s *offer, don't force*. The exception is
  * deliberate: an `AskUserQuestion` at every session start, for files nobody
  * wants, is exactly the noise a hook should remove rather than add — and since
@@ -214,16 +254,6 @@ function gatherSessionInfo(cwd) {
  * @param {{tmpCleanup?: boolean}} info - Session info carrying the resolved opt-out
  * @returns {{removed: string[], failed: Array<{name: string, error: string}>, oldestAgeMs?: number, signals: object}|null}
  */
-function removeRetiredFiles(cwd) {
-  // #3420: domain-entities.json is retired. Derived from CHARTER.md, so deleting
-  // it loses nothing. Never throws: a failed removal degrades to no row.
-  try {
-    return require('../scripts/shared/charter-entities.js').removeRetiredEntitiesFile(cwd);
-  } catch {
-    return null;
-  }
-}
-
 function sweepStaleTempFiles(cwd, info) {
   try {
     // Disabled emits no row at all — not an "opted out" row. The suppression is
@@ -488,7 +518,9 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       if (dep?.state === 'missing') {
         lines.push(`- Dependencies: ${e(`⚠️ node_modules not installed in ${where} — run npm ci`)}`);
       } else if (dep?.state === 'partial') {
-        lines.push(`- Dependencies: ${e(`⚠️ ${dep.missing.length} of ${dep.total} packages missing in ${where} — run npm ci`)}`);
+        // #3434: a malformed `missing` counts as none, never a TypeError.
+        const missing = Array.isArray(dep.missing) ? dep.missing : [];
+        lines.push(`- Dependencies: ${e(`⚠️ ${missing.length} of ${dep.total} packages missing in ${where} — run npm ci`)}`);
       } else if (dep?.state === 'stale') {
         lines.push(`- Dependencies: ${w(`⚠️ node_modules stale vs lockfile in ${where}`)}`);
       } else if (r.error === 'timeout') {
@@ -505,7 +537,8 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       // not folded into the package state. A lookup that could not run says
       // so rather than reading as absent.
       for (const m of Array.isArray(dep?.runnersMissing) ? dep.runnersMissing : []) {
-        const needed = `needed by suite${m.suites.length === 1 ? '' : 's'} ${m.suites.join(', ')}`;
+        const suites = Array.isArray(m?.suites) ? m.suites : []; // #3434
+        const needed = `needed by suite${suites.length === 1 ? '' : 's'} ${suites.join(', ')}`;
         lines.push(m.error
           ? `- Dependencies: ${w(`⚠️ runner \`${m.runner}\` could not be probed (${m.error}) — ${needed}`)}`
           : `- Dependencies: ${e(`⚠️ runner \`${m.runner}\` not on PATH — ${needed}`)}`);
@@ -644,8 +677,10 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       // #3423. Row carried verbatim from the helper's formatRows — the wording
       // has one home. #3644: a clean charter's row is the derived count
       // summary, shown plain; only a row carrying ⚠️ is warning-colored.
+      // #3434: only a string is a row — a malformed envelope drops this row,
+      // never the whole block through a TypeError on startsWith.
       const row = r.parsed?.data?.rows?.health;
-      if (row) {
+      if (typeof row === 'string' && row) {
         lines.push(`- Charter Health: ${row.startsWith('⚠️') ? w(row) : row}`);
       } else if (!r.parsed?.data && r.error === 'timeout') {
         lines.push(`- Charter Health: ${e('⚠️ check timed out')}`);
@@ -722,6 +757,9 @@ function renderBlock(info, checkResults, opts = { color: true }) {
     // presented truncated sentences, which read as noise in a block of short
     // factual status lines.
     lines.push(`- Charter Status: Active`);
+  } else if (info.charterStatus === 'Undetermined' && info.charterContractError) {
+    const { code, message } = info.charterContractError;
+    lines.push(`- ${w(`Charter Status: ⚠️ Undetermined — ${code}: ${message}`)}`);
   } else {
     lines.push(`- ${e('Charter Status: Pending — /charter must run as the final startup action')}`);
   }
@@ -1106,9 +1144,11 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
     const root = deps.root || process.cwd();
     const where = `${dependencyScopeLabel(deps.scope)} \`${root}\``;
 
+    // #3434: a malformed `missing` counts as none, never a TypeError.
+    const missing = Array.isArray(deps.missing) ? deps.missing : [];
     const detail = {
       missing: `no packages are installed in ${where}`,
-      partial: `${deps.missing?.length} of ${deps.total} declared packages are missing from ${where} (${(deps.missing || []).join(', ')})`,
+      partial: `${missing.length} of ${deps.total} declared packages are missing from ${where} (${missing.join(', ')})`,
       stale: `the lockfile in ${where} is newer than the installed tree`,
     }[deps.state];
 
@@ -1135,7 +1175,7 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
   // missing binary is a host-toolchain matter, not a project dependency, so
   // there is nothing to offer: `npm ci` cannot install npm.
   for (const m of Array.isArray(deps?.runnersMissing) ? deps.runnersMissing : []) {
-    const suites = m.suites.join(', ');
+    const suites = (Array.isArray(m?.suites) ? m.suites : []).join(', '); // #3434
     instructions.push(m.error
       ? `The runner \`${m.runner}\` declared by testing.suites[] (${suites}) could not be probed on PATH (${m.error}). Report this as undetermined — it is not an all-clear and not a missing runner. Do not offer an install and do not run one.`
       : `The runner \`${m.runner}\` is not on PATH, and testing.suites[] declares it for: ${suites}. Every verification gate that runs those suites (\`/work\` Step 3 scoped runs, Step 4f's full sweep, \`/qa\` Step 4) will report \`runner not found\` and block until the host toolchain provides it. Tell the user which runner and which suites; do not offer an install and do not run one — this is a host-toolchain matter, not a project dependency.`);
@@ -1174,7 +1214,7 @@ function buildAdditionalContext(info, plainBlock, checkResults = [], opts = {}) 
   }
 
   // Charter pending instruction goes LAST so the user sees the full block first.
-  if (info.charterStatus !== 'Active') {
+  if (info.charterStatus === 'Pending') {
     instructions.push('Charter is missing or template — invoke /charter as the FINAL action of startup, after displaying the Session Initialized block.');
   }
 
@@ -1304,17 +1344,23 @@ function buildChecks(info) {
  * `clear` (#3679). clear-hook.js runs main({ source: 'clear' }) after /clear;
  * the process is not new then, so anything that assumes "nothing of this
  * process exists yet" is skipped. Order is main()'s order.
+ *
+ * onClear is `safe`, `skipped` or `required` (#3698). main() consults
+ * skippedFor() for every `safe` and `skipped` action, so flipping one to
+ * `skipped` takes effect; a test fails if an action is listed but not
+ * consulted. `required` marks the routine itself — main() cannot answer
+ * without it, so it is never skippable and is not consulted.
  */
 const CLEAR_SAFETY = [
   { action: 'retired-file-removal', onClear: 'safe', reason: 'deletes only domain-entities.json, derived from CHARTER.md and read by nothing; idempotent' },
-  { action: 'session-info', onClear: 'safe', reason: 'reads config, git and gh state; writes nothing' },
+  { action: 'session-info', onClear: 'required', reason: 'reads config, git and gh state; writes nothing; every row is rendered from it' },
   { action: 'checks', onClear: 'safe', reason: 'every check is read-only at startup (branch-sync fetches one ref; task-tools writes only on an explicit --enable); a peer scan excludes this process' },
   { action: 'stale-tmp-sweep', onClear: 'skipped', reason: 'the process that ran /clear may still own day-old .tmp-* files — a background agent\'s review file, a --concurrent run\'s state — that only a fresh process can call abandoned' },
   { action: 'leftover-worktrees', onClear: 'safe', reason: 'lists .tmp-wt-* directories and names the teardown command; removes nothing' },
-  { action: 'render-and-emit', onClear: 'safe', reason: 'writes the block to stderr and hookSpecificOutput to stdout, as a fresh session does' },
+  { action: 'render-and-emit', onClear: 'required', reason: 'writes the block to stderr and hookSpecificOutput to stdout, as a fresh session does; the hook must always answer' },
 ];
 
-/** Whether CLEAR_SAFETY skips an action for this source. */
+/** Whether CLEAR_SAFETY skips an action for this source. A `required` action never is. */
 function skippedFor(source, action) {
   return source === 'clear' && CLEAR_SAFETY.some((a) => a.action === action && a.onClear === 'skipped');
 }
@@ -1327,11 +1373,12 @@ async function main({ source = 'startup' } = {}) {
   // #3420: before gatherSessionInfo reads `git status --porcelain`, so the
   // Branch row reports the deletion as dirty. After the checks (where the
   // stale-scratch sweep runs) the block would say clean over an unstaged delete.
-  const retiredEntities = removeRetiredFiles(cwd);
+  // Every non-required CLEAR_SAFETY action is gated here (#3698).
+  const retiredEntities = skippedFor(source, 'retired-file-removal') ? null : removeRetiredFiles(cwd);
   const info = gatherSessionInfo(cwd);
   info.retiredEntities = retiredEntities;
 
-  const checks = buildChecks(info);
+  const checks = skippedFor(source, 'checks') ? [] : buildChecks(info);
 
   // Filter to existing scripts (graceful degradation)
   const validChecks = checks.filter((c) => fs.existsSync(path.join(cwd, c.script)));
@@ -1345,7 +1392,7 @@ async function main({ source = 'startup' } = {}) {
   // Session Initialized block.
   // Skipped on clear (#3679): no row, exactly as a disabled sweep emits none.
   info.trash = skippedFor(source, 'stale-tmp-sweep') ? null : sweepStaleTempFiles(cwd, info);
-  info.worktrees = gatherLeftoverWorktrees(cwd);
+  info.worktrees = skippedFor(source, 'leftover-worktrees') ? null : gatherLeftoverWorktrees(cwd);
 
   // Render block — colored for stderr, plain for additionalContext
   const coloredBlock = renderBlock(info, checkResults, { color: true });
@@ -1369,6 +1416,7 @@ async function main({ source = 'startup' } = {}) {
 module.exports = {
   main,
   CLEAR_SAFETY,
+  skippedFor,
   gatherSessionInfo,
   resolveSpecialist,
   isSafeSpecialistName,

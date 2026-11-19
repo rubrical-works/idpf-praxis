@@ -125,7 +125,7 @@
     {
       "id": "inline-code-double-brace",
       "description": "A double-braced token inside a double-backtick span is literal content; one outside code is a placeholder.",
-      "content": "Stamp ``0.120.0`` at build; vision: {{VISION}}\n",
+      "content": "Stamp ``0.121.0`` at build; vision: {{VISION}}\n",
       "expected": {
         "template": true,
         "placeholders": [

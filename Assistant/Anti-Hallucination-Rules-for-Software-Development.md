@@ -1,5 +1,5 @@
 # Anti-Hallucination Rules for Software Development
-**Version:** v0.120.0
+**Version:** v0.121.0
 **Core Principle:** Verification over assumption. Project state over training memory. Observable actions over confident-sounding answers. Every rule names a *condition* and an *observable action*.
 ## Information Source Hierarchy
 When facts conflict, trust them in this order:

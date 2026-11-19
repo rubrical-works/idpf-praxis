@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Charter entity extraction and derived counts (#3420, #3644).
  * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
  * memory and counts each Key Entities row against disk when asked. Nothing
@@ -19,16 +19,32 @@ const { parseCompanionTable } = require('./lib/companion-projects.js');
 const { loadCharterContract } = require('./lib/charter-template.js');
 const { escapeRegExp } = require('./lib/input-validation.js');
 
-/** The Key Entities section heading, regex-escaped, from the charter contract (#3481). */
-const KEY_ENTITIES_HEADING = escapeRegExp(loadCharterContract().keyEntities.heading);
+/**
+ * The Key Entities section heading, regex-escaped, from the charter contract
+ * (#3481). Read at call time, never at require time (#3482): a missing or
+ * malformed contract throws from the call, with its code, not from require.
+ */
+const keyEntitiesHeading = () => escapeRegExp(loadCharterContract().keyEntities.heading);
 
 /**
  * Extract entities from a Key Entities markdown table.
+ *
+ * Each row becomes one entity keyed by its name, lowercased with whitespace
+ * hyphenated. A row whose key is already taken is kept under a suffixed key
+ * (`name-2`, …) with a `warnings` entry, never overwriting the first (#3707).
+ * Nothing here is a count: a legacy Count cell is carried as `count` only so a
+ * repair can compare against it (#3644); counts come from deriveEntityCounts().
+ *
+ * @param {string} content - CHARTER.md text
+ * @returns {Object<string, {description: string, count?: number, locations?: string[],
+ *   countSource?: {exclude: string[]}, warnings?: string[], relationships: Array}>}
+ *   Entities by key; `{}` when the section or a table with at least one row is absent
  */
 function extractEntities(content) {
   const entities = {};
   // Find the Key Entities section (heading from the charter contract, #3481)
   // and extract the table
+  const KEY_ENTITIES_HEADING = keyEntitiesHeading();
   let sectionMatch = content.match(new RegExp(String.raw`##\s+${KEY_ENTITIES_HEADING}[^\n]*\n([\s\S]*?)(?=\n##\s)`));
   // Fallback: Key Entities is the last section
   if (!sectionMatch) {
@@ -57,8 +73,18 @@ function extractEntities(content) {
     const cells = cellsOf(rows[i]);
     if (cells.length >= 2 && cells[0]) {
       const name = cells[0];
-      const key = name.toLowerCase().replace(/\s+/g, '-');
+      const baseKey = name.toLowerCase().replace(/\s+/g, '-');
+      let key = baseKey;
       const entity = { description: name };
+      // Two rows whose names normalize to one key would overwrite each other,
+      // silently dropping the first from the counts (#3707). The later row is
+      // kept under a suffixed key and carries a warning naming the clash.
+      if (entities[baseKey]) {
+        let n = 2;
+        while (entities[`${baseKey}-${n}`]) n++;
+        key = `${baseKey}-${n}`;
+        entity.warnings = [`duplicate entity name "${name}": same key as "${entities[baseKey].description}"; kept as ${key}`];
+      }
 
       // A legacy Count cell is read so a repair can compare against it; it is
       // never used as a count (#3644).
@@ -334,6 +360,23 @@ function collectGlobMatches(fs, path, absBase, pattern) {
   return matches;
 }
 
+/** Reason recorded for a location that resolves outside the project root (#3707). */
+const OUTSIDE_ROOT_REASON = 'location resolves outside the project root';
+
+/**
+ * True when `absPath` lies outside `root`. A charter location is a path in
+ * this project; a `..` or absolute path escaping it is not counted, so a
+ * charter can never be used to probe the size of directories beyond the root.
+ *
+ * @param {string} root
+ * @param {string} absPath - Already resolved against root
+ * @returns {boolean}
+ */
+function isOutsideRoot(root, absPath) {
+  const rel = path.relative(path.resolve(root), absPath);
+  return rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel);
+}
+
 /**
  * Count each Key Entities row against the filesystem (#3644). Nothing is
  * compared: the charter stores no count, so the count shown is the one derived
@@ -350,6 +393,8 @@ function collectGlobMatches(fs, path, absBase, pattern) {
  *   - **file** — yields no item count (#2919).
  *   - **directory** — immediate children, files and subdirectories alike.
  *   - **anything else** — not counted, with a reason.
+ *   - **outside the project root** (a `..` or absolute path escaping it, or a
+ *     glob whose base does) — not counted, whatever kind it is (#3707).
  *
  * All-or-nothing per row: one location that cannot be counted leaves the row
  * not counted, so a partial total is never shown as the count.
@@ -381,6 +426,10 @@ function deriveEntityCounts(entities, options = {}) {
       if (GLOB_CHARS.test(cleanLoc)) {
         const { base, pattern } = splitGlobLocation(cleanLoc);
         const absBase = path.resolve(root, base);
+        if (isOutsideRoot(root, absBase)) {
+          unresolved.push({ location, reason: OUTSIDE_ROOT_REASON });
+          continue;
+        }
 
         let baseStat;
         try {
@@ -408,6 +457,10 @@ function deriveEntityCounts(entities, options = {}) {
       }
 
       const fullPath = path.resolve(root, cleanLoc);
+      if (isOutsideRoot(root, fullPath)) {
+        unresolved.push({ location, reason: OUTSIDE_ROOT_REASON });
+        continue;
+      }
       let stat;
       try {
         stat = fs.statSync(fullPath);
@@ -439,7 +492,7 @@ function deriveEntityCounts(entities, options = {}) {
     }
 
     const counted = unresolved.length === 0;
-    results.push({
+    const result = {
       entity: key,
       description: entity.description || key,
       // null, never 0: a row that could not be counted has no count (#2597).
@@ -448,7 +501,10 @@ function deriveEntityCounts(entities, options = {}) {
       locations,
       excludesApplied,
       unresolved
-    });
+    };
+    // Extraction warnings (a duplicate entity name, #3707) travel with the row.
+    if (entity.warnings && entity.warnings.length) result.warnings = entity.warnings.slice();
+    results.push(result);
   }
 
   return results;
@@ -459,8 +515,12 @@ const COUNTS_HEADING = 'Key Entities — counts (derived now, not stored)';
 
 /**
  * The derived counts block: one line per Key Entities row, a row that could
- * not be counted named with its reason — never shown as zero. Shown, never
+ * not be counted named with its reason — never shown as zero. A row's
+ * extraction warnings follow it, one indented line each. Shown, never
  * written to a file.
+ *
+ * @param {ReturnType<typeof deriveEntityCounts>|null|undefined} results - deriveEntityCounts() output
+ * @returns {string} The heading plus one line per row (and per warning), newline-joined
  */
 function formatCountsBlock(results) {
   const rows = results || [];
@@ -474,11 +534,17 @@ function formatCountsBlock(results) {
       const why = (r.unresolved || []).map(u => (u.location ? `${u.location}: ${u.reason}` : u.reason)).join('; ');
       lines.push(`  ${name}  not counted — ${why}`);
     }
+    for (const w of r.warnings || []) lines.push(`    warning: ${w}`);
   }
   return lines.join('\n');
 }
 
-/** One line for the startup Charter Health row: each counted row, and the not-counted tally. */
+/**
+ * One line for the startup Charter Health row: each counted row, and the not-counted tally.
+ *
+ * @param {ReturnType<typeof deriveEntityCounts>|null|undefined} results - deriveEntityCounts() output
+ * @returns {string} A single line, no newline
+ */
 function summarizeCounts(results) {
   const rows = results || [];
   const counted = rows.filter(r => r.counted).map(r => `${r.description} ${r.count}`);

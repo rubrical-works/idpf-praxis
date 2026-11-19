@@ -2,7 +2,7 @@
 /**
  * Tree-wide review gate aggregation (#2749, shared with #2748 and #2750).
  *
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  *
  * A pure decision function answering "should `/work` stop and ask before
  * touching this set of issues, and what should it offer?" — the counterpart to
@@ -294,4 +294,6 @@ function evaluateBranchReviewGate(input = {}) {
   };
 }
 
-module.exports = { evaluateBranchReviewGate, REVIEW_STATES, NOT_PROCESSABLE };
+// `skippedNumbers` and `isProcessable` are exported so tree-review-gate.js
+// decides its #3715 relabel scope by this rule rather than a copy (#3719).
+module.exports = { evaluateBranchReviewGate, skippedNumbers, isProcessable, REVIEW_STATES, NOT_PROCESSABLE };

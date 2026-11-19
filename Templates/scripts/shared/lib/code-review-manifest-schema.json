@@ -49,6 +49,7 @@
         "updatedAt": { "type": "string", "description": "ISO timestamp a confirmed duplicate updated its matched issue (#3516)." },
         "issue": { "type": ["number", "null"], "description": "Issue number once filed, or the existing issue a confirmed duplicate updated." },
         "error": { "type": "string", "description": "Last filing error, while `failed`." },
+        "commentPosted": { "type": "boolean", "description": "While `failed` (#3519): a confirmed duplicate posted its evidence comment on the matched issue and then failed its body view or edit. The next `file-issue.js --manifest` run skips the comment and redoes only the body edit. Removed once the entry is `updated`; absent means no comment was posted." },
         "entry": { "type": "object", "description": "The `file-issue.js` entry: type, title, priority (from finding severity), fields, labels, and `source.file` — the reviewed file whose `issueRefs` receives the number." }
       }
     },

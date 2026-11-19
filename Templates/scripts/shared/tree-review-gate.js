@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Run the /work Step 2b-ii tree-wide review gate chain as one call: enumerate an epic or branch tracker's children with the bare `gh pmu sub list N --json`, read each child's board status, classify every member through review-state.js, and hand the resolved set to branch-review-gate.js for the decision. `--record-bypass` writes the decline note into an epic body (never a branch tracker's). Every gh call goes through one injectable exec so the whole chain is testable against a mocked board (#2826).
  * @checksum sha256:placeholder
  *
@@ -55,7 +55,9 @@ const fs = require('fs');
 const { execTimed } = require('./lib/exec.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');
 const reviewState = require('./review-state.js');
-const { evaluateBranchReviewGate, NOT_PROCESSABLE } = require('./lib/branch-review-gate.js');
+// Called through the module object, not destructured: the relabel scope is
+// branch-review-gate's own processability rule, one definition (#3719).
+const branchReviewGate = require('./lib/branch-review-gate.js');
 
 /** The line the decline note begins with; its presence is what makes a second decline a no-op. */
 const BYPASS_NOTE_MARKER = '**Review gate bypassed:**';
@@ -200,24 +202,17 @@ function classifyMember(number, execFn, warnings, relabeled, { relabel = true } 
  */
 function resolveMember({ number, title = '', isTracker = false, fetchStatus = true, skipSet = new Set() }, execFn, warnings, relabeled) {
   const boardStatus = fetchStatus ? fetchBoardStatus(number, execFn, warnings) : null;
-  const finished = NOT_PROCESSABLE.includes(String(boardStatus || '').trim().toLowerCase());
+  // The relabel scope is exactly the set the aggregator will decide (#3715):
+  // asked of branch-review-gate's own rule, so a branch-tracker root (#3719),
+  // a `--skipped` member and an In review or Done member are all read-only.
+  const relabel = branchReviewGate.isProcessable({ number, boardStatus, isTracker }, skipSet);
   return {
     number,
     title,
     boardStatus,
-    state: classifyMember(number, execFn, warnings, relabeled, { relabel: !skipSet.has(number) && !finished }),
+    state: classifyMember(number, execFn, warnings, relabeled, { relabel }),
     isTracker
   };
-}
-
-/** The numbers in `--skipped`, which arrives as `[{number, status}]` or bare numbers. */
-function skippedSet(skipped) {
-  const out = new Set();
-  for (const e of Array.isArray(skipped) ? skipped : []) {
-    if (typeof e === 'number') out.add(e);
-    else if (e && typeof e.number === 'number') out.add(e.number);
-  }
-  return out;
 }
 
 /**
@@ -232,7 +227,7 @@ function evaluateTree(args, execFn) {
   const members = [];
   const closed = [];
   const relabeled = [];
-  const skipSet = skippedSet(args.skipped);
+  const skipSet = branchReviewGate.skippedNumbers(args.skipped);
 
   if (selection) {
     for (const number of args.issues) {
@@ -258,6 +253,7 @@ function evaluateTree(args, execFn) {
 
     // The root first. It is classified like any other member and dropped by
     // the aggregator when the caller declares it a tracker — no label check.
+    // A declared tracker is therefore classified read-only, never relabeled.
     members.push(resolveMember(
       { number: args.issue, isTracker: args.tracker === true, fetchStatus: false },
       execFn, warnings, relabeled
@@ -276,7 +272,7 @@ function evaluateTree(args, execFn) {
     }
   }
 
-  const verdict = evaluateBranchReviewGate({ members, skipped: args.skipped, setShape });
+  const verdict = branchReviewGate.evaluateBranchReviewGate({ members, skipped: args.skipped, setShape });
   for (const w of verdict.warnings || []) warnings.push(`branch-review-gate: ${w}`);
 
   return {

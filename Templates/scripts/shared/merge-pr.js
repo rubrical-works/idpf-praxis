@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Merge a pull request with state re-read, transient retry and a REST fallback (#3491). Exports mergePr() and parseArgs(); the CLI prints one JSON envelope naming the path that merged it (graphql, rest-fallback, already-merged), the merge commit and every failed attempt.
  * @checksum sha256:placeholder
  *
@@ -25,6 +25,9 @@
  *   4. A transient one (lib/gh.js isTransientError) is retried with backoff.
  *   5. GraphQL attempts exhausted → one `PUT /repos/{o}/{r}/pulls/{n}/merge`
  *      with the same merge method, then a last re-read on failure.
+ *   6. After a zero exit the state read is retried; if it still cannot be
+ *      read the result is `state-unknown` — the merge may have landed, so it
+ *      is never reported `not-merged`. Re-run to settle it (#3520).
  *
  * `gh` is spawned with an argv array, never a shell string.
  *
@@ -114,6 +117,29 @@ function mergePr({ pr, method = 'merge', repo = null, run = defaultRun, sleep = 
     return null;
   };
 
+  /**
+   * After a zero exit: read the state, retrying a read that itself fails. A
+   * failed read says nothing about the merge, so it is never taken for a
+   * non-merged state (#3520).
+   */
+  const confirm = () => {
+    let s = readState(pr, targetRepo, run);
+    let wait = retryDelay;
+    for (let i = 0; i < retries && s.state === null; i++) {
+      sleep(wait);
+      wait *= 2;
+      s = readState(pr, targetRepo, run);
+    }
+    return s;
+  };
+  const stateUnknown = (what, s) =>
+    out({
+      ok: false,
+      repo: targetRepo,
+      reason: 'state-unknown',
+      error: `${what} exited 0 but the state of PR #${pr} could not be read (${s.error}) — the merge may have landed. Re-run merge-pr.js: it reports already-merged if it did.`,
+    });
+
   let delay = retryDelay;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const r = run(['pr', 'merge', String(pr), `--${method}`, ...repoArgs]);
@@ -121,13 +147,14 @@ function mergePr({ pr, method = 'merge', repo = null, run = defaultRun, sleep = 
       // A zero exit is not a merge: on a branch with a merge queue, or with
       // required checks pending, gh queues the PR or enables auto-merge and
       // exits 0 (gh pr merge --help). Only the re-read state decides.
-      const s = readState(pr, targetRepo, run);
+      const s = confirm();
       if (s.state === 'MERGED') return out({ ok: true, repo: targetRepo, path: 'graphql', mergeCommit: s.mergeCommit || null });
+      if (s.state === null) return stateUnknown('gh pr merge', s);
       return out({
         ok: false,
         repo: targetRepo,
         reason: 'not-merged',
-        error: `gh pr merge exited 0 but PR #${pr} reads ${s.state || `unreadable (${s.error})`} — queued or set to auto-merge, not merged.`,
+        error: `gh pr merge exited 0 but PR #${pr} reads ${s.state} — queued or set to auto-merge, not merged.`,
       });
     }
     const error = errorText(r);
@@ -161,13 +188,14 @@ function mergePr({ pr, method = 'merge', repo = null, run = defaultRun, sleep = 
     }
     if (body && body.sha) return out({ ok: true, repo: targetRepo, path: 'rest-fallback', mergeCommit: body.sha });
     // No readable body: a zero exit alone is not a merge — confirm from state.
-    const s = readState(pr, targetRepo, run);
+    const s = confirm();
     if (s.state === 'MERGED') return out({ ok: true, repo: targetRepo, path: 'rest-fallback', mergeCommit: s.mergeCommit || null });
+    if (s.state === null) return stateUnknown('REST merge', s);
     return out({
       ok: false,
       repo: targetRepo,
       reason: 'not-merged',
-      error: `REST merge exited 0 with no readable response and PR #${pr} reads ${s.state || `unreadable (${s.error})`}.`,
+      error: `REST merge exited 0 with no readable response and PR #${pr} reads ${s.state}.`,
     });
   }
   const restError = errorText(rest);

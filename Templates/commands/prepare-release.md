@@ -1,5 +1,5 @@
 ---
-version: "v0.120.0"
+version: "v0.121.0"
 description: Prepare a release by opening a PR, merging to main, and tagging, using the IDPF framework.
 argument-hint: "[version] [--skip-coverage] [--skip-review] [--dry-run] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -240,7 +240,7 @@ Script composes the text (never hand-compose); **forced broadcast** — every ad
 ```bash
 node .claude/scripts/shared/merge-pr.js --pr "$(gh pr view --json number --jq .number)" --method merge
 ```
-**The merge is scripted (#3491).** `merge-pr.js` re-reads the PR after any failed attempt, retries transient GitHub failures (`lib/gh.js` `isTransientError`) with backoff, and falls back to the REST merge endpoint with the same method once GraphQL attempts are exhausted; a non-transient failure (not mergeable, conflict, required check, head modified) fails at once. Report its envelope: `path` (`graphql`, `rest-fallback`, `already-merged` — merged by an attempt whose response was lost, a success), `mergeCommit`, and every `attempts[]` entry with its `requestId`. `ok: false` → report `reason` and `error` verbatim and STOP — never retry by hand, never `--admin`.
+**The merge is scripted (#3491).** `merge-pr.js` re-reads the PR after any failed attempt, retries transient GitHub failures (`lib/gh.js` `isTransientError`) with backoff, and falls back to the REST merge endpoint with the same method once GraphQL attempts are exhausted; a non-transient failure (not mergeable, conflict, required check, head modified) fails at once. Report its envelope: `path` (`graphql`, `rest-fallback`, `already-merged` — merged by an attempt whose response was lost, a success), `mergeCommit`, and every `attempts[]` entry with its `requestId`. `ok: false` → report `reason` and `error` verbatim and STOP — never retry by hand, never `--admin`. **One exception — `reason: state-unknown` (#3520):** the merge call exited 0 but the PR's state could not be read, so the merge may have landed. Re-run the same `merge-pr.js` command once: a PR that did merge is then reported `ok: true`. A second `state-unknown` is reported verbatim and STOPs.
 
 ### Step 4.3: Close Branch Tracker
 

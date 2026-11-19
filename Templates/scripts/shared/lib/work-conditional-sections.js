@@ -3,7 +3,7 @@
 /**
  * Section-scoped loading of /work's conditional bodies (#3325).
  *
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  *
  * Rule 08 Step 1d used to read all of `Reference/work-execution-conditional.md`
  * for any epic, branch tracker, `--nonstop`, `--concurrent` or multi-issue run.
@@ -21,7 +21,10 @@
  * CLI:
  *   node .claude/scripts/shared/lib/work-conditional-sections.js \
  *     --type epic|branch|standard [--nonstop] [--concurrent] [--selection N] [--json] [--file <path>]
+ *     [--section <id>]
  *   Prints the sections' text (or, with --json, { shape, sections, chars, text }).
+ *   --section <id> prints that one section regardless of the run shape (e.g.
+ *   `--section 4g` for a single standard issue); an unknown id exits 2.
  *   The file defaults to {frameworkPath}/Reference/work-execution-conditional.md,
  *   frameworkPath read from the working directory's framework-config.json.
  */

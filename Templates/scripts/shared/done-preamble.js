@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -276,7 +276,7 @@ async function resolveEpicContinuation(issueNum, parentRef, execJSONFn = execJSO
  * @returns {boolean}
  */
 function hasPrdLabel(labels) {
-  return (labels || []).some(l => l.name === 'prd');
+  return labelNames(labels).includes('prd');
 }
 
 /**
@@ -361,7 +361,7 @@ function parsePrdReference(body) {
  */
 function buildApprovalNextSteps({ labels, body, lifecycleBox = null }) {
   if (!isApprovalGate(labels)) return null;
-  const isTestPlanApproval = (labels || []).some(l => l.name === 'test-plan');
+  const isTestPlanApproval = labelNames(labels).includes('test-plan');
   let prdRef = parsePrdReference(body);
   if (!prdRef && isTestPlanApproval && lifecycleBox && lifecycleBox.tracker
       && lifecycleBox.reason !== 'ambiguous-tracker') {
@@ -691,7 +691,8 @@ function releaseGatePattern(markersPath = GATE_MARKERS_PATH) {
  * before. Checkboxes are read by lib/checkbox-scan.js — line-start, outside
  * code fences — the way `gh pmu move` counts them.
  * @param {string} body
- * @returns {{eligible: boolean, gated: Array<{line: string, criterion: string}>, blocking: string[]}}
+ * @returns {{eligible: boolean, gated: Array<{index: number, line: string, criterion: string}>, blocking: string[]}}
+ *   `index` is the box's line index in the LF-normalized body, as scanCheckboxes returns it.
  */
 function classifyReleaseGates(body, markersPath = GATE_MARKERS_PATH) {
   const { scanCheckboxes } = require('./lib/checkbox-scan.js');
@@ -704,7 +705,7 @@ function classifyReleaseGates(body, markersPath = GATE_MARKERS_PATH) {
     if (box.checked) continue;
     const line = lines[box.line];
     if (pattern.test(box.text)) {
-      gated.push({ line, criterion: box.text.replace(/\s*→ GATE: release\s*$/, '').trim() });
+      gated.push({ index: box.line, line, criterion:box.text.replace(/\s*→ GATE: release\s*$/, '').trim() });
     } else {
       blocking.push(line.trim());
     }
@@ -712,14 +713,39 @@ function classifyReleaseGates(body, markersPath = GATE_MARKERS_PATH) {
   return { eligible: gated.length > 0 && blocking.length === 0, gated, blocking };
 }
 
-/** The body with each handed-off box checked and pointed at its QA issue. */
-function applyReleaseHandoff(body, handoffs) {
-  let out = String(body || '').replace(/\r\n/g, '\n');
-  for (const { line, qaNumber } of handoffs) {
-    const rewritten = `${line.replace('[ ]', '[x]').replace(/\s+$/, '')} → QA: #${qaNumber}`;
-    out = out.split('\n').map((l) => (l === line ? rewritten : l)).join('\n');
+/**
+ * classifyReleaseGates for runSingleIssue, which must not throw (#3465): an
+ * unreadable ac-gate-markers.json — missing, not JSON, no gate-release marker
+ * — is a coded warning, never an UNEXPECTED envelope. No hand-off is offered
+ * then; `gh pmu move` still validates the checkboxes itself.
+ * @returns {{ gates: {eligible: boolean, gated: Array, blocking?: string[]}, warning: {code: string, message: string}|null }}
+ */
+function readReleaseGates(issueNum, body, markersPath) {
+  try {
+    return { gates: classifyReleaseGates(body, markersPath), warning: null };
+  } catch (e) {
+    return {
+      gates: { eligible: false, gated: [] },
+      warning: { code: 'RELEASE_GATE_MARKERS_UNREADABLE', message: `Release-gate markers could not be read, so no post-release hand-off was offered for #${issueNum}: ${(e && e.message) || e}` },
+    };
   }
-  return out;
+}
+
+/**
+ * The body with each handed-off box checked and pointed at its QA issue.
+ * Boxes are addressed by the line index classifyReleaseGates reports, never
+ * by line text (#3470): two identical gated lines are two boxes, and each
+ * gets its own QA number.
+ * @param {string} body
+ * @param {Array<{index: number, qaNumber: number}>} handoffs
+ */
+function applyReleaseHandoff(body, handoffs) {
+  const lines = String(body || '').replace(/\r\n/g, '\n').split('\n');
+  for (const { index, qaNumber } of handoffs) {
+    if (!Number.isInteger(index) || index < 0 || index >= lines.length) continue;
+    lines[index] = `${lines[index].replace('[ ]', '[x]').replace(/\s+$/, '')} → QA: #${qaNumber}`;
+  }
+  return lines.join('\n');
 }
 
 /** The QA issue body, in the same template /work Step 4a files. */
@@ -750,11 +776,14 @@ async function defaultWriteBody(issueNum, body) {
 
 /**
  * File one standalone QA issue per gated criterion, then rewrite the parent's
- * boxes. A filing failure stops the run; the boxes already filed are still
+ * boxes. A filing failure — returned `ok: false` or thrown (#3734) — stops
+ * the run; the boxes already filed are still
  * rewritten, so no QA issue is left without the pointer that explains it.
+ * A body write that fails returns `BODY_WRITE_FAILED` with `handedOff`, so
+ * the numbers of the issues already filed are never lost (#3465).
  */
-async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defaultWriteBody } = {}) {
-  const classified = classifyReleaseGates(issue.body);
+async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defaultWriteBody, markersPath } = {}) {
+  const classified = classifyReleaseGates(issue.body, markersPath);
   if (!classified.eligible) {
     return {
       ok: false,
@@ -766,12 +795,16 @@ async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defa
   const handedOff = [];
   const lines = [];
   let failure = null;
-  for (const { line, criterion } of classified.gated) {
+  for (const { index, criterion } of classified.gated) {
     const bodyPath = `.tmp-qa-body-${require('crypto').randomBytes(4).toString('hex')}.md`;
     fs.writeFileSync(bodyPath, buildHandoffQaBody({ parent: issueNum, parentTitle: issue.title, criterion }));
     let r;
     try {
       r = await file({ title: `QA: ${criterion}`, bodyPath });
+    } catch (e) {
+      // A throw is a failed filing like any other (#3734): rejecting here
+      // would discard handedOff and leave the boxes already filed unrewritten.
+      r = { ok: false, error: (e && e.message) || String(e) };
     } finally {
       fs.rmSync(bodyPath, { force: true });
     }
@@ -780,12 +813,28 @@ async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defa
       break;
     }
     handedOff.push({ criterion, qaNumber: r.number, status: r.status });
-    lines.push({ line, qaNumber: r.number });
+    lines.push({ index, qaNumber: r.number });
   }
   let body = issue.body;
   if (lines.length) {
     body = applyReleaseHandoff(issue.body, lines);
-    await writeBodyFn(issueNum, body);
+    try {
+      await writeBodyFn(issueNum, body);
+    } catch (e) {
+      // The QA issues exist but the parent's boxes do not point at them
+      // (#3465). Return their numbers: a re-run would file each one again.
+      const filed = handedOff.map((h) => `#${h.qaNumber}`).join(', ');
+      return {
+        ok: false,
+        handedOff,
+        error: {
+          code: 'BODY_WRITE_FAILED',
+          message: `QA issue${handedOff.length === 1 ? '' : 's'} ${filed} filed, but the body of #${issueNum} was not rewritten: ${(e && e.message) || e}. `
+            + `Check each handed-off box by hand and append its "→ QA: #N" pointer; do not re-run --release-handoff, which would file duplicates.`
+            + (failure ? ` Also: ${failure.message}` : ''),
+        },
+      };
+    }
   }
   return failure ? { ok: false, handedOff, body, error: failure } : { ok: true, handedOff, body };
 }
@@ -805,7 +854,7 @@ async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defa
  *   a requiresConfirmation would ask about, and the release hand-off. Unlike
  *   forceMove, diff verification still runs, so its warnings stay in the envelope.
  * @param {object} [options.deps] - Injected collaborators for tests: `fileQaFn`
- *   and `writeBodyFn` (release hand-off), `resolvePrdTracker`, `checkLifecycleBox`
+ *   `writeBodyFn` and `gateMarkersPath` (release hand-off), `resolvePrdTracker`, `checkLifecycleBox`
  *   and `load` (the PRD tracker lifecycle box, see applyTestPlanApprovedBox).
  * @returns {Promise<object>} JSON envelope
  */
@@ -878,18 +927,30 @@ async function runSingleIssue(issueNum, options = {}) {
   // default; performed with --release-handoff, after which the rewritten body
   // has no unchecked box and the move below proceeds.
   let releaseHandoff = null;
-  const gates0 = isEpic ? { eligible: false, gated: [] } : classifyReleaseGates(dataResult.issue.body);
-  if (gates0.eligible && !consentHandoff) {
+  const deps = options.deps || {};
+  let gates0 = { eligible: false, gated: [] };
+  if (!isEpic) {
+    const releaseGates = readReleaseGates(issueNum, dataResult.issue.body, deps.gateMarkersPath);
+    gates0 = releaseGates.gates;
+    if (releaseGates.warning) warnings.push(releaseGates.warning);
+  }
+  // The hand-off files issues and rewrites the body, so it is performed only
+  // when the move that follows it will run (#3470). Consent to hand off on an
+  // unconfirmed diff is refused back to the offer — nothing filed, written or
+  // moved — and `refused` says why; a re-run adds --force-move or --yes.
+  const moveEligible = isMoveEligible(consentMove, diffVerification);
+  const performHandoff = gates0.eligible && consentHandoff && moveEligible;
+  if (gates0.eligible && !performHandoff) {
     const context = { issue: dataResult.issue, status: dataResult.status, ci: gatherCiData(), tracker: resolveTracker(), trackerLinked: false };
     if (nextSteps) context.nextSteps = nextSteps;
     const gates = { movedToDone: false, releaseHandoff: { offered: true, criteria: gates0.gated.map((g) => g.criterion) } };
+    if (consentHandoff) gates.releaseHandoff.refused = 'move-unconfirmed';
     const envelope = attachDiffVerification(buildSuccessEnvelope(context, gates, warnings), diffVerification);
     envelope.roundTrips = roundTrips;
     return envelope;
   }
-  if (gates0.eligible && consentHandoff) {
-    const deps = options.deps || {};
-    const handoff = await runReleaseHandoff(issueNum, { issue: dataResult.issue, fileQaFn: deps.fileQaFn, writeBodyFn: deps.writeBodyFn });
+  if (performHandoff) {
+    const handoff = await runReleaseHandoff(issueNum, { issue: dataResult.issue, fileQaFn: deps.fileQaFn, writeBodyFn: deps.writeBodyFn, markersPath: deps.gateMarkersPath });
     roundTrips += handoff.handedOff.length + (handoff.handedOff.length ? 1 : 0);
     if (!handoff.ok) {
       return buildErrorEnvelope([{ ...handoff.error, handedOff: handoff.handedOff }]);
@@ -904,7 +965,7 @@ async function runSingleIssue(issueNum, options = {}) {
   // (epic reaches Done only after sub-issues) otherwise gets inverted and
   // has to be recovered in a follow-up batch.
   let movedToDone = false;
-  if (!isEpic && isMoveEligible(consentMove, diffVerification)) {
+  if (!isEpic && moveEligible) {
     roundTrips++;
     const moveResult = await moveToDone(issueNum);
     if (moveResult.error) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -15,6 +15,8 @@
 // of the contract. Both were unbounded: `gh pmu sub add` with no ceiling, and
 // bulk --add-ready multiplies the exposure by the number of issues.
 const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const { execFileTimed: execFileSync, DEFAULT_TIMEOUT_MS, normalizeTimeoutError } = require('./lib/exec.js');
 const { getAllOpenTrackers, findActiveTrackers } = require('./lib/active-label.js');
 const { validateIssueNumber } = require('./lib/input-validation.js');
@@ -39,6 +41,7 @@ const LARGE_SELECTION_THRESHOLD = 20;  // Warn when assigning more issues than t
 const PARALLEL_BATCH_SIZE = 5;         // Number of issues to assign in parallel
 const PARALLEL_THRESHOLD = 3;          // Use parallel assignment above this count
 const PER_ISSUE_MOVE_MS = 3000;        // Added to the batched move's budget per issue (#3525)
+const LABEL_BATCH_CAP = 50;            // Issues per batched GraphQL label query (#3724)
 
 /**
  * Budget for one batched `gh pmu move` over `count` issues (#3525). gh-pmu
@@ -136,15 +139,20 @@ function getLastVersion() {
 }
 
 /**
- * Get issue labels for a given issue number
+ * Get issue labels for a given issue number, through `gh pmu view N
+ * --json=labels` (#3753) — the tool that performs the move, so a bare number
+ * resolves to the repository `gh pmu move N` assigns, not to the one the
+ * working directory's git remote names (which `gh issue view N` without
+ * --repo reads). gh pmu returns labels as strings; a `{ name }` object is
+ * read too.
  */
 async function getIssueLabels(issueNumber) {
     for (let attempt = 0; attempt < 2; attempt++) {
-        const result = await execAsyncSafe('gh', ['issue', 'view', String(issueNumber), '--json', 'labels']);
+        const result = await execAsyncSafe('gh', ['pmu', 'view', String(issueNumber), '--json=labels']);
         if (result) {
             try {
                 const data = JSON.parse(result);
-                const labels = (data.labels || []).map(l => l.name).filter(Boolean);
+                const labels = (data.labels || []).map(l => (typeof l === 'string' ? l : l && l.name)).filter(Boolean);
                 return { labels, loaded: true };
             } catch {
                 // fall through to retry
@@ -159,27 +167,110 @@ async function getIssueLabels(issueNumber) {
 }
 
 /**
+ * This repository as `{ owner, name }`, from `.gh-pmu.json` `repositories[0]`
+ * under `root` (#3724) — never hardcoded. Null when the file, the entry or its
+ * `owner/name` shape is missing, which sends every label fetch per issue.
+ * Null too when more than one repository is configured (#3740): an issue
+ * number alone does not say which repository it lives in, so the batch is
+ * not tried, and each issue is read per issue through `gh pmu view` (#3753)
+ * — the same resolution as the `gh pmu move` that assigns it.
+ * @param {string} [root=process.cwd()]
+ * @returns {{owner: string, name: string}|null}
+ */
+function readRepoSlug(root = process.cwd()) {
+    try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(root, '.gh-pmu.json'), 'utf-8'));
+        const slug = Array.isArray(cfg.repositories) && cfg.repositories.length === 1 ? cfg.repositories[0] : null;
+        const match = typeof slug === 'string' ? slug.trim().match(/^([^/\s]+)\/([^/\s]+)$/) : null;
+        return match ? { owner: match[1], name: match[2] } : null;
+    } catch {
+        return null;
+    }
+}
+
+/** One GraphQL query reading the labels of every issue in `numbers`, aliased `i<N>`. */
+function buildLabelQuery(numbers) {
+    const nodes = numbers
+        .map(n => `i${n}: issue(number: ${n}) { labels(first: 100) { nodes { name } } }`)
+        .join(' ');
+    return `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${nodes} } }`;
+}
+
+/**
+ * Labels for one chunk in a single `gh api graphql` call (#3724). Returns a
+ * Map of the issues the response answered; an issue it omitted or returned as
+ * null is absent, so the caller fetches it per issue. Returns null when the
+ * call failed outright or its output carries no `data.repository` — the
+ * whole chunk then falls back. gh exits non-zero when a response carries
+ * `errors` (a number that resolves to no issue), so partial data on a failed
+ * exit is still read.
+ */
+async function fetchLabelChunk(numbers, repo) {
+    const result = await execAsyncResult('gh', [
+        'api', 'graphql',
+        '-f', `query=${buildLabelQuery(numbers)}`,
+        '-f', `owner=${repo.owner}`,
+        '-f', `name=${repo.name}`,
+    ]);
+    const parsed = safeJsonParse(result.stdout);
+    const repository = parsed && parsed.data && parsed.data.repository;
+    if (!repository || typeof repository !== 'object') {
+        console.log(`  ⚠ batched label fetch failed (${result.ok ? 'no repository in response' : describeExecFailure(result)}) — fetching ${numbers.length} issue(s) one at a time`);
+        return null;
+    }
+    const answered = new Map();
+    for (const num of numbers) {
+        const node = repository[`i${num}`];
+        const nodes = node && node.labels && Array.isArray(node.labels.nodes) ? node.labels.nodes : null;
+        if (!nodes) continue;
+        answered.set(num, { labels: nodes.map(l => l && l.name).filter(Boolean), loaded: true });
+    }
+    return answered;
+}
+
+/**
  * Fetch labels once per issue (#3283). The branch-tracker check and epic
  * expansion read the same labels, so main() builds this map once and hands it
- * to both rather than letting each fetch every issue again. Fetches run
- * concurrently, at most PARALLEL_BATCH_SIZE in flight — the same bound the
- * assignment batches use. Order does not matter: each fetch is independent.
+ * to both rather than letting each fetch every issue again.
+ *
+ * Batched (#3724): one `gh api graphql` call per LABEL_BATCH_CAP issues,
+ * repository from `.gh-pmu.json`. A failed chunk falls back to per-issue
+ * getIssueLabels() for all of its issues; a successful one, only for the
+ * issues it omitted — never recorded `loaded: true` with empty labels. The
+ * per-issue fallback runs at most PARALLEL_BATCH_SIZE in flight.
  *
  * @param {number[]} issueNumbers
+ * @param {{root?: string}} [options] - directory holding `.gh-pmu.json` (default: cwd)
  * @returns {Promise<Map<number, {labels: string[], loaded: boolean}>>}
  */
-async function fetchLabelMap(issueNumbers) {
+async function fetchLabelMap(issueNumbers, options = {}) {
+    startTimer('fetchLabelMap');
     const map = new Map();
-    const queue = [...new Set(issueNumbers)];
+    const unique = [...new Set(issueNumbers)];
+    const repo = unique.length > 0 ? readRepoSlug(options.root) : null;
+    const fallback = [];
+    if (!repo) {
+        fallback.push(...unique);
+    } else {
+        for (let i = 0; i < unique.length; i += LABEL_BATCH_CAP) {
+            const chunk = unique.slice(i, i + LABEL_BATCH_CAP);
+            const answered = await fetchLabelChunk(chunk, repo);
+            for (const num of chunk) {
+                if (answered && answered.has(num)) map.set(num, answered.get(num));
+                else fallback.push(num);
+            }
+        }
+    }
     let next = 0;
     async function worker() {
-        while (next < queue.length) {
-            const num = queue[next++];
+        while (next < fallback.length) {
+            const num = fallback[next++];
             map.set(num, await getIssueLabels(num));
         }
     }
-    const workers = Math.min(PARALLEL_BATCH_SIZE, queue.length);
+    const workers = Math.min(PARALLEL_BATCH_SIZE, fallback.length);
     await Promise.all(Array.from({ length: workers }, worker));
+    endTimer('fetchLabelMap');
     return map;
 }
 
@@ -608,39 +699,64 @@ function subIssueLimitIn(text) {
 }
 
 /**
+ * Whether a single-child `gh pmu sub add <tracker> <child>` reported the
+ * child as already under this tracker: gh-pmu 1.8.0 prints
+ * `✓ Issue #N is already a sub-issue of #T` and exits zero. A line naming a
+ * different parent is not a match.
+ * @param {string} output - stdout of the run
+ * @param {number|string} issueNumber
+ * @param {number|string} tracker
+ * @returns {boolean}
+ */
+function isSingleChildAlreadyLinked(output, issueNumber, tracker) {
+    const m = /^\s*✓\s+Issue #(\d+) is already a sub-issue of #(\d+)\s*$/m.exec(String(output || ''));
+    return !!m && Number(m[1]) === Number(issueNumber) && Number(m[2]) === Number(tracker);
+}
+
+/**
  * Link a single issue to the branch tracker as a sub-issue. Logs success or
  * failure (never swallows errors silently); a sub-issue-limit refusal is left
  * to the caller's one warning.
- * @returns {Promise<{result: 'linked'|'failed'|'limit', limit?: number, reason?: string}>}
+ *
+ * An issue linked alone is classified as it would be in a batch (#3413): a
+ * child already under this tracker is `already`, a success. gh-pmu 1.8.0
+ * reports one child as `✓ Issue #N is already a sub-issue of #T`, not in the
+ * multi-child `✓ #N:` form; both are read, and a `✓ #N:` / `✗ #N:` line, when
+ * printed, decides before the substring test can misread a title. Only output
+ * carrying none of these falls back to the exit status and the substring test.
+ * @returns {Promise<{result: 'linked'|'already'|'failed'|'limit', limit?: number, reason?: string}>}
  */
 function linkOneToTracker(issueNumber, tracker) {
     return new Promise((resolve) => {
         execFile('gh', ['pmu', 'sub', 'add', String(tracker), String(issueNumber)],
             { encoding: 'utf-8', timeout: DEFAULT_TIMEOUT_MS }, (err, stdout, stderr) => {
-                if (err) {
-                    const errMsg = (stderr || err.message || 'unknown error').trim();
-                    const limit = subIssueLimitIn(errMsg);
+                const fail = (reason) => {
+                    const limit = subIssueLimitIn(reason);
                     if (limit) return resolve({ result: 'limit', limit });
-                    console.log(`    ⚠ Failed to link #${issueNumber} to tracker #${tracker}: ${errMsg}`);
-                    return resolve({ result: 'failed', reason: errMsg });
+                    console.log(`    ⚠ Failed to link #${issueNumber} to tracker #${tracker}: ${reason}`);
+                    return resolve({ result: 'failed', reason });
+                };
+                const linked = () => {
+                    console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
+                    return resolve({ result: 'linked' });
+                };
+                const line = parseSubAddBatchOutput(stdout).get(Number(issueNumber));
+                if ((line && line.result === 'already') ||
+                    isSingleChildAlreadyLinked(stdout, issueNumber, tracker)) {
+                    console.log(`    ↳ #${issueNumber} already linked to tracker #${tracker}`);
+                    return resolve({ result: 'already' });
                 }
+                if (line && line.result === 'failed') return fail(line.detail);
+                if (err) return fail((stderr || err.message || 'unknown error').trim());
+                if (line && line.result === 'linked') return linked();
                 const output = (stdout || '').trim();
                 if (output.includes('already') && (output.includes('parent') || output.includes('sub-issue'))) {
                     console.log(`    ⚠ #${issueNumber} already has a parent — skipped`);
                     return resolve({ result: 'failed', reason: output });
                 }
-                console.log(`    ↳ Linked #${issueNumber} to tracker #${tracker}`);
-                resolve({ result: 'linked' });
+                return linked();
             });
     });
-}
-
-/**
- * Link a single issue to the branch tracker as a sub-issue.
- * @returns {Promise<boolean>} true if linked, false if failed, skipped or refused at the limit
- */
-async function linkToTracker(issueNumber, tracker) {
-    return (await linkOneToTracker(issueNumber, tracker)).result === 'linked';
 }
 
 /**
@@ -743,6 +859,8 @@ async function linkAllToTracker(issueNumbers, tracker, options = {}) {
             const one = await linkOneToTracker(num, tracker);
             if (one.result === 'linked') {
                 outcome.linked++;
+            } else if (one.result === 'already') {
+                outcome.already++;
             } else if (one.result === 'limit') {
                 outcome.limit.push(num);
                 outcome.limitSize = one.limit;
@@ -1230,8 +1348,11 @@ async function removeFromBranch(issueNumber, trackerNumber) {
             operations.push(`no branch tracker found for #${issueNumber} (nothing to unlink)`);
         }
 
-        // Remove assigned label
-        const unlabeled = await execAsyncSafe('gh', ['issue', 'edit', String(issueNumber), '--remove-label', 'assigned']);
+        // Remove assigned label through gh pmu (#3754), so a bare number
+        // resolves to the repository the gh pmu sub remove and gh pmu move
+        // beside it reach — `gh issue edit N` without --repo would follow the
+        // working directory's git remote instead.
+        const unlabeled = await execAsyncSafe('gh', ['pmu', 'edit', String(issueNumber), '--remove-label', 'assigned']);
         if (unlabeled === null) {
             failures.push(`remove assigned label from #${issueNumber}`);
         } else {
@@ -1298,6 +1419,8 @@ module.exports = {
     getLastVersion,
     getIssueLabels,
     fetchLabelMap,
+    readRepoSlug,
+    buildLabelQuery,
     generateBranchSuggestions,
     getSubIssueCountAsync,
     getOpenBranches,
@@ -1310,7 +1433,7 @@ module.exports = {
     resolveTrackerForIssues,
     removeFromBranch,
     removeIssues,
-    linkToTracker,
+    linkOneToTracker,
     linkAllToTracker,
     expandEpicSubIssues,
     groupBacklogByLabel,
@@ -1334,6 +1457,7 @@ module.exports = {
     PARALLEL_BATCH_SIZE,
     PARALLEL_THRESHOLD,
     PER_ISSUE_MOVE_MS,
+    LABEL_BATCH_CAP,
     batchMoveTimeoutMs,
     // Export for mocking
     setShowTiming: (value) => { showTiming = value; }

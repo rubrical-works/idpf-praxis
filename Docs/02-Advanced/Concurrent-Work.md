@@ -1,6 +1,6 @@
 # Concurrent Work Within One Epic
 
-**Version:** v0.120.0
+**Version:** v0.121.0
 **Topic:** How `/work --concurrent` runs several sub-issues of one epic or branch tracker at the same time without giving up the gates, the attribution or the audit trail a sequential run leaves behind.
 
 ---
@@ -56,13 +56,13 @@ Nothing reaches the shared tracker branch unreviewed. Before a member merges bac
 
 | Tier | What | Who |
 |---|---|---|
-| 1 — mechanical, always | Every commit carries `Refs #N`; nothing uncommitted; the declared scope holds (`scope-drift-check.js`); the changed files are logged; the member's `parallel` suites re-run with `cwd` at the worktree | The parent |
+| 1 — mechanical, always | Every commit carries `Refs #N`; nothing uncommitted; the declared scope holds (`scope-drift-check.js`); the changed files are logged; every `parallel` suite whose scoped command narrows to the member's changed files (a `{files}` command, a linter included) runs with `cwd` at the worktree, and a failure fails Tier 1 before merge. A suite that cannot narrow, and every `exclusive` suite, is listed as deferred — not run before merge — and runs in the post-merge pass on the tracker | The parent |
 | 2 — the read, always | The branch diff file by file against the member's acceptance criteria; the direct-work exemption never applies | The parent |
 | 3 — independent review, on by default | An `idpf-diff-reviewer` agent following the `diff-review` skill over the range, given the issue, its ACs and the charter — never the implementer's summary. It writes its review to `.tmp-gate-<N>-tier3.json` itself and may write nothing else | A second agent, in the implementer's slot |
 
 `--no-review` skips Tier 3; an absent `diff-review` skill degrades to Tiers 1–2. Both are reported, never silent. When the `idpf-diff-reviewer` type is not available, Tier 3 runs the same brief as a `general-purpose` agent and reports the fallback once for the run.
 
-**The review reaches the gate in the reviewer's own words.** The parent never copies or re-words it. Before the reviewer starts, the parent removes any earlier cycle's review file and snapshots the working tree (`git status --porcelain --ignored`). The outcome step fails Tier 3 if the reviewer wrote no output file (`tier-3-missing`), if the file was already there before the reviewer started (`tier-3-stale-output`), or if anything changed during the review outside that member's own review and snapshot files and its running-group siblings' own gate files (`tier-3-wrote-outside-contract`, naming the paths). The snapshot's sha256 is recorded when it is taken, so a snapshot altered mid-review fails as `tier-3-snapshot-changed`. The snapshot check is the enforcement: Claude Code's Agent tool has no per-spawn setting that limits a subagent's writes to one file.
+**The review reaches the gate in the reviewer's own words.** The parent never copies or re-words it. Before the reviewer starts, the parent removes any earlier cycle's review file and snapshots the working tree (`git status --porcelain --ignored`). The outcome step fails Tier 3 if the reviewer wrote no output file (`tier-3-missing`), if the file was already there before the reviewer started (`tier-3-stale-output`), or if anything changed during the review outside that member's own review and snapshot files and its running-group siblings' own gate files (`tier-3-wrote-outside-contract`, naming the paths). Under the rolling schedule the parent may start or tear down another member's worktree while a reviewer is still running; a worktree the run's own ledger records is reported as a run worktree, never as a failure, while a `.tmp-wt-*` directory no run recorded still fails. A change outside every running member's declared scope — another session's file — is reported as `external` and does not fail the review. The snapshot's sha256 is recorded when it is taken, so a snapshot altered mid-review fails as `tier-3-snapshot-changed`. The snapshot check is the enforcement: Claude Code's Agent tool has no per-spawn setting that limits a subagent's writes to one file.
 
 Tier 1's result is protected the same way: the gate writes it to `.tmp-gate-<N>-tier1.json` itself and reports its sha256, and the outcome step requires that hash — a Tier 1 document changed in between halts as `tier-1-document-changed` and the member is never merged.
 

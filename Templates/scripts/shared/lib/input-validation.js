@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Input validation utilities to prevent command injection, path traversal, and ReDoS from externally-sourced inputs. Exports validateIssueNumber(), validateBranchName(), validatePath(), and related guards. Used by all preamble scripts accepting user input.
  * @checksum sha256:placeholder
  *
@@ -16,25 +16,30 @@ const path = require('path');
 
 // Shell metacharacters that enable command injection. Includes \n and \r:
 // an embedded newline acts as a command separator when a "validated" value is
-// interpolated into a shell string (lib/gh.js). Kept consistent with
-// sanitizeShellArg in lib/shell-safe.js, which already rejects \n\r (#2456).
+// interpolated into a shell string (lib/gh.js) (#2456).
 // Also any whitespace and both quote characters (#3692): a space or tab splits
 // one value into several arguments, and a quote breaks out of the quoting a
 // caller wraps the value in. Git forbids spaces in ref names, so a real branch
 // or tag never carries one. \s covers \n and \r.
-const SHELL_META = /[`$(){}|;&<>!\\\s'"]/;
+// Also the glob characters * ? [ ] (#3702): interpolated unquoted, they expand
+// against the filesystem. Git forbids them in ref names too.
+// sanitizeShellArg in lib/shell-safe.js imports this set and
+// rejectUnsafeLeadingChar rather than repeating them (#3702).
+const SHELL_META = /[`$(){}|;&<>!\\\s'"*?[\]]/;
 
 /**
- * Throw when `value` starts with '-' (#3692): even spawned through execFile,
- * where no shell is involved, such a value is read as an option — a branch
- * named '-D', or '--upload-pack=...'. Git refuses ref names starting with '-'.
+ * Throw when `value` starts with '-' or '~'. A leading '-' (#3692) is read as
+ * an option even when spawned through execFile, where no shell is involved — a
+ * branch named '-D', or '--upload-pack=...'. A leading '~' (#3702) is
+ * tilde-expanded to a home directory when interpolated unquoted. Git refuses
+ * ref names starting with either.
  * @param {string} value
  * @param {string} label - e.g. 'Branch name'
- * @throws {Error} If value starts with '-'
+ * @throws {Error} If value starts with '-' or '~'
  */
-function rejectLeadingDash(value, label) {
-  if (value.startsWith('-')) {
-    throw new Error(`${label} must not start with '-': ${value.substring(0, 30)}`);
+function rejectUnsafeLeadingChar(value, label) {
+  if (value.startsWith('-') || value.startsWith('~')) {
+    throw new Error(`${label} must not start with '${value[0]}': ${value.substring(0, 30)}`);
   }
 }
 
@@ -67,7 +72,7 @@ function validateIssueNumber(value) {
 /**
  * Validate a branch name is safe for shell use.
  * Git branch names can contain /, -, ., _ but not shell metacharacters,
- * whitespace, quotes or a leading '-' (#3692).
+ * whitespace, quotes, glob characters or a leading '-' or '~' (#3692, #3702).
  * @param {string} name
  * @returns {string} Validated branch name
  * @throws {Error} If branch name contains shell metacharacters
@@ -79,7 +84,7 @@ function validateBranchName(name) {
   if (SHELL_META.test(name)) {
     throw new Error(`Branch name contains unsafe characters: ${name.substring(0, 30)}`);
   }
-  rejectLeadingDash(name, 'Branch name');
+  rejectUnsafeLeadingChar(name, 'Branch name');
   return name;
 }
 
@@ -96,7 +101,7 @@ function validateTag(tag) {
   if (SHELL_META.test(tag)) {
     throw new Error(`Tag contains unsafe characters: ${tag.substring(0, 30)}`);
   }
-  rejectLeadingDash(tag, 'Tag');
+  rejectUnsafeLeadingChar(tag, 'Tag');
   return tag;
 }
 
@@ -122,24 +127,32 @@ function validateRepo(repo) {
 /**
  * Validate a workflow run ID is a positive integer, returned as a string for
  * safe interpolation. Run IDs come from API responses; guard before shell use.
+ * The text is tested, not the conversion (#3702), by the same rule as
+ * isIssueNumber() (#3675): Number() read '1e2' as 100, '0x1A' as 26 and ' 7'
+ * as 7.
  * @param {string|number} runId
  * @returns {string} Validated run ID as a string
- * @throws {Error} If not a positive integer
+ * @throws {Error} If not a positive integer written as digit text
  */
 function validateRunId(runId) {
-  const num = Number(runId);
-  if (!Number.isInteger(num) || num <= 0) {
+  if (!isIssueNumber(runId)) {
     throw new Error(`Invalid run ID: ${String(runId).substring(0, 20)}`);
   }
-  return String(num);
+  return String(runId);
 }
 
 /**
  * Validate an npm package name against the npm name grammar.
  * Dependency keys read from a (possibly hostile) package.json are otherwise
  * interpolated into `npm view ...` — a crafted key executes shell code (#2456).
- * Rules: <= 214 chars; optional @scope/ prefix; lowercase url-safe chars only;
- * no leading dot or underscore.
+ * Rules: <= 214 chars; optional @scope/ prefix; url-safe chars only — capitals
+ * included, as the registry still serves legacy names such as `JSONStream` (#3757);
+ * no leading dot or underscore; no leading '-' on the whole name (#3748) —
+ * npm reads such a word as an option, and its own validator rejects it; no
+ * leading '~' on the whole name (#3752) — the name reaches a shell, where sh
+ * tilde-expands '~user' to a home directory. A scope or package segment may
+ * still start with '-' or '~', as npm allows: a scoped name starts with '@',
+ * so npm never parses it as a flag and sh never expands it.
  * @param {string} name
  * @returns {string} Validated package name
  * @throws {Error} If the name is not a valid npm package name
@@ -147,13 +160,13 @@ function validateRunId(runId) {
 // One name segment (scope or package): starts with a url-safe char that is not
 // '.' or '_', rest url-safe. Single linear char-classes (no nested quantifiers)
 // to stay clear of ReDoS — validated per-segment rather than one combined regex.
-const NPM_SEGMENT = /^[a-z0-9~-][a-z0-9._~-]*$/;
+const NPM_SEGMENT = /^[A-Za-z0-9~-][A-Za-z0-9._~-]*$/;
 function validateNpmPackageName(name) {
   if (typeof name !== 'string' || !name.trim()) {
     throw new Error('Package name is required');
   }
   const invalid = () => new Error(`Invalid npm package name: ${name.substring(0, 40)}`);
-  if (name.length > 214) {
+  if (name.length > 214 || name[0] === '-' || name[0] === '~') {
     throw invalid();
   }
   let pkg = name;
@@ -175,16 +188,42 @@ function validateNpmPackageName(name) {
 }
 
 /**
- * Validate a version string (semver-like).
+ * Validate a version string: an optional 'v', MAJOR.MINOR.PATCH, and an
+ * optional prerelease and build suffix of at most 64 identifier characters
+ * each. Anchored at both ends (#3702): anchored only at the start,
+ * '1.2.3; rm -rf ~' passed. The bounds are checked in code, not as regex
+ * repetition counts, which security/detect-unsafe-regex rejects (#3702).
  * @param {string} version
  * @returns {string} Validated version
  * @throws {Error} If version format is invalid
  */
+const VERSION_CORE = /^v?(\d+)\.(\d+)\.(\d+)(.*)$/;
+const VERSION_IDENT = /^[0-9A-Za-z.-]+$/;
+const isVersionSuffix = (s) => s.length <= 64 && VERSION_IDENT.test(s);
+
+/**
+ * Whether `version` is an optional 'v', MAJOR.MINOR.PATCH of at most nine
+ * digits each, then an optional `-prerelease` and an optional `+build`.
+ * @param {string} version
+ * @returns {boolean}
+ */
+function isVersionFormat(version) {
+  const m = VERSION_CORE.exec(version);
+  if (!m || m.slice(1, 4).some((d) => d.length > 9)) return false;
+  const rest = m[4];
+  if (!rest) return true;
+  if (rest[0] !== '-' && rest[0] !== '+') return false;
+  const plus = rest.indexOf('+');
+  const pre = rest[0] === '-' ? rest.slice(1, plus < 0 ? undefined : plus) : null;
+  const build = plus < 0 ? null : rest.slice(plus + 1);
+  return (pre === null || isVersionSuffix(pre)) && (build === null || isVersionSuffix(build));
+}
+
 function validateVersion(version) {
   if (typeof version !== 'string') {
     throw new Error('Version must be a string');
   }
-  if (!/^v?\d+\.\d+\.\d+/.test(version)) {
+  if (!isVersionFormat(version)) {
     throw new Error(`Invalid version format: ${version.substring(0, 30)}`);
   }
   return version;
@@ -266,5 +305,6 @@ module.exports = {
   validateFilename,
   safeRegex,
   escapeRegExp,
+  rejectUnsafeLeadingChar,
   SHELL_META
 };

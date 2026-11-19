@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -109,7 +109,7 @@ const MEMBER_TEMPLATES = Object.freeze({
   'gate-tier1': `Run \`${GATE_CLI} tier1 --issue {{n}} --branch <#{{n}}'s wt/* branch> --worktree <#{{n}}'s worktree path> --tracker-tip {{tip}} --out .tmp-gate-{{n}}-tier1.json\` — it writes the Tier 1 document itself (#3225); record the sha256 its envelope's out reports, and do not redirect stdout into that file. Exit 1 is a Tier 1 failure: carry it to the outcome step, never merge past it.`,
   'gate-tier2': 'Read every file in .tmp-gate-{{n}}-tier1.json tier2.files, file by file, against #{{n}}\'s acceptance criteria, as tier2.instruction says. Record the read as pass or fail with the file and line of anything no AC asks for; the direct-work exemption never applies.',
   'gate-tier3': `Run \`${GATE_CLI} tier3-plan --issue {{n}} --tracker-tip {{tip}} --branch <#{{n}}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` (it clears an earlier review) and record its sha256, then spawn the reviewer Agent in slot {{slot}} as tier3.request.subagent_type with tier3.request.prompt exactly (not found → tier3.request.onNotFound) — never the implementer's summary. The reviewer writes its own review to .tmp-gate-{{n}}-tier3.json (#3204); never re-word it. \`outcome --post-comment\` posts the comment; write no root file. A change in the running members' \`runPaths\` but this member's review, snapshot or a sibling's gate files fails Tier 3 (#3220); one outside is reported as \`external\`, not failed.`,
-  'gate-outcome': `Run \`${GATE_CLI} outcome --issue {{n}} --worktree <#{{n}}'s worktree path> --branch <#{{n}}'s wt/* branch> --tier1 .tmp-gate-{{n}}-tier1.json --tier1-sha <sha256 from #{{n}}'s tier1 --out envelope> --tier3 .tmp-gate-{{n}}-tier3.json --tree-before .tmp-gate-{{n}}-tree-before.txt --tree-before-sha <sha256 from #{{n}}'s tree-snapshot envelope>{{siblings}}{{unswept}} --post-comment\` (\`--no-review\` for the three Tier 3 flags when Tier 3 was skipped; add \`--fix-cycles 1\` on the re-run) — decideOutcome decides. action merge → it posted the comment: report posted.url (postError → re-run; never a file); send-findings → SendMessage the message to the same implementer (its worktree intact) and re-run every tier once — exactly one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when the decision carries outsideContract (#3226), first report those paths and clear them — remove or restore what this run wrote; a path another session is editing is cleared by waiting for that session to settle it, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` again, re-spawn the reviewer in slot {{slot}} with the same tier3.request.prompt, then re-run this outcome with the new sha and \`--review-retries 1\` (a second one halts, attributed to the reviewer); halt → print report: the --nonstop halt, worktree kept, #{{n}} never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
+  'gate-outcome': `Run \`${GATE_CLI} outcome --issue {{n}} --worktree <#{{n}}'s worktree path> --branch <#{{n}}'s wt/* branch> --tier1 .tmp-gate-{{n}}-tier1.json --tier1-sha <sha256 from #{{n}}'s tier1 --out envelope> --tier3 .tmp-gate-{{n}}-tier3.json --tree-before .tmp-gate-{{n}}-tree-before.txt --tree-before-sha <sha256 from #{{n}}'s tree-snapshot envelope>{{siblings}}{{ledger}}{{unswept}} --post-comment\` (\`--no-review\` for the three Tier 3 flags if Tier 3 was skipped; \`--fix-cycles 1\` on the re-run) — decideOutcome decides. A run ledger worktree spawned or torn down mid-review is tier3.runWorktrees, not a failure; an unledgered \`.tmp-wt-*\` still fails (#3729). action merge → it posted: report posted.url (postError → re-run; never a file); send-findings → SendMessage it to the same implementer (worktree intact), re-run every tier once — the one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when it carries outsideContract (#3226), first report and clear those paths — remove or restore this run's writes; another session's path clears when it settles, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` again, re-spawn the reviewer in slot {{slot}} (same tier3.request.prompt) and re-run this outcome with the new sha and \`--review-retries 1\` (a second halts, the reviewer's); halt → print report: the --nonstop halt, worktree kept, never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
 });
 
 /**
@@ -577,7 +577,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
       steps.push({
         kind: 'gate-outcome', step: 'gate-outcome', owner: 'parent', issue: n, group,
         template: 'gate-outcome',
-        params: { n, slot: j + 1, siblings: groupMembers.filter((m) => m !== n).map((m) => ` --sibling ${m}`).join(''), unswept: unsweptFlags() },
+        params: { n, slot: j + 1, siblings: groupMembers.filter((m) => m !== n).map((m) => ` --sibling ${m}`).join(''), ...ledgerParam(ledgerFile), unswept: unsweptFlags() },
       });
     });
     steps.push({
@@ -880,7 +880,7 @@ function nextSteps(runState = {}) {
       : { kind: 'review-spawn', step: 'gate-tier3', owner: 'parent', issue: n, slot, template: 'gate-tier3', params: { n, tip, slot } });
     steps.push({
       kind: 'gate-outcome', step: 'gate-outcome', owner: 'parent', issue: n, template: 'gate-outcome',
-      params: { n, slot, siblings: ' --sibling <each other member running when the snapshot was taken>', unswept },
+      params: { n, slot, siblings: ' --sibling <each other member running when the snapshot was taken>', ...ledgerParam(runState.ledgerFile), unswept },
     });
     steps.push({
       kind: 'merge-back', step: 'merge-back', owner: 'parent', issue: n, order: [n],
@@ -1239,6 +1239,18 @@ function memberTasks({ plan = {}, members = {}, rolling = false } = {}) {
 }
 
 /**
+ * Quote a value as one POSIX shell word (#3717): wrapped in single quotes, so
+ * $, backticks and \ pass literally; an embedded single quote is written as
+ * '\'' (close, escaped quote, reopen).
+ *
+ * @param {string} s
+ * @returns {string}
+ */
+function shQuote(s) {
+  return `'${String(s).replace(/'/g, "'\\''")}'`;
+}
+
+/**
  * The reclaim offer (#3714): worktrees a cancelled or teardown-denied run left
  * that hold nothing — on the tracker, clean — offered for teardown before any
  * member is spawned. Offer, never force: `accept` is the one command an
@@ -1251,18 +1263,20 @@ function memberTasks({ plan = {}, members = {}, rolling = false } = {}) {
  * @returns {object|null} null when nothing is reclaimable
  */
 function reclaimOfferStep(reclaimable) {
-  const list = Array.isArray(reclaimable) ? reclaimable : [];
-  if (list.length === 0) return null;
+  const items = Array.isArray(reclaimable) ? reclaimable : [];
+  if (items.length === 0) return null;
   const spec = (w) => `${w.issue ? `${w.issue}:` : ''}${w.branch}:${w.worktreePath}`;
-  // Quoted: a project root may contain a space, which would split the path.
-  const accept = `${GATE_CLI} reclaim ${list.map((w) => `--reclaim "${spec(w)}"`).join(' ')}`;
-  const named = list.map((w) => `${w.worktreePath} (${w.branch}${w.issue ? `, #${w.issue}` : ', unrecorded'})`).join('; ');
+  // Single-quoted (#3717): a project root may contain a space, which would
+  // split the path, and git allows $, backticks and \ in a branch name, which
+  // a POSIX shell still expands inside double quotes.
+  const accept = `${GATE_CLI} reclaim ${items.map((w) => `--reclaim ${shQuote(spec(w))}`).join(' ')}`;
+  const named = items.map((w) => `${w.worktreePath} (${w.branch}${w.issue ? `, #${w.issue}` : ', unrecorded'})`).join('; ');
   return {
     kind: 'reclaim-offer', step: 'reclaim', owner: 'parent', scope: 'run',
-    worktrees: list.map((w) => ({ ...w })),
+    worktrees: items.map((w) => ({ ...w })),
     accept,
     decline: null,
-    instruction: `Before any member is spawned, offer teardown of ${list.length} reclaimable worktree${list.length === 1 ? '' : 's'} — on the tracker with a clean tree, so each holds nothing: ${named}. Ask once with AskUserQuestion, naming them; make sure no other session's run is using one. Accepting runs \`${accept}\` and reports each result — removed (its wt/* branch deleted, a recorded member's gate files and brief cleared), or refused, kept or halted with its reason. Declining runs nothing: every worktree, branch and file stays as it is.`,
+    instruction: `Before any member is spawned, offer teardown of ${items.length} reclaimable worktree${items.length === 1 ? '' : 's'} — on the tracker with a clean tree, so each holds nothing: ${named}. Ask once with AskUserQuestion, naming them; make sure no other session's run is using one. Accepting runs \`${accept}\` and reports each result — removed (its wt/* branch deleted, a recorded member's gate files and brief cleared), or refused, kept or halted with its reason. Declining runs nothing: every worktree, branch and file stays as it is.`,
   };
 }
 
@@ -1325,7 +1339,8 @@ function recordSpawn(ledger, entry) {
  * dropped only when its worktree is gone AND its member is not in the active
  * set; an entry whose worktree still exists is kept whatever its member's
  * state, since that is a kept worktree #3264's resume matching reports.
- * Paths compare as `matchKeptWorktrees` compares them. Pure.
+ * Paths compare through concurrency-plan.js `normalizeWorktreePath`, as
+ * `matchKeptWorktrees` compares them (#3718). Pure.
  *
  * @param {{members: object[]}|null} ledger
  * @param {{worktrees: {worktreePath: string}[], active: number[]}} opts
@@ -1333,15 +1348,23 @@ function recordSpawn(ledger, entry) {
  */
 function pruneRunLedger(ledger, { worktrees = [], active = [] } = {}) {
   if (!ledger || !Array.isArray(ledger.members)) return { ledger: ledger || null, dropped: [] };
-  const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-  const onDisk = new Set(worktrees.map((w) => norm(w.worktreePath)));
+  const { normalizeWorktreePath } = require('./concurrency-plan.js');
+  const onDisk = new Set(worktrees.map((w) => normalizeWorktreePath(w.worktreePath)));
   const dropped = [];
   const members = ledger.members.filter((m) => {
-    const keep = onDisk.has(norm(m.worktreePath)) || active.includes(m.issue);
+    const keep = onDisk.has(normalizeWorktreePath(m.worktreePath)) || active.includes(m.issue);
     if (!keep) dropped.push(m.issue);
     return keep;
   });
   return { ledger: { ...ledger, members }, dropped };
+}
+
+/**
+ * gate-outcome's `--ledger` param (#3729): absent with no ledger file, so
+ * outcome stays strict and the step carries no empty key (#3280 size bound).
+ */
+function ledgerParam(ledgerFile) {
+  return ledgerFile ? { ledger: ` --ledger ${ledgerFile}` } : {};
 }
 
 /** The command a spawn step names for the parent to run once the spawn returns. */
@@ -1380,20 +1403,18 @@ function runRecordSpawnCli(argv) {
 // `--not-started N[=<half-made worktree path>]` (#3269). N must be a positive
 // integer; anything else returns null so the CLI refuses it (#3576) — an empty
 // value once became Number('') = 0, a phantom issue 0 in the run state.
-const isIssueNumber = (n) => Number.isInteger(n) && n > 0;
+// One rule (#3694): input-validation.js isIssueNumber (#3675) tests the text —
+// no leading zero, sign, space, exponent or radix prefix.
+const { isIssueNumber } = require('./input-validation.js');
 function parseNotStarted(v) {
   const [num, ...rest] = String(v === undefined || v === null ? '' : v).split('=');
-  const issue = /^\d+$/.test(num.trim()) ? Number(num) : NaN;
-  if (!isIssueNumber(issue)) return null;
-  return { issue, path: rest.length ? rest.join('=') : null, error: null };
+  if (!isIssueNumber(num)) return null;
+  return { issue: Number(num), path: rest.length ? rest.join('=') : null, error: null };
 }
 // --merged, --passed and --stopped carry a bare issue number (#3595): the same
-// positive-integer rule as --not-started, refused rather than stored as 0 or
-// dropped as NaN.
+// rule as --not-started, refused rather than stored as 0 or dropped as NaN.
 function parseIssueFlag(v) {
-  const s = v === undefined || v === null ? '' : String(v).trim();
-  const n = /^\d+$/.test(s) ? Number(s) : NaN;
-  return isIssueNumber(n) ? n : null;
+  return isIssueNumber(v) ? Number(v) : null;
 }
 const issueFlagError = (flag, v) => `${flag} needs a positive issue number; got ${JSON.stringify(v === undefined ? '' : v)}`;
 const notStartedError = (v) => `--not-started needs N[=<path>] with N a positive issue number; got ${JSON.stringify(v === undefined ? '' : v)}`;
@@ -1505,14 +1526,25 @@ function runReplanCli(argv) {
 function runRecordRegeneratedCli(argv, seams = {}) {
   const fs = require('fs');
   const opts = { paths: [] };
+  // #3694: refused like every other CLI here (#3595, #3623) — Number('') is 0,
+  // and a bad --group once fell through to --batch.
+  const refuse = (error) => ({ code: 1, envelope: { ok: false, error } });
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--state') opts.state = argv[++i];
-    else if (a === '--group') opts.group = Number(argv[++i]);
-    else if (a === '--batch') opts.batch = Number(argv[++i]);
-    else if (a === '--sha') opts.sha = argv[++i];
-    else if (a === '--path') opts.paths.push(argv[++i]);
-    else if (a !== 'record-regenerated') return { code: 1, envelope: { ok: false, error: `unexpected argument: ${a}` } };
+    else if (a === '--group' || a === '--batch') {
+      const v = argv[++i];
+      if (!isIssueNumber(v)) return refuse(`${a} needs a positive integer; got ${JSON.stringify(v === undefined ? '' : v)}`);
+      opts[a.slice(2)] = Number(v);
+    } else if (a === '--sha') {
+      const v = argv[++i];
+      if (!/^[0-9a-f]{7,40}$/.test(v || '')) return refuse(`--sha needs a 7-40 character lowercase hex commit sha; got ${JSON.stringify(v === undefined ? '' : v)}`);
+      opts.sha = v;
+    } else if (a === '--path') {
+      const v = argv[++i];
+      if (v === undefined || v === '') return refuse('--path needs a value');
+      opts.paths.push(v);
+    } else if (a !== 'record-regenerated') return refuse(`unexpected argument: ${a}`);
   }
   if (!opts.state) return { code: 1, envelope: { ok: false, error: '--state <file> is required' } };
   const where = Number.isInteger(opts.group) ? { group: opts.group } : Number.isInteger(opts.batch) ? { batch: opts.batch } : null;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  *
  * The one place a `qa-required` issue is created (#3453).
  *
@@ -151,22 +151,48 @@ async function fileQaIssue({ title, bodyPath, parent = null, branch = null, exec
   return result;
 }
 
+const USAGE = 'Usage: qa-issue.js --title "QA: <check>" --body-file <path> [--parent N] [--branch <name>]';
+
+/**
+ * Read a `--parent` value: a positive integer, with or without a leading `#`.
+ * Anything else is null — the caller must reject it, never fall through to a
+ * standalone issue (#3464).
+ * @param {string|undefined} raw
+ * @returns {number|null}
+ */
+function parseParent(raw) {
+  const digits = String(raw === undefined ? '' : raw).replace(/^#/, '');
+  return /^[1-9]\d*$/.test(digits) ? Number(digits) : null;
+}
+
+/**
+ * @param {string[]} argv
+ * @returns {{title: string|null, bodyPath: string|null, parent: number|null, branch: string|null,
+ *   invalidParent?: string}} `invalidParent` is set only when `--parent` was
+ *   given a value that is not a positive integer; it carries that value.
+ */
 function parseArgs(argv) {
   const out = { title: null, bodyPath: null, parent: null, branch: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--title') out.title = argv[++i];
     else if (a === '--body-file') out.bodyPath = argv[++i];
-    else if (a === '--parent') out.parent = parseInt(argv[++i], 10) || null;
-    else if (a === '--branch') out.branch = argv[++i];
+    else if (a === '--parent') {
+      const raw = argv[++i];
+      out.parent = parseParent(raw);
+      if (out.parent === null) out.invalidParent = raw === undefined ? '' : String(raw);
+    } else if (a === '--branch') out.branch = argv[++i];
   }
   return out;
 }
 
 async function main(argv, deps = {}) {
-  const args = parseArgs(argv);
+  const { invalidParent, ...args } = parseArgs(argv);
+  if (invalidParent !== undefined) {
+    return { ok: false, error: `--parent must be a positive integer (got "${invalidParent}"). ${USAGE}` };
+  }
   if (!args.title || !args.bodyPath) {
-    return { ok: false, error: 'Usage: qa-issue.js --title "QA: <check>" --body-file <path> [--parent N] [--branch <name>]' };
+    return { ok: false, error: USAGE };
   }
   return fileQaIssue({ ...args, ...deps });
 }

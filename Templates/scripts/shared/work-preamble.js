@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.120.0
+ * @framework-script 0.121.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -20,7 +20,7 @@ const { findRetired, wantsHelp, helpEnvelope } = require('./lib/command-args.js'
 // never an external package (#2418).
 const { REDIRECT_LABELS } = require('./lib/issue-type.js');
 // #3126: --agents validation at parse time, and the --concurrent grouping plan.
-const { parseAgentsValue, buildPlan, resolveWorktreeHook, classifyResume, parseWorktreeList, matchKeptWorktrees, isFrameworkWorktree, classifyReclaim } = require('./lib/concurrency-plan.js');
+const { parseAgentsValue, buildPlan, resolveWorktreeHook, classifyResume, parseWorktreeList, matchKeptWorktrees, isFrameworkWorktree, classifyReclaim, normalizeWorktreePath } = require('./lib/concurrency-plan.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 // #3128: processing order is a topological sort of the **Depends on:** graph.
 const { topoOrder } = require('./lib/topo-order.js');
@@ -315,7 +315,9 @@ function parseArgs(args) {
     } catch (_e) {
       return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue numbers in: "${raw}".` } };
     }
-    return withModifiers({ mode: 'batch', issues: nums });
+    // #3694: a repeated number would be worked twice (and planned twice under
+    // --concurrent); de-duplicated as tree-review-gate.js does (#3600).
+    return withModifiers({ mode: 'batch', issues: [...new Set(nums)] });
   }
 
   const statusFlag = findFlag(args, 'status');
@@ -1317,12 +1319,11 @@ async function planConcurrentRun({ active, processingOrder, dependencyGraph, run
   // unmatched and kept ones, never held, and offered for teardown first.
   const states = await (options.readWorktreeStates || readWorktreeStatesFromGit)(found.worktrees);
   const { reclaimable } = classifyReclaim({ worktrees: found.worktrees, ledger: pruned.ledger, states });
-  const normPath = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-  const reclaimPaths = new Set(reclaimable.map((w) => normPath(w.worktreePath)));
+  const reclaimPaths = new Set(reclaimable.map((w) => normalizeWorktreePath(w.worktreePath)));
   for (const w of reclaimable) {
     warnings.push({ code: 'RECLAIMABLE_WORKTREE', message: `Worktree ${w.worktreePath} (${w.branch}${w.issue ? `, #${w.issue}` : ', not in the run ledger'}) holds nothing: its branch is on the tracker and its tree is clean. It is offered for teardown before any spawn.` });
   }
-  const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees.filter((w) => !reclaimPaths.has(normPath(w.worktreePath))), ledger: pruned.ledger, members: numbers.filter((n) => !merged.includes(n)) });
+  const worktreeMatch = matchKeptWorktrees({ worktrees: found.worktrees.filter((w) => !reclaimPaths.has(normalizeWorktreePath(w.worktreePath))), ledger: pruned.ledger, members: numbers.filter((n) => !merged.includes(n)) });
   for (const k of worktreeMatch.kept) {
     warnings.push({ code: 'KEPT_WORKTREE', message: `#${k.issue} has a worktree kept from an earlier run at ${k.worktreePath} (${k.branch}); it is held, not re-spawned, since it may hold fixes. Check it, then merge it with \`node .claude/scripts/shared/lib/merge-back-gate.js merge-back --tracker <tracker branch> --member ${k.issue}:${k.branch}:${k.worktreePath}\`, or tear it down with worktree-teardown.js, and re-run.` });
   }
