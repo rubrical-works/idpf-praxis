@@ -1,7 +1,7 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
- * @description The /code-review reviewer split (#3167). Exports partitionQueue(), mergeShardResults() and validateShardResult(): shard the Step 4 queue for at most N reviewer Agents, then validate and merge their results with the parent assigning every --diff tag.
+ * @framework-script 0.122.0
+ * @description The /code-review reviewer split (#3167). Exports partitionQueue(), mergeShardResults() and validateShardResult(): shard the Step 4 queue for at most N reviewer Agents, then validate and merge their results with the parent assigning every --diff tag. Under --refactor (#3797) the briefs carry the refactor criteria and wideScanCandidates() lists the merged findings the parent scans all files for.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -194,6 +194,43 @@ function toSpan(span) {
   return Array.isArray(span) ? span : [span.start, span.end];
 }
 
+/** The refactor criteria file, relative to the project root (#3797). */
+const REFACTOR_CRITERIA_REL = '.claude/metadata/refactor-review-criteria.json';
+
+/**
+ * Read the `/code-review --refactor` criteria (#3797).
+ * @param {string} [root] project root (default: cwd)
+ * @returns {{version: number, criteria: Array<{id: string, name: string, lookFor: string, wideScan: boolean}>}}
+ */
+function loadRefactorCriteria(root = process.cwd()) {
+  return JSON.parse(fs.readFileSync(path.join(root, REFACTOR_CRITERIA_REL), 'utf8'));
+}
+
+/**
+ * The refactor criteria as brief text: one line per criterion — its id as the
+ * finding category, its look-for text, and `wideScan` when a match triggers the
+ * parent's all-files scan.
+ * @param {{criteria: object[]}} doc
+ * @returns {string}
+ */
+function refactorCriteriaText(doc) {
+  return (doc.criteria || [])
+    .map((c) => `- \`${c.id}\` (${c.name})${c.wideScan ? ' [wideScan]' : ''}: ${c.lookFor}`)
+    .join('\n');
+}
+
+/**
+ * The merged findings the parent runs the all-files scan for (#3797): those
+ * whose category is a criterion marked `wideScan`. Order is preserved.
+ * @param {object[]} findings — mergeShardResults() `findings`, or inline Step 6 findings
+ * @param {{criteria: object[]}} doc — the refactor criteria
+ * @returns {object[]}
+ */
+function wideScanCandidates(findings, doc) {
+  const wide = new Set((doc.criteria || []).filter((c) => c.wideScan).map((c) => c.id));
+  return (findings || []).filter((f) => wide.has(f.category));
+}
+
 /**
  * The Agent request for one shard reviewer (#3504): the read-only
  * `idpf-code-reviewer` type, with the parent's not-found fallback step
@@ -210,13 +247,23 @@ function toSpan(span) {
  *   --diff; each span is a `{ start, end }` object (the `changedFilesSinceBase()` shape) or a
  *   `[start, end]` pair, both rendered as `start-end` (#3747)
  * @param {string} [input.root]          project root for the brief context (default: cwd)
+ * @param {boolean} [input.refactor]     `--refactor` (#3797): the brief carries the
+ *   refactor criteria from refactor-review-criteria.json in place of `criteria`,
+ *   drops `domainQuestions`, and keeps the reviewer inside its shard — the
+ *   parent runs the all-files scan after mergeShardResults()
  * @returns {{description: string, subagent_type: string, prompt: string, onNotFound?: string}}
  */
-function buildShardRequest({ shard, files = [], criteria = '', domainQuestions = '', ranges, base, skills = [], root = process.cwd() } = {}) {
-  const lines = [
-    `Review code-review shard ${shard}: read each file below in full and judge it against the criteria. Supply no diffTag.`,
-    '',
-  ];
+function buildShardRequest({ shard, files = [], criteria = '', domainQuestions = '', ranges, base, skills = [], root = process.cwd(), refactor = false } = {}) {
+  const lines = refactor
+    ? [
+      `Review code-review shard ${shard}: a refactor-only review. Read each file below in full and report every refactor candidate against the refactor criteria; a bug or security problem you notice is reported too, with category \`correctness\` or \`security\`. Supply no diffTag.`,
+      'Do not search outside your shard: for a criterion marked wideScan, report the candidate in your file only — the parent runs the all-files scan for other sites after merging every shard.',
+      '',
+    ]
+    : [
+      `Review code-review shard ${shard}: read each file below in full and judge it against the criteria. Supply no diffTag.`,
+      '',
+    ];
   // Specialist, domains and absolute frameworkPath, resolved at spawn (#3501):
   // always present — root defaults to the project the parent runs in.
   const { resolveBriefContext, briefContextLines } = require('./specialist-resolver.js');
@@ -229,14 +276,15 @@ function buildShardRequest({ shard, files = [], criteria = '', domainQuestions =
   lines.push(`- CHARTER.md: \`${abs('CHARTER.md')}\``);
   if (skills.length > 0) lines.push(`- Skills: ${skills.map((s) => `\`${abs(s)}\``).join(', ')}`);
   lines.push('');
-  lines.push(
-    '### Files',
-    ...files.map((f) => `- \`${f}\``),
-    '',
-    '### Criteria',
-    criteria,
-  );
-  if (domainQuestions) lines.push('', '### Domain questions', domainQuestions);
+  lines.push('### Files', ...files.map((f) => `- \`${f}\``), '');
+  // --refactor (#3797): the refactor criteria replace the Step 5 criteria, and
+  // domain criteria are not refactor criteria — neither reaches the brief.
+  if (refactor) {
+    lines.push('### Refactor criteria', refactorCriteriaText(loadRefactorCriteria(root)));
+  } else {
+    lines.push('### Criteria', criteria);
+    if (domainQuestions) lines.push('', '### Domain questions', domainQuestions);
+  }
   if (ranges && Object.keys(ranges).length > 0) {
     lines.push('', '### Changed ranges (context only)');
     for (const [file, spans] of Object.entries(ranges)) {
@@ -290,6 +338,9 @@ function buildGateShardRequests({ base, files = [], ranges = {}, criteria = '', 
 
 module.exports = {
   buildGateShardRequests,
+  loadRefactorCriteria,
+  refactorCriteriaText,
+  wideScanCandidates,
   SCHEMA_PATH,
   partitionQueue,
   mergeShardResults,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * resolve-precheck.js — /resolve-review's deterministic check of its own edits
  * before the Step 4 re-review (#3542).
  *

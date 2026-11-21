@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Add a story to an epic with charter compliance checks, using the IDPF framework.
 argument-hint: "[epic-number] (e.g., 42 or #42) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -61,6 +61,7 @@ Re-read `.claude/metadata/ac-feasibility-prompts.json`. Apply `classify`, `verif
 | **Drop** | Work appears in `phaseFeasibility.ownedElsewhere` — CHANGELOG, tagging, release publication belong to `/prepare-release`'s checklist | Do not author the AC at all; tell the user which command owns it |
 | **Drop** | AC restates the project's test command passing ("`npm test` passes", "the test suite passes") — `dischargedByWorkflow`; the `/work` Step 4f sweep already runs it | Do not author the AC; tell the user `/work` Step 4f owns it. **Keep it** when `keptWhen` holds (no verification set declared, so Step 4f runs nothing) |
 | **Annotate** | Gate is genuinely load-bearing (required human review or sign-off) | Author as `- [ ] {acText} → GATE: {phase}` per `phaseFeasibility.annotationFormat` |
+| **File post-release** | Check runs only on the released hub | Once the issue exists, `node .claude/scripts/shared/lib/qa-issue.js --title "QA: <criterion>" --body-file $QA_BODY_FILE` (never `--parent`); write the AC **checked** `- [x] {acText} → GATE: release → QA: #N` — never blocks; `/qa` verifies it post-release |
 
 Prefer annotation over deletion when the requirement is real — the goal is to stop the gate deadlocking `in_review`, not to remove the requirement.
 **Step 5: Transform to story format**
@@ -71,6 +72,11 @@ Prefer annotation over deletion when the requirement is real — the goal is to 
 | Acceptance criteria | Checkbox list |
 | Stories that must land first | **Depends on:** line — `#N, #M`, or `none` |
 Infer user type from context or ask.
+**Infer `**Depends on:**` before asking (#3785).** Same rule as `/create-prd` and `/create-backlog`, living only in `.claude/scripts/shared/lib/story-dependency-inference.js` (`RULE`): a story depends on a sibling whose ACs create an artifact this story's ACs consume, extend or call. Write `.tmp-story-deps-{random}.txt` (suffix shelled out once) with one `### Story #N: <title>` block per open sibling sub-issue (its `**Acceptance Criteria:**` checkbox list and `**Depends on:**` line, from `gh pmu view N --body-stdout`), then this story as `### Story new: <title>` with its criteria; run:
+```bash
+node .claude/scripts/shared/lib/story-dependency-inference.js --prd $DEPS_FILE
+```
+`rm` it after. `candidates.new` lists inferred edges with reasons; `lines.new` is the value (`#N, #M` or `none`). Show them and **ASK USER** via `AskUserQuestion` to confirm or correct before Phase 3 writes the line. `ok: false` → print `message` (names every story in the cycle) and write no edge of it. `unknown` (stated sibling edge to an issue not in the epic) and `unreadable` (stated entry that is not `#N`) are shown to the user with the edges — an unreadable line stays verbatim in `lines`, never rewritten as `none`.
 ## Phase 2: Charter Compliance Check
 Write story title + description to `.tmp-charter-scope-{random}.txt` (suffix shelled out); run `node .claude/scripts/shared/lib/charter-scope.js --command add-story --text-file <file>`; `rm` after.
 `skipped` set (`no-charter` → suggest `/charter`) → one line naming `skipped.reason`; continue. Otherwise make the **scope call** from the returned `inputs` as `scopeCall` in `.claude/metadata/charter-enforcement.json` directs — the helper decides nothing (#3645) — and report it in its one-line format, `Charter scope: <verdict> — "<bullet quoted>" — <reason in one sentence>`, with a stated reason; `boardThemes.available: false` → say the board themes were unavailable and decide on the bullets alone. At `quick` depth the inputs are the Out of Scope bullets alone: the call is `conflicts` or `aligned`.

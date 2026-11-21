@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(), and checkLifecycleBoxIn()/checkLifecycleBox() (CLI --check-box) for the PRD tracker lifecycle boxes other commands own (#3636). Used by /review-prd, /review-test-plan, /done and /create-backlog.
  * @checksum sha256:placeholder
  *
@@ -343,7 +343,12 @@ function resolveApprovalGates(body, gateMap, heading) {
       unresolvable.push({ id: g.id, text: '', reason: 'Gate ' + g.id + ' declares no text to match.' });
       continue;
     }
-    const match = boxes.find((b) => b.text === g.text || b.text.startsWith(g.text));
+    // A gate's legacyTexts (#3787) are wordings it was rendered with before a
+    // text change; bodies written then still carry them and must still resolve.
+    const texts = [g.text, ...(Array.isArray(g.legacyTexts) ? g.legacyTexts : [])].filter(
+      (t) => typeof t === 'string' && t.length > 0
+    );
+    const match = boxes.find((b) => texts.some((t) => b.text === t || b.text.startsWith(t)));
     if (match) {
       resolved.push({ id: g.id, line: match.line, alreadyChecked: match.checked });
     } else {
@@ -363,6 +368,15 @@ function resolveApprovalGates(body, gateMap, heading) {
 function checkableIds(rollup) {
   const gates = rollup && Array.isArray(rollup.gates) ? rollup.gates : [];
   return new Set(gates.filter((g) => g.checkable === true).map((g) => g.id));
+}
+
+/** Ids in `riskAccepted` whose gate is resolvable and blocked (#3786). */
+function acceptedBlockedIds(rollup, riskAccepted) {
+  if (!Array.isArray(riskAccepted)) return [];
+  const gates = rollup && Array.isArray(rollup.gates) ? rollup.gates : [];
+  return gates
+    .filter((g) => riskAccepted.includes(g.id) && g.resolvable === true && g.risk && g.risk.kind === 'blocked')
+    .map((g) => g.id);
 }
 
 function checkOffIn(body, gateMap, heading, checkable) {
@@ -436,13 +450,23 @@ function checkLifecycleBox(issue, label, { reference, io = defaultIo } = {}) {
  * declined prompt never writes a checkable gate it covered. Absent, every
  * checkable gate is written, as before.
  *
+ * `riskAccepted` (#3786) names the blocked gates whose risk prompt the user
+ * answered "Accept risk". A blocked gate is never checkable, so `only` — a
+ * narrowing filter over the checkable set — can never reach one; without this
+ * input an accepted risk was recorded but its box stayed open and /done
+ * refused the issue. Kept distinct from `only` so `only` stays a filter. The
+ * write set is (checkable ∩ only) ∪ (riskAccepted ∩ resolvable blocked
+ * gates): an unresolvable gate, or a gate that is not blocked, is never added
+ * by riskAccepted.
+ *
  * Never closes the issue. Closure stays with /done.
  */
-function applyApprovalGateCheckOff({ issue, planPath, gateMap, rollup, io = defaultIo, only }) {
+function applyApprovalGateCheckOff({ issue, planPath, gateMap, rollup, io = defaultIo, only, riskAccepted }) {
   const checkable = checkableIds(rollup);
   if (Array.isArray(only)) {
     for (const id of [...checkable]) if (!only.includes(id)) checkable.delete(id);
   }
+  for (const id of acceptedBlockedIds(rollup, riskAccepted)) checkable.add(id);
   const out = { ok: true, issueChecked: 0, planChecked: 0, unresolvable: [] };
 
   const issueBody = io.readIssueBody(issue);

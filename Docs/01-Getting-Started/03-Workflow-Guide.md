@@ -612,11 +612,11 @@ All three levels of review are valid. The depth of your review is a quality mult
 ### Phase 3: Prepare
 - Updates version files: `CHANGELOG.md`, `README.md`, `framework-config.json`
 - Generates a test plan in `Construction/Test-Plans/`
-- Commits the version bump
-- Waits for CI to pass
+- Commits and pushes the version bump. On a branch already pushed to the remote, the PR to `main` is opened first, so its checks run on the head the release merges
 
 ### Phase 4: Git Operations
-- Creates a PR to `main`
+- Creates the PR to `main` if it is not already open — if the check for an open PR fails, the release stops rather than guessing
+- Shows the PR's checks: CI is gated on the PR, not on the push
 - You approve and merge the PR — the merge retries transient GitHub failures and falls back to the REST API; a real refusal (conflict, required check) stops the release
 - Shows the close preview again (work may have moved since the start), then closes the branch tracker issue
 - Tags the release on `main` (e.g., `v1.0.0`)
@@ -710,10 +710,8 @@ When an interactive review ends with findings, `/review-issue` resolves them onc
 When you have multiple issues to review, batching all reviews and resolutions together before starting implementation is significantly faster. Instead of reviewing one issue, resolving findings, then working it — repeat — you run all the reviews first, resolve all findings, then start implementation as a separate pass.
 
 ```
-# Pass 1: Review everything
-/review-issue #30
-/review-issue #31
-/review-issue #32
+# Pass 1: Review everything (one command, reviewed concurrently)
+/review-issue #30 #31 #32
 
 # Pass 2: Resolve any findings the reviews left open
 /resolve-review #30
@@ -728,6 +726,8 @@ When you have multiple issues to review, batching all reviews and resolutions to
 /work #31
 ...
 ```
+
+**How a multi-issue review runs.** Two or more issues are reviewed concurrently by default, one reviewer agent per issue, at most three at once. Change the cap with `--agents N` (or set `reviewAgents` in `framework-config.json`); `--sequential` or `--agents 1` reviews them one at a time instead. `/review-issue --status ready` — or just "review all in ready" — selects every open issue in that board status. Either way the run is two-phase: every first-pass review finishes before any findings are resolved, and the on-the-spot resolve pass then runs one issue at a time, so Pass 2 above is only needed for what that pass leaves open. The run closes with a roster naming each issue's result.
 
 **Shortcut:** Skip Pass 3 entirely by using `--assign` on `/work`, which auto-assigns the issue to the current branch before starting:
 

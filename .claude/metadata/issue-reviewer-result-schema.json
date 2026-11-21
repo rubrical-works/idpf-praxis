@@ -2,15 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "issue-reviewer-result-schema.json",
   "title": "idpf-issue-reviewer result",
-  "description": "The JSON result one idpf-issue-reviewer instance returns for the one issue it reviewed (#3499, PRD #3493). The parent validates it with .claude/scripts/shared/lib/subagent-result.js before the issue enters the review roster; a result failing validation, an empty reply or an errored Agent call is that instance's error, never a guessed recommendation. Role contract: Reference/Agent-Architecture.md.",
+  "description": "The JSON result one idpf-issue-reviewer instance returns for the one issue it reviewed (#3499, PRD #3493). The parent validates it with .claude/scripts/shared/lib/subagent-result.js before the issue enters the review roster; a result failing validation, an empty reply or an errored Agent call is that instance's error, never a guessed recommendation. Role contract: Reference/Agent-Architecture.md. An outcome of \"error\" (#3806) is the reviewer reporting its own failure (a step that could not run, a gh secondary rate limit) with the message in error: it requires only issue, outcome and error, and the parent reports it under the issue with no verdict event. A result whose outcome is \"reviewed\" or absent (the form /work's reviewer results take) keeps the five original fields required.",
   "type": "object",
-  "required": ["issue", "recommendation", "labelAssigned", "reviewNumber", "filesToModifyWritten"],
+  "required": ["issue"],
   "additionalProperties": false,
   "properties": {
     "issue": {
       "type": "integer",
       "minimum": 1,
       "description": "The issue reviewed."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["reviewed", "error"],
+      "description": "reviewed — the review ran to finalize; error — it did not, and error says why. Absent reads as reviewed, so /work's reviewer results validate unchanged."
     },
     "recommendation": {
       "type": "string",
@@ -29,7 +34,31 @@
     },
     "filesToModifyWritten": {
       "type": "boolean",
-      "description": "Whether the 2a-ii (b) Files-to-modify write ran before finalize (#2891). false for an epic, which 2a-ii does not cover."
+      "description": "Whether the 2a-ii (b) Files-to-modify write ran before finalize (#2891). false for an epic, which 2a-ii does not cover. The roster shows false."
+    },
+    "commentUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The URL of the review comment finalize posted, when known."
+    },
+    "priorArtWritten": {
+      "type": "boolean",
+      "description": "Whether the 2a-iv **Prior Art:** write ran before finalize. The roster shows false, so a skipped write is visible."
+    },
+    "error": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required when outcome is error: the failure message, verbatim — a gh message stays as gh printed it."
     }
+  },
+  "if": {
+    "properties": { "outcome": { "const": "error" } },
+    "required": ["outcome"]
+  },
+  "then": {
+    "required": ["issue", "outcome", "error"]
+  },
+  "else": {
+    "required": ["issue", "recommendation", "labelAssigned", "reviewNumber", "filesToModifyWritten"]
   }
 }

@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Create an enhancement issue from the IDPF framework's standard template.
 argument-hint: "<title> [--prior-art] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -54,6 +54,7 @@ If AC text in description mentions a verification mechanism (see `.claude/metada
 | **Drop** | Work appears in `phaseFeasibility.ownedElsewhere` — CHANGELOG, tagging, release publication belong to `/prepare-release` | Do not author the AC; tell the user which command owns it |
 | **Drop** | AC restates the project's test command passing ("`npm test` passes", "the test suite passes") — `dischargedByWorkflow`; the `/work` Step 4f sweep already runs it | Do not author the AC; tell the user `/work` Step 4f owns it. **Keep it** when `keptWhen` holds (no verification set declared, so Step 4f runs nothing) |
 | **Annotate** | Gate is genuinely load-bearing (required human review or sign-off) | `- [ ] {acText} → GATE: {phase}` per `annotationFormat`, and **name the event that resolves it** — a token that cannot name one is not a gate |
+| **File post-release** | Check runs only on the released hub | Once the issue exists, `node .claude/scripts/shared/lib/qa-issue.js --title "QA: <criterion>" --body-file $QA_BODY_FILE` (never `--parent`); write the AC **checked** `- [x] {acText} → GATE: release → QA: #N` — never blocks; `/qa` verifies it post-release |
 Prefer annotation over deletion when the requirement is real: the goal is to stop the gate deadlocking `in_review`, not to remove the requirement. **Warning-only, as `verificationGate` is** — do **not** block creation. `/bug` and `/enhancement` take free text and often carry no ACs, so blocking would stop capture over an AC nobody wrote.
 **"Document updated" AC (#3646).** When the enhancement's scope changes the project's architecture, constraints, test strategy or a key decision, **ASK USER** whether to add an AC naming the living document it updates — `Project/Architecture.md`, `Project/Constraints.md`, `Project/Test-Strategy.md` or a `Construction/Design-Decisions/` entry (e.g. `- [ ] Project/Architecture.md updated to describe <the change>`). An AC may name `CHARTER.md` only when the work introduces a new kind of entity or adopts a new technology: a new Key Entities or Tech Stack row, with no count and no version. Never an AC updating a count or a version in `CHARTER.md` — counts are derived, versions live in manifests; `/review-issue` flags one (`charter-ac-stored-value`). Declined → nothing added.
 ### Step 2b: Prior-Art Sweep (`--prior-art` only)

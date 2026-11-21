@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -18,6 +18,13 @@
  *     skipped: [acText], alreadyGated: [{ acText, marker }], errors: [], warnings: [] }
  *   `skipped` = no keyword matched; `alreadyGated` = the AC already carries a marker from
  *   .claude/metadata/ac-gate-markers.json and is never extracted again (#3161).
+ *
+ * Post-release kind (#3817): a fill entry with `postRelease: true` files the check
+ * as one standalone qa-required issue (qa_required, no parent link, no branch) via
+ * createStandaloneFn, and its `matched` entry carries `kind: 'post-release'`,
+ * `placement: 'standalone'` and an annotation from postReleaseAnnotationFormat —
+ * a checked box, so the parent is never held open by it. A release-gated AC may
+ * be filed this way too; without the fill it stays in `alreadyGated`.
  *
  * Fill field types (#2976). `steps`: a non-empty string, or a non-empty array of
  * non-empty strings rendered as a numbered list. `expectedResult`, `fixtures`: a
@@ -427,7 +434,7 @@ function fetchIssue(issueNumber, execFn = execSync) {
 // the branch placement through assign-branch.js. Re-exported below so callers
 // and tests that import them from here keep working.
 const {
-  QA_STATUS_ALIAS, createSubIssue, setSubIssueStatus, placeSubIssue,
+  QA_STATUS_ALIAS, createSubIssue, createStandaloneIssue, setSubIssueStatus, placeSubIssue,
 } = require('./lib/qa-issue.js');
 
 /**
@@ -462,7 +469,35 @@ function buildAnnotation(format, acText, subIssueNumber) {
     .replace('{subIssueNumber}', String(subIssueNumber));
 }
 
-async function extract({ issueNumber, config, fetchFn, createFn, existingFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null, fillWarning = null, gateMarkers = loadGateMarkers() }) {
+// ─── Post-release QA kind (#3817) ───
+//
+// A check that can only run on the released hub cannot close before the
+// release ships, so a blocking `- [ ] … → QA: #N` sub-issue would hold its
+// parent — and the branch tracker — open past the release. A fill entry with
+// `postRelease: true` files it the way /done's hand-off does (#3453): one
+// standalone qa-required issue (status qa_required, no parent link, no branch
+// placement), and a parent line written checked by qa-config.json
+// postReleaseAnnotationFormat — the release gate plus the QA pointer, a form
+// nothing downstream treats as open. Like the #3161 marker set, the release
+// gate's literal is never declared here: it comes from ac-gate-markers.json.
+
+/** Whether a fill entry asks for the post-release kind. Only literal `true` does. */
+function isPostRelease(fill, acText) {
+  const entry = fill && Object.prototype.hasOwnProperty.call(fill, acText) ? fill[acText] : null;
+  return Boolean(entry && typeof entry === 'object' && entry.postRelease === true);
+}
+
+/**
+ * The criterion without a trailing release-gate marker, so the annotation never
+ * doubles it. The marker's pattern is the gate-release entry of gateMarkers.
+ */
+function postReleaseCriterion(acText, gateMarkers) {
+  const release = (gateMarkers || []).find((m) => m.id === 'gate-release');
+  if (!release) return acText.trim();
+  return acText.replace(new RegExp(`\\s*${release.pattern.source}\\s*$`), '').trim();
+}
+
+async function extract({ issueNumber, config, fetchFn, createFn, createStandaloneFn, existingFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null, fillWarning = null, gateMarkers = loadGateMarkers() }) {
   // placeFn is injected, never defaulted to the live implementation. Every
   // other dependency here follows that rule and main() supplies all of them;
   // a live default would let any caller that forgot the stub reach `gh`
@@ -500,11 +535,15 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
     // and files a duplicate QA sub-issue. Reported apart from `skipped`, which
     // means "no keyword matched".
     const marker = findGateMarker(acText, gateMarkers);
-    if (marker) {
+    const postRelease = isPostRelease(fill, acText);
+    // #3817: a release-gated AC the caller marks post-release is filed
+    // now rather than left for /done's hand-off; every other marker, and a
+    // release gate with no such fill, is already gated as before.
+    if (marker && !(marker === 'gate-release' && postRelease)) {
       alreadyGated.push({ acText, marker });
       continue;
     }
-    const keyword = findMatchingKeyword(acText, config.keywords);
+    const keyword = findMatchingKeyword(acText, config.keywords) || marker;
     if (!keyword) {
       skipped.push(acText);
       continue;
@@ -513,7 +552,9 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
     // retry before annotation (compaction, a partial failure) filed every AC
     // again. An open QA sub-issue already titled for this AC is reused: its
     // annotation is returned for the caller to apply, and nothing is created.
-    const prior = existing.find((s) => s && s.title === `QA: ${acText}` && String(s.state || 'OPEN').toUpperCase() === 'OPEN');
+    // A post-release issue is never a sub-issue, so the sub-issue list cannot
+    // hold it: the dedupe applies to the blocking kind only.
+    const prior = !postRelease && existing.find((s) => s && s.title === `QA: ${acText}` && String(s.state || 'OPEN').toUpperCase() === 'OPEN');
     if (prior) {
       matched.push({ acText, keyword, subIssueNumber: prior.number, annotation: buildAnnotation(config.annotationFormat, acText, prior.number), existing: true });
       continue;
@@ -531,7 +572,7 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
       }
     }
     if (dryRun) {
-      matched.push({ acText, keyword, subIssueNumber: null, annotation: null });
+      matched.push({ acText, keyword, subIssueNumber: null, annotation: null, ...(postRelease ? { kind: 'post-release' } : {}) });
       continue;
     }
     try {
@@ -541,7 +582,7 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
         resolveFill(acText, fill);
       for (const w of fillWarnings) warnings.push(w);
       let bodyText = renderBody(config.bodyTemplate, {
-        acDescription: acText,
+        acDescription: postRelease ? postReleaseCriterion(acText, gateMarkers) : acText,
         parentIssue: issueNumber,
         parentTitle,
         steps,
@@ -549,6 +590,28 @@ async function extract({ issueNumber, config, fetchFn, createFn, existingFn, pla
       });
       if (fixtures) {
         bodyText += renderBody(config.fixturesTemplate || DEFAULT_FIXTURES_TEMPLATE, { fixtures });
+      }
+      if (postRelease) {
+        // #3817: standalone, never a sub-issue — falling back to createFn
+        // would link it under the parent and gate it after all.
+        if (typeof createStandaloneFn !== 'function') {
+          throw new Error('a post-release QA issue needs createStandaloneFn — it is never filed as a sub-issue (#3817)');
+        }
+        if (!config.postReleaseAnnotationFormat) {
+          throw new Error('qa-config.json has no postReleaseAnnotationFormat (#3817)');
+        }
+        const criterion = postReleaseCriterion(acText, gateMarkers);
+        if (config.postReleaseNote) bodyText += renderBody(config.postReleaseNote, { parentIssue: issueNumber });
+        const tmpPath = `.tmp-qa-body-${crypto.randomBytes(4).toString('hex')}.md`;
+        writeTemp(tmpPath, bodyText);
+        try {
+          const qaNumber = createStandaloneFn(`QA: ${criterion}`, tmpPath);
+          const annotation = buildAnnotation(config.postReleaseAnnotationFormat, criterion, qaNumber);
+          matched.push({ acText, keyword, subIssueNumber: qaNumber, annotation, kind: 'post-release', placement: 'standalone', fillPath, fillSources });
+        } finally {
+          unlinkTemp(tmpPath);
+        }
+        continue;
       }
       // A creation path: no sub-issue number exists yet, so a random suffix
       // (rule 05), never the parent's number — two sessions extracting one
@@ -604,6 +667,7 @@ async function main() {
       config,
       fetchFn: (n) => fetchIssue(n),
       createFn: (p, t, b) => createSubIssue(p, t, b),
+      createStandaloneFn: (t, b) => createStandaloneIssue(t, b),
       existingFn: (p) => listSubIssues(p),
       placeFn: (a) => placeSubIssue(a),
       writeTemp: (p, c) => fs.writeFileSync(p, c),

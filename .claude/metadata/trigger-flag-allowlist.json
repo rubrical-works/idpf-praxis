@@ -7,7 +7,12 @@
       "--mode",
       "--force",
       "--prior-art",
-      "--without"
+      "--without",
+      "--agents",
+      {
+        "flag": "--sequential",
+        "attach": "none"
+      }
     ],
     "/bug": [
       "--assignee"

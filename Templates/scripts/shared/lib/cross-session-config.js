@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  *
  * Resolver for the `crossSessionMessaging` project config (#2702).
  *

@@ -1,6 +1,6 @@
 # Concurrent Work Within One Epic
 
-**Version:** v0.121.0
+**Version:** v0.122.0
 **Topic:** How `/work --concurrent` runs several sub-issues of one epic or branch tracker at the same time without giving up the gates, the attribution or the audit trail a sequential run leaves behind.
 
 ---
@@ -70,7 +70,7 @@ Tier 1's result is protected the same way: the gate writes it to `.tmp-gate-<N>-
 
 **A reviewer failure is not the implementer's failure.** When Tier 1 passes but the reviewer itself misbehaved — no review file, a stale one, writes outside its contract, a changed snapshot — the outcome is **re-review**, not a fix cycle: the parent re-snapshots, re-spawns the reviewer in the same slot and re-runs the outcome, and the implementer's one fix cycle stays unspent. Any stray paths the reviewer wrote are reported and cleared first, so they never become part of the new baseline. A second reviewer failure halts, attributed to the reviewer.
 
-**Merge-back itself** lands each member onto the tracker's *current* tip, read immediately before each merge — a peer may have pushed during the group. A residual conflict after the merge driver and reconciliation have had their say halts the run: the merge is aborted so the tracker stays clean, every worktree is kept, no later member is merged, and the report names the files, the failed member, the unmerged members and the tail that never started. Recovery is in [When Things Go Wrong](../01-Getting-Started/05-When-Things-Go-Wrong.md#when-a-concurrent-run-halts).
+**Merge-back itself** lands each member onto the tracker's *current* tip, read immediately before each merge — a peer may have pushed during the group. A residual conflict after the merge driver and reconciliation have had their say halts the run: the merge is aborted so the tracker stays clean, every worktree is kept, no later member is merged, and the report names the files, the failed member, the unmerged members and the tail that never started. After a clean merge, merge-back reclaims each merged member itself: it re-checks that the worktree is on its own branch, contained in the new tracker tip and clean, tears it down through the framework's teardown, deletes its `wt/*` branch with `git branch -d` and clears its scratch files. The report lists what was reclaimed and what was kept, each kept worktree with its reason and the teardown command to run once you have looked at it. A halt reclaims nothing. Recovery is in [When Things Go Wrong](../01-Getting-Started/05-When-Things-Go-Wrong.md#when-a-concurrent-run-halts).
 
 ---
 
@@ -82,7 +82,7 @@ Two kinds of file collide in every project even when the stories are disjoint: *
 - `accumulators` — a `json-merge` driver unions keyed records, named in `.gitattributes` and registered in the local git config by the `WorktreeCreate` hook.
 - `recomputed` — recomputed after regeneration and verified by a named test.
 
-After a group's merge-back the parent runs the regeneration runner over the group's changed paths, invokes the deferred generators, runs the **post-merge pass** (Tiers 1–2 again over the members' diffs ∪ the regenerated paths, so a regenerated file no member's diff named is reviewed too), and only then Step 4f (under `--nonstop`, the single end-of-run sweep instead). The profiler is how you find out which files belong in this block for your repository.
+After a group's merge-back the parent runs the regeneration runner over the group's changed paths, invokes the deferred generators, runs the **post-merge pass** (Tiers 1–2 again over the members' diffs ∪ the regenerated paths, so a regenerated file no member's diff named is reviewed too — a member's Tier 1 suite results are reused rather than re-run only when its merge was clean, nothing was regenerated and the merged tree is the exact tree Tier 1 tested; deferred suites always run), and only then Step 4f (under `--nonstop`, the single end-of-run sweep instead). The profiler is how you find out which files belong in this block for your repository.
 
 ---
 

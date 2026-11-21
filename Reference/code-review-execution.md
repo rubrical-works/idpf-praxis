@@ -1,5 +1,5 @@
 # /code-review Execution Reference
-**Version:** v0.121.0
+**Version:** v0.122.0
 **Source:** Reference/code-review-execution.md
 `/code-review` Workflow (Steps 2–12), hoisted out of the shell (#3230) on the `/work` (#2368) / `/review-issue` (#2737) shell + execution-reference pattern. The shell `CommandsSrc/code-review.md` keeps Prerequisites, Arguments, Step 1 parsing, Error Handling and closing cleanup.
 **Why a file, not a command call.** Skill does not return; a file is executed inline in the same turn and the caller continues — so `/prepare-release` and `/prepare-beta` run the diff review from their Branch Diff Review Gate (§ Release Review Gate) instead of asking for a second command.
@@ -181,6 +181,44 @@ Next: Run --status to see cumulative progress
 3. Never delete the calling command's tasks or any task created outside this review (`/resolve-review`'s nested re-review follows the same ownership rule).
 
 Then return to § Release Review Gate at its re-check; the review does not stop the calling command.
+## Refactor Mode
+`/code-review --refactor` (#3797): refactor-only review — Steps 2–12 as amended here, others unchanged. Standalone only; never satisfies § Release Review Gate.
+**Separate state.** `.code-review-refactor-manifest.json` (**Read** `.claude/scripts/shared/lib/code-review-refactor-manifest-schema.json`); the run never reads or writes `.code-review-manifest.json`; the two reviews share no state.
+
+| Step | In refactor mode |
+|---|---|
+| 2 | Load it; absent → empty manifest (schema notes); malformed → warn, `--full`. Unfiled queue: `--list` on it. |
+| 2b | Counts from the refactor manifest. |
+| 3 | Unchanged; also hold the Step 6b **scan set**: default discovery, excludes honored, no `--scope`/`--diff` narrowing. |
+| 4 | Table applies against the refactor manifest: a file whose hash is unchanged since it was refactor-approved is skipped. A standard review's approval never skips a file here. `criteria.contentHash` ≠ current `.claude/metadata/refactor-review-criteria.json` hash → re-queue every file (replaces the charter-change rule). |
+| 5 | **Read** `.claude/metadata/refactor-review-criteria.json` (schema `.claude/metadata/refactor-review-criteria-schema.json`); missing/invalid → report, end the review. Step 5's charter-defect criteria are not applied, and Steps 5a, 5b, 5c and 5d do not run: no domain criteria. |
+| 6 | Refactor criteria only; `category` = criterion `id`. A bug/security problem noticed on the way → `correctness`/`security` (noticed, never hunted). |
+| 8 | Unchanged flow, every `file-issue.js` call with `--manifest .code-review-refactor-manifest.json` (§ Refactor filing). Step 8b does not run. |
+| 9 | Report `Construction/Code-Reviews/YYYY-MM-DD-refactor.md` (§ Refactor report). |
+| 10 | Refactor manifest only (§ Refactor manifest update). Step 10a does not run. |
+| 11 | `Report:` = the `-refactor.md` file, `Manifest:` = `.code-review-refactor-manifest.json`; add `Proposals: P (S sites)` and `Noticed bugs: B` after Findings. |
+
+**Flag combinations — each against the refactor manifest:**
+
+| Flag | With `--refactor` |
+|---|---|
+| `--full` | Queue every discovered file. |
+| `--scope` | Narrows files reviewed; the Step 6b scan set is not narrowed. |
+| `--batch` | Bounds files per invocation. |
+| `--agents` | Shards Step 6; the parent runs Step 6b. |
+| `--status` | Counts over the refactor manifest, then ends the review. |
+| `--diff` | Branch's changed files; scan set not narrowed; recorded in `lastDiffRun`. |
+
+`--with`/`--suggest` never reach here: the shell's Step 1 rejects them beside `--refactor`.
+### Step 6b: All-Files Scan Per Candidate
+After Step 6, `wideScanCandidates(findings, criteria)` (`.claude/scripts/shared/lib/code-review-shards.js`) → findings whose criterion is `wideScan`. For each, search every discovered file in the scan set (excludes honored) for other sites of the same pattern: Grep, read each hit to confirm. Record each site `{ path, startLine, endLine }` on the candidate's `sites`, including sites in files not reviewed this run — already refactor-approved files among them. Those files are not re-reviewed and their manifest entries are not created or changed. Candidates in different files that are one pattern merge into one proposal.
+**Under `--agents N`:** each request is `buildShardRequest({ ..., refactor: true })` — refactor criteria in place of the Step 5 criteria, no domain questions, candidates in its shard only. After `mergeShardResults()` the parent runs the all-files scan over the merged findings, since a reviewer never reads outside its shard.
+### Refactor filing
+Step 8 as written, every call `file-issue.js --manifest .code-review-refactor-manifest.json` (`--check-duplicates`, `--enqueue`, filing, `--list`), so numbers land in the refactor manifest's `issueRefs`. A refactor proposal files as an `enhancement` whose `Files to modify:` lists every site Step 6b found. A noticed bug or security problem is offered alongside as a `bug`. Nothing is filed unless the user chooses it; skipping every entry is a complete answer.
+### Refactor report
+`Construction/Code-Reviews/YYYY-MM-DD-refactor.md`: Step 9's sections, plus each proposal with criterion, sites (marking those in files not reviewed this run) and issue number, and a **Noticed bugs** section.
+### Refactor manifest update
+Step 10 items 1–6 apply to `.code-review-refactor-manifest.json`, `criteria.contentHash` replacing `charter.contentHash`, no `domains`; entries change only for files reviewed this run. A refactor run never writes or changes `lastDiffReview` — it does not open `.code-review-manifest.json` — because a refactor-only pass is not the full review the Release Review Gate requires. `--refactor --diff` → write the refactor manifest's own `lastDiffRun` (fields per the schema), replacing any previous. Step 10a does not run: manifest and report are left for the user to commit.
 ## Release Review Gate
 Branch Diff Review Gate of `/prepare-release` and `/prepare-beta` (each Step 2.1), stated once so they cannot drift (#3230). Each keeps its heading, `--skip-review` handling, a pointer here and its unreadable-file STOP, passing `<command>` = `prepare-release` or `prepare-beta` (named by every STOP message below).
 Refuses a release or beta whose branch carries an unreviewed change or an introduced high-severity finding. Runs in Phase 2, before Phase 3 edits any version file or CHANGELOG and before any tag.

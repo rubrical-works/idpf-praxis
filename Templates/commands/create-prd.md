@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Transform a proposal into an Agile PRD using the IDPF framework.
 argument-hint: "<issue-number> | --extract [<directory>] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -157,6 +157,15 @@ Re-read `.claude/metadata/ac-feasibility-prompts.json`. For each AC produced in 
 **Do not proceed to Phase 5 until every out-of-phase AC is dropped or annotated.** Blocking rather than warning-only because a PRD AC is not authored once: `/create-backlog` materializes it into story bodies, so one unannotated out-of-phase PRD AC becomes one in every inheriting story, each deadlocking its own `in_review`. `/bug` and `/enhancement` warn instead — one issue from free text, no fan-out.
 
 **"Document updated" AC (#3646).** When each story's scope changes the project's architecture, constraints, test strategy or a key decision, **ASK USER** whether to add an AC naming the living document it updates — `Project/Architecture.md`, `Project/Constraints.md`, `Project/Test-Strategy.md` or a `Construction/Design-Decisions/` entry (e.g. `- [ ] Project/Architecture.md updated to describe <the change>`). An AC may name `CHARTER.md` only when the work introduces a new kind of entity or adopts a new technology: a new Key Entities or Tech Stack row, with no count and no version. Never an AC updating a count or a version in `CHARTER.md` — counts are derived, versions live in manifests; `/review-issue` flags one (`charter-ac-stored-value`). Declined → nothing added.
+### Phase 4.7: Story Dependencies (#3785)
+Every story gets a `**Depends on:**` line (prd-template field) — `Story X.Y, Story X.Z` or `none`. `/create-backlog` copies it into each story issue and `/work --nonstop`/`--concurrent` order members from it, so an omitted edge starts a story before what it uses exists.
+**The inference rule lives in one place — `.claude/scripts/shared/lib/story-dependency-inference.js` (`RULE`) — never restated here.** Run it on the final stories (after Phase 4.6): write the draft `### Story X.Y` blocks to `.tmp-prd-stories-{random}.md` (suffix shelled out once, `05-windows-shell.md` § Naming the temp file), then:
+```bash
+node .claude/scripts/shared/lib/story-dependency-inference.js --prd $STORIES_FILE
+```
+`rm` it after. JSON: `candidates` (per story: `on`, `artifact`, `ac`, `reason`), `edges`, `lines` (formatted value per story), `ok`, `cycle`, `message`. Add any edge the helper cannot see (behavior extended without a backticked artifact) by the same rule, and say which edges are yours. `unknown` (stated edge to a story not in the PRD) and `unreadable` (stated entry that is not a story id) are shown to the user with the edges — an unreadable line stays verbatim in `lines`, never rewritten as `none`.
+**Show the inferred edges for confirmation** before Phase 5: print a table (story, `Depends on`, reason), then **ASK USER** via `AskUserQuestion` to accept or name corrections. Write the **confirmed** line into every story. `none` is written only when no edge applies to that story — it asserts no dependency, never "unknown".
+**Cycle → report, never write.** The helper checks the graph that would be written (a stated line where present, else inferred edges), so put the confirmed lines into the scratch stories and re-run before writing. `ok: false` → print `message` (names every story in the cycle), ask which edge to drop; no Phase 5 until a re-run returns `ok: true`. A cyclic `**Depends on:**` set is never written to the PRD.
 ### Phase 5: Priority Validation
 | Priority | Distribution |
 |----------|--------------|
@@ -275,7 +284,7 @@ A TDD test plan has been generated for **{Name}**.
 - [ ] Integration points between epics mapped
 - [ ] E2E scenarios cover critical journeys
 - [ ] Coverage targets are realistic
-- [ ] No AC names an aspirational verification mechanism (#2424 gate — all named mechanisms already in use in this repo; see `.claude/metadata/ac-feasibility-prompts.json`)
+- [ ] No AC names an aspirational verification mechanism (all named mechanisms already in use in this repo; see `.claude/metadata/ac-feasibility-prompts.json`)
 
 ## Instructions
 
@@ -435,6 +444,7 @@ fi
 - [ ] All user stories have acceptance criteria
 - [ ] Requirements prioritized (P0-P2)
 - [ ] Priority distribution valid (or <6 stories)
+- [ ] Every story has a confirmed `**Depends on:**` line; no cycle (Phase 4.7)
 - [ ] Technical Notes separated from stories
 - [ ] Out of scope explicitly stated
 - [ ] Open questions flagged

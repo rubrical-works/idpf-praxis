@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Prepare a release by opening a PR, merging to main, and tagging, using the IDPF framework.
 argument-hint: "[version] [--skip-coverage] [--skip-review] [--dry-run] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -199,12 +199,22 @@ Resolve the suites with `resolveSuites()` from `.claude/scripts/shared/lib/test-
 - **No declared suite (`source: "none"`), or a suite whose selector chose no test (`selectedNone`), is reported, never treated as a pass.** Name the untested files and continue to the push: the PR run is their first test. An unreadable `framework-config.json` (`source: "unreadable"`) STOPs, as at Step 4f.
 ```bash
 if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+  OPEN_PRS=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq length) \
+    || { echo "STOP: gh pr list failed (exit $?); cannot tell whether a PR to main is open" >&2; exit 1; }
+  case "$OPEN_PRS" in
+    ''|*[!0-9]*) echo "STOP: gh pr list returned \"$OPEN_PRS\", not a PR count" >&2; exit 1 ;;
+  esac
+  if [ "$OPEN_PRS" = "0" ]; then
+    gh pr create --base main --head "$BRANCH" --title "Release $VERSION"
+  fi
   git push
 else
   git push -u origin "$BRANCH"
 fi
 ```
 **One push publishes the branch (#3364).** A branch tracking an upstream gets the bare `git push`; a release branch just auto-created has none, so this push publishes it with the prep commit and sets the upstream.
+
+**The PR opens before the prep push when the branch tracks an upstream (#3776)** — on the already-pushed head, then the prep commit is pushed into it, so its `pull_request` run tests the head the release merges. Where push-triggered workflows skip a branch with an open PR to `main`, the prep-commit push run does no work instead of starting only to be cancelled. A branch with no upstream keeps push-then-PR: its first push cannot have a PR, and Step 4.1 opens it. A failed open-PR lookup STOPs before the push, as at Step 4.1.
 
 **Stage only what exists (#2602).** `git add` on a missing pathspec is **fatal** (exit 128) — nothing staged, no commit. `README-DIST.md` exists here and in almost no consuming project. Adjust the path list to this project's release files; the existence guard makes an extra entry harmless, not a reason to leave a wrong one.
 
@@ -213,16 +223,24 @@ fi
 <!-- USER-EXTENSION-START: post-prepare -->
 <!-- USER-EXTENSION-END: post-prepare -->
 
-**CRITICAL:** Do not proceed until CI passes.
+**CI is gated on the PR (#3776).** Do not wait for CI here: continue to Step 4.1. The PR's checks run on this head and gate the release — Step 4.2 shows them before the merge is approved.
 
 ## Phase 4: Git Operations
 
 ### Step 4.1: Create PR to Main
 
+Skip the create when Step 3.2 already opened the PR (a branch that tracked an upstream):
 ```bash
-gh pr create --base main --head $(git branch --show-current) \
-  --title "Release $VERSION"
+OPEN_PRS=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq length) \
+  || { echo "STOP: gh pr list failed (exit $?); cannot tell whether a PR to main is open" >&2; exit 1; }
+case "$OPEN_PRS" in
+  ''|*[!0-9]*) echo "STOP: gh pr list returned \"$OPEN_PRS\", not a PR count" >&2; exit 1 ;;
+esac
+if [ "$OPEN_PRS" = "0" ]; then
+  gh pr create --base main --head "$BRANCH" --title "Release $VERSION"
+fi
 ```
+**A failed lookup STOPs.** `gh pr list` failing (auth, network, rate limit) or printing anything but a count → report its error and STOP; an unanswered lookup never reads as "a PR is already open", which would leave the release with no PR. Create only on a confirmed `0`.
 
 <!-- USER-EXTENSION-START: post-pr-create -->
 <!-- USER-EXTENSION-END: post-pr-create -->

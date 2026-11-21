@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -280,6 +280,81 @@ function expandPlaceholders(template, files) {
 }
 
 /**
+ * The longest command line the platform's shell accepts, or null for none
+ * worth enforcing (#3778).
+ *
+ * Callers spawn these commands with `shell: true`. On win32 that is cmd.exe,
+ * which refuses a line over 8,191 characters with "The command line is too
+ * long." and exit 1 — before any test starts. POSIX shells are bounded by
+ * ARG_MAX (hundreds of KB to MB), far past any selection, so no limit is
+ * declared there and nothing is split.
+ */
+const COMMAND_LINE_LIMITS = Object.freeze({ win32: 8191 });
+
+/**
+ * Head-room under the limit for the wrapper Node adds around a `shell: true`
+ * command on win32 (`/d /s /c "…"`), so a split invocation stays under the
+ * limit as cmd.exe counts it, not only as this helper does.
+ */
+const SHELL_WRAPPER_RESERVE = 32;
+
+/** cmd.exe's refusal of an over-limit line, as it prints it. */
+const TOO_LONG_RE = /The command line is too long\./i;
+
+function commandLineLimit(platform = process.platform) {
+  return Object.prototype.hasOwnProperty.call(COMMAND_LINE_LIMITS, platform) ? COMMAND_LINE_LIMITS[platform] : null;
+}
+
+/**
+ * Expand a `{files}` template into as many commands as the platform's
+ * command-line limit needs (#3778).
+ *
+ * Under the limit, or where no limit applies, this is exactly one
+ * `expandPlaceholders` call. Over it, the files are cut into consecutive,
+ * order-preserving groups, each expanding under the limit, so every file runs
+ * once and no command is one the shell will refuse. A single file too long
+ * on its own still gets its own command: the split cannot shorten it, and
+ * `classifyRunResult` names the refusal rather than calling it a test failure.
+ *
+ * Only `{files}` is split: `{dir}`, `{stem}` and `{package}` come from the
+ * first file, so a template using them alone is never long enough to need it.
+ *
+ * @throws {Error} From `quoteShellPath`, when a value is not shell-safe.
+ * @returns {{command: string, files: string[]}[]}
+ */
+function expandChunked(template, files, platform) {
+  const whole = expandPlaceholders(template, files);
+  const limit = commandLineLimit(platform);
+  if (limit === null || whole.length < limit - SHELL_WRAPPER_RESERVE || !template.includes('{files}')) {
+    return [{ command: whole, files }];
+  }
+  const budget = limit - SHELL_WRAPPER_RESERVE;
+  // Each further file adds one separator plus its quoted form per `{files}`.
+  const perFile = template.split('{files}').length - 1;
+  const groups = [];
+  let current = [];
+  let length = 0;
+  for (const file of files) {
+    if (current.length === 0) {
+      current = [file];
+      length = expandPlaceholders(template, current).length;
+      continue;
+    }
+    const added = perFile * (1 + quoteShellPath(file, 'changed file').length);
+    if (length + added >= budget) {
+      groups.push(current);
+      current = [file];
+      length = expandPlaceholders(template, current).length;
+    } else {
+      current.push(file);
+      length += added;
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups.map((group) => ({ command: expandPlaceholders(template, group), files: group }));
+}
+
+/**
  * Resolve a project's declaration into a normalized suite list.
  *
  * @param {string} [cwd] - Project root
@@ -368,8 +443,11 @@ function resolveSuites(cwd = process.cwd()) {
  *   passes them to `sweepInvocations` — narrows a selector-declaring suite to
  *   the tests its selector chose; each run then carries `selection` and an
  *   empty selection is listed in `selectedNone`. Absent, nothing changes.
+ *   A `{files}` expansion longer than `platform`'s command line (#3778) is
+ *   split into consecutive runs, each with its own `files` and a
+ *   `chunk: {index, of}`; callers already run every entry of `runs`.
  */
-function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false, selections } = {}) {
+function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false, selections, platform = process.platform } = {}) {
   const runs = [];
   const warnings = [];
   const notRun = [];
@@ -429,11 +507,11 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
 
     let fallback = null;
     if (selectionAware) {
-      const picked = selectedRun(suite, selections[suite.id], changedFiles);
-      if (picked.run) {
+      const picked = selectedRun(suite, selections[suite.id], changedFiles, platform);
+      if (picked.runs) {
         // The selector read every changed file, so it reached them all.
         changedFiles.forEach((f) => matchedAny.add(f));
-        runs.push(picked.run);
+        runs.push(...picked.runs);
         continue;
       }
       if (picked.none) {
@@ -459,17 +537,17 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
     }
     files.forEach((f) => matchedAny.add(f));
 
-    let command;
+    let chunks;
     let narrowed = false;
     if (mode === DEFAULT_SCOPING_MODE) {
-      command = suite.full;
+      chunks = [{ command: suite.full, files }];
     } else {
       const template = scoped.command || suite.full;
       // A template expanding no placeholder runs the whole suite whatever
       // changed — the Merge-Back Review Gate defers such a run (#3159).
       narrowed = PLACEHOLDER_RE.test(template);
       try {
-        command = expandPlaceholders(template, files);
+        chunks = expandChunked(template, files, platform);
       } catch (err) {
         // `notRun` is the structured record consumers read (#3175); the
         // warning is for display and its wording is not a contract.
@@ -479,9 +557,12 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
       }
     }
 
-    const run = { suiteId: suite.id, mode, command, narrowed, files, cwd: suiteCwd(suite), kind: suite.kind };
-    if (fallback) run.selection = fallback;
-    runs.push(run);
+    chunks.forEach((chunk, i) => {
+      const run = { suiteId: suite.id, mode, command: chunk.command, narrowed, files: chunk.files, cwd: suiteCwd(suite), kind: suite.kind };
+      if (chunks.length > 1) run.chunk = { index: i + 1, of: chunks.length };
+      if (fallback) run.selection = fallback;
+      runs.push(run);
+    });
   }
 
   const merged = collapseRuns(runs, (run) => run.command, (into, from) => {
@@ -518,9 +599,12 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
  * back to today's touched-tree narrowing — a scoped run is a feedback loop, and
  * Step 4f still sweeps in full. Every fallback is reported, never silent.
  *
- * @returns {{run?: object, none?: object, fallback?: object}} exactly one key
+ * A selection longer than the platform's command line is split into several
+ * runs, each carrying the same suite id and selection plus its `chunk` (#3778).
+ *
+ * @returns {{runs?: object[], none?: object, fallback?: object}} exactly one key
  */
-function selectedRun(suite, result, changedFiles) {
+function selectedRun(suite, result, changedFiles, platform) {
   const touched = (selection) => ({
     fallback: { mode: 'touched', fallback: selection.fallback, report: `touched tree — ${selection.report.replace(/^full — /, '')}` },
   });
@@ -536,24 +620,26 @@ function selectedRun(suite, result, changedFiles) {
   if (typeof template !== 'string' || !template.includes('{files}')) {
     return touched({ fallback: 'no-files-placeholder', report: 'the scoped command has no {files} placeholder to carry every selected test' });
   }
-  let command;
+  let chunks;
   try {
-    command = expandPlaceholders(template, selection.tests);
+    chunks = expandChunked(template, selection.tests, platform);
   } catch (err) {
     return touched({ fallback: 'selection-unsafe', report: `a selected test is not shell-safe: ${err.message}` });
   }
-  const { tests, ...reported } = selection;
+  const reported = { ...selection };
+  delete reported.tests;
   return {
-    run: {
+    runs: chunks.map((chunk, i) => ({
       suiteId: suite.id,
       mode: (suite.scoped || {}).mode || DEFAULT_SCOPING_MODE,
-      command,
+      command: chunk.command,
       narrowed: true,
-      files: tests,
+      files: chunk.files,
       cwd: suiteCwd(suite),
       kind: suite.kind,
       selection: reported,
-    },
+      ...(chunks.length > 1 ? { chunk: { index: i + 1, of: chunks.length } } : {}),
+    })),
   };
 }
 
@@ -741,6 +827,11 @@ function resolveSelection(suite, result, changedFiles) {
  * reported as a full one. An empty selection runs nothing and is listed in
  * `selectedNone`, never in `runs` (it is not a pass) or `skipped`.
  *
+ * A selected command longer than `platform`'s command line (#3778 — cmd.exe's
+ * 8,191 characters on win32) is split into consecutive runs, each carrying
+ * `chunk: {index, of}`; together they run every selected test once. Each part
+ * is reported on its own line, never collapsed into one verdict.
+ *
  * @returns {{runs: object[], collapsed: {suiteIds: string[]}[], manualOnly: string[],
  *            skipped: string[], selectedNone: object[], warnings: string[]}} A run
  *   carries `phases`, ordered `prepare` then `full`, so a caller cannot
@@ -748,7 +839,7 @@ function resolveSelection(suite, result, changedFiles) {
  *   is not the code's. Suites whose phases, `cwd` and selection match share
  *   one run carrying every id (#3025); `collapsed` names each merge.
  */
-function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], selections = {}, source, error } = {}) {
+function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], selections = {}, source, error, platform = process.platform } = {}) {
   // #3266: a resolution that could not read the config blocks the sweep. Run
   // nothing, and say why — never the "nothing declared" report, which blamed
   // the declaration for a parse error and let in_review proceed unverified.
@@ -784,7 +875,7 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], 
       selectedNone.push({ suiteId: suite.id, report: selection.report, reason: selection.reason, verdict: 'selected none — ran nothing, not a pass' });
       continue;
     }
-    let command = suite.full;
+    let commands = [suite.full];
     if (selection.mode === 'selected') {
       const template = (suite.scoped || {}).command;
       if (typeof template !== 'string' || !PLACEHOLDER_RE.test(template)) {
@@ -795,7 +886,7 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], 
         selection = { mode: 'full', fallback: 'no-files-placeholder', report: 'full — the scoped command has no {files} placeholder to carry every selected test' };
       } else {
         try {
-          command = expandPlaceholders(template, selection.tests);
+          commands = expandChunked(template, selection.tests, platform).map((c) => c.command);
         } catch (err) {
           selection = { mode: 'full', fallback: 'selection-unsafe', report: `full — a selected test is not shell-safe: ${err.message}` };
         }
@@ -803,13 +894,20 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], 
     }
     const { tests, ...reported } = selection;
 
-    const phases = [];
-    if (typeof suite.prepare === 'string' && suite.prepare.trim() !== '') {
-      phases.push({ phase: 'prepare', command: suite.prepare });
-    }
-    phases.push({ phase: 'full', command });
-
-    runs.push({ suiteId: suite.id, phases, cwd: suiteCwd(suite), kind: suite.kind, selection: reported });
+    // #3778: a selection split to fit the command line is one run per part,
+    // each carrying the suite id and selection. `prepare` belongs to the first
+    // part only — it builds the tree once — so a failed prepare means no part
+    // of this suite runs, exactly as for an unsplit run.
+    commands.forEach((command, i) => {
+      const phases = [];
+      if (i === 0 && typeof suite.prepare === 'string' && suite.prepare.trim() !== '') {
+        phases.push({ phase: 'prepare', command: suite.prepare });
+      }
+      phases.push({ phase: 'full', command });
+      const run = { suiteId: suite.id, phases, cwd: suiteCwd(suite), kind: suite.kind, selection: reported };
+      if (commands.length > 1) run.chunk = { index: i + 1, of: commands.length };
+      runs.push(run);
+    });
   }
 
   const merged = collapseRuns(runs, (run) => [run.phases.map((p) => [p.phase, p.command]), run.selection.report]);
@@ -836,9 +934,26 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], 
  * absent is not misread as a failed build. `spawnError` and `runner` are
  * optional: a call without them behaves exactly as before.
  *
- * @returns {{verdict: string, phase: string, blocksReview: boolean, runner?: string|null}}
+ * A command the shell refused to start is a fifth (#3778). cmd.exe answers a
+ * line over 8,191 characters with "The command line is too long." and exit
+ * 1 — the code a test failure uses — so without this check the verdict blamed
+ * the tests for a command that never started. It is recognized from the
+ * captured `output`, or, on a platform with a limit, from a non-zero exit of
+ * a `command` longer than it; the verdict names the limit and the length.
+ * Checked first: neither the build nor the tests ran.
+ *
+ * @returns {{verdict: string, phase: string, blocksReview: boolean, runner?: string|null,
+ *            length?: number, limit?: number}}
  */
-function classifyRunResult({ phase, exitCode, spawnError, command, runner } = {}) {
+function classifyRunResult({ phase, exitCode, spawnError, command, runner, output, platform = process.platform } = {}) {
+  if (exitCode !== 0 && exitCode !== undefined) {
+    const refused = typeof output === 'string' && TOO_LONG_RE.test(output);
+    const limit = commandLineLimit(platform);
+    const length = typeof command === 'string' ? command.length : null;
+    if (refused || (limit !== null && length !== null && length > limit)) {
+      return { verdict: 'command line too long', phase, blocksReview: true, length, limit: limit || COMMAND_LINE_LIMITS.win32 };
+    }
+  }
   if (exitCode === 127 || spawnError === 'ENOENT') {
     const name = runner || firstToken(command);
     return { verdict: 'runner not found', phase, blocksReview: true, runner: name || null };
@@ -864,6 +979,7 @@ module.exports = {
   EXCLUSIVE_BY_ROLE,
   WORKTREE_PREFIX,
   classifyRunResult,
+  commandLineLimit,
   firstToken,
   SCOPING_MODES,
   DEFAULT_SCOPING_MODE,

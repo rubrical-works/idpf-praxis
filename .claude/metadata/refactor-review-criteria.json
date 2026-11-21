@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "description": "Criteria for `/code-review --refactor` (#3797). Applied in place of the Step 5 charter criteria and the Step 5c domain questions. `wideScan: true` means a match triggers the all-files scan for other sites of the same pattern.",
+    "schema": ".claude/metadata/refactor-review-criteria-schema.json"
+  },
+  "version": 1,
+  "criteria": [
+    {
+      "id": "duplication",
+      "name": "Duplication",
+      "lookFor": "Blocks of logic, literals or structure repeated within the file or matching code elsewhere — copy-pasted functions, parallel switch/if ladders, repeated constant tables — that one shared definition could replace.",
+      "wideScan": true
+    },
+    {
+      "id": "extractable-helper",
+      "name": "Extractable helper",
+      "lookFor": "An inline sequence with a nameable purpose (parse, normalize, format, resolve a path, read-and-validate a file) that is, or is likely to be, written again elsewhere and would read better as one named helper.",
+      "wideScan": true
+    },
+    {
+      "id": "complexity",
+      "name": "Complexity",
+      "lookFor": "Functions that are long, deeply nested or carry many branches or flags, where splitting, early returns or a lookup table would make the control flow easier to follow without changing behavior.",
+      "wideScan": false
+    },
+    {
+      "id": "naming",
+      "name": "Naming",
+      "lookFor": "Identifiers whose names mislead or say nothing about what they hold or do — abbreviations, stale names after a behavior change, one concept under several names — where a rename alone would clarify the code.",
+      "wideScan": false
+    },
+    {
+      "id": "dead-code",
+      "name": "Dead code",
+      "lookFor": "Unreachable branches, unused functions, exports, parameters, variables or imports, and commented-out code that nothing references and that can be removed without changing behavior.",
+      "wideScan": false
+    },
+    {
+      "id": "convention-drift",
+      "name": "Convention drift",
+      "lookFor": "Code that departs from a pattern the rest of the codebase follows for the same job — a hand-rolled version of an existing shared helper, a different error-reporting shape, a different file-reading or argument-parsing idiom.",
+      "wideScan": true
+    }
+  ]
+}

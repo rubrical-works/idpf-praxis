@@ -23,6 +23,8 @@ IDPF commands fall into two categories based on what they actually do at the sys
 
 The split is clean. Most of the review pipeline is API work. Most of the implementation pipeline is git work. They can run in parallel.
 
+Within a single session, `/review-issue` already parallelizes a batch: `/review-issue #105 #106 #107` (or `/review-issue --status ready`) reviews the issues concurrently, one reviewer agent each, and asks any subjective questions before the reviewers start. Separate review sessions are still the way to keep reviewing while another session holds git.
+
 ---
 
 ## What's Safe to Run Concurrently
@@ -156,7 +158,7 @@ The setup above used to rely on you remembering which session was doing what. Se
 |---|---|
 | `/work` | Work started on an issue; work completed, with the commits it produced |
 | `/done` | A push started; how CI resolved for it (or that the push was rejected) |
-| `/review-issue` | A review started; a review passed clean |
+| `/review-issue` | A review started; its verdict — passed clean, or findings left to resolve |
 | `/resolve-review` | Findings are being resolved |
 
 Every opener has a closer, so a session that hears "work started on #101" will also hear when #101 reaches review. The announcements are advisory. Nothing waits for delivery, a session that cannot be reached is skipped, and the receiving session decides whether to accept the message. The sender is told a message was dispatched, never that it was read.

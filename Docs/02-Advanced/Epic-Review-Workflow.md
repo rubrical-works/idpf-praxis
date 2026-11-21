@@ -6,17 +6,17 @@ How `/review-issue` handles epics — the recursive review cascade, auto-generat
 
 ## Recursive Epic Review
 
-The epic review workflow is uniquely deep — it fetches and evaluates each sub-issue against story criteria, auto-generates proposed solutions for any missing ones, updates each sub-issue body, and then propagates the `reviewed` label to all children. This is a "review cascade" that ensures the entire epic tree is review-ready, not just the parent.
+The epic review workflow is uniquely deep — an epic expands into its sub-issues, and each one is reviewed as its own issue, with its own review comment, proposed solution where one is missing, and its own `reviewed` or `pending` label. This is a "review cascade" that ensures the entire epic tree is review-ready, not just the parent — and a failing story stays `pending` under a passing epic.
 
 When you run `/review-issue` on an epic, the command:
 
-1. Evaluates the epic itself (common + epic-specific criteria)
-2. Fetches all sub-issues via `gh pmu sub list`
-3. Reviews each sub-issue against story criteria (user story format, ACs, template compliance, test coverage)
-4. Auto-generates proposed solutions for stories missing them (Step 3b-ii)
-5. Updates each sub-issue body with the proposed solution and `**Reviews:** N`
-6. Propagates the `reviewed` label to all sub-issues
-7. Scans `Construction/` for design decisions and tech debt linked to sub-issues
+1. Fetches all sub-issues via `gh pmu sub list`
+2. Reviews each sub-issue against story criteria (user story format, ACs, template compliance, test coverage) — children first, in ascending number; concurrently by default, like any multi-issue run, or one at a time under `--sequential`
+3. Auto-generates proposed solutions for stories missing them
+4. Updates each sub-issue body with the proposed solution and `**Reviews:** N`, and labels each sub-issue from its own findings
+5. Reviews the epic itself last (common + epic-specific criteria), so its sub-issue verdict reflects which children were actually reached
+6. Scans `Construction/` for design decisions and tech debt linked to sub-issues
+7. Closes with a roster: each child reviewed with its verdict, each child not reached with its reason (for example the expansion cap, set by `reviewExpansion.expansionCap` in `framework-config.json`, default 20), and the command that finishes the set
 
 ---
 
@@ -90,6 +90,8 @@ It proposes rather than applies because the derivation is deterministic but know
 
 A common pattern in PRD-derived backlogs: the PRD's sequential story numbering (e.g., 1.1-1.7) implies an implementation order, but the GitHub issues don't formally encode this with `Blocks`/`Blocked by` relationships.
 
+The `**Depends on:**` line in each story body is the framework's own encoding. `/create-prd` infers each story's edges from its acceptance criteria (a story that consumes what another story creates depends on it), asks you to confirm them, and refuses to write a cycle; `/create-backlog` copies the confirmed lines into the story issues as issue numbers, and offers the same inference for an older PRD whose stories state none; `/add-story` infers them for a new story among its siblings. `/work --nonstop` and `--concurrent` order stories from these lines.
+
 | Mode | Dependency Handling |
 |------|---------------------|
 | **Solo** | Implicit ordering is fine — the developer knows the sequence from the PRD numbering |
@@ -104,13 +106,14 @@ The epic review flags this as a warning (not a blocker) in solo mode, and would 
 
 ```
 /review-issue #1589 (epic with 7 stories)
-  ├── Evaluate epic: common + epic criteria → ✅
   ├── Fetch sub-issues: gh pmu sub list → 7 found
-  ├── Review #1590: story criteria + auto-generate solution → ✅
-  ├── Review #1591: story criteria + auto-generate solution → ✅
+  ├── Review #1590: story criteria + auto-generate solution → reviewed
+  ├── Review #1591: story criteria + auto-generate solution → reviewed
   ├── ...
-  ├── Review #1596: story criteria + auto-generate solution → ✅
+  ├── Review #1596: story criteria + auto-generate solution → reviewed
+  │     (each child gets its own review comment and label)
+  ├── Evaluate epic: common + epic criteria, 7 of 7 children reached → ✅
   ├── Construction context: grep Construction/ → none found
-  ├── Post review comment with full findings table
-  └── Propagate 'reviewed' label to all 7 sub-issues
+  ├── Post the epic's review comment with full findings table
+  └── Roster: every child with its verdict, none left unreached
 ```

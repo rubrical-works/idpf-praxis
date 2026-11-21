@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -65,7 +65,26 @@ const POST_WORK = ['4', '4a', '4b', '4d', '4e', '4c', '4f', '5', 'event-2'];
 /** The entry points the gate and teardown steps name (#3158). */
 const GATE_CLI = 'node .claude/scripts/shared/lib/merge-back-gate.js';
 const TEARDOWN_CLI = 'node .claude/scripts/shared/lib/worktree-teardown.js';
+
+/**
+ * group-tier1's suite-reuse flags (#3774): each member's Tier 1 sha (its
+ * document is .tmp-gate-<N>-tier1.json) and --clean-merge, so a pass over the
+ * very tree Tier 1 tested reuses its suite results instead of repeating them.
+ */
+const SUITE_REUSE_FLAGS = ' --member-tier1-sha <N>=<its tier1 --out sha256> per member [--clean-merge if no merge conflicted]';
+
+/** How a post-merge step reports the suite reuse (#3774). */
+const SUITE_REUSE_NOTE = 'Report outcome.suiteReuse when present: the suites Tier 1 ran were reused, not re-run, over the tree it names; a conflict, a regenerated path or a different tree re-runs them (tier1.suiteReuse.reason), and deferred suites always run.';
 const ORCH_CLI = 'node .claude/scripts/shared/lib/concurrent-orchestration.js';
+
+/**
+ * merge-back's reclaim (#3799): after a clean merge it tears each merged
+ * member down itself. `--hold-tier1 N` keeps the member's tier1 file, which
+ * the post-merge pass reads for suite reuse (#3774) and a running sibling's
+ * outcome reads for scope (#3263); the scratch-clear steps remove it later.
+ */
+const holdTier1 = (nums) => nums.map((n) => ` --hold-tier1 ${n}`).join('');
+const RECLAIM_NOTE = 'Exit 0 → merge-back has reclaimed each merged member (its envelope\'s reclaimed and kept); the teardown step reports them.';
 
 /**
  * Parent step kinds that carry no `instruction`, each with the reason (#3158).
@@ -110,6 +129,9 @@ const MEMBER_TEMPLATES = Object.freeze({
   'gate-tier2': 'Read every file in .tmp-gate-{{n}}-tier1.json tier2.files, file by file, against #{{n}}\'s acceptance criteria, as tier2.instruction says. Record the read as pass or fail with the file and line of anything no AC asks for; the direct-work exemption never applies.',
   'gate-tier3': `Run \`${GATE_CLI} tier3-plan --issue {{n}} --tracker-tip {{tip}} --branch <#{{n}}'s wt/* branch>\`. tier3.skipped → report tier3.message (Tiers 1–2 still decide). Otherwise run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` (it clears an earlier review) and record its sha256, then spawn the reviewer Agent in slot {{slot}} as tier3.request.subagent_type with tier3.request.prompt exactly (not found → tier3.request.onNotFound) — never the implementer's summary. The reviewer writes its own review to .tmp-gate-{{n}}-tier3.json (#3204); never re-word it. \`outcome --post-comment\` posts the comment; write no root file. A change in the running members' \`runPaths\` but this member's review, snapshot or a sibling's gate files fails Tier 3 (#3220); one outside is reported as \`external\`, not failed.`,
   'gate-outcome': `Run \`${GATE_CLI} outcome --issue {{n}} --worktree <#{{n}}'s worktree path> --branch <#{{n}}'s wt/* branch> --tier1 .tmp-gate-{{n}}-tier1.json --tier1-sha <sha256 from #{{n}}'s tier1 --out envelope> --tier3 .tmp-gate-{{n}}-tier3.json --tree-before .tmp-gate-{{n}}-tree-before.txt --tree-before-sha <sha256 from #{{n}}'s tree-snapshot envelope>{{siblings}}{{ledger}}{{unswept}} --post-comment\` (\`--no-review\` for the three Tier 3 flags if Tier 3 was skipped; \`--fix-cycles 1\` on the re-run) — decideOutcome decides. A run ledger worktree spawned or torn down mid-review is tier3.runWorktrees, not a failure; an unledgered \`.tmp-wt-*\` still fails (#3729). action merge → it posted: report posted.url (postError → re-run; never a file); send-findings → SendMessage it to the same implementer (worktree intact), re-run every tier once — the one fix cycle; re-review → a reviewer-process failure (#3222), not a fix cycle: when it carries outsideContract (#3226), first report and clear those paths — remove or restore this run's writes; another session's path clears when it settles, never by deleting or reverting it — and never re-snapshot over them; then run \`${GATE_CLI} tree-snapshot --out .tmp-gate-{{n}}-tree-before.txt --clear .tmp-gate-{{n}}-tier3.json\` again, re-spawn the reviewer in slot {{slot}} (same tier3.request.prompt) and re-run this outcome with the new sha and \`--review-retries 1\` (a second halts, the reviewer's); halt → print report: the --nonstop halt, worktree kept, never merged. After compaction add \`--resumed\`: the re-run IS the cycle.`,
+  // #3774: a group's post-merge pass (#3141), one template for every group.
+  // {{state}} and {{unswept}} are pre-rendered flags; {{members}} the --member list.
+  'post-merge-pass': `Run \`${GATE_CLI} group-tier1{{state}} --base <tip recorded at group {{group}} start> {{members}} --group {{group}}{{unswept}} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]${SUITE_REUSE_FLAGS}\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those. ${SUITE_REUSE_NOTE}`,
 });
 
 /**
@@ -582,11 +604,11 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     });
     steps.push({
       kind: 'merge-back', step: 'merge-back', owner: 'parent', group, order: [...groupMembers],
-      instruction: `On the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> ${groupMembers.map((n) => `--member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>`).join(' ')}${unsweptFlags()}\` — members merge --no-ff in that order (${groupMembers.map((n) => `#${n}`).join(', ')}), each onto the current tip. Exit 1 → print report: a residual conflict, or members sharing a path outside their declared scope (check undeclared-overlap, before any merge — #3272), halts the run, nothing later merges, every worktree is kept.`,
+      instruction: `On the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> ${groupMembers.map((n) => `--member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>`).join(' ')}${holdTier1(groupMembers)}${unsweptFlags()}\` — members merge --no-ff in that order (${groupMembers.map((n) => `#${n}`).join(', ')}), each onto the current tip. ${RECLAIM_NOTE} Exit 1 → print report: a residual conflict, or members sharing a path outside their declared scope (check undeclared-overlap, before any merge — #3272), halts the run, nothing later merges, every worktree is kept.`,
     });
     steps.push({
       kind: 'teardown', step: 'teardown', owner: 'parent', group, members: [...groupMembers],
-      instruction: `Tear down group ${group}'s worktrees with \`${TEARDOWN_CLI} --root <project-root> ${groupMembers.map((n) => `--worktree <#${n}'s worktree path>`).join(' ')}\` — never \`git worktree remove\` or rm -rf, which delete through the worktree's links. Each result names its branch: once a result is removed, delete that merged branch with \`git branch -d <branch>\` (it refuses an unmerged branch — leave that one and report it). A kept, halted or refused result is reported by path and its worktree left as it is.`,
+      instruction: teardownReport(`group ${group}`),
     });
     // Exclusive suites and Step 4f run on the tracker branch only once no
     // worktree of the group exists (#3132): worktrees sit under the project
@@ -627,9 +649,17 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     // members' diffs ∪ the runner's regenerated paths ∪ the members' 4d/4e
     // commits — a regenerated file no member's diff named is reviewed here —
     // before the group is reported.
+    // #3774: a run-level template, as the per-member gate steps are (#3280) —
+    // the suite-reuse flags would otherwise repeat once per group.
     steps.push({
       kind: 'post-merge-pass', step: 'post-merge-pass', owner: 'parent', group, members: [...groupMembers],
-      instruction: `Run \`${GATE_CLI} group-tier1${stateFile ? ` --state ${stateFile}` : ''} --base <tip recorded at group ${group} start> ${groupMembers.map((n) => `--member ${n}`).join(' ')} --group ${group}${unsweptFlags()} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 once more, in the parent: this is Tier 1 over the tracker range, skipping the merge-back merges. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2; a regenerated path no member's diff named is read too). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those.`,
+      template: 'post-merge-pass',
+      params: {
+        group,
+        state: stateFile ? ` --state ${stateFile}` : '',
+        members: groupMembers.map((n) => `--member ${n}`).join(' '),
+        unswept: unsweptFlags(),
+      },
     });
     if (!nonstop) {
       steps.push({ kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers] });
@@ -772,7 +802,7 @@ function nextSteps(runState = {}) {
     const priorFlags = (runState.batched || []).map((n) => ` --prior ${n}`).join('');
     steps.push({
       kind: 'teardown', step: 'teardown', owner: 'parent', batch: id, members: [...fresh],
-      instruction: `Tear down batch ${id}'s worktrees with \`${TEARDOWN_CLI} --root <project-root> ${fresh.map((n) => `--worktree <#${n}'s worktree path>`).join(' ')}\` — never \`git worktree remove\` or rm -rf, which delete through the worktree's links. Each result names its branch: once a result is removed, delete that merged branch with \`git branch -d <branch>\` (it refuses an unmerged branch — leave that one and report it). A kept, halted or refused result is reported by path and its worktree left as it is.`,
+      instruction: teardownReport(`batch ${id}`),
     });
     steps.push({
       kind: 'leftover-check', step: 'leftover-check', owner: 'parent', batch: id,
@@ -794,7 +824,7 @@ function nextSteps(runState = {}) {
     for (const n of fresh) for (const sid of PRE) steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n, batch: id });
     steps.push({
       kind: 'post-merge-pass', step: 'post-merge-pass', owner: 'parent', batch: id, members: [...fresh],
-      instruction: `Run \`${GATE_CLI} batch-range ${fresh.map((n) => `--member ${n}`).join(' ')} --head <batch ${id}'s last commit: its last merge-back, or the regenerated-commit commit after it>\` with \`--base-of <N>=<tip>\` for every member started so far, in the order the tips were recorded; its base is the earliest worktree-creation tip among ${list(fresh)}. Then run \`${GATE_CLI} group-tier1${runState.stateFile ? ` --state ${runState.stateFile}` : ''} --base <earliest worktree-creation tip among ${list(fresh)}> --head <batch ${id}'s last commit> ${fresh.map((n) => `--member ${n}`).join(' ')} --group ${id}${priorFlags}${unswept} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]\` — Tiers 1–2 over this batch's own range: a later commit is outside it, and an earlier batch's members (--prior) are skipped, never failed. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those. Record batch ${id}'s members as passed once their reports below are printed.`,
+      instruction: `Run \`${GATE_CLI} batch-range ${fresh.map((n) => `--member ${n}`).join(' ')} --head <batch ${id}'s last commit: its last merge-back, or the regenerated-commit commit after it>\` with \`--base-of <N>=<tip>\` for every member started so far, in the order the tips were recorded; its base is the earliest worktree-creation tip among ${list(fresh)}. Then run \`${GATE_CLI} group-tier1${runState.stateFile ? ` --state ${runState.stateFile}` : ''} --base <earliest worktree-creation tip among ${list(fresh)}> --head <batch ${id}'s last commit> ${fresh.map((n) => `--member ${n}`).join(' ')} --group ${id}${priorFlags}${unswept} --epic <root> [--own <the regenerated-commit sha> --regenerated <path> for each path it committed: the reconcile, deferred-skills and regenerateAfterSkills paths] [--own <sha>=<N> per 4d/4e commit]${SUITE_REUSE_FLAGS}\` — Tiers 1–2 over this batch's own range: a later commit is outside it, and an earlier batch's members (--prior) are skipped, never failed. Then read every path in postMergeSet({memberDiffs, regenerated}) yourself (Tier 2). outcome.action halt, or a failed read, halts on the second-review-fail terms; add --kept-worktree <path> for each worktree the teardown step kept, so the report names only those. ${SUITE_REUSE_NOTE} Record batch ${id}'s members as passed once their reports below are printed.`,
     });
     fresh.forEach((n, i) => {
       for (const sid of POST) steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n, batch: id });
@@ -884,7 +914,7 @@ function nextSteps(runState = {}) {
     });
     steps.push({
       kind: 'merge-back', step: 'merge-back', owner: 'parent', issue: n, order: [n],
-      instruction: `When #${n}'s outcome is merge: on the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> --member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>${unswept}\` onto the current tip. Exit 1 → print report: a residual conflict halts the run, nothing later merges, every worktree is kept. Otherwise record #${n} as merged and call nextSteps again — its slot is free.`,
+      instruction: `When #${n}'s outcome is merge: on the tracker branch, run \`${GATE_CLI} merge-back --tracker <tracker branch> --member ${n}:<#${n}'s wt/* branch>:<#${n}'s worktree path>${holdTier1([n])}${unswept}\` onto the current tip. ${RECLAIM_NOTE} Exit 1 → print report: a residual conflict halts the run, nothing later merges, every worktree is kept. Otherwise record #${n} as merged and call nextSteps again — its slot is free.`,
     });
   }
 
@@ -929,6 +959,18 @@ function nextSteps(runState = {}) {
 }
 
 const list = (nums) => (nums.length ? nums.map((n) => `#${n}`).join(', ') : 'none');
+
+/**
+ * The teardown step (#3799): a report of what merge-back already did, never
+ * an instruction to compose teardown commands. `merge-back` reclaims each
+ * merged member itself (merge-back-gate.js reclaimMerged — the re-check,
+ * worktree-teardown.js, the branch deletion and the member's scratch), and a
+ * halted merge-back reclaims nothing, so its worktrees stay for KEPT_WORKTREE.
+ * @param {string} label  'group N' or 'batch N'
+ */
+function teardownReport(label) {
+  return `Report ${label}'s teardown from its merge-back envelope — merge-back already did it; run nothing for a reclaimed member. Each entry in reclaimed: worktree torn down through worktree-teardown.js, its wt/* branch deleted (branchDeleted; a branchError is reported, never forced), its scratch cleared (cleared). Each entry in kept: report its worktreePath and reason — dirty, off the tracker, or a teardown that kept or halted — and leave it as it is; once resolved it is torn down with its command, \`${TEARDOWN_CLI} --root <project-root> --worktree <its worktree path>\` — never \`git worktree remove\` or rm -rf, which delete through the worktree's links. merge-back leaves a kept member's scratch in place.`;
+}
 
 /**
  * A member's scratch-file cleanup step (#3360), once it is merged and In

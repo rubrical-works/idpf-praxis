@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -677,12 +677,21 @@ function applyTestPlanApprovedBox({ issueNum, labels, body, deps = {} }) {
 const GATE_MARKERS_PATH = path.join(__dirname, '..', '..', 'metadata', 'ac-gate-markers.json');
 const QA_CONFIG_PATH = path.join(__dirname, 'lib', 'qa-config.json');
 
-function releaseGatePattern(markersPath = GATE_MARKERS_PATH) {
+/**
+ * The release-gate and QA-pointer patterns, both from ac-gate-markers.json.
+ * Throws on a missing file, bad JSON or an absent gate-release marker (#3465).
+ * A missing qa marker leaves `qa` null: no box is then read as a pointer.
+ */
+function gatePatterns(markersPath = GATE_MARKERS_PATH) {
   const markers = JSON.parse(fs.readFileSync(markersPath, 'utf8')).markers || [];
   const release = markers.find((m) => m.id === 'gate-release');
   if (!release) throw new Error('ac-gate-markers.json has no gate-release marker');
-  return new RegExp(release.pattern);
+  const qa = markers.find((m) => m.id === 'qa');
+  return { release: new RegExp(release.pattern), qa: qa ? new RegExp(qa.pattern) : null };
 }
+
+/** A release gate followed by its QA pointer, ending a box's text; group 1 is the QA number (#3817). */
+const POST_RELEASE_POINTER = /\s*→ GATE: release\s*→ QA: #(\d+)\s*$/;
 
 /**
  * Whether an issue body can be handed off: every unchecked checkbox line
@@ -690,27 +699,55 @@ function releaseGatePattern(markersPath = GATE_MARKERS_PATH) {
  * `→ QA: #N` gate, a `→ GATE: review` — blocks, so the move refuses it as
  * before. Checkboxes are read by lib/checkbox-scan.js — line-start, outside
  * code fences — the way `gh pmu move` counts them.
+ *
+ * A box already pointing at its post-release QA issue — `→ GATE: release →
+ * QA: #N`, the form /done's hand-off and qa-extract.js's post-release kind
+ * write checked (#3817) — is `pointed`: its check is owned by that QA issue,
+ * so it neither blocks nor is offered for a second hand-off. Written
+ * unchecked, it is checked in place before the move; nothing is filed again.
+ * A plain `→ QA: #N` box is still blocking: that gate is unchanged.
  * @param {string} body
- * @returns {{eligible: boolean, gated: Array<{index: number, line: string, criterion: string}>, blocking: string[]}}
+ * @returns {{eligible: boolean, gated: Array<{index: number, line: string, criterion: string}>,
+ *   pointed: Array<{index: number, line: string, criterion: string, qaNumber: number}>, blocking: string[]}}
  *   `index` is the box's line index in the LF-normalized body, as scanCheckboxes returns it.
  */
 function classifyReleaseGates(body, markersPath = GATE_MARKERS_PATH) {
   const { scanCheckboxes } = require('./lib/checkbox-scan.js');
-  const pattern = releaseGatePattern(markersPath);
+  const { release: pattern, qa } = gatePatterns(markersPath);
   const text = String(body || '').replace(/\r\n/g, '\n');
   const lines = text.split('\n');
   const gated = [];
+  const pointed = [];
   const blocking = [];
   for (const box of scanCheckboxes(text)) {
     if (box.checked) continue;
     const line = lines[box.line];
-    if (pattern.test(box.text)) {
+    const pointer = qa && pattern.test(box.text) && qa.test(box.text) ? box.text.match(POST_RELEASE_POINTER) : null;
+    if (pointer) {
+      pointed.push({ index: box.line, line, criterion: box.text.replace(POST_RELEASE_POINTER, '').trim(), qaNumber: Number(pointer[1]) });
+    } else if (pattern.test(box.text)) {
       gated.push({ index: box.line, line, criterion:box.text.replace(/\s*→ GATE: release\s*$/, '').trim() });
     } else {
       blocking.push(line.trim());
     }
   }
-  return { eligible: gated.length > 0 && blocking.length === 0, gated, blocking };
+  return { eligible: gated.length > 0 && blocking.length === 0, gated, pointed, blocking };
+}
+
+/**
+ * The body with each pointed box checked in place (#3817). Its pointer is
+ * already there, so only the box changes. Addressed by line index, as
+ * applyReleaseHandoff is.
+ * @param {string} body
+ * @param {Array<{index: number}>} pointed
+ */
+function checkPointedBoxes(body, pointed) {
+  const lines = String(body || '').replace(/\r\n/g, '\n').split('\n');
+  for (const { index } of pointed || []) {
+    if (!Number.isInteger(index) || index < 0 || index >= lines.length) continue;
+    lines[index] = lines[index].replace('[ ]', '[x]');
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -725,7 +762,7 @@ function readReleaseGates(issueNum, body, markersPath) {
     return { gates: classifyReleaseGates(body, markersPath), warning: null };
   } catch (e) {
     return {
-      gates: { eligible: false, gated: [] },
+      gates: { eligible: false, gated: [], pointed: [] },
       warning: { code: 'RELEASE_GATE_MARKERS_UNREADABLE', message: `Release-gate markers could not be read, so no post-release hand-off was offered for #${issueNum}: ${(e && e.message) || e}` },
     };
   }
@@ -817,7 +854,9 @@ async function runReleaseHandoff(issueNum, { issue, fileQaFn, writeBodyFn = defa
   }
   let body = issue.body;
   if (lines.length) {
-    body = applyReleaseHandoff(issue.body, lines);
+    // A box already pointing at its post-release QA issue is checked in the
+    // same write (#3817), so the move that follows sees no unchecked box.
+    body = checkPointedBoxes(applyReleaseHandoff(issue.body, lines), classified.pointed);
     try {
       await writeBodyFn(issueNum, body);
     } catch (e) {
@@ -959,6 +998,30 @@ async function runSingleIssue(issueNum, options = {}) {
     releaseHandoff = { offered: false, handedOff: handoff.handedOff };
   }
 
+  // 6b. Post-release QA pointers (#3817). A box already pointing at its
+  // post-release QA issue owns no open work here: when it is the only kind
+  // of unchecked box left and the move will run, it is checked in place —
+  // nothing is filed — so the move sees none. A blocking box beside it leaves
+  // everything as found; the move refuses that issue as before.
+  let postReleaseQa = null;
+  const pointed = gates0.pointed || [];
+  if (pointed.length) postReleaseQa = { checked: pointed.map(({ criterion, qaNumber }) => ({ criterion, qaNumber })) };
+  if (pointed.length && !performHandoff) {
+    const clear = (gates0.blocking || []).length === 0 && gates0.gated.length === 0;
+    if (!clear || !moveEligible) {
+      postReleaseQa = null;
+    } else {
+      const body = checkPointedBoxes(dataResult.issue.body, pointed);
+      try {
+        await (deps.writeBodyFn || defaultWriteBody)(issueNum, body);
+      } catch (e) {
+        return buildErrorEnvelope([{ code: 'BODY_WRITE_FAILED', message: `The post-release QA pointer box${pointed.length === 1 ? '' : 'es'} of #${issueNum} could not be checked: ${(e && e.message) || e}. Nothing was moved.` }]);
+      }
+      roundTrips++;
+      dataResult.issue.body = body;
+    }
+  }
+
   // 7. Conditional move to done — epic guard (#2367): skip auto-move when the
   // issue has the `epic` label so the /done command spec's epic flow can
   // process sub-issues first, then close the epic explicitly. The end state
@@ -1039,6 +1102,9 @@ async function runSingleIssue(issueNum, options = {}) {
   }
   if (releaseHandoff) {
     gates.releaseHandoff = releaseHandoff;
+  }
+  if (postReleaseQa) {
+    gates.postReleaseQa = postReleaseQa;
   }
   if (lifecycleBoxResult) {
     gates.lifecycleBox = lifecycleBoxResult;
@@ -1230,6 +1296,7 @@ if (require.main === module) {
 
 module.exports = {
   applyReleaseHandoff,
+  checkPointedBoxes,
   applyTestPlanApprovedBox,
   attachDiffVerification,
   buildHandoffQaBody,

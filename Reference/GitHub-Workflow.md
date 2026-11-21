@@ -1,5 +1,5 @@
 # GitHub Workflow Integration
-**Version:** v0.121.0
+**Version:** v0.122.0
 **Source:** Reference/GitHub-Workflow.md
 Configures Claude to manage GitHub issues during development sessions. Reasoning: `{frameworkPath}/Reference/GitHub-Workflow-Rationale.md` (not auto-loaded).
 ## Project Configuration
@@ -44,7 +44,7 @@ Prefer slash commands over raw `gh pmu` for board operations. Fall back to raw f
 `$QA_BODY_FILE` is a **creation** path: generate once per invocation, `.tmp-qa-body-{random}.md`, per `05-windows-shell.md` § Naming the temp file.
 **Always `gh pmu`, never the bare `gh issue` creation form** — this rule owns that prohibition. The bare form never reaches the project board, so the issue is invisible to `gh pmu sub list`, epic closure and every board-driven gate: it blocks nothing and reads as done.
 **The one exception: a `--target` companion filing.** `/bug --target` and `/enhancement --target` use the bare `gh issue` form for a **companion** repository (`gh pmu create -R` would add it to **this** repo's board); `.claude/scripts/shared/file-companion-issue.js` then adds it to the *companion's* board.
-**Closure contract.** A `qa-required` issue is a **gate**: its parent AC stays unchecked as `- [ ] … → QA: #N` until the QA issue closes, and the parent reaches `done` only then — except a post-release `→ GATE: release` box `/done` hands off, checked as `- [x] … → GATE: release → QA: #N` while the QA issue stays open. `--force` past such a line is permitted **only** because the line names the sub-issue that owns the check. **The label is mandatory.**
+**Closure contract.** A `qa-required` issue is a **gate**: its parent AC stays unchecked as `- [ ] … → QA: #N` until the QA issue closes, and the parent reaches `done` only then — except a post-release `→ GATE: release` box `/done` hands off, checked as `- [x] … → GATE: release → QA: #N` while the QA issue stays open. That **post-release kind** — a check only the released hub can run — may also be filed standalone at `/work` Step 4a (`postRelease: true` fill) or at authoring, written checked in the same form; it never blocks `in_review`, `/done`, epic closure or the tracker close. Choose it only when nothing before the release can reach the check. `--force` past such a line is permitted **only** because the line names the sub-issue that owns the check. **The label is mandatory.**
 **Epic Detection:** Epic label takes precedence. Always check labels before routing. Never skip per-sub-issue STOP boundary.
 ## Reopen Workflows
 **Reopening Closed Issues** ("reopen #N", "open issue #N again"):

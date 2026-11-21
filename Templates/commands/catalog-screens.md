@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Discover and catalog screen elements from source code, using the IDPF framework.
 argument-hint: "[#NN] [--help]"
 copyright: "Rubrical Works (c) 2026"

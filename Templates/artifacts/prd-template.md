@@ -23,6 +23,7 @@ Stories: 1.1, 1.2, 1.3
 - [ ] <criterion>
 
 **Priority:** P0 - Must Have
+**Depends on:** <Story X.Y, Story X.Z | none> — stories whose artifacts this story's ACs consume (`/create-prd` infers and confirms; `none` only when no edge applies)
 **User journey:** <yes | no> — only when a gate e2e suite is declared (`/create-prd` Phase 4.5); omit otherwise
 
 ## Diagrams

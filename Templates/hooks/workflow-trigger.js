@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -18,6 +18,7 @@
  * Work command: work #N (validates branch assignment, provides branch context)
  * Done command: done [#N...] (contextual - only triggers with active issues)
  * Review command: review #N [#N...] (routes to /review-issue)
+ * Batch review: review all in <status> (routes to /review-issue --status <status>)
  * Analysis keywords: evaluate, analyze, assess, investigate, check, verify
  *   - When combined with issue reference, injects STOP reminder
  *   - Prevents analysis requests from drifting into implementation
@@ -211,6 +212,7 @@ const TRIGGER_RE = {
     workTrigger: compilePattern(TRIGGER_DATA.patterns, 'workTrigger'),
     doneTrigger: compilePattern(TRIGGER_DATA.patterns, 'doneTrigger'),
     reviewAtStart: compilePattern(TRIGGER_DATA.patterns, 'reviewAtStart'),
+    reviewAllInStatus: compilePattern(TRIGGER_DATA.patterns, 'reviewAllInStatus'),
     strictIssueRef: compilePattern(TRIGGER_DATA.patterns, 'strictIssueRef'),
     looseIssueRef: compilePattern(TRIGGER_DATA.patterns, 'looseIssueRef'),
     approvalVerb: compilePattern(TRIGGER_DATA.patterns, 'approvalVerb'),
@@ -274,6 +276,13 @@ function handlePrompt() {
         // load-bearing and must not be collapsed (#2816).
         const hasStrictIssueRef = matches(TRIGGER_RE.strictIssueRef, prompt);
         const reviewTrigger = reviewAtStart && hasStrictIssueRef && !workTrigger;
+        // Batch review (#3812): "review all in <status>" → /review-issue
+        // --status <status>. An explicit #N wins (reviewTrigger), and the
+        // .gh-pmu.json read happens only once the anchored phrase has matched.
+        const reviewStatusFilter = (!reviewTrigger && !workTrigger)
+            ? resolveAnchoredStatusFilter(prompt, TRIGGER_RE.reviewAllInStatus)
+            : null;
+        const reviewStatusTrigger = Boolean(reviewStatusFilter);
         // Verbal test-plan approval (#2815) - "I approve test-plan #12" never
         // reached /review-test-plan, so its Step 5a gate rollup never ran: no
         // blocked gate was surfaced for a risk decision and both checklists
@@ -313,9 +322,9 @@ function handlePrompt() {
         // "bug: check #12 ..." printed the /bug invocation and ANALYSIS MODE.
         // The routed command creates an issue and STOPs, so nothing is lost.
         const analysisMatch = hasAnalysisKeyword && hasIssueRef && !workTrigger && !reviewTrigger
-            && !testPlanApprovalTrigger && !isHarnessFrame && !triggerMatch;
+            && !reviewStatusTrigger && !testPlanApprovalTrigger && !isHarnessFrame && !triggerMatch;
 
-        if (!isCommandRequest && !triggerMatch && !workTrigger && !doneTrigger && !reviewTrigger && !testPlanApprovalTrigger && !analysisMatch) {
+        if (!isCommandRequest && !triggerMatch && !workTrigger && !doneTrigger && !reviewTrigger && !reviewStatusTrigger && !testPlanApprovalTrigger && !analysisMatch) {
             process.exit(0);
         }
 
@@ -682,6 +691,30 @@ function handlePrompt() {
             process.exit(0);
         }
 
+        // Batch review - "review all in <status>" → /review-issue --status (#3812),
+        // the review counterpart of "work all in <status>" → /work --status.
+        // Flags pass through by the same convention as the #N path (#2515).
+        if (reviewStatusTrigger) {
+            const { flags } = extractFlags(
+                prompt,
+                getRecognizedFlags('/review-issue'),
+                getRestOfLineFlags('/review-issue')
+            );
+            const invocation = `/review-issue --status ${reviewStatusFilter}`;
+            const output = {
+                systemMessage: 'Success',
+                hookSpecificOutput: {
+                    hookEventName: 'UserPromptSubmit',
+                    additionalContext: withRoutingNote(
+                        `[INVOKE: ${flags ? `${invocation} ${flags}` : invocation}]`,
+                        'review'
+                    )
+                }
+            };
+            console.log(JSON.stringify(output));
+            process.exit(0);
+        }
+
         // Handle verbal test-plan approval - advise /review-test-plan (#2815)
         //
         // ADVISORY, not a refusal, and that is a decision rather than a
@@ -978,22 +1011,65 @@ function resolveStatusFilter(prompt) {
     // the rule counts nesting, not width. Splitting on a single non-word class
     // has no nesting at all, so it is linear by construction rather than by
     // argument, and reads more plainly besides.
-    const words = String(prompt).toLowerCase().split(/[^a-z0-9_-]+/).filter(Boolean);
+    const words = statusWords(prompt);
 
     // Every occurrence, not just the first: a genuine batch phrasing may sit
     // behind ordinary prose ("work through the rest of the issues in ready").
     // Scanning stays safe because only a configured alias is ever returned.
     for (let i = 0; i < words.length - 1; i++) {
         if (words[i] !== 'in') continue;
-        const first = words[i + 1];
-        const second = i + 2 < words.length ? words[i + 2] : null;
-        const candidates = [first];
-        if (second) candidates.push(`${first}_${second}`);
-        candidates.push(`in_${first}`);
-        const hit = candidates.find((c) => statuses.has(c));
+        const hit = statusAfterIn(words, i, statuses);
         if (hit) return hit;
     }
     return null;
+}
+
+/** Lowercased word tokens for status matching — see resolveStatusFilter. */
+function statusWords(text) {
+    return String(text).toLowerCase().split(/[^a-z0-9_-]+/).filter(Boolean);
+}
+
+/**
+ * The configured status named by the words after `words[i]` (an "in"), or null.
+ *
+ * Candidate order and normalization are resolveStatusFilter's: the bare word,
+ * the two words joined, then the word prefixed by the preposition.
+ *
+ * @param {string[]} words
+ * @param {number} i - index of the preposition
+ * @param {Set<string>} statuses - configured aliases
+ * @returns {string|null}
+ */
+function statusAfterIn(words, i, statuses) {
+    const first = words[i + 1];
+    if (!first) return null;
+    const second = i + 2 < words.length ? words[i + 2] : null;
+    const candidates = [first];
+    if (second) candidates.push(`${first}_${second}`);
+    candidates.push(`in_${first}`);
+    return candidates.find((c) => statuses.has(c)) || null;
+}
+
+/**
+ * The status of an ANCHORED batch phrase, or null (#3812).
+ *
+ * `review all in <status>` reuses the work extractor's validation and
+ * normalization, but not its scan: the phrase must open the prompt (`re`
+ * ends at its "in"), and the status is the word straight after it — never a
+ * later "in", so `review all in the morning, the issues in ready` routes
+ * nothing. As with the work phrase, only a configured alias is returned.
+ *
+ * @param {string} prompt
+ * @param {RegExp|null} re - anchored pattern ending at the preposition
+ * @returns {string|null}
+ */
+function resolveAnchoredStatusFilter(prompt, re) {
+    const match = re ? String(prompt).match(re) : null;
+    if (!match) return null;
+    const statuses = new Set(readConfiguredStatuses());
+    if (statuses.size === 0) return null;
+    const words = ['in', ...statusWords(String(prompt).slice(match.index + match[0].length))];
+    return statusAfterIn(words, 0, statuses);
 }
 
 /**
@@ -1273,6 +1349,7 @@ function getDetailedCommands(forceRefresh = false) {
 | \`work all in <status>\` | Batch work on issues by status (routes to \`/work --status <status>\`) |
 | \`done [#N]\` | Complete issue (in_review → done) |
 | \`review #N\` | Route to /review-issue |
+| \`review all in <status>\` | Batch review of issues by status (routes to \`/review-issue --status <status>\`) |
 | \`commands\` | Show available triggers and slash commands |
 | \`list-commands\` | Show detailed command list |
 
@@ -1360,6 +1437,7 @@ function getAgileDetailedCommands() {
 | \`work all in <status>\` | Batch work on issues by status (routes to \`/work --status <status>\`) |
 | \`done [#N]\` | Complete issue (in_review → done) |
 | \`review #N\` | Route to /review-issue |
+| \`review all in <status>\` | Batch review of issues by status (routes to \`/review-issue --status <status>\`) |
 | \`commands\` | Show available triggers and slash commands |
 | \`list-commands\` | Show detailed command list |
 

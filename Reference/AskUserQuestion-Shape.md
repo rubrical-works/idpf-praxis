@@ -1,9 +1,9 @@
 # AskUserQuestion Shape
-**Version:** v0.121.0
+**Version:** v0.122.0
 **Source:** Reference/AskUserQuestion-Shape.md
 **Purpose:** How a prompt sent through `AskUserQuestion` is laid out. On demand; rule `06-runtime-triggers.md` points here, and every `.claude/hooks/ask-question-shape-hook.js` correction closes with a pointer here (#3233, #3440).
 ## Why
-`question` renders **bold**, so packed context becomes a wall of bold text; prose printed just before the call stays visible while the prompt is open (confirmed 2026-10-25, #3233 AC2).
+`question` renders **bold**, so packed context becomes a wall of bold text; prose printed just before the call stays visible while the prompt is open (confirmed 2026-10-25, #3233 AC2). #3361 (2026-10-26) saw longer pre-prompt markdown scrolled out of sight — both stand, unresolved, perhaps differing only in length — so what the user decides on must also be visible in the prompt itself: for a change, its `preview` (§ Previews showing a change).
 ## Rules
 1. **Context first, as ordinary markdown** — a table for several results, a bold-label list for one item.
 2. **The question is one sentence**, naming the decision, not the evidence: `QA #3145: record the verdict?`.
@@ -65,6 +65,12 @@ BEFORE
 AFTER
 - [ ] AC names the new path
 ```
+### Line budget (#3788, #3820)
+The pane has a fixed height; Claude Code clips overflow behind a `✂ N lines hidden` marker, so with BEFORE first a long BEFORE pushes AFTER — the text being accepted — below the cut (observed: full BEFORE, then `AFTER:` and `✂ 18 lines hidden`).
+**Budget: 8 lines** of preview content — from one observation (~9 lines visible before the cut); re-measure and change it here.
+**Within budget:** BEFORE / AFTER as above — the whole change, on screen while deciding.
+**Over budget:** the option carries no `preview`; the complete BEFORE / AFTER printed above the call is the only copy, and the option's `description` points at it (e.g. `Apply the change printed above`). A trimmed preview could only restate, lossily, text already on screen — on #3815 it was cut off mid-sentence beside the complete version.
+The complete BEFORE and AFTER are always printed as markdown above the call (rule 1); they are the record, a preview only a view of it.
 ## Several questions in one call
 **One option table per question**, under a bold heading matching its `header`, numbering restarting at 1.
 ## Where

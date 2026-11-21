@@ -123,7 +123,7 @@ Beyond the three-layer separation, IDPF manages *when* context gets loaded:
 - `Overview/Framework-System-Instructions.md` — only when working on system instructions or domain specialists
 - `Assistant/Anti-Hallucination-Rules-for-PRD-Work.md` — only during PRD work
 - `Reference/work-execution-conditional.md` — only for epics, branch trackers, `--nonstop`, `--concurrent`, or multi-issue selections
-- `Reference/review-execution-conditional.md` — only for epic expansion, a prior-art sweep, or test-plan and PRD reviews
+- `Reference/review-execution-conditional.md` — only for epic expansion, a prior-art sweep, test-plan and PRD reviews, or multi-issue reviews
 - `Reference/work-execution-rationale.md` and `Reference/review-execution-rationale.md` — the reasoning behind each execution directive, read only when a directive is being questioned
 
 **Loaded per-command:**

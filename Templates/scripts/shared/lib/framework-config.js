@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -27,6 +27,7 @@ const path = require('path');
 const Ajv = require('ajv').default;
 const { atomicWriteSync } = require('./shell-safe');
 const { isEnabled: tmpCleanupEnabled } = require('./tmp-cleanup');
+const { parseAgentsValue, DEFAULT_MAX_AGENTS } = require('./concurrency-plan');
 
 const CONFIG_FILENAME = 'framework-config.json';
 
@@ -585,6 +586,75 @@ function resolveReviewExpansion(cwd = process.cwd()) {
 }
 
 /**
+ * The concurrent-reviewer cap for a multi-issue `/review-issue` (#3803).
+ *
+ * Resolution order: `--agents N` > `framework-config.json` `reviewAgents` >
+ * `DEFAULT_MAX_AGENTS` (3, shared with `/work --concurrent`). `source` names
+ * the layer that supplied `value`: `flag`, `project-config` or `default`.
+ *
+ * **Pure.** The caller passes the parsed config object (or nothing) and the
+ * selection size, so no file or `gh` access happens here.
+ *
+ * - An invalid flag (0, negative, non-integer) is **rejected**: `ok: false`,
+ *   `value: null` and an `error` naming the valid range — there is nothing to
+ *   dispatch. The flag is checked by `concurrency-plan.js` `parseAgentsValue`,
+ *   so both commands accept exactly the same values.
+ * - An invalid `reviewAgents` (string, 0, negative, fractional) is named by
+ *   value in `warnings` and the default applies, sourced `default`. A typo
+ *   never silently becomes an unbounded or zero-width run.
+ * - With one issue the cap is moot: a supplied `--agents` is reported as
+ *   ignored (`ignored: true`, `notice`) and the review runs inline
+ *   (`inline: true`). It is still validated first, so a typo is never masked.
+ *
+ * @param {object} [opts]
+ * @param {*} [opts.agents] - Raw `--agents` value; undefined when not passed
+ * @param {object|null} [opts.config] - Parsed framework-config.json
+ * @param {number} [opts.issueCount] - Members in the selection
+ * @returns {{ ok: boolean, value: number|null, source: 'flag'|'project-config'|'default',
+ *   warnings: string[], ignored: boolean, error?: string, inline?: boolean, notice?: string }}
+ */
+function resolveReviewConcurrency({ agents, config, issueCount } = {}) {
+  const flagGiven = agents !== undefined;
+  if (flagGiven) {
+    const parsed = parseAgentsValue(agents);
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        value: null,
+        source: 'flag',
+        warnings: [],
+        ignored: false,
+        error: `${parsed.error} Valid range: an integer of 1 or more.`,
+      };
+    }
+    if (issueCount === 1) {
+      const fallback = resolveReviewConcurrency({ config, issueCount });
+      return {
+        ...fallback,
+        ignored: true,
+        inline: true,
+        notice: `--agents ${parsed.value} ignored: a single issue is reviewed inline.`,
+      };
+    }
+    return { ok: true, value: parsed.value, source: 'flag', warnings: [], ignored: false };
+  }
+  const declared = config && typeof config === 'object' ? config.reviewAgents : undefined;
+  if (declared === undefined) {
+    return { ok: true, value: DEFAULT_MAX_AGENTS, source: 'default', warnings: [], ignored: false };
+  }
+  if (Number.isInteger(declared) && declared >= 1) {
+    return { ok: true, value: declared, source: 'project-config', warnings: [], ignored: false };
+  }
+  return {
+    ok: true,
+    value: DEFAULT_MAX_AGENTS,
+    source: 'default',
+    warnings: [`${CONFIG_FILENAME} reviewAgents ${JSON.stringify(declared)} is not an integer of 1 or more; using the default ${DEFAULT_MAX_AGENTS}.`],
+    ignored: false,
+  };
+}
+
+/**
  * The defaults a declared suite acquires when it omits them (#2849).
  *
  * Applied by `normalizeSuite`, and documented a second time in the schema's
@@ -644,6 +714,8 @@ module.exports = {
   resolveReviewExpansion,
   DEFAULT_REVIEW_EXPANSION_CAP,
   REVIEW_EXPANSION_BOUNDS,
+  resolveReviewConcurrency,
+  DEFAULT_REVIEW_AGENTS: DEFAULT_MAX_AGENTS,
   VERIFICATION_MODES,
   DEFAULT_VERIFICATION_MODE,
   normalizeSuite,

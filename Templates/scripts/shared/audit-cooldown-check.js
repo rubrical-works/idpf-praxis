@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  *
  * Cooldown-aware npm audit gate (#2537; deployed to user projects by #3016).
  *
@@ -434,7 +434,8 @@ function parseExceptions(text, now) {
     if (!e.reason || typeof e.reason !== 'string' || !e.reason.trim()) {
       return { ...none, error: `${EXCEPTIONS_FILE} entry ${i} (${id}): "reason" is required` };
     }
-    if (typeof e.expires !== 'string' || !DATE_ONLY.test(e.expires) || Number.isNaN(Date.parse(e.expires))) {
+    if (typeof e.expires !== 'string' || !DATE_ONLY.test(e.expires) || Number.isNaN(Date.parse(e.expires)) ||
+        new Date(e.expires + 'T00:00:00Z').toISOString().slice(0, 10) !== e.expires) {
       return { ...none, error: `${EXCEPTIONS_FILE} entry ${i} (${id}): "expires" must be a YYYY-MM-DD date` };
     }
     const entry = { id, reason: e.reason.trim(), expires: e.expires };
@@ -688,12 +689,16 @@ function candidateFixes(auditJson, root, { lookup = npmJson } = {}) {
  * it is read only when it resolves strictly inside `<root>/node_modules`
  * (#3736): a name carrying `..` segments, an absolute path or a non-string is
  * null without reading anything. A scoped name (`@scope/pkg`) stays inside.
+ * #3766: containment alone lets `foo/../bar` through — it stays inside and
+ * names a different package — so a name outside the npm package-name grammar
+ * is null before any path is resolved.
  *
  * @param {string} name Package name as npm reported it.
  * @param {string} root Project root.
  * @returns {string|null}
  */
 function installedVersionOf(name, root) {
+  if (!isNpmPackageName(name)) return null;
   const dir = containedPath(path.join(path.resolve(root), 'node_modules'), name);
   return dir ? versionAt(dir) : null;
 }

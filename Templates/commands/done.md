@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Complete issues with criteria verification and status transitions, using the IDPF framework.
 argument-hint: "[#issue... | --all] [--yes] (optional) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -38,13 +38,14 @@ Move issues from `in_review` → `done` with a STOP boundary. Final transition o
 node .claude/scripts/shared/lib/push-ride-alongs.js --issues <N,N,...>
 ```
 Returns `named`, `others` (`issue`, `count`, `shas`, `title`, `status`, `completable`), `unreferenced` (`short`, `subject`), `completable`, `hasRideAlongs`. `upstream: false` or `ok: false` → report, continue as today. Relay `warnings`.
+**Last sweep verdict (#3775).** Also returns `sweep` — the last `/work --nonstop` end-of-run sweep verdict on the branch tracker. `sweep.warn` true → print `sweep.message` (names every failing test) before any push: in the ride-along report, and in the `AskUserQuestion` prompt text when Step 0 prompts. Not blocked; the user still decides. Last sweep passed, or none recorded → say nothing, no warning. `checked: false` → relay `sweep.reason` in one line, never as a pass.
 **`hasRideAlongs: false`** → no prompt; continue to Step 1, push as today.
 **`hasRideAlongs: true`** → print a table: each other issue's number, title, board status, commit count; each unreferenced commit by short SHA and subject. `completable` false (not In review, or unreadable) → listed with its status, **never offered** for completion. Then print the options table `1.Push everything`, `2.Complete all In review`, `3.Close without pushing`, `4.Stop` (option labels unprefixed: *Push everything*, *Complete all In review*, *Close without pushing*, *Stop*) and **ASK USER** once via `AskUserQuestion`, header `Ride-alongs`:
 - **Push everything** → today's behavior: close the named issues, push the whole branch.
 - **Complete all In review** → add every `completable` issue to the set; close through the `--all` path — one preamble run with `--issues`, one deferred push after the last. Others stay as they are.
 - **Close without pushing** → close the named issues; skip Step 2, Step 3 and every push announcement (events 3, 4, 6); report `Commits remain local — N unpushed; a later /done pushes them.`
 - **Stop** → close nothing, push nothing; every status unchanged. **STOP.**
-**`--yes`** → no prompt: report the ride-alongs table and push everything, as today.
+**`--yes`** → no prompt: report the ride-alongs table and push everything, as today. A failed sweep (`sweep.warn`) is still printed before the push.
 ### Step 1: Context Gathering (Preamble Script)
 Consolidates validation, diff verification, status transition, tracker linking, CI pre-check.
 

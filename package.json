@@ -1,6 +1,6 @@
 {
   "name": "idpf-praxis",
-  "version": "0.121.0",
+  "version": "0.122.0",
   "description": "IDPF — Interactive Development Process Frameworks",
   "scripts": {
     "lint": "eslint .",

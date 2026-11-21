@@ -6,7 +6,10 @@ Review one or more GitHub issues with type-specific criteria and tracked history
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `#issue` | Yes | One or more issue numbers (e.g., `#42` or `42 43 44`) |
+| `#issue` | Yes, unless `--status` | One or more issue numbers (e.g., `#42` or `42 43 44`) |
+| `--status <status>` | No | Review every open issue in that board status (a status configured in `.gh-pmu.json`), exactly as if the issues had been typed. Typed numbers given beside it are deduplicated against the status members. An unconfigured status is rejected, naming the configured ones; an empty status reviews nothing and says so |
+| `--agents N` | No | For a multi-issue run, at most N reviewers at once. Resolved as `--agents N`, then the project default in `framework-config.json`, then 3, and the source is reported. N must be a positive integer; `--agents 1` reviews one issue at a time. Ignored, and reported so, on a single issue |
+| `--sequential` | No | Review a multi-issue selection one issue at a time, in typed order, instead of concurrently. Boolean — takes no value |
 | `--with` | No | Comma-separated domain extensions (e.g., `--with security,performance`) or `--with all` |
 | `--mode` | No | Transient review mode override: `solo`, `team`, or `enterprise` |
 | `--force` | No | Force re-review even if issue already has the `reviewed` label |
@@ -18,12 +21,15 @@ Review one or more GitHub issues with type-specific criteria and tracked history
 ```
 /review-issue #42
 /review-issue #42 #43 #44
+/review-issue #42 #43 #44 --sequential
+/review-issue --status ready --agents 2
 /review-issue #42 --with security,performance
 /review-issue #42 --force --mode team
 ```
 
 ## Key Behaviors
 
+- Two or more issues are reviewed concurrently by default when the Agent tool is available, and one at a time under `--sequential` or `--agents 1`. Without the Agent tool the run falls back to one at a time and says so once
 - Automatically redirects to `/review-proposal`, `/review-prd`, or `/review-test-plan` when the issue type is detected (e.g., proposal or PRD tracker); original flags are passed through
 - Skips issues that already have the `reviewed` label unless `--force` is used; reports existing review count
 - For bugs and enhancements, auto-generates a proposed solution or fix when that section is missing or contains a placeholder

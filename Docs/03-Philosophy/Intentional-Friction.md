@@ -108,6 +108,8 @@ STOP boundaries are the mechanism that keeps the human in the decision loop. Aft
 
 The box **stays unchecked, by design.** The parent may then move to `in_review` past that line — and only past lines carrying such a marker — but it cannot reach `done` until the QA sub-issue closes. The gate moved; it did not disappear.
 
+One kind is deliberately non-blocking: a check that can run only on the released product, never before the release ships. That one is filed as a standalone `qa-required` issue rather than a sub-issue, and its box is written checked in the form `- [x] … → GATE: release → QA: #N` — the QA issue, not the parent, carries the check past the release. It is chosen only when nothing before the release can reach the check.
+
 Two sibling markers work the same way for criteria that are out of phase rather than unverifiable: `→ GATE: review` for something a human sign-off resolves after `in_review`, and `→ GATE: release` for work `/prepare-release` owns. Each must name the event that resolves it — a token that cannot name one is unfinished work wearing a gate's clothing, not a phase claim.
 
 **Why this replaced a STOP.** Halting on every unverifiable criterion stopped long runs on their first sub-issue over criteria that were correctly unverifiable and always would be. Converting them into tracked, labeled, closable gates preserves the guarantee — nothing is silently skipped or marked complete on your behalf — while letting the rest of the work proceed. The gate is now an issue on the board rather than a pause in a session, which also means it survives the session ending.

@@ -48,6 +48,12 @@
           "type": "boolean",
           "description": "Whether the deterministic rollup over review findings can resolve this gate without human confirmation.",
           "default": false
+        },
+        "legacyTexts": {
+          "type": "array",
+          "description": "Earlier renderings of `text` (#3787). Matched only to resolve checklist lines written before a wording change — never rendered. Existing bodies are not rewritten, so these keep in-flight approval issues and plans resolvable.",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
         }
       }
     }

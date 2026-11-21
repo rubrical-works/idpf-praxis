@@ -1,7 +1,7 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Run a comprehensive code review with manifest-driven incremental tracking, using the IDPF framework.
-argument-hint: "[--full] [--status] [--scope <globs>] [--diff [<base>]] [--batch <N>] [--agents <N>] [--with <domains>] [--suggest] [--help]"
+argument-hint: "[--full] [--status] [--scope <globs>] [--diff [<base>]] [--batch <N>] [--agents <N>] [--with <domains>] [--suggest] [--refactor] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -23,18 +23,19 @@ Methodical charter-aligned code review with manifest-driven incremental tracking
 | `--agents <N>` | Split Step 6 across at most N read-only reviewer subagents at once; parent merges and alone writes the manifest. Absent → inline. With `--batch`: batch bounds files, agents bounds concurrency |
 | `--with <domains>` | Comma-sep domain extensions or `all` |
 | `--suggest` | Recommend domains (mutually exclusive with `--with`) |
+| `--refactor` | Refactor-only review against `.claude/metadata/refactor-review-criteria.json`, tracked in `.code-review-refactor-manifest.json` (never `.code-review-manifest.json`). Combines with `--full`, `--scope`, `--batch`, `--agents`, `--status`, `--diff` against the refactor manifest; `--with` and `--suggest` are rejected — domain criteria are not refactor criteria |
 | `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
 
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js code-review`, report its output, and STOP.
 
-Combinable: `--scope "src/**/*.js" --batch 10 --with security`, `--diff --with security`, `--diff origin/release --full`
+Combinable: `--scope "src/**/*.js" --batch 10 --with security`, `--diff --with security`, `--diff origin/release --full`, `--refactor --agents 3`
 ## Execution Instructions
 **REQUIRED:** Workflow in `{frameworkPath}/Reference/code-review-execution.md` (on demand, not a rule); its § Execution Instructions defines tasks (one per numbered step, prefix `code-review:`) and compaction resume. Add tasks for Steps 1 and 13.
 ## Execution Logic
 ### Step 1: Parse Arguments
-Accept: none, `--full`, `--status`, `--scope "globs"`, `--diff [<base>]` (base = next token not starting `--`), `--batch N`, `--agents N`, `--with`, `--suggest`. `--agents` takes a positive integer; a non-integer or zero value is an invalid argument: report `--agents requires a positive integer, got <value>.` → STOP. `--suggest` and `--with` mutually exclusive → error+STOP. Invalid → error+STOP.
+Accept: none, `--full`, `--status`, `--scope "globs"`, `--diff [<base>]` (base = next token not starting `--`), `--batch N`, `--agents N`, `--with`, `--suggest`, `--refactor`. `--agents` takes a positive integer; a non-integer or zero value is an invalid argument: report `--agents requires a positive integer, got <value>.` → STOP. `--suggest` and `--with` mutually exclusive → error+STOP. `--refactor` with `--with` or `--suggest` → report "`--refactor` and `--with` cannot be combined: domain criteria are not refactor criteria." (or `--suggest`, naming the flag given) → STOP. Invalid → error+STOP.
 ### Steps 2–12: Review Workflow
-Read and execute `{frameworkPath}/Reference/code-review-execution.md` § `/code-review` — Workflow, Steps 2–12, with Step 1's arguments (discovery, per-file review, `file-issue.js` filing, report, manifest + `lastDiffReview`, `--diff` commit, summary). Where it says *end the review*, continue at Step 13.
+Read and execute `{frameworkPath}/Reference/code-review-execution.md` § `/code-review` — Workflow, Steps 2–12, with Step 1's arguments (discovery, per-file review, `file-issue.js` filing, report, manifest + `lastDiffReview`, `--diff` commit, summary). Where it says *end the review*, continue at Step 13. `--refactor`: same steps as its § Refactor Mode amends them (refactor criteria + manifest, all-files scan per candidate, `-refactor.md` report, no `lastDiffReview` write).
 If the file cannot be read, report its path and STOP: `Could not read {frameworkPath}/Reference/code-review-execution.md; /code-review cannot run without it.` Never review from memory.
 ### Step 13: Closing Cleanup
 The prune is **part of** this step, and this step is **numbered**, so an unpruned list surfaces as an unfinished task (#2641).
@@ -60,6 +61,9 @@ The prune is **part of** this step, and this step is **numbered**, so an unprune
 | `--with` criteria missing | Skip domain, warn |
 | `--agents` not a positive integer | "`--agents requires a positive integer, got <value>.`" → STOP |
 | `--suggest`+`--with` | "`--suggest` and `--with` are mutually exclusive." → STOP |
+| `--refactor` + `--with` | "`--refactor` and `--with` cannot be combined: domain criteria are not refactor criteria." → STOP |
+| `--refactor` + `--suggest` | "`--refactor` and `--suggest` cannot be combined: domain criteria are not refactor criteria." → STOP |
+| `refactor-review-criteria.json` missing/invalid | "Could not read .claude/metadata/refactor-review-criteria.json; --refactor cannot run without it." → STOP |
 | `domain-signals.json` missing | Warn, skip filtering |
 | All domains filtered | "All requested domains filtered — falling back to standard review only" |
 | `--diff <ref>` unresolvable | "Could not resolve base ref <ref> for --diff." → STOP |

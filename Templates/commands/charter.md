@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: View, create, or manage this project's charter, using the IDPF framework.
 argument-hint: "[--update | --refresh [--dry-run] | --testing [--dry-run | --check] | --sweep-e2e on|off [--sweep-scope all|touched] [--dry-run] | --sweep-scope all|touched [--dry-run] | --register-proj | --deregister-proj <owner/name> | --list-proj] [--help]"
 copyright: "Rubrical Works (c) 2026"

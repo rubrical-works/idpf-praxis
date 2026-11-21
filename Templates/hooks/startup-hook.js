@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * Startup Hook — SessionStart:startup
  *
  * Deterministic session initialization. Runs in a real Node.js process before
@@ -273,6 +273,43 @@ function sweepStaleTempFiles(cwd, info) {
   } catch {
     return null;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Announce-ledger purge (#3798)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Remove announce-ledger rows older than 7 days from the file ledgerPath()
+ * resolves to (#3798). The ledger only ever grew, and readLedger() parses all
+ * of it on every dispatch update, receipt and gate lookup. The rule, the
+ * update-row rule and the concurrent-append guarantee live in
+ * `announce-ledger.js` `purgeStale`; this is the startup call site, beside the
+ * stale `.tmp-*` sweep.
+ *
+ * ADVISORY. Never throws and never blocks startup: a failure comes back as
+ * `{ok: false, error}` with the ledger left as it was, and is reported as a row
+ * — unlike the scratch sweep, a failed purge is not the same fact as a clean
+ * one, because the file keeps growing.
+ *
+ * @param {string} cwd - Project root
+ * @returns {{ok: boolean, purged?: number, error?: string}}
+ */
+function purgeAnnounceLedger(cwd) {
+  try {
+    return require('../scripts/shared/lib/announce-ledger.js').purgeStale({ cwd });
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+/** The Ledger row's text, or '' when there is nothing to say (no result, nothing purged). */
+function formatLedgerRow(result) {
+  if (!result || typeof result !== 'object') return '';
+  if (result.ok === false) return `⚠️ purge failed — ${result.error || 'unknown error'}; the ledger was left unchanged`;
+  const n = Number(result.purged);
+  if (!Number.isInteger(n) || n <= 0) return '';
+  return `purged ${n} ${n === 1 ? 'record' : 'records'} older than 7 days`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -737,6 +774,11 @@ function renderBlock(info, checkResults, opts = { color: true }) {
       lines.push(`- Trash: ${w(row)}`);
     }
   }
+
+  // Announce-ledger purge (#3798). Read off `info` like Trash: absent or
+  // nothing purged renders no row; a failure is warn-colored.
+  const ledgerRow = formatLedgerRow(info.ledgerPurge);
+  if (ledgerRow) lines.push(`- Ledger: ${info.ledgerPurge.ok === false ? w(ledgerRow) : ledgerRow}`);
 
   // Retired file removed (#3420). Read off `info` like Trash: absent or
   // nothing removed renders no row.
@@ -1356,6 +1398,7 @@ const CLEAR_SAFETY = [
   { action: 'session-info', onClear: 'required', reason: 'reads config, git and gh state; writes nothing; every row is rendered from it' },
   { action: 'checks', onClear: 'safe', reason: 'every check is read-only at startup (branch-sync fetches one ref; task-tools writes only on an explicit --enable); a peer scan excludes this process' },
   { action: 'stale-tmp-sweep', onClear: 'skipped', reason: 'the process that ran /clear may still own day-old .tmp-* files — a background agent\'s review file, a --concurrent run\'s state — that only a fresh process can call abandoned' },
+  { action: 'ledger-purge', onClear: 'safe', reason: 'removes announce-ledger rows by age alone (older than 7 days); an age rule does not depend on which process owns a row, and a row appended during the purge is kept' },
   { action: 'leftover-worktrees', onClear: 'safe', reason: 'lists .tmp-wt-* directories and names the teardown command; removes nothing' },
   { action: 'render-and-emit', onClear: 'required', reason: 'writes the block to stderr and hookSpecificOutput to stdout, as a fresh session does; the hook must always answer' },
 ];
@@ -1392,6 +1435,9 @@ async function main({ source = 'startup' } = {}) {
   // Session Initialized block.
   // Skipped on clear (#3679): no row, exactly as a disabled sweep emits none.
   info.trash = skippedFor(source, 'stale-tmp-sweep') ? null : sweepStaleTempFiles(cwd, info);
+  // #3798: beside the scratch sweep, for the same reasons; advisory — a failure
+  // is a row, never a missing block.
+  info.ledgerPurge = skippedFor(source, 'ledger-purge') ? null : purgeAnnounceLedger(cwd);
   info.worktrees = skippedFor(source, 'leftover-worktrees') ? null : gatherLeftoverWorktrees(cwd);
 
   // Render block — colored for stderr, plain for additionalContext
@@ -1423,6 +1469,8 @@ module.exports = {
   runChecksParallel,
   buildChecks,
   sweepStaleTempFiles,
+  purgeAnnounceLedger,
+  formatLedgerRow,
   removeRetiredFiles,
   gatherLeftoverWorktrees,
   formatWorktreesRow,

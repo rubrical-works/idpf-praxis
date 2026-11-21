@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -121,6 +121,83 @@ function memberBase({ git, trackerTip, branch }) {
 }
 
 /**
+ * The tree hash of a commit-ish (#3774), or null when git cannot answer.
+ * @param {Function} git
+ * @param {string} rev
+ * @returns {string|null}
+ */
+function treeOf(git, rev) {
+  try {
+    const out = git(['rev-parse', `${rev}^{tree}`]);
+    const sha = String(out && out.stdout !== undefined ? out.stdout : out || '').trim();
+    return /^[0-9a-f]{40,64}$/.test(sha) ? sha : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Whether the post-merge pass may reuse the members' Tier 1 suite results
+ * (#3774). Only when the tree it would test is the tree Tier 1 tested: the
+ * merge-back was clean, the reconcile, deferred-skills and
+ * regenerateAfterSkills steps rewrote nothing, and the batch head's tree
+ * equals every member's tested tree. Hashes of the members' own files are not
+ * enough — their tests read modules other merges may have changed.
+ *
+ * @param {{reuse?: {cleanMerge?: boolean, tier1?: Object<number, object>, untrusted?: Array<{issue: number, reason: string}>},
+ *   regenerated: string[], members: Array<{issue: number}>, head: string, git: Function}} input
+ * @returns {{reused: boolean, reason: string, message: string, tree?: string|null, sources?: Array<{issue: number, tier1: object}>}}
+ */
+function decideSuiteReuse({ reuse, regenerated = [], members = [], head, git }) {
+  const no = (reason, message) => ({ reused: false, reason, message: `Suites re-run on the tracker: ${message}.` });
+  if (!reuse) return no('not-requested', 'no member Tier 1 results were given');
+  if (reuse.cleanMerge !== true) return no('merge-not-clean', 'the merge-back was not reported clean (--clean-merge absent)');
+  if (regenerated.length > 0) return no('regenerated', `regeneration rewrote ${regenerated.join(', ')}`);
+  const untrusted = reuse.untrusted || [];
+  if (untrusted.length > 0) return no('tier-1-document-untrusted', untrusted.map((u) => `#${u.issue}'s Tier 1 document ${u.reason}`).join('; '));
+  const sources = members.map((m) => ({ issue: m.issue, tier1: (reuse.tier1 || {})[m.issue] }));
+  const missing = sources.filter((s) => !s.tier1 || !s.tier1.testedTree).map((s) => `#${s.issue}`);
+  if (missing.length > 0) return no('no-tested-tree', `no tested tree recorded for ${missing.join(', ')}`);
+  const tree = treeOf(git, head);
+  if (!tree) return no('tree-unreadable', `git could not read the tree of ${head}`);
+  const differ = sources.filter((s) => s.tier1.testedTree !== tree);
+  if (differ.length > 0) {
+    return { ...no('tree-differs', `the batch head's tree ${tree} differs from the tree Tier 1 tested (${differ.map((s) => `#${s.issue}: ${s.tier1.testedTree}`).join(', ')})`), tree };
+  }
+  return {
+    reused: true,
+    reason: 'tree-matches',
+    tree,
+    sources,
+    message: `Suite results reused from ${sources.map((s) => `#${s.issue}`).join(', ')}'s Tier 1: the batch head's tree ${tree} is the tree Tier 1 tested (clean merge, nothing regenerated).`,
+  };
+}
+
+/**
+ * The Tier 1 runs one post-merge run may stand on (#3774): every suite in
+ * the run passed in a member's Tier 1 over a file set covering the run's, and
+ * none of them is one Tier 1 deferred. Null when any suite is not covered —
+ * that run executes.
+ */
+function reusableRun(run, sources) {
+  const suiteIds = run.suiteIds || [run.suiteId];
+  const issues = new Set();
+  for (const id of suiteIds) {
+    const covered = new Set();
+    for (const s of sources) {
+      if ((s.tier1.deferredSuites || []).some((d) => d.suiteId === id)) return null;
+      for (const r of s.tier1.suiteRuns || []) {
+        if (!r.ok || !(r.suiteIds || []).includes(id)) continue;
+        (r.files || []).forEach((f) => covered.add(f));
+        issues.add(s.issue);
+      }
+    }
+    if (!(run.files || []).every((f) => covered.has(f)) || covered.size === 0) return null;
+  }
+  return [...issues];
+}
+
+/**
  * What a deferred suite's Tier 1 entry says (#3730): it was not run before
  * merge, why, and where it runs instead.
  *
@@ -235,6 +312,10 @@ function runTier1({
     ok: failures.length === 0,
     failures,
     range,
+    // #3774: the tree these suites ran over — the branch tip's, the worktree
+    // being clean or this Tier 1 failing. The post-merge pass reuses the
+    // results only when the batch head's tree is this one.
+    testedTree: treeOf(git, branch),
     commits,
     uncommitted,
     scope: { ok: scope.ok, mode: scope.mode, violations: scope.violations, declaredScope: scope.declaredScope, touched: scope.touched },
@@ -919,7 +1000,12 @@ function overlapMessage(overlaps) {
  * @param {{base: string, head?: string, members: Array<{issue: number, body: string}>,
  *   epic?: number, regenerated?: string[], cwd: string, git: Function,
  *   suites?: object[], runSuite?: Function, protectedPaths?: object[], registrarExemption?: object,
- *   prior?: number[], own?: string[], recorded?: Array<{sha: string, paths?: string[]}>}} input
+ *   prior?: number[], own?: string[], recorded?: Array<{sha: string, paths?: string[]}>,
+ *   reuse?: {cleanMerge?: boolean, tier1?: Object<number, object>, untrusted?: Array<{issue: number, reason: string}>}}} input
+ *   `reuse` (#3774): each member's Tier 1 result and whether its merge-back
+ *   was clean. The suites Tier 1 ran are not re-run when decideSuiteReuse()
+ *   finds the head's tree is the tree Tier 1 tested; `suiteReuse` reports the
+ *   decision either way, naming the tree.
  *   `recorded` (#3286): the regenerated commits the run state holds. Each
  *   one on this range's first-parent line counts as `own`, and its paths join
  *   `regenerated`, so the regenerated-paths check runs without a typed --own.
@@ -931,7 +1017,7 @@ function overlapMessage(overlaps) {
  */
 function runGroupTier1({
   base, head = 'HEAD', members = [], epic, regenerated: givenRegenerated = [], cwd, git,
-  suites = [], runSuite, protectedPaths, registrarExemption, prior = [], own: givenOwn = [], recorded = [],
+  suites = [], runSuite, protectedPaths, registrarExemption, prior = [], own: givenOwn = [], recorded = [], reuse,
 }) {
   const range = `${base}..${head}`;
   const failures = [];
@@ -1066,10 +1152,21 @@ function runGroupTier1({
 
   const suiteRuns = [];
   const scoped = scopedInvocations({ suites, changedFiles: [...touched], inWorktree: true });
+  // #3774: a clean merge, nothing regenerated and the head's tree equal to the
+  // tree Tier 1 tested — the suites Tier 1 ran would repeat its verdict, so
+  // their results stand, named. A suite Tier 1 deferred always runs.
+  const suiteReuse = decideSuiteReuse({ reuse, regenerated, members, head, git });
+  const reusedIds = [];
   for (const run of scoped.runs) {
     const runCwd = run.cwd && run.cwd !== '.' ? path.join(cwd, run.cwd) : cwd;
     const suiteIds = run.suiteIds || [run.suiteId];
     const files = [...(run.files || [])];
+    const from = suiteReuse.reused ? reusableRun(run, suiteReuse.sources) : null;
+    if (from) {
+      reusedIds.push(...suiteIds);
+      suiteRuns.push({ suiteIds, command: run.command, cwd: runCwd, files, exitCode: 0, ok: true, reused: { from, tree: suiteReuse.tree } });
+      continue;
+    }
     const result = runSuite ? runSuite({ command: run.command, cwd: runCwd, suiteIds, files, mode: run.mode }) : { exitCode: null };
     suiteRuns.push({ suiteIds, command: run.command, cwd: runCwd, files, exitCode: result.exitCode, ok: result.exitCode === 0 });
   }
@@ -1097,8 +1194,24 @@ function runGroupTier1({
     perMember,
     touched: [...touched],
     suiteRuns,
+    suiteReuse: reuseReport(suiteReuse, reusedIds, suiteRuns),
     deferredSuites: scoped.deferred || [],
   };
+}
+
+/** The suiteReuse entry a group pass reports (#3774): the decision, the suites reused and those run. */
+function reuseReport(decision, reusedIds, suiteRuns) {
+  // `sources` carries whole Tier 1 documents; the report keeps only the decision.
+  const rest = { ...decision };
+  delete rest.sources;
+  const rerun = suiteRuns.filter((r) => !r.reused).flatMap((r) => r.suiteIds);
+  if (!decision.reused) return { ...rest, suites: [], rerun };
+  // Reuse was allowed but no run qualified: say so, never a silent reuse claim.
+  if (reusedIds.length === 0) {
+    return { ...rest, reused: false, reason: 'no-matching-run', message: `Suites re-run on the tracker: the tree ${decision.tree} matches, but no member Tier 1 run covers these suites.`, suites: [], rerun };
+  }
+  const tail = rerun.length ? ` Run here: ${rerun.join(', ')}.` : '';
+  return { ...rest, suites: reusedIds, rerun, message: `${decision.message} Reused: ${reusedIds.join(', ')}.${tail}` };
 }
 
 /**
@@ -1130,7 +1243,9 @@ function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic, unswe
   const ok = tier1 && tier1.ok && (!tier2 || tier2.ok !== false);
   // Another session's commits on the tracker are reported, never failed (#3263).
   const external = (tier1 && tier1.external) || [];
-  if (ok) return { action: 'report-group', group, ...(external.length ? { external } : {}) };
+  // #3774: a reuse is named in the report, never a silent skip.
+  const reuse = tier1 && tier1.suiteReuse && tier1.suiteReuse.reused ? { suiteReuse: tier1.suiteReuse.message } : {};
+  if (ok) return { action: 'report-group', group, ...(external.length ? { external } : {}), ...reuse };
   const report = [
     `Halted: post-merge pass failed for group ${group} on the tracker.`,
     ...findingLines(tier1, null).map((l) => `  ${l}`),
@@ -1338,8 +1453,8 @@ const USAGE = [
   '  review-outcome --issue N --tier3 F --tree-before F --tree-before-sha SHA [--body-file F] [--fix-cycles N] [--review-retries N] [--post-comment]',
   '  tree-snapshot --out F [--clear F ...]',
   '  outcome     --issue N --worktree P [--branch B] --tier1 F --tier1-sha SHA [--tier3 F --tree-before F --tree-before-sha SHA [--sibling N ...] [--ledger F: the run ledger; a worktree it names appearing or disappearing during the review is reported as runWorktrees, never failed] | --no-review] [--fix-cycles N] [--review-retries N] [--resumed] [--epic N] [--unswept N ...] [--post-comment]',
-  '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...] [--body-file N=F ...] — with two or more members, fails before merging when they share a path outside their declared scope',
-  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...] [--state F: the run-state file; its recorded regenerated commits count as --own]',
+  '  merge-back  --tracker T --member N:BRANCH[:WORKTREE] ... [--epic N] [--unswept N ...] [--body-file N=F ...] [--hold-tier1 N ...] — with two or more members, fails before merging when they share a path outside their declared scope; after a clean merge it reclaims each merged member (#3799: re-check, worktree-teardown.js, git branch -d, its scratch — tier1 kept for each --hold-tier1 N) and reports reclaimed and kept; a halt reclaims nothing',
+  '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...] [--state F: the run-state file; its recorded regenerated commits count as --own] [--member-tier1-sha N=SHA ... [--member-tier1 N=F, default .tmp-gate-<N>-tier1.json] --clean-merge: #3774 — reuse each member\'s Tier 1 suite results when the merge was clean, nothing was regenerated and the head\'s tree is the tree Tier 1 tested]',
   '  batch-range --member N ... --base-of N=SHA ... --head H',
   '  clear-member --issue N [--ledger F] [--keep-tier1 | --tier1-only] — removes the member\'s gate files and brief; keeps all when the ledger\'s worktree for N still exists',
   '  reclaim     --reclaim [N:]wt/<branch>:<path> ... — #3714: re-checks each worktree is on the tracker and clean, tears it down through worktree-teardown.js, deletes its branch with git branch -d and clears a recorded member\'s scratch',
@@ -1347,10 +1462,10 @@ const USAGE = [
   '  Common: --root DIR (default: the current directory). Bodies not given by --body-file are read with gh pmu view N --body-stdout.',
 ].join('\n');
 
-const REPEATABLE = new Set(['--member', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own', '--file', '--reclaim']);
+const REPEATABLE = new Set(['--member', '--member-tier1', '--member-tier1-sha', '--regenerated', '--body-file', '--unswept', '--clear', '--sibling', '--prior', '--base-of', '--kept-worktree', '--own', '--file', '--reclaim', '--hold-tier1']);
 /** A commit SHA as review-plan --base accepts it (#3468): 4-40 hex characters, nothing git could read as an option or a range. */
 const BASE_SHA_PATTERN = /^[0-9a-fA-F]{4,40}$/;
-const BOOLEAN = new Set(['--no-review', '--resumed', '--post-comment', '--keep-tier1', '--tier1-only', '--nonstop']);
+const BOOLEAN = new Set(['--no-review', '--resumed', '--post-comment', '--keep-tier1', '--tier1-only', '--nonstop', '--clean-merge']);
 
 /** `<subcommand> --flag value ...` → `{sub, opts}`; repeatable flags collect arrays. */
 function parseCliArgs(argv) {
@@ -1490,21 +1605,25 @@ const errText = (e) => String(e && e.message ? e.message : e).trim();
  *   branchDeleted: boolean, branchError?: string, cleared: string[]}>}
  */
 function reclaimWorktrees({ root, worktrees = [], git, teardown }) {
-  return worktrees.map(({ issue, branch, worktreePath: given }) => {
+  return worktrees.map(({ issue, branch, worktreePath: given, scratch }) => {
     // #3716: a relative path names a worktree under the tracker root, so it
     // is resolved there before any git call runs in it or the teardown sees it.
     const worktreePath = path.isAbsolute(given) ? given : path.resolve(root, given);
     const out = { issue, branch, worktreePath, status: null, reason: null, branchDeleted: false, cleared: [] };
     try {
-      return reclaimOne({ root, out, git, teardown });
+      return reclaimOne({ root, out, git, teardown, scratch });
     } catch (e) {
       return { ...out, status: 'error', reason: `reclaiming ${worktreePath} threw: ${errText(e)}` };
     }
   });
 }
 
-/** One worktree's reclaim, for `reclaimWorktrees()`; `out` is its result skeleton. */
-function reclaimOne({ root, out, git, teardown }) {
+/**
+ * One worktree's reclaim, for `reclaimWorktrees()`; `out` is its result
+ * skeleton. `scratch` narrows a recorded member's cleared files (#3799) —
+ * default all five, `memberScratch()`.
+ */
+function reclaimOne({ root, out, git, teardown, scratch }) {
   const { issue, branch, worktreePath } = out;
   // #3716: the re-check guards the worktree, so it reads the branch the
   // worktree has checked out — a stale or hand-edited argument naming
@@ -1547,9 +1666,53 @@ function reclaimOne({ root, out, git, teardown }) {
   } catch (e) {
     out.branchError = errText(e);
   }
-  if (issue) out.cleared = clearScratch({ root, files: memberScratch(issue) }).removed;
+  if (issue) out.cleared = clearScratch({ root, files: scratch || memberScratch(issue) }).removed;
   return out;
 }
+
+/** One POSIX shell word (#3717's rule): single-quoted, an embedded ' as '\''. */
+const shWord = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+
+/**
+ * Reclaim the members a clean merge-back merged (#3799) — the same routine as
+ * the `reclaim` subcommand (#3714), so teardown is never left to commands a
+ * session composes. Each merged member is re-checked (its checked-out branch,
+ * an ancestor of the new tracker tip, a clean tree), torn down through
+ * `teardown` (worktree-teardown.js — never `git worktree remove`), its wt/*
+ * branch deleted with `git branch -d`, and its scratch cleared; `holdTier1`
+ * names members whose tier1 file a later step still reads, so it stays.
+ *
+ * A member that fails a check, has no worktree path, or whose teardown keeps
+ * or halts is `kept`: worktree, branch and scratch untouched, with its reason
+ * and the worktree-teardown.js command that tears it down once resolved.
+ *
+ * @param {{root: string, members: Array<{issue: number, branch: string, worktreePath: string|null}>,
+ *   merged: Array<{issue: number}>, git: Function, teardown: Function, holdTier1?: number[]}} input
+ * @returns {{reclaimed: object[], kept: object[]}}
+ */
+function reclaimMerged({ root, members = [], merged = [], git, teardown, holdTier1 = [] }) {
+  const mergedSet = new Set(merged.map((m) => m.issue));
+  const hold = new Set(holdTier1);
+  const reclaimed = [];
+  const kept = [];
+  const command = (worktreePath) => `node .claude/scripts/shared/lib/worktree-teardown.js --root ${shWord(root)} --worktree ${shWord(worktreePath)}`;
+  for (const m of members.filter((x) => mergedSet.has(x.issue))) {
+    if (!m.worktreePath) {
+      kept.push({ issue: m.issue, branch: m.branch, worktreePath: null, reason: 'no worktree path given in --member — nothing was torn down', command: null });
+      continue;
+    }
+    const [r] = reclaimWorktrees({
+      root, git, teardown,
+      worktrees: [{ issue: m.issue, branch: m.branch, worktreePath: m.worktreePath, scratch: hold.has(m.issue) ? memberScratch(m.issue).slice(1) : undefined }],
+    });
+    if (r.status === 'removed') reclaimed.push(r);
+    else kept.push({ issue: r.issue, branch: r.branch, worktreePath: r.worktreePath, status: r.status, reason: r.reason || `teardown reported ${r.status}`, command: command(r.worktreePath) });
+  }
+  return { reclaimed, kept };
+}
+
+/** The teardown seam, else worktree-teardown.js — the one remover (#3124, #3186). */
+const teardownOf = (seams) => seams.teardown || ((input) => require('./worktree-teardown.js').teardownWorktree(input));
 
 /**
  * @param {string[]} argv
@@ -1776,11 +1939,16 @@ function runCli(argv, seams = {}) {
         changed: gitStatus(['diff', '--name-only', `HEAD...${m.branch}`]).stdout.split('\n').map((l) => l.trim()).filter(Boolean),
       })));
       if (!overlap.ok) {
-        return { code: 1, envelope: { ok: false, subcommand: sub, check: 'undeclared-overlap', overlaps: overlap.overlaps, merged: [], worktreesKept: members, report: `Halted before merge-back: ${overlapMessage(overlap.overlaps)} Nothing was merged; every worktree is kept.` } };
+        return { code: 1, envelope: { ok: false, subcommand: sub, check: 'undeclared-overlap', overlaps: overlap.overlaps, merged: [], worktreesKept: members, reclaimed: [], report: `Halted before merge-back: ${overlapMessage(overlap.overlaps)} Nothing was merged; every worktree is kept.` } };
       }
     }
     const result = mergeBack({ git: seams.gitStatus || gitStatus, tracker: opts['--tracker'], epic: num(opts['--epic']), members, order: members.map((m) => m.issue), unswept });
-    return { code: result.ok ? 0 : 1, envelope: { subcommand: sub, ...result } };
+    // #3799: a halt reclaims nothing — every worktree stays for KEPT_WORKTREE
+    // on resume. A clean merge-back reclaims each merged member itself.
+    if (!result.ok) return { code: 1, envelope: { subcommand: sub, ...result, reclaimed: [] } };
+    const holdTier1 = (opts['--hold-tier1'] || []).map(Number);
+    const { reclaimed, kept } = reclaimMerged({ root, members, merged: result.merged, git, teardown: teardownOf(seams), holdTier1 });
+    return { code: 0, envelope: { subcommand: sub, ...result, reclaimed, kept } };
   }
 
   if (sub === 'group-tier1') {
@@ -1798,8 +1966,42 @@ function runCli(argv, seams = {}) {
       }
     }
     const members = opts['--member'].map((n) => ({ issue: Number(n), body: bodyOf(Number(n), files) }));
+    // #3774: --member-tier1-sha N=SHA [--member-tier1 N=F] [--clean-merge] —
+    // each member's Tier 1 document (default .tmp-gate-<N>-tier1.json), verified
+    // as outcome verifies it; a document whose sha is absent or differs is
+    // never reused.
+    let reuse;
+    if (opts['--member-tier1'] || opts['--member-tier1-sha'] || opts['--clean-merge']) {
+      const shas = bodyFileMap(opts['--member-tier1-sha']);
+      const docs = { ...Object.fromEntries(Object.keys(shas).map((n) => [n, `.tmp-gate-${n}-tier1.json`])), ...bodyFileMap(opts['--member-tier1']) };
+      reuse = { cleanMerge: !!opts['--clean-merge'], tier1: {}, untrusted: [] };
+      const { safePath } = require('./input-validation.js');
+      for (const [n, file] of Object.entries(docs)) {
+        // A CLI-named path is contained in the root before any read (merge-back
+        // review): one that escapes is untrusted and never opened.
+        let resolved;
+        try {
+          resolved = safePath(root, file);
+        } catch (_e) {
+          reuse.untrusted.push({ issue: Number(n), reason: `${file} escapes the project root, so it was not read` });
+          continue;
+        }
+        let text;
+        try {
+          text = require('fs').readFileSync(resolved, 'utf8');
+        } catch (e) {
+          reuse.untrusted.push({ issue: Number(n), reason: `${file} is unreadable (${e.code || e.message})` });
+          continue;
+        }
+        if (!shas[n]) { reuse.untrusted.push({ issue: Number(n), reason: `${file} has no --member-tier1-sha` }); continue; }
+        if (sha256(text) !== String(shas[n]).toLowerCase()) { reuse.untrusted.push({ issue: Number(n), reason: `${file} no longer matches its sha256` }); continue; }
+        const doc = JSON.parse(text);
+        reuse.tier1[Number(n)] = doc.tier1 || doc;
+      }
+    }
     const { resolveSuites } = require('./test-runner.js');
     const tier1 = runGroupTier1({
+      reuse,
       recorded,
       base: opts['--base'], head: opts['--head'] || 'HEAD', members, epic: num(opts['--epic']),
       regenerated: opts['--regenerated'] || [], cwd: root, git, suites: resolveSuites(root).suites, runSuite,
@@ -1868,8 +2070,7 @@ function runCli(argv, seams = {}) {
     const specs = opts['--reclaim'].map(parseReclaimSpec);
     const bad = specs.find((s) => s.error);
     if (bad) return fail(`--reclaim takes [N:]wt/<branch>:<path> — ${bad.error}`);
-    const teardown = seams.teardown || ((input) => require('./worktree-teardown.js').teardownWorktree(input));
-    const results = reclaimWorktrees({ root, worktrees: specs, git, teardown });
+    const results = reclaimWorktrees({ root, worktrees: specs, git, teardown: teardownOf(seams) });
     // Reclaimed means the worktree AND its branch are gone: a branch
     // `git branch -d` refused is a failure to report, not a success.
     const ok = results.every((r) => r.status === 'removed' && r.branchDeleted);
@@ -1910,6 +2111,7 @@ module.exports = {
   parseMemberSpec,
   parseReclaimSpec,
   reclaimWorktrees,
+  reclaimMerged,
   notRunFailure,
   runTier1,
   memberBase,
@@ -1933,6 +2135,7 @@ module.exports = {
   resumeFixCycle,
   postMergeSet,
   runGroupTier1,
+  decideSuiteReuse,
   batchRange,
   postMergeOutcome,
   evaluateMember,

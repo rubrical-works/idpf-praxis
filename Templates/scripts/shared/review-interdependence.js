@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Analyze interdependence between multiple issues.
  * Detects overlap, ordering dependencies, conflicts, and shared criteria
  * using config-driven evaluation dimensions.
@@ -19,6 +19,7 @@ const { scanCheckboxes } = require('./lib/checkbox-scan.js');
 // imperfect.
 const { parseDeclaredScope, matchesAny } = require('./scope-drift-check.js');
 const { loadConcurrency } = require('./lib/derived-artifacts.js');
+const { resolveIssueType } = require('./lib/issue-type.js');
 
 const CONFIG_PATH = path.resolve(__dirname, '../../metadata/review-interdependence.json');
 
@@ -605,8 +606,199 @@ function analyzeInterdependence(issues, opts = {}) {
   };
 }
 
+// ─── Step 3a in the parent of a concurrent multi-issue review (#3809) ───
+
+/**
+ * Why a non-reviewed result stays out of Step 3a, keyed by its `outcome`.
+ * The inline path never analyzes these members either: an errored or
+ * redirected issue, or one that exited early, produced no review this run.
+ */
+function exclusionReason(result) {
+  switch (result.outcome) {
+    case 'error':
+      return `error: ${result.error || 'unknown error'}`;
+    case 'redirect':
+      return result.redirect ? `redirected to ${result.redirect}` : 'redirected';
+    case 'early-exit':
+      return 'early exit (already reviewed)';
+    case 'held':
+    case 'skipped':
+      return result.reason ? `${result.outcome} — ${result.reason}` : result.outcome;
+    default:
+      return `outcome ${JSON.stringify(result.outcome)}`;
+  }
+}
+
+/**
+ * Select Step 3a's input set from the members' review results.
+ *
+ * A member is analyzed when its result is `outcome: "reviewed"` (an
+ * outcome-less result reads as reviewed, as the result schema does) with a
+ * non-null `labelAssigned`. A null label means finalize's swap failed, so the
+ * review did not land and the member is excluded, as are errored, malformed,
+ * redirected, early-exit, held and skipped members. Each exclusion carries
+ * its reason for the roster.
+ *
+ * @param {Array<object>} results - Member results in typed order
+ * @returns {{ included: number[], excluded: Array<{issue: number|null, reason: string}> }}
+ */
+function selectInterdependenceInput(results) {
+  const included = [];
+  const excluded = [];
+  for (const result of results || []) {
+    if (!result || typeof result !== 'object' || !Number.isInteger(result.issue)) {
+      excluded.push({ issue: null, reason: 'malformed result' });
+      continue;
+    }
+    const outcome = result.outcome === undefined ? 'reviewed' : result.outcome;
+    if (outcome !== 'reviewed') {
+      excluded.push({ issue: result.issue, reason: exclusionReason(result) });
+      continue;
+    }
+    if (result.labelAssigned === null || result.labelAssigned === undefined) {
+      excluded.push({ issue: result.issue, reason: 'finalize failed (labelAssigned null)' });
+      continue;
+    }
+    if (!included.includes(result.issue)) included.push(result.issue);
+  }
+  return { included, excluded };
+}
+
+/**
+ * Fetch one issue's current `{number, title, type, labels, body}` with `gh`.
+ * `labels` stays as gh returns it — `{name}` objects, which
+ * isEligibleForInterdependence accepts. `type` is resolveIssueType's, the
+ * same derivation the review and resolve preambles use.
+ *
+ * @param {number} number
+ * @param {{ run?: (cmd: string, args: string[]) => string }} [opts] - test seam
+ * @returns {{number: number, title: string, type: string, labels: Array, body: string}}
+ */
+function fetchIssueFromGh(number, opts = {}) {
+  const run = opts.run || ((cmd, args) => require('child_process').execFileSync(cmd, args, { encoding: 'utf8' }));
+  const raw = JSON.parse(run('gh', ['issue', 'view', String(number), '--json', 'number,title,labels,body']));
+  return {
+    number: raw.number,
+    title: raw.title || '',
+    type: resolveIssueType(raw),
+    labels: raw.labels || [],
+    body: raw.body || ''
+  };
+}
+
+/**
+ * Re-fetch each selected member's final issue for Step 3a.
+ *
+ * The reviewer result schema carries no body, and a resolve pass may have
+ * rewritten the body since the first-pass review, so the parent reads every
+ * input fresh. A member whose fetch fails is excluded with the failure named;
+ * analyzing it on a stale or absent body would report interdependence the
+ * final issue may no longer have.
+ *
+ * @param {number[]} numbers - Step 3a's selected members
+ * @param {(n: number) => object|Promise<object>} fetchIssue
+ * @returns {Promise<{ inputs: Array<object>, excluded: Array<{issue: number, reason: string}> }>}
+ */
+async function fetchFinalInputs(numbers, fetchIssue = fetchIssueFromGh) {
+  const inputs = [];
+  const excluded = [];
+  for (const n of numbers) {
+    try {
+      const issue = await fetchIssue(n);
+      inputs.push({
+        number: issue.number,
+        title: issue.title,
+        type: issue.type,
+        labels: issue.labels,
+        body: issue.body
+      });
+    } catch (err) {
+      excluded.push({ issue: n, reason: `re-fetch failed: ${err && err.message ? err.message : String(err)}` });
+    }
+  }
+  return { inputs, excluded };
+}
+
+/**
+ * Run Step 3a once, in the parent, after the run's other phases.
+ *
+ * Order: the resolve phase settles first (skipped under `--step-wise`, where
+ * there is none, so the analysis runs straight after the review phase); then
+ * the input set is selected, each member is re-fetched and type-filtered, and
+ * analyzeInterdependence is called once. With fewer than two members left the
+ * analysis is not called and `skipped` names why.
+ *
+ * @param {object} args
+ * @param {Array<object>} args.results - Member results in typed order
+ * @param {() => any} [args.resolvePhase] - Runs the deferred resolve phase
+ * @param {boolean} [args.stepWise] - `--step-wise`: no resolve phase
+ * @param {(n: number) => object|Promise<object>} [args.fetchIssue]
+ * @param {(issues: Array<object>, opts: object) => object} [args.analyze]
+ * @param {string} [args.cwd]
+ * @returns {Promise<{ analyzed: number[], excluded: Array<{issue: number|null, reason: string}>, analysis: object|null, skipped: string|null }>}
+ */
+async function runInterdependenceStep({
+  results,
+  resolvePhase,
+  stepWise = false,
+  fetchIssue = fetchIssueFromGh,
+  analyze = analyzeInterdependence,
+  cwd
+} = {}) {
+  if (!stepWise && typeof resolvePhase === 'function') await resolvePhase();
+
+  const selection = selectInterdependenceInput(results);
+  const fetched = await fetchFinalInputs(selection.included, fetchIssue);
+  const excluded = [...selection.excluded, ...fetched.excluded];
+
+  const inputs = [];
+  for (const issue of fetched.inputs) {
+    if (isEligibleForInterdependence(issue.labels)) inputs.push(issue);
+    else excluded.push({ issue: issue.number, reason: `ineligible type (${issue.type})` });
+  }
+
+  const analyzed = inputs.map((i) => i.number);
+  if (inputs.length < 2) {
+    return { analyzed, excluded, analysis: null, skipped: 'fewer than 2 reviewed' };
+  }
+  return { analyzed, excluded, analysis: analyze(inputs, { cwd }), skipped: null };
+}
+
+/**
+ * Render the closing roster's interdependence line from a
+ * runInterdependenceStep result: the analyzed set and its finding count, or
+ * the skip reason, then every excluded member with its reason.
+ *
+ * @param {{ analyzed: number[], excluded: Array<{issue: number|null, reason: string}>, analysis: object|null, skipped: string|null }} step
+ * @returns {string}
+ */
+function formatInterdependenceRosterLine(step) {
+  let line;
+  if (step.skipped) {
+    line = `Interdependence: skipped — ${step.skipped}`;
+  } else {
+    const count = (step.analysis && Array.isArray(step.analysis.findings)) ? step.analysis.findings.length : 0;
+    const verdict = count === 0 ? 'none detected' : `${count} finding${count === 1 ? '' : 's'}`;
+    line = `Interdependence: analyzed ${step.analyzed.map((n) => `#${n}`).join(', ')} — ${verdict}`;
+  }
+  if (step.excluded && step.excluded.length > 0) {
+    const named = step.excluded.map((e) => `${e.issue === null ? '(unnumbered)' : `#${e.issue}`} (${e.reason})`);
+    line += `; excluded ${named.join(', ')}`;
+  }
+  return line;
+}
+
 // extractTokens is exported for #2600 AC9: the criterion is that quoted
 // criteria stop entering overlap comparison, and only the token extractor can
 // show that directly. Asserting it through analyzeInterdependence would prove
 // a similarity score changed, not which inputs produced it.
-module.exports = { analyzeInterdependence, isEligibleForInterdependence, extractTokens };
+module.exports = {
+  analyzeInterdependence,
+  isEligibleForInterdependence,
+  extractTokens,
+  selectInterdependenceInput,
+  fetchIssueFromGh,
+  fetchFinalInputs,
+  runInterdependenceStep,
+  formatInterdependenceRosterLine
+};

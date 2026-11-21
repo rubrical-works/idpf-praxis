@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Interactive issue-to-branch assignment. Lists unassigned issues and open branches, supports direct assignment via arguments, and --add-ready flag for bulk-assigning all unassigned 'ready' status issues to the current branch. Used by /assign-branch command.
  * @checksum sha256:placeholder
  *
@@ -188,9 +188,16 @@ function readRepoSlug(root = process.cwd()) {
     }
 }
 
-/** One GraphQL query reading the labels of every issue in `numbers`, aliased `i<N>`. */
+/**
+ * One GraphQL query reading the labels of every issue in `numbers`, aliased
+ * `i<N>`. Each value is interpolated into the document, so anything that is
+ * not a positive safe integer is left out (#3760): it can neither change the
+ * query's structure nor fail the chunk, and the caller fetches it per issue as
+ * an issue the response did not answer.
+ */
 function buildLabelQuery(numbers) {
     const nodes = numbers
+        .filter(n => Number.isSafeInteger(n) && n > 0)
         .map(n => `i${n}: issue(number: ${n}) { labels(first: 100) { nodes { name } } }`)
         .join(' ');
     return `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${nodes} } }`;
@@ -747,8 +754,8 @@ function linkOneToTracker(issueNumber, tracker) {
                     return resolve({ result: 'already' });
                 }
                 if (line && line.result === 'failed') return fail(line.detail);
-                if (err) return fail((stderr || err.message || 'unknown error').trim());
                 if (line && line.result === 'linked') return linked();
+                if (err) return fail((stderr || err.message || 'unknown error').trim());
                 const output = (stdout || '').trim();
                 if (output.includes('already') && (output.includes('parent') || output.includes('sub-issue'))) {
                     console.log(`    ⚠ #${issueNumber} already has a parent — skipped`);

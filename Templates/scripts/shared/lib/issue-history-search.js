@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Issue-history retrieval for the prior-art sweep: every term over every repository in one gh api graphql request, matched locally against title and stripped body. Exports searchIssueHistory(), buildRequest(), matchIssue() and main().
  * @checksum sha256:placeholder
  *

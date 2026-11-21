@@ -1,7 +1,7 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Review issues against the IDPF framework's type-specific criteria.
-argument-hint: "#issue [#issue...] [--with ...] [--mode ...] [--force] [--prior-art] [--help]"
+argument-hint: "#issue [#issue...] | --status <status> [--agents N] [--sequential] [--with ...] [--mode ...] [--force] [--prior-art] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -12,7 +12,10 @@ Delegates setup to `review-preamble.js`, cleanup to `review-finalize.js`.
 ## Arguments
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `#issue` | Yes | Issue numbers (`#42` or `42 43 44`) |
+| `#issue` | Yes, unless `--status` | Issue numbers (`#42` or `42 43 44`) |
+| `--status <status>` | No | Every open issue in a board status configured in `.gh-pmu.json`, planned as a typed multi-issue selection; typed numbers beside it deduplicated. Unconfigured status rejected, naming the configured ones; empty status → empty selection, nothing reviewed |
+| `--agents N` | No | Multi-issue concurrency cap: `--agents N` > `framework-config.json` project default > 3, source reported. Positive integer; `--agents 1` = sequential path. Single issue: ignored, reported |
+| `--sequential` | No | Review a multi-issue selection one at a time, inline, typed order. Boolean, takes no value |
 | `--with` | No | Domain extensions (`security,performance` or `all`) |
 | `--mode` | No | Review mode override: `solo`/`team`/`enterprise` |
 | `--without` | No | Domain extensions to exclude, applied after `--with` (`--with all --without seo`) |
@@ -23,7 +26,7 @@ Delegates setup to `review-preamble.js`, cleanup to `review-finalize.js`.
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js review-issue`, report its output, and STOP.
 
 `--no-redirect` is parsed but deliberately undocumented: internal, used by redirected review commands to avoid routing loops (#2752).
-Multi: `/review-issue #42 #43 #44` reviews each sequentially.
+Multi: `/review-issue #42 #43 #44` — 2+ issues reviewed concurrently by default when the Agent tool is available; one at a time under `--sequential`/`--agents 1`; no Agent tool → sequential, said once. `--status ready` selects a status. Contract: rule 09 § Concurrent multi-issue run.
 ## Execution Instructions
 **REQUIRED:** Routed command — two-phase task creation:
 1. **Phase 1:** Single `TaskCreate` for preamble step only.

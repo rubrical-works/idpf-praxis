@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "description": "Schema for refactor-review-criteria.json — the criteria `/code-review --refactor` applies in place of the Step 5 charter criteria and the Step 5c domain questions (#3797).",
+    "source": "#3797"
+  },
+  "type": "object",
+  "required": ["version", "criteria"],
+  "properties": {
+    "_meta": { "type": "object" },
+    "version": { "type": "number", "description": "Schema version. Currently 1." },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Refactor criteria, applied to every queued file in a refactor run.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "lookFor", "wideScan"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "Stable kebab-case identifier; a finding's `category`." },
+          "name": { "type": "string", "minLength": 1, "description": "Human-readable label." },
+          "lookFor": { "type": "string", "minLength": 20, "description": "What a reviewer looks for — the text a shard brief carries." },
+          "wideScan": { "type": "boolean", "description": "True: a match in a reviewed file triggers the all-files scan for other sites of the same pattern, and the one proposal lists every site. False: the finding stays local to the file it was found in." }
+        }
+      }
+    }
+  }
+}

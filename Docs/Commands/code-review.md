@@ -15,9 +15,10 @@ Perform a methodical, charter-aligned code review with manifest-driven increment
 | `--agents <N>` | No | Split the file review across at most N read-only reviewer subagents running at once. Without it, the review runs in the main session. With `--batch`, the batch bounds the files per run and `--agents` bounds how many reviewers read them at once |
 | `--with <domains>` | No | Add domain-specific review criteria (e.g., `security`, `accessibility`, `all`) |
 | `--suggest` | No | Analyze charter and codebase to recommend applicable domains |
+| `--refactor` | No | Run a refactor-only review, tracked in its own manifest. Combines with `--full`, `--scope`, `--batch`, `--agents`, `--status` and `--diff`; cannot be combined with `--with` or `--suggest` |
 | `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
-Flags can be combined: `--scope "src/**/*.js" --batch 10 --with security`, `--diff --with security`
+Flags can be combined: `--scope "src/**/*.js" --batch 10 --with security`, `--diff --with security`, `--diff origin/release --full`, `--refactor --agents 3`
 
 ## Usage
 
@@ -31,6 +32,8 @@ Flags can be combined: `--scope "src/**/*.js" --batch 10 --with security`, `--di
 /code-review --status
 /code-review --diff
 /code-review --diff origin/release/1.4 --full
+/code-review --refactor
+/code-review --refactor --agents 3
 ```
 
 ## Key Behaviors
@@ -44,6 +47,7 @@ Flags can be combined: `--scope "src/**/*.js" --batch 10 --with security`, `--di
 - Batch filing does not run the acceptance-criteria feasibility checks that `/bug` and `/enhancement` apply; the result says so once for the batch.
 - `--with` and `--suggest` are mutually exclusive; using both reports an error and stops.
 - `--agents` takes a positive integer; any other value reports an error and stops.
+- `--refactor` with `--with` or `--suggest` reports that the two cannot be combined — domain criteria are not refactor criteria — and stops.
 - Reports are saved to `Construction/Code-Reviews/YYYY-MM-DD-report.md` after issue creation so issue numbers are included. Existing issues updated in place of a duplicate are listed in their own **Issues Updated** section, apart from the issues created, and the final summary shows an `Issues updated` count.
 - Available domain extensions: `security`, `accessibility`, `performance`, `chaos`, `contract`, `qa`, `seo`, `privacy`, `observability`, `i18n`, `api-design`.
 
@@ -53,6 +57,16 @@ Flags can be combined: `--scope "src/**/*.js" --batch 10 --with security`, `--di
 
 - A reviewer's result that is malformed, or a finding on a file outside its group or past the end of the file, is rejected and reported — never repaired.
 - A file no reviewer actually read is listed in the report under **Unreviewed files**, with the reason, and is never marked approved; its previous manifest entry is left as it was. The summary shows the reviewer count and the unreviewed files.
+
+## Refactor-Only Review (`--refactor`)
+
+`--refactor` reviews code for refactoring opportunities only, against the refactor criteria in `.claude/metadata/refactor-review-criteria.json`, instead of the charter and domain criteria. If that file is missing or invalid, the review stops.
+
+- **Separate state.** Progress is tracked in `.code-review-refactor-manifest.json`, never in `.code-review-manifest.json`. A file the standard review approved is still unreviewed for refactoring, and the reverse.
+- **Same flags, refactor manifest.** `--full`, `--scope`, `--batch`, `--agents`, `--status` and `--diff` work as they do in a standard review, each against the refactor manifest.
+- **All-files scan per candidate.** For a candidate whose criterion calls for it, every discovered file — not only those narrowed by `--scope` or `--diff` — is searched for other sites of the same pattern, and each confirmed site is listed with the proposal. A filed refactor proposal is an enhancement whose **Files to modify** lists every site found.
+- **Own report.** The report is saved as `Construction/Code-Reviews/YYYY-MM-DD-refactor.md`, with each proposal and its sites, and a **Noticed bugs** section for any bug or security problem spotted along the way.
+- **No branch review record.** A refactor run writes no `lastDiffReview` record, so it never satisfies the `/prepare-release` or `/prepare-beta` branch review gate.
 
 ## Reviewing a Branch (`--diff`)
 

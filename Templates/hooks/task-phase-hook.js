@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * task-phase-hook.js
  *
  * PreToolUse and PostToolUse hook (matcher: Bash) that reminds the model of

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "description": "Schema for .code-review-refactor-manifest.json — the refactor-review tracking file written and read by `/code-review --refactor` (#3797). Same shape as .code-review-manifest.json, and it never shares state with `.code-review-manifest.json`: a file the standard review approved is still unreviewed for refactoring, and the reverse.",
+    "source": "#3797"
+  },
+  "required": ["version", "lastRun", "criteria", "files"],
+  "forbiddenKeys": ["lastDiffReview"],
+  "schema": {
+    "version": { "type": "number", "description": "Manifest schema version. Currently 1." },
+    "lastRun": { "type": "string", "description": "ISO date (YYYY-MM-DD) of the most recent `/code-review --refactor` invocation that wrote this manifest." },
+    "criteria": {
+      "type": "object",
+      "description": "Refactor criteria state at last run — the analog of the standard manifest's `charter`. A mismatch with the current .claude/metadata/refactor-review-criteria.json hash queues every discovered file for re-review.",
+      "required": ["contentHash"],
+      "properties": {
+        "contentHash": { "type": "string", "description": "SHA-256 hash of refactor-review-criteria.json at last run. Prefixed with 'sha256:'." }
+      }
+    },
+    "files": {
+      "type": "object",
+      "description": "Map from relative file path to per-file refactor-review state. Keys are paths relative to project root.",
+      "additionalProperties": { "$ref": "#/schema/fileEntry" }
+    },
+    "fileEntry": {
+      "type": "object",
+      "description": "Per-file refactor-review state. Written only for files reviewed in a refactor run — a site the all-files scan found in another file never creates or changes that file's entry.",
+      "required": ["contentHash", "status"],
+      "properties": {
+        "contentHash": { "type": "string", "description": "SHA-256 hash of file content at last refactor review. Prefixed with 'sha256:'. Mismatch queues the file for re-review." },
+        "status": { "type": "string", "enum": ["pending", "approved", "flagged", "deferred"], "description": "Refactor-review status — same values and semantics as the standard manifest: approved = no refactor candidate; flagged = has candidates." },
+        "reviewedAt": { "type": "string", "description": "ISO date (YYYY-MM-DD) of the most recent refactor review of this file." },
+        "findingCount": { "type": "number", "description": "Count of refactor candidates recorded at last review. 0 when status is 'approved'." },
+        "findings": { "type": "array", "description": "Refactor candidates recorded at last review: path, line range, criterion id as category, severity, description, recommendation, and for a wideScan candidate the `sites` the all-files scan found.", "items": { "type": "object" } },
+        "issueRefs": { "type": "array", "description": "Issue numbers Step 8 filed from this file's refactor findings through `file-issue.js --manifest .code-review-refactor-manifest.json`.", "items": { "type": "number" } }
+      }
+    },
+    "filingQueue": {
+      "type": "array",
+      "description": "Approved refactor findings awaiting filing — written and rewritten by `file-issue.js --manifest .code-review-refactor-manifest.json`, exactly as in the standard manifest. Optional; absent means nothing queued.",
+      "items": { "$ref": "#/schema/queueItem" }
+    },
+    "queueItem": {
+      "type": "object",
+      "description": "One approved finding in the filing queue — the standard manifest's queueItem shape.",
+      "properties": {
+        "id": { "type": "string", "description": "`q-` plus 8 random hex characters." },
+        "status": { "type": "string", "enum": ["queued", "filed", "updated", "failed"], "description": "`queued` and `failed` are unfiled; `filed` and `updated` are never processed again." },
+        "queuedAt": { "type": "string" },
+        "filedAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "issue": { "type": ["number", "null"] },
+        "error": { "type": "string" },
+        "commentPosted": { "type": "boolean" },
+        "entry": { "type": "object", "description": "The `file-issue.js` entry. A refactor proposal is an `enhancement` whose `Files to modify:` lists every site; a noticed bug is a `bug`." }
+      }
+    },
+    "lastDiffRun": {
+      "type": "object",
+      "description": "The most recent `/code-review --refactor --diff` run, replaced by each such run. Kept here and never in the standard manifest's `lastDiffReview`: a refactor-only pass is not the full review the Release Review Gate requires. Optional.",
+      "required": ["baseRef", "baseSha", "headSha", "reviewedAt", "filesReviewed"],
+      "properties": {
+        "baseRef": { "type": "string" },
+        "baseSha": { "type": "string" },
+        "headSha": { "type": "string" },
+        "reviewedAt": { "type": "string", "description": "ISO timestamp of the run." },
+        "workingTreeIncluded": { "type": "boolean" },
+        "filesReviewed": { "type": "number" },
+        "issues": { "type": "array", "items": { "type": "number" } }
+      }
+    }
+  },
+  "statusValues": {
+    "pending": "Never refactor-reviewed — queued on next run.",
+    "approved": "Refactor-reviewed with no candidate. Skipped on incremental refactor runs when contentHash matches.",
+    "flagged": "Refactor-reviewed and has candidates. Skipped on incremental refactor runs when contentHash matches.",
+    "deferred": "User skipped this file. Skipped on all incremental refactor runs regardless of hash."
+  },
+  "notes": [
+    "First-run behavior: if .code-review-refactor-manifest.json does not exist, `/code-review --refactor` creates {version: 1, lastRun: <today>, criteria: {contentHash: <current>}, files: {}} and treats every discovered file as new — whatever .code-review-manifest.json says.",
+    "Separation: a refactor run never reads statuses from, or writes to, .code-review-manifest.json — in particular it never writes or changes `lastDiffReview` there.",
+    "All-files scan: sites found in files not reviewed this run are listed in the proposal; those files' entries are not created or changed."
+  ]
+}

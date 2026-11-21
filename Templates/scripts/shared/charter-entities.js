@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Charter entity extraction and derived counts (#3420, #3644).
  * Reads the Key Entities and Companion Repositories tables from CHARTER.md in
  * memory and counts each Key Entities row against disk when asked. Nothing
@@ -422,6 +422,13 @@ function deriveEntityCounts(entities, options = {}) {
     for (const location of locations) {
       // Strip parenthetical annotations for path resolution
       const cleanLoc = location.replace(/\s*\([^)]*\)\s*$/, '').trim();
+
+      // An annotation-only Location (e.g. `(see below)`) strips to nothing;
+      // path.resolve(root, '') would count the project root itself (#3783).
+      if (!cleanLoc) {
+        unresolved.push({ location, reason: 'no path in the Location' });
+        continue;
+      }
 
       if (GLOB_CHARS.test(cleanLoc)) {
         const { base, pattern } = splitGlobLocation(cleanLoc);

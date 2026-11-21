@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  *
  * Which other issues' commits a `/done` push would carry (#3640).
  *
@@ -22,6 +22,10 @@
  *
  * Node built-ins and relative `shared/lib` requires only (runtime dependency
  * contract, `04-deployment-awareness.md`).
+ *
+ * The result also carries `sweep` (#3775): the last `/work --nonstop`
+ * end-of-run sweep verdict recorded on the branch tracker, with `warn` set when
+ * it failed for an issue in the set (`--no-board` skips it: no gh call).
  *
  * CLI: node push-ride-alongs.js --issues 3640,3641 [--no-board]
  */
@@ -140,6 +144,53 @@ function describeRideAlongs(grouped, deps = {}) {
   return { ...grouped, others, completable: others.filter((o) => o.completable).map((o) => o.issue), warnings };
 }
 
+/**
+ * The last `/work --nonstop` end-of-run sweep verdict for this issue set
+ * (#3775): `/work` records it on the branch tracker as a sweep-verdict marker
+ * comment (`work-preamble.js` buildSweepVerdictMarker), and the newest marker
+ * wins, so a later passing sweep clears a failure. `warn` is true only for a
+ * failed verdict covering at least one issue in the set.
+ *
+ * NEVER THROWS: no tracker or unreadable comments is `checked: false` with a
+ * `reason` — reported, never read as a pass, and never a warning.
+ *
+ * @param {{ issues: number[], runGh?: Function, resolveTracker?: Function }} opts
+ */
+function readSweepVerdict(opts = {}) {
+  const issues = toIssues(opts.issues);
+  const runGh = typeof opts.runGh === 'function' ? opts.runGh : defaultRunGh;
+  const resolveTracker = typeof opts.resolveTracker === 'function'
+    ? opts.resolveTracker
+    : () => require('./active-label.js').getTrackerForBranch();
+  const quiet = { warn: false, message: null, failing: [] };
+  let tracker = null;
+  try {
+    tracker = resolveTracker();
+  } catch {
+    tracker = null;
+  }
+  if (!tracker) return { checked: false, reason: 'no-tracker', ...quiet };
+  let comments;
+  try {
+    comments = JSON.parse(runGh(['issue', 'view', String(tracker), '--json', 'comments'])).comments;
+    // A response with no comments array is unreadable, never "nothing recorded".
+    if (!Array.isArray(comments)) throw new Error('response carries no comments array');
+  } catch (e) {
+    return { checked: false, reason: 'comments-unreadable', tracker, error: String((e && e.message) || e).split('\n')[0], ...quiet };
+  }
+  const { parseLatestSweepVerdict } = require('../work-preamble.js');
+  const v = parseLatestSweepVerdict(comments);
+  if (!v) return { checked: true, tracker, verdict: null, ...quiet };
+  const covered = v.issues.filter((n) => issues.includes(n));
+  const warn = v.verdict === 'failed' && covered.length > 0;
+  return {
+    checked: true, tracker, verdict: v.verdict, issues: v.issues, covered, failing: v.failing, warn,
+    message: warn
+      ? `The last /work verification sweep for ${covered.map((n) => `#${n}`).join(', ')} failed — failing tests: ${v.failing.join(', ')}. Pushing now publishes that failure to CI.`
+      : null,
+  };
+}
+
 /** Board status "In review", in any of the spellings done-preamble.js accepts. */
 function isInReview(status) {
   return typeof status === 'string' && status.replace(/_/g, ' ').toLowerCase() === 'in review';
@@ -158,11 +209,16 @@ function main(argv, deps = {}) {
     return 1;
   }
   const grouped = groupUnpushedCommits({ issues, cwd: deps.cwd, runGit: deps.runGit });
-  const result = argv.includes('--no-board') || !grouped.hasRideAlongs ? grouped : describeRideAlongs(grouped, deps);
-  out.write(`${JSON.stringify(result, null, 2)}\n`);
+  const noBoard = argv.includes('--no-board');
+  const result = noBoard || !grouped.hasRideAlongs ? grouped : describeRideAlongs(grouped, deps);
+  // #3775: the last end-of-run sweep verdict, so /done can name failing tests before it pushes.
+  const sweep = noBoard
+    ? { checked: false, reason: 'no-board', warn: false, message: null, failing: [] }
+    : readSweepVerdict({ issues, runGh: deps.runGh, resolveTracker: deps.resolveTracker });
+  out.write(`${JSON.stringify({ ...result, sweep }, null, 2)}\n`);
   return 0;
 }
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { KEYWORDS, groupUnpushedCommits, describeRideAlongs, isInReview, main };
+module.exports = { KEYWORDS, groupUnpushedCommits, describeRideAlongs, readSweepVerdict, isInReview, main };

@@ -3,7 +3,7 @@
   "version": 1,
   "_meta": {
     "description": "The intentionally-open gate markers an unchecked acceptance-criterion box may carry, with meaning, precedent and closure rule. Consolidated from the /work Step 4b marker table and the Step 5 closure-by-marker rules (#2765, target identified in #2605). Consumed by both steps; nonstop-audit.js pins the same GATE tokens as GATE_PHASES.",
-    "consumers": ["/work Step 4b (force-move prohibition)", "/work Step 5 (move to in_review; closure)", "qa-extract.js (/work Step 4a — an AC already carrying a marker is not extracted again, #3161)"],
+    "consumers": ["/work Step 4b (force-move prohibition)", "/work Step 5 (move to in_review; closure)", "qa-extract.js (/work Step 4a — an AC already carrying a marker is not extracted again, #3161; a postRelease fill files the gate-release kind, #3817)", "done-preamble.js (/done — gate-release hand-off, #3453; a box already pointing at its post-release QA issue is never blocking, #3817)"],
     "relatedPrompt": ".claude/metadata/ac-feasibility-prompts.json phaseFeasibility (annotationFormat, gatePhases)"
   },
   "markers": [
@@ -11,7 +11,7 @@
       "id": "qa",
       "literal": "- [ ] … → QA: #N",
       "pattern": "→ QA: #\\d+",
-      "meaning": "Closure deferred to a QA sub-issue.",
+      "meaning": "Closure deferred to a QA sub-issue — the blocking kind. Choose it when the check can run before the release ships (in the dev tree, on the branch, on a pre-release build): the parent and its branch tracker wait for it. A check that can only run on the released hub is the post-release kind instead (gate-release closure, #3817), never this one.",
       "precedent": "Step 4a, Option A / #2472",
       "closure": "The box stays open until its QA sub-issue closes (see .claude/scripts/shared/lib/qa-config.json closurePath); the parent reaches done only once the box is checked. An obsolete verdict from /qa Step 1 (#2825) closes it in the struck form `- [x] ~~<acText>~~ → QA: #N (obsolete: <reason>)` — a released gate, not verified — with the marker kept verbatim so this pattern still matches."
     },
@@ -29,7 +29,7 @@
       "pattern": "→ GATE: release\\b",
       "meaning": "The condition resolves during /prepare-release.",
       "precedent": "#2508",
-      "closure": "Checked when the owning release step runs; if one is still open at /done, say so rather than checking it. A check that runs after the release deploys has no such step, so /done hands it off (#3453): when every unchecked box of an In review issue carries this marker, /done offers to file one standalone qa-required QA issue per criterion through .claude/scripts/shared/lib/qa-issue.js (status qa_required, no branch tracker), checks the box as `- [x] <criterion> → GATE: release → QA: #N` and closes the issue; the QA issue carries the check past the release."
+      "closure": "Checked when the owning release step runs; if one is still open at /done, say so rather than checking it. A check that runs after the release deploys has no such step, so /done hands it off (#3453): when every unchecked box of an In review issue carries this marker, /done offers to file one standalone qa-required QA issue per criterion through .claude/scripts/shared/lib/qa-issue.js (status qa_required, no branch tracker), checks the box as `- [x] <criterion> → GATE: release → QA: #N` and closes the issue; the QA issue carries the check past the release. The same post-release kind may be filed earlier (#3817): at /work Step 4a, by a qa-extract.js fill entry with `postRelease: true`, or at authoring time (/bug, /enhancement, /add-story, /create-backlog via phaseFeasibility) — standalone, not a sub-issue, not a tracker member — and its box is written checked in that same form from the start. Choose it over a blocking `→ QA: #N` gate only when the check can run nowhere but the released hub: a checked box pointing at its QA issue never blocks in_review, /done, epic closure or the tracker close (done-preamble.js reads an unchecked one as already handed off and checks it in place), and /qa verifies it on the released hub."
     }
   ],
   "recognizedGateTokens": ["review", "release"],

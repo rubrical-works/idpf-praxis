@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -20,6 +20,9 @@ const { reportUnrecognizedFlags } = require('./lib/command-args.js');
 // and one of the body marker, shared with every reader and locator (#2880).
 // Required with the other lib imports (#3627) so no function reads it in its TDZ.
 const { REVIEW_HEADER_PATTERN, REVIEWS_MARKER_PATTERN } = require('./lib/review-format.js');
+// #3811: --status resolves through the function /work --status uses — one
+// definition in the shared module, never a copy here.
+const { resolveStatusIssues } = require('./lib/status-selection.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -85,12 +88,23 @@ function parseArgs(args) {
   let noRedirect = false;
   let priorArt = false;
   let stepWise = false;
+  let status = null;
+  const typedIssues = [];
   const unrecognizedFlags = [];
 
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
-    if (arg === '--with') {
+    if (arg === '--status' || arg.startsWith('--status=')) {
+      // #3811: select every open issue in a board status. Validated against
+      // .gh-pmu.json in selectByStatus(), not here — parsing reads no files.
+      const val = arg === '--status' ? args[i + 1] : arg.slice('--status='.length);
+      if (!val || val.startsWith('--')) {
+        return { error: { code: 'MISSING_ARGUMENT', message: '--status requires a value.' } };
+      }
+      status = val;
+      i += arg === '--status' ? 2 : 1;
+    } else if (arg === '--with') {
       withExtensions = args[i + 1] || null;
       i += 2;
     } else if (arg === '--without') {
@@ -147,15 +161,16 @@ function parseArgs(args) {
         return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: "${arg}". Must be a positive integer.` } };
       }
       issue = num;
+      typedIssues.push(num);
       i += 1;
     }
   }
 
-  if (issue === null) {
+  if (issue === null && status === null) {
     return { error: { code: 'MISSING_ARGUMENT', message: 'No issue number provided.' } };
   }
 
-  const result = { issue };
+  const result = status === null ? { issue } : { status, typedIssues };
   if (withExtensions !== null) result.withExtensions = withExtensions;
   if (withoutExtensions !== null) result.withoutExtensions = withoutExtensions;
   if (modeOverride !== null) result.modeOverride = modeOverride;
@@ -609,6 +624,184 @@ function resolveReviewNumber(markerNext, commentCount) {
   return Math.max(markerNext, commentCount + 1);
 }
 
+// ─── Status Selection (#3811) ───
+
+/**
+ * The board statuses `.gh-pmu.json` configures: `fields.status.values`, alias
+ * to board name, in file order.
+ *
+ * @param {string} projectDir
+ * @returns {Array<{alias: string, name: string}>|null} null when unreadable
+ */
+function configuredStatuses(projectDir) {
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(path.join(projectDir, '.gh-pmu.json'), 'utf-8'));
+  } catch (_e) {
+    return null;
+  }
+  const values = config && config.fields && config.fields.status && config.fields.status.values;
+  if (!values || typeof values !== 'object') return null;
+  return Object.entries(values).map(([alias, name]) => ({ alias, name: String(name) }));
+}
+
+/**
+ * `--status <status>`: validate the status against `.gh-pmu.json`, resolve its
+ * open issues through the shared `resolveStatusIssues` (the function
+ * `/work --status` uses), then merge any typed numbers after the status
+ * members, each issue once. The status may be given as its alias
+ * (`in_review`) or its board name (`In review`, any case); the query always
+ * uses the alias.
+ *
+ * Nothing is queried for an unknown status or an unreadable config.
+ *
+ * @param {object} input
+ * @param {string} input.status
+ * @param {number[]} [input.typedIssues] - typed numbers, typed order
+ * @param {string} [input.projectDir]
+ * @param {Function} [input.resolve] - resolveStatusIssues override for tests
+ * @returns {Promise<object>} `{ error }`, or the selection:
+ *   `{ source, status, statusName, issues, statusIssues, typedIssues, duplicates, empty }`
+ */
+async function selectByStatus(input) {
+  const projectDir = input.projectDir || process.cwd();
+  const resolve = input.resolve || resolveStatusIssues;
+  const typed = Array.isArray(input.typedIssues) ? input.typedIssues : [];
+
+  const statuses = configuredStatuses(projectDir);
+  if (!statuses) {
+    return { error: { code: 'STATUS_CONFIG_UNREADABLE', message: 'Cannot validate --status: .gh-pmu.json is missing, unreadable or has no fields.status.values.' } };
+  }
+  const wanted = String(input.status).trim().toLowerCase();
+  const match = statuses.find(s => s.alias.toLowerCase() === wanted || s.name.toLowerCase() === wanted);
+  if (!match) {
+    const named = statuses.map(s => `${s.alias} ("${s.name}")`).join(', ');
+    return { error: { code: 'STATUS_NOT_CONFIGURED', message: `Status "${input.status}" is not configured in .gh-pmu.json. Configured statuses: ${named}.` } };
+  }
+
+  const result = await resolve(match.alias);
+  if (result.error) return { error: result.error };
+
+  const statusIssues = result.issues;
+  const seen = new Set();
+  const issues = [];
+  const duplicates = [];
+  for (const n of [...statusIssues, ...typed]) {
+    if (seen.has(n)) {
+      if (!duplicates.includes(n)) duplicates.push(n);
+      continue;
+    }
+    seen.add(n);
+    issues.push(n);
+  }
+  return {
+    source: 'status',
+    status: match.alias,
+    statusName: match.name,
+    issues,
+    statusIssues,
+    typedIssues: typed,
+    duplicates,
+    empty: issues.length === 0,
+  };
+}
+
+/**
+ * The envelope a `--status` run writes: the selection, no criteria — the parent
+ * runs the preamble once per member, as for typed numbers. An empty selection
+ * is an early exit: reported, nothing reviewed.
+ *
+ * @param {object} selection - selectByStatus() result
+ * @returns {object}
+ */
+function buildSelectionEnvelope(selection) {
+  const context = { selection };
+  if (selection.empty) {
+    context.earlyExit = true;
+    context.message = `No open issues in status "${selection.statusName}" (${selection.status}); nothing to review.`;
+  }
+  return buildSuccessEnvelope(context, null, []);
+}
+
+/**
+ * The roster's source line for a status selection: the status by board name
+ * and alias, the members, and any typed numbers merged in.
+ *
+ * @param {object} selection - selectByStatus() result
+ * @returns {string}
+ */
+function formatSelectionSource(selection) {
+  const refs = (list) => list.map(n => `#${n}`).join(', ');
+  const count = `${selection.issues.length} issue${selection.issues.length === 1 ? '' : 's'}`;
+  let line = `Selected by status "${selection.statusName}" (${selection.status}): ${count}`;
+  if (selection.issues.length > 0) line += ` — ${refs(selection.issues)}`;
+  const typed = [...new Set(selection.typedIssues || [])];
+  if (typed.length > 0) {
+    const notes = [`typed ${refs(typed)} merged`];
+    if ((selection.duplicates || []).length > 0) notes.push(`duplicates ${refs(selection.duplicates)} reviewed once`);
+    line += ` (${notes.join('; ')})`;
+  }
+  return line;
+}
+
+/**
+ * Plan a status selection exactly as a typed multi-issue selection: the
+ * members, in selection order, go through review-dispatch-plan.js
+ * `planDispatch` (#3804) with the envelope the parent's per-member preamble
+ * returned — redirects and early exits are parent-handled and take no slot.
+ * The plan adds `source` and `rosterSource` so the roster names the status.
+ *
+ * @param {object} input
+ * @param {object} input.selection - selectByStatus() result
+ * @param {Object<number, object>} input.envelopes - each member's review-preamble envelope
+ * @param {Object<number, object>} [input.memberExtras] - per-member planDispatch fields
+ *   (`prdTracker`, `children`, `childEnvelopes`, `closedDecision`)
+ * @param {number} input.cap
+ * @param {boolean} [input.agentAvailable]
+ * @param {boolean} [input.sequential]
+ * @param {number} [input.expansionCap]
+ * @returns {object} planDispatch() result plus `source` and `rosterSource`
+ */
+function planStatusSelection(input) {
+  const { planDispatch } = require('./lib/review-dispatch-plan.js');
+  const { selection } = input;
+  const envelopes = input.envelopes || {};
+  const extras = input.memberExtras || {};
+  const members = selection.issues.map(issue => ({ ...(extras[issue] || {}), issue, envelope: envelopes[issue] }));
+  const plan = planDispatch({
+    members,
+    cap: input.cap,
+    agentAvailable: input.agentAvailable,
+    sequential: input.sequential,
+    expansionCap: input.expansionCap,
+  });
+  plan.source = {
+    kind: 'status',
+    status: selection.status,
+    statusName: selection.statusName,
+    statusIssues: selection.statusIssues,
+    typedIssues: selection.typedIssues,
+    duplicates: selection.duplicates,
+  };
+  plan.rosterSource = formatSelectionSource(selection);
+  return plan;
+}
+
+/**
+ * The `--status` run main() takes: the envelope and the exit code.
+ *
+ * @param {object} args - parseArgs() result carrying `status`
+ * @param {object} [deps] - `{ projectDir, resolve }` overrides for tests
+ * @returns {Promise<{envelope: object, exitCode: number}>}
+ */
+async function runStatusSelection(args, deps = {}) {
+  const selection = await selectByStatus({ status: args.status, typedIssues: args.typedIssues, ...deps });
+  if (selection.error) return { envelope: buildErrorEnvelope([selection.error]), exitCode: 1 };
+  const envelope = buildSelectionEnvelope(selection);
+  reportUnrecognizedFlags(envelope, args);
+  return { envelope, exitCode: 0 };
+}
+
 // ─── Main ───
 
 async function main() {
@@ -617,6 +810,13 @@ async function main() {
     const envelope = buildErrorEnvelope([args.error]);
     process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
     process.exit(1);
+  }
+
+  if (args.status) {
+    const { envelope, exitCode } = await runStatusSelection(args);
+    process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
+    if (exitCode !== 0) process.exit(exitCode);
+    return;
   }
 
   let roundTrips = 0;
@@ -777,5 +977,12 @@ module.exports = {
   loadExtensions,
   sectionForReviewType,
   buildSuccessEnvelope,
-  buildErrorEnvelope
+  buildErrorEnvelope,
+  resolveStatusIssues,
+  configuredStatuses,
+  selectByStatus,
+  buildSelectionEnvelope,
+  runStatusSelection,
+  formatSelectionSource,
+  planStatusSelection
 };

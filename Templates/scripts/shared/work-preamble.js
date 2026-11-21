@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -22,6 +22,8 @@ const { REDIRECT_LABELS } = require('./lib/issue-type.js');
 // #3126: --agents validation at parse time, and the --concurrent grouping plan.
 const { parseAgentsValue, buildPlan, resolveWorktreeHook, classifyResume, parseWorktreeList, matchKeptWorktrees, isFrameworkWorktree, classifyReclaim, normalizeWorktreePath } = require('./lib/concurrency-plan.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
+// #3811: shared with review-preamble.js --status — one definition, not a copy.
+const { resolveStatusIssues, classifyError } = require('./lib/status-selection.js');
 // #3128: processing order is a topological sort of the **Depends on:** graph.
 const { topoOrder } = require('./lib/topo-order.js');
 // #3129: the parent's step sequence and member spawn requests for --concurrent.
@@ -115,31 +117,8 @@ const EXEC_OPTS = { encoding: 'utf-8' };
 
 // ─── Error Classification ───
 
-/**
- * Classify an error message into a specific error code
- * @param {string} errorMessage - Raw error message or stderr content
- * @param {string} defaultCode - Default code if no pattern matches
- * @returns {string} Classified error code
- */
-function classifyError(errorMessage, defaultCode) {
-  if (!errorMessage) return defaultCode;
-  const msg = errorMessage.toLowerCase();
-
-  if (msg.includes('etimedout') || msg.includes('timed out') || msg.includes('timeout')) {
-    return 'TIMEOUT';
-  }
-  if (msg.includes('rate limit')) {
-    return 'RATE_LIMIT';
-  }
-  if (msg.includes('authentication required') || msg.includes('auth login') || msg.includes('not logged')) {
-    return 'AUTH_FAILED';
-  }
-  if (msg.includes('unknown command') && msg.includes('pmu')) {
-    return 'PMU_MISSING';
-  }
-
-  return defaultCode;
-}
+// classifyError lives in lib/status-selection.js beside resolveStatusIssues
+// (#3811) — one definition, imported at the top and re-exported here.
 
 // ─── Execution Safety ───
 
@@ -893,6 +872,61 @@ function parseLatestUnswept(comments) {
   const m = /<!-- unswept: ([^>]*?) -->/.exec(marked[marked.length - 1].body);
   if (!m || m[1].trim() === 'none') return [];
   return [...m[1].matchAll(/#(\d+)/g)].map((x) => parseInt(x[1], 10));
+}
+
+/**
+ * The durable record of a `--nonstop` run's end-of-run Step 4f sweep verdict
+ * (#3775), posted on the tracker as an HTML comment line beside #3270's
+ * unswept marker, so `/done` can name the failing tests before it pushes. A
+ * later passing sweep posts `passed`, and the latest marker wins.
+ *
+ * Test names are made safe for the comment: `-->` cannot close it early and
+ * ` | `, the list separator, cannot split a name.
+ *
+ * @param {{verdict: 'passed'|'failed', issues: number[], failing?: string[]}} input
+ * @returns {string}
+ */
+function buildSweepVerdictMarker({ verdict, issues = [], failing = [] } = {}) {
+  if (verdict !== 'passed' && verdict !== 'failed') {
+    throw new Error(`sweep verdict must be passed or failed, got ${JSON.stringify(verdict)}`);
+  }
+  // A name stays on the marker's one line, cannot close the comment (`-->`)
+  // and cannot split the list (` | `).
+  const names = [...new Set((failing || []).map((f) => String(f).replace(/[\r\n]+/g, ' ').replace(/-->/g, '- ->').split('|').map((s) => s.trim()).join('/').trim()).filter(Boolean))].sort();
+  if (verdict === 'failed' && names.length === 0) {
+    throw new Error('a failed sweep verdict must name at least one failing test');
+  }
+  const nums = [...new Set((issues || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+  const issuePart = nums.length ? nums.map((n) => `#${n}`).join(', ') : 'none';
+  const failingPart = verdict === 'failed' ? `; failing: ${names.join(' | ')}` : '';
+  return `<!-- sweep-verdict: ${verdict}; issues: ${issuePart}${failingPart} -->`;
+}
+
+/**
+ * The latest sweep-verdict marker among a tracker's comments (#3775), or null
+ * when there is none. Ordered by createdAt, like parseLatestUnswept.
+ * @param {Array<{body: string, createdAt?: string}>} comments
+ * @returns {{verdict: string, issues: number[], failing: string[], createdAt: string|null}|null}
+ */
+function parseLatestSweepVerdict(comments) {
+  // One lazy group, no nesting: the fields are split out of it below.
+  const MARKER = /<!-- sweep-verdict: (passed|failed); (.*?) -->/;
+  const marked = (comments || [])
+    .filter((c) => c && typeof c.body === 'string' && MARKER.test(c.body))
+    .sort((a, b) => Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+  if (marked.length === 0) return null;
+  const latest = marked[marked.length - 1];
+  const m = MARKER.exec(latest.body);
+  const rest = m[2];
+  const at = rest.indexOf('; failing: ');
+  const issuePart = at < 0 ? rest : rest.slice(0, at);
+  const failingPart = at < 0 ? '' : rest.slice(at + '; failing: '.length);
+  return {
+    verdict: m[1],
+    issues: [...issuePart.matchAll(/#(\d+)/g)].map((x) => parseInt(x[1], 10)),
+    failing: m[1] === 'failed' ? failingPart.split(' | ').map((s) => s.trim()).filter(Boolean) : [],
+    createdAt: latest.createdAt || null,
+  };
 }
 
 /**
@@ -2231,21 +2265,9 @@ async function runSingleIssue(issueNum, options) {
 
 // ─── Status Query ───
 
-/**
- * Resolve issue numbers from a status query
- * @param {string} status
- * @returns {Promise<{ issues: number[] } | { error: { code: string, message: string } }>}
- */
-async function resolveStatusIssues(status) {
-  const result = await execJSON(
-    'gh', ['pmu', 'list', '--status', status, '--json=number,title'],
-    'STATUS_QUERY_FAILED',
-    `Failed to query issues in "${status}" status`
-  );
-  if (result.error) return result;
-  const issues = (result.data || []).map(i => i.number);
-  return { issues };
-}
+// resolveStatusIssues moved to lib/status-selection.js (#3811) so
+// /review-issue --status resolves through the same function; imported at the
+// top and re-exported, so /work --status is unchanged.
 
 // ─── Batch Flow ───
 
@@ -2642,6 +2664,8 @@ module.exports = {
   parseProcessingOrderDetail,
   buildUnsweptMarker,
   parseLatestUnswept,
+  buildSweepVerdictMarker,
+  parseLatestSweepVerdict,
   deriveProposedOrder,
   buildProcessingOrderSection,
   applyProcessingOrder,

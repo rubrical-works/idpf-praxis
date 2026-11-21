@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -639,7 +639,124 @@ function reconcile({ entries, issues, workEnabled = false } = {}) {
   };
 }
 
+// PURGE-START — the one whole-file rewrite of the ledger (#3798). Every record
+// and update path above stays append-only (#3346); this runs once, at session
+// start, and is fenced so a test can hold the rest of the file to that.
+
+/**
+ * Rows older than this are purged at session start (#3798). The ledger only
+ * ever grew — 632 KB and 3,128 rows over 17 active days when measured — and
+ * readLedger() parses the whole file on every dispatch update, receipt and gate
+ * lookup. Seven days covers any /work run, review cycle or overwatch window a
+ * reader still reconciles; the accepted cost is that a --nonstop run paused
+ * longer loses its earliest rows, which Step 6a reports as `unrecorded`
+ * (advisory, blocks nothing).
+ */
+const PURGE_MAX_AGE_DAYS = 7;
+const PURGE_MAX_AGE_MS = PURGE_MAX_AGE_DAYS * 86400000;
+
+/** Attempts to catch a concurrent append before giving up and leaving the file alone. */
+const PURGE_ATTEMPTS = 5;
+
+/**
+ * Which complete lines of `text` to keep. A row is stale when its `ts` is more
+ * than PURGE_MAX_AGE_DAYS old. An update row (`dispatch-update`,
+ * `receipt-update`) follows the entry its `ref` names when that entry is in
+ * the file — kept while it is kept, removed with it — and its own `ts`
+ * otherwise. A line with no parseable `ts`, or that does not parse at all, is
+ * kept, as readLedger() keeps malformed lines (#3346).
+ */
+function selectKept(text, now) {
+  const lines = text.split('\n').filter((l) => l.trim());
+  const parsed = lines.map((line) => {
+    try {
+      const row = JSON.parse(line);
+      return row && typeof row === 'object' ? row : null;
+    } catch {
+      return null;
+    }
+  });
+  const stale = (row) => {
+    const ts = row ? Date.parse(row.ts) : NaN;
+    return Number.isFinite(ts) && now - ts > PURGE_MAX_AGE_MS;
+  };
+  const entryStale = new Map();
+  for (const row of parsed) {
+    if (row && typeof row.id === 'string' && !UPDATE_EVENTS.includes(row.event)) entryStale.set(row.id, stale(row));
+  }
+  const kept = [];
+  lines.forEach((line, i) => {
+    const row = parsed[i];
+    const isUpdate = row && UPDATE_EVENTS.includes(row.event) && entryStale.has(row.ref);
+    const drop = isUpdate ? entryStale.get(row.ref) : stale(row);
+    if (!drop) kept.push(line);
+  });
+  return { kept, purged: lines.length - kept.length };
+}
+
+/**
+ * Remove rows older than PURGE_MAX_AGE_DAYS from the ledger ledgerPath()
+ * resolves to (#3798). Legacy files are left alone. Never throws.
+ *
+ * The rewrite. Only the complete lines present at the first read are judged;
+ * anything another session appends while the purge runs — detected as the file
+ * growing past what was read — is carried over verbatim behind the kept rows,
+ * and a late row is never itself purged by this run. The kept text is written
+ * to a sibling file that is renamed over the ledger, so a reader sees the old
+ * file or the new one, never a torn one; the sibling exists only for the
+ * rename and is removed on any failure, so the ledger stays one file. The
+ * size is re-checked immediately before the rename and the carry-over repeated
+ * if it moved; after PURGE_ATTEMPTS the purge gives up and leaves the file as
+ * it was rather than risk a lost row.
+ *
+ * `_duringPurge` (after the read, before the replace) and `_beforeReplace`
+ * (immediately before the rename) are test seams.
+ *
+ * @returns {{ok: true, purged: number, path: string}|{ok: false, error: string, path: string|null}}
+ */
+function purgeStale(options = {}) {
+  const now = Number.isFinite(options.now) ? options.now : Date.now();
+  let file = null;
+  let tmp = null;
+  try {
+    file = ledgerPath(options.cwd || process.cwd(), { git: options._git });
+    if (!fs.existsSync(file)) return { ok: true, purged: 0, path: file };
+    const original = fs.readFileSync(file);
+    // Judge only complete lines: a torn trailing write belongs to the carry-over.
+    const cut = original.lastIndexOf(0x0a) + 1;
+    const { kept, purged } = selectKept(original.subarray(0, cut).toString('utf8'), now);
+    if (purged === 0) return { ok: true, purged: 0, path: file };
+    if (typeof options._duringPurge === 'function') options._duringPurge();
+
+    tmp = `${file}.purge-${process.pid}-${newId()}`;
+    const head = kept.length ? `${kept.join('\n')}\n` : '';
+    fs.writeFileSync(tmp, head, 'utf8');
+    let copied = cut;
+    for (let attempt = 0; attempt < PURGE_ATTEMPTS; attempt++) {
+      const current = fs.readFileSync(file);
+      if (current.length > copied) {
+        fs.appendFileSync(tmp, current.subarray(copied));
+        copied = current.length;
+      }
+      if (typeof options._beforeReplace === 'function') options._beforeReplace();
+      if (fs.statSync(file).size !== copied) continue;
+      fs.renameSync(tmp, file);
+      tmp = null;
+      return { ok: true, purged, path: file };
+    }
+    throw new Error('the ledger kept growing during the purge; left unchanged');
+  } catch (err) {
+    if (tmp) {
+      try { fs.unlinkSync(tmp); } catch { /* best effort: nothing else to report */ }
+    }
+    return { ok: false, error: err && err.message ? err.message : 'ledger purge failed', path: file };
+  }
+}
+// PURGE-END
+
 module.exports = {
+  PURGE_MAX_AGE_DAYS,
+  purgeStale,
   GIT_LEDGER_PATH,
   LEDGER_FILENAME,
   LEGACY_LEDGER_FILENAME,

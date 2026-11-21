@@ -1,16 +1,17 @@
 # Review Execution Rule
-**Version:** v0.121.0
+**Version:** v0.122.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` (hybrid shell + rule). The shells `.claude/commands/review-issue.md` and `.claude/commands/resolve-review.md` carry arguments, prerequisites and error handling; this rule carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks.** The three retired points live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.
-**Resident core, conditional bodies, on-demand rationale.** Every directive is here. Epic, sweep and test-plan/PRD bodies (2a-iii, the 2a-iv sweep, 2a-v, `/resolve-review` epic expansion) are in `{frameworkPath}/Reference/review-execution-conditional.md`, read at Step 1d; reasoning is in `{frameworkPath}/Reference/review-execution-rationale.md`, never auto-loaded.
+**Resident core, conditional bodies, on-demand rationale.** Every directive is here. Epic, sweep, test-plan/PRD and concurrent multi-issue bodies (2a-iii, the 2a-iv sweep, 2a-v, `/resolve-review` epic expansion, the concurrent run and its step-to-helper map) are in `{frameworkPath}/Reference/review-execution-conditional.md`, read at Step 1d; reasoning is in `{frameworkPath}/Reference/review-execution-rationale.md`, never auto-loaded.
 ## Peer Announcements — shared by every review event
 Four events — `review-started` (Step 1c), the verdict `review-passed` / `review-findings` (Step 3b) and `review-resolved` (`/resolve-review` Step 1a) — share one gate and one dispatch, stated here once (#3060 item 5):
 - **Gate.** Resolve `node .claude/scripts/shared/lib/cross-session-config.js` **once per invocation**, not per issue, and reuse it for every event. `groups.review` false → the event **emits nothing**, no `SendMessage` and no skip notice. `notices` false → only the caveat and skip-reason lines suppressed. Absent or omitted key → enabled. **Read the resolver; never re-derive the default inline.**
 - **Dispatch.** The event's `announce.js` command discovers peers itself, composes and records the ledger entry. `announcement.shouldSend` true → `SendMessage` per `announcement.recipients` entry with `announcement.text`, then close out with the envelope's `dispatchReport` (`--dispatch-result sent|failed --ledger-id <id>`); false → report `notice` once and continue.
 - **Advisory, fire-and-forget — a throwing helper must never abort the enclosing sequence.** `shouldSend` is a dispatch decision, never a delivery confirmation.
 ## `/review-issue` — Workflow
-Multi-issue: process each sequentially through Steps 1–3.
+Multi-issue: each through Steps 1–3 — concurrently by default, one at a time on the sequential path.
+**Concurrent multi-issue run.** 2+ issues — typed, or `--status` — run concurrently by default: the contract and the step-to-helper map naming the helper the parent calls at each step are in `{frameworkPath}/Reference/review-execution-conditional.md` § Concurrent multi-issue run, loaded at Step 1d.
 **An epic is a multi-issue set.** A typed epic expands to every child in `gh pmu sub list $EPIC --json` (`children[]`, ascending), then the epic, each through Steps 1–3 as if typed; 2a-iii carries the contract.
 ### Step 1: Setup (Preamble Script)
 ```bash
@@ -20,13 +21,13 @@ node ./.claude/scripts/shared/review-preamble.js $ISSUE [--with extensions] [--w
 Parse JSON. Branches:
 - `ok: false` → report `errors[0].message` → **STOP** (skip to next in batch)
 - `context.redirect` set → invoke skill **dynamically** using `context.redirect` (strip leading `/`) — all three rows below are equally normative:
-  Labels `proposal`/`prd`/`test-plan` → `Skill("review-proposal"|"review-prd"|"review-test-plan", args: "#$ISSUE [--with ...] [--mode ...] [--force] [--prior-art]")`, name derived from `context.redirect`. → **STOP**. **`--prior-art` must survive the redirect:** `/review-proposal` carries its own 2a-iv; `/review-prd` and `/review-test-plan` report it inapplicable rather than swallowing it.
+  Labels `proposal`/`prd`/`test-plan` → `Skill("review-proposal"|"review-prd"|"review-test-plan", args: "#$ISSUE [--with ...] [--mode ...] [--force] [--prior-art]")`, name derived from `context.redirect`. → **STOP** — in a batch this ends that member's turn, not the batch. **`--prior-art` must survive the redirect:** `/review-proposal` carries its own 2a-iv; `/review-prd` and `/review-test-plan` report it inapplicable rather than swallowing it.
 - `context.issue.state === "closed"` → ask user to confirm before proceeding
 - `earlyExit: true` (has `reviewed` label, no `--force`) → report review count → **STOP**
 Extract: `context`, `criteria` (common from `.claude/metadata/review-mode-criteria.json`, typeSpecific from `.claude/metadata/review-criteria.json`), `extensions`, `warnings`. Extension loading is the preamble's, via `.claude/metadata/review-extensions.json`; unknown IDs warn, missing/malformed → standard review only.
-**Step 1d: Load Conditional Sections.** Trigger: `context.type === "epic"` for a typed issue; or `--prior-art` passed; or a `test-plan`/`prd` label. Read `{frameworkPath}/Reference/review-execution-conditional.md` and hold it for the run (bodies of 2a-iii, the 2a-iv sweep, 2a-v). After the preamble confirms the path, before 1c; a sweep due only at 2a-iv (status `fail`) reads it there. No trigger → one-line skip note. Own task entry.
+**Step 1d: Load Conditional Sections.** Trigger: `context.type === "epic"` for a typed issue; or `--prior-art` passed; or a `test-plan`/`prd` label; or two or more issues, typed or `--status`. Read `{frameworkPath}/Reference/review-execution-conditional.md` and hold it for the run (bodies of 2a-iii, the 2a-iv sweep, 2a-v, the concurrent multi-issue run). After the preamble confirms the path, before 1c; a sweep due only at 2a-iv (status `fail`) reads it there. No trigger → one-line skip note. Own task entry.
 **Step 1c: Peer Announcement — review started (advisory).** After the preamble confirms the path (no `context.redirect`, no `earlyExit`) and **before** the first criterion. `node .claude/scripts/shared/announce.js --event review-started --issue $ISSUE`, appending `--force` when this review has it; gate and dispatch per § Peer Announcements.
-**Once per issue at its own turn** — never compose one message naming the whole argument list. **An issue's turn begins after the previous issue's Step 3b verdict has been dispatched** — opener A, verdict A, opener B, verdict B; an expanded epic's `review-started` is sent at its own turn. **Suppressed under `--force` — by the script:** `announce.js --event review-started --issue $ISSUE --force` returns `suppressed: true` and records nothing, so `/resolve-review` Step 4's nested re-review is never announced as fresh.
+**Once per issue at its own turn** — never compose one message naming the whole argument list. **On the sequential path, an issue's turn begins after the previous issue's Step 3b verdict has been dispatched** — opener A, verdict A, opener B, verdict B (concurrent path: at dispatch); an expanded epic's `review-started` is sent at its own turn. **Suppressed under `--force` — by the script:** `announce.js --event review-started --issue $ISSUE --force` returns `suppressed: true` and records nothing, so `/resolve-review` Step 4's nested re-review is never announced as fresh.
 ### Step 2: Evaluate Criteria
 **2a: Auto-Evaluate Objective Criteria** — evaluate each objective criterion in `criteria.common` and `criteria.typeSpecific` from the issue (re-read `.claude/metadata/review-criteria.json` if stale): ✅/⚠️/❌ with evidence, guided by `autoCheck`. **Every AC gets a verdict:** `acVerdicts`, one per criterion in body order — finalize rejects a gap; no AC section → `[]`.
 **2a-ii: Proposed Solution Repair + Files-to-Modify Derivation** (Bug, Enhancement, Story; NOT epic)
@@ -50,7 +51,7 @@ node -e "console.log(JSON.stringify(require('./.claude/scripts/shared/lib/prior-
 **Missing config:** `prior-art-sweep.json` missing/unreadable → report criterion, warn, skip sweep. Do not fail the review.
 **2a-v: Branch Auto-Assignment for Test-Plan and PRD Issues** — trigger: a `test-plan` or `prd` label **and** no branch assignment. Body in `{frameworkPath}/Reference/review-execution-conditional.md` § 2a-v (Step 1d): delegate to `.claude/scripts/shared/assign-branch.js`, **reported, not prompted**, **before Step 3 finalize runs** (same race as 2a-ii).
 **2a-vi: Repairs** — a warn/fail `review-repair.js` `classifyRepair` marks repairable (id + concrete fix) is written **before Step 3 finalize** (2a-ii's slot), **unprompted**, into findings `repairs`; re-check `references-valid` and `acVerdicts` on the repaired body — a flagged repair stays a finding. A `test-ac` repair is written by `applyTestAcRepair(body, { criterion, ac, files })`, never by hand: pass the finding's `files` from `classifyRepair`, write the returned `body`, record its `repair`; `applied: false` writes nothing — report `reason`, leave it for Pass 2.
-**2b: Ask Subjective Criteria** — for subjective criteria applicable to current reviewMode, use `AskUserQuestion`. Re-read `.claude/metadata/review-mode-criteria.json` from disk for question/options. Solo mode: skip entirely.
+**2b: Ask Subjective Criteria** — for subjective criteria applicable to current reviewMode, use `AskUserQuestion`. Re-read `.claude/metadata/review-mode-criteria.json` from disk for question/options. Solo mode: skip entirely. **Concurrent run: the parent asks before dispatch**, one issue at a time, and passes the answers in.
 **2c: Extension Criteria** (if `--with`) — evaluate domain criteria loaded by preamble.
 **2c-ii: Security Finding Label** — if `--with security`/`--with all` and any security finding ⚠️/❌: `gh issue edit $ISSUE --add-label=security-finding`. All ✅ → no label.
 **2d: Recommendation** — one of: `Ready for work` (no blocking concerns) / `Needs minor revision` (small) / `Needs revision` (must address before starting) / `Needs major rework` (fundamental). An advisory ⚠️ (`advisory: true` in `.claude/metadata/review-criteria.json`) never lowers the recommendation: when only advisory warnings remain, `review-finalize.js` records `Ready for work`.
@@ -113,14 +114,14 @@ Iterate `findings.autoFixable`. Apply and report:
 - **Missing labels:** `gh issue edit $ISSUE --add-label {label}` — inferred
 Report each under `Auto-resolved:` as `✓ <change>`.
 ### Step 3: Pass 2 — User Input
-Iterate `findings.needsUserInput`. **Print the finding as markdown before each `AskUserQuestion`** (issue, criterion, full detail; proposed AC quoted), then:
+Iterate `findings.needsUserInput`. **Print the finding as markdown before each `AskUserQuestion`** (issue, criterion, full detail; the proposed change as its complete BEFORE and AFTER text, quoted — never a summary line), then:
 ```javascript
 AskUserQuestion({
   questions: [{
     question: `For Issue: #${ISSUE} — ${finding.criterion} How should this be resolved?`,
     header: "Resolution",
     options: [
-      { label: "Accept suggestion", description: "Apply the change shown", preview: "<BEFORE: text replaced / AFTER: text written>" },
+      { label: "Accept suggestion", description: "Apply the change shown", preview: "<BEFORE: text replaced / AFTER: text written; over the line budget, no preview>" },
       { label: "Provide alternative", description: "Specify your own resolution", preview: "<reviewer's alternative>" },
       { label: "Skip", description: "Leave unresolved" }
     ],
@@ -130,14 +131,15 @@ AskUserQuestion({
 ```
 **One-line question; the change goes in the previews.** `Accept suggestion` previews the exact change, verbatim; `Provide alternative` the reviewer's alternative when one is named, else no `preview`.
 **Accept preview is BEFORE / AFTER, never the proposed text alone** (`{frameworkPath}/Reference/AskUserQuestion-Shape.md` § Previews that show a change): BEFORE quotes the replaced text verbatim, or states the section is absent, or quotes the placeholder replaced; AFTER is the exact text written.
+**The preview keeps to the line budget** (same § of `AskUserQuestion-Shape.md`): within it, BEFORE / AFTER; over it, no `preview` — the `description` points at the change (`Apply the change printed above`), and the complete text printed above is the only copy. The pane clips overflow, so an over-budget preview could only be a lossy restatement of text already on screen.
 **A suggestion asserting runtime behavior** (reproduction steps, a command and its claimed result) **is run before the `AskUserQuestion`**: print the command and its captured output in the finding markdown; if it cannot be run, label the finding `unverified — <reason>` (`01-anti-hallucination.md` § Claim Labeling and Enumeration). Both directives govern `/review-issue` Step 3c's inline pass.
 - **Accept:** apply, `"✓ {change applied}"`
 - **Alternative:** ask conversationally, apply
 - **Skip:** `"⊘ Skipped: {finding}"`
 **Both prompts name the issue.** The number comes from the command's own `$ISSUE` argument, never a `resolve-preamble.js` context field.
 **Accepted suggestions that add or reword an AC are authored AC text — apply Step 1b before writing them.**
-**Body-modifying** (`repair` set): `repair.description` shapes its BEFORE / AFTER preview; an added AC skeleton is authored AC text — apply Step 1b before writing it.
-**Title rewording:** Propose new title from content, print both titles as markdown, present "Accept", "Edit", "Skip"; one-line question prefixed `For Issue: #${ISSUE}`, proposed title in the `Accept` `preview`.
+**Body-modifying** (`repair` set): `repair.description` shapes its BEFORE / AFTER preview within the same line budget, omitted over it; an added AC skeleton is authored AC text — apply Step 1b before writing it.
+**Title rewording:** Propose new title from content, print both titles as markdown, present "Accept", "Edit", "Skip"; one-line question prefixed `For Issue: #${ISSUE}`, proposed title in the `Accept` `preview` within the same line budget, omitted over it.
 **Flagged `severity-proportionate`:** re-read `.claude/metadata/bug-priority-rubric.json`, derive the priority as `/bug` Step 2c does and offer it with the matched class id and the board priority; **Accept** or an alternative `p0`–`p2` → `gh pmu move $ISSUE --priority <p>`. **Never auto-fix it** — `priority-set` fills only a *missing* priority.
 ### Step 3a: Report Suggestions
 Iterate `suggestions` — free-text findings that are **not** criteria. Report each verbatim as a bullet under `Suggestions from {reviewType} Review #M (not auto-resolved):`, and take no action. Empty array → **report nothing**: no heading, no "none" line.

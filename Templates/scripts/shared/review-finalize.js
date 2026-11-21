@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Consolidate all review cleanup into a single script call. Updates issue body metadata (review count, reviewed-by), formats and posts the review comment with findings, and assigns labels (reviewed/pending) to the reviewed issue only — never to its sub-issues (#2869).
  * @checksum sha256:placeholder
  *
@@ -26,6 +26,9 @@ const { EMOJI, SECTION_HEADERS, REVIEW_TYPES, REVIEWS_MARKER_PATTERN, criterionN
 const { parseDeclaredScope } = require('./scope-drift-check.js');
 const { extractAcceptanceCriteria } = require('./lib/checkbox-scan.js');
 const { computeReviewHash, writeReviewHash } = require('./lib/review-body-hash.js');
+// The reviewer labels the closing roster prints (#3807) — one table, so the
+// comment and the roster name a reviewer identically.
+const { REVIEWER_LABELS, formatReviewerLabel } = require('./lib/review-roster.js');
 
 // Header verb per review type, inverted from REVIEW_TYPES rather than copied
 // (#2594). REVIEW_TYPES is the same table REVIEW_HEADER_PATTERN's alternation
@@ -61,12 +64,23 @@ const TYPE_LABELS = {
 function parseArgs(args) {
   let issue = null;
   let findingsFile = null;
+  // Optional (#3807): who ran this review, written into the comment. A key
+  // (`dispatched`/`inline`) or the full label; anything else is refused rather
+  // than recorded as an unknown reviewer.
+  let reviewer = null;
 
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
     if (arg === '-F') {
       findingsFile = args[i + 1] || null;
+      i += 2;
+    } else if (arg === '--reviewer') {
+      const value = args[i + 1];
+      reviewer = formatReviewerLabel(value);
+      if (!reviewer) {
+        return { error: { code: 'INVALID_REVIEWER', message: `--reviewer must be one of: ${Object.keys(REVIEWER_LABELS).join(', ')} (or its label: ${Object.values(REVIEWER_LABELS).join(', ')}); got ${value === undefined ? 'nothing' : `"${value}"`}.` } };
+      }
       i += 2;
     } else {
       const cleaned = arg.replace(/^#/, '');
@@ -85,7 +99,7 @@ function parseArgs(args) {
     return { error: { code: 'MISSING_FINDINGS_FILE', message: 'No findings file specified. Use -F <path>.' } };
   }
 
-  return { issue, findingsFile };
+  return { issue, findingsFile, reviewer };
 }
 
 // ─── Findings File Parsing ───
@@ -441,6 +455,7 @@ function formatReviewComment(findings, options = {}) {
   lines.push(`**Type:** ${typeLabel}`);
   lines.push(`**Total Reviews:** ${findings.reviewNumber}`);
   lines.push(`**Extensions Applied:** ${extensions}`);
+  if (options.reviewer) lines.push(`**Reviewer:** ${options.reviewer}`);
   lines.push('');
   if (options.filesToModifyMissing === true) {
     lines.push(FILES_TO_MODIFY_MISSING_LINE);
@@ -898,7 +913,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { issue, findingsFile } = args;
+  const { issue, findingsFile, reviewer } = args;
 
   // Parse findings
   const findingsResult = parseFindingsFile(findingsFile);
@@ -947,7 +962,7 @@ async function main() {
   const recordedFindings = applyReviewOutcome(findings, outcome);
 
   // Post the comment and write the Reviews marker it stands for (#3374, #3401).
-  const comment = formatReviewComment(recordedFindings, { filesToModifyMissing });
+  const comment = formatReviewComment(recordedFindings, { filesToModifyMissing, reviewer });
   const recorded = await postAndCount({ issue, bodyExport, comment, exec: execSafe });
   const { commentResult, commentPosted, commentUrl } = recorded;
   bodyEditResult = recorded.bodyEditResult;

@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.121.0",
+  "version": "0.122.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -644,6 +644,7 @@
           "classify-changed-files.js",
           "code-review-findings-schema.json",
           "code-review-manifest-schema.json",
+          "code-review-refactor-manifest-schema.json",
           "code-review-shards.js",
           "command-args.js",
           "companion-projects.js",
@@ -720,16 +721,20 @@
           "regeneration-runner.js",
           "resolve-precheck.js",
           "review-body-hash.js",
+          "review-dispatch-plan.js",
           "review-format.js",
           "review-mode.js",
           "review-references.js",
           "review-repair.js",
+          "review-roster.js",
           "runner-probe.js",
           "screen-catalog.js",
           "screenshot-input.js",
           "screenshot-token-candidates.js",
           "shell-safe.js",
           "specialist-resolver.js",
+          "status-selection.js",
+          "story-dependency-inference.js",
           "subagent-fallback.js",
           "subagent-result.js",
           "test-runner.js",
@@ -1154,6 +1159,16 @@
           "name": "recipe-tech-mapping-schema",
           "source": ".claude/metadata/recipe-tech-mapping-schema.json",
           "description": "JSON Schema for recipe-tech-mapping.json"
+        },
+        {
+          "name": "refactor-review-criteria",
+          "source": ".claude/metadata/refactor-review-criteria.json",
+          "description": "Refactor criteria for /code-review --refactor, each with lookFor and wideScan (#3797)"
+        },
+        {
+          "name": "refactor-review-criteria-schema",
+          "source": ".claude/metadata/refactor-review-criteria-schema.json",
+          "description": "JSON Schema for refactor-review-criteria.json (#3797)"
         },
         {
           "name": "review-criteria",

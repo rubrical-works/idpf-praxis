@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.121.0
+ * @framework-script 0.122.0
  * @description Detect missing, partial, or stale node_modules at session startup, and probe whether each runner the project's testing.suites[] names is on PATH (#3012). Stats node_modules/<name>/package.json for each declared package and compares package-lock.json against node_modules/.package-lock.json by content (dependency version/resolved/integrity, root version ignored — #3723), with mtime as a pre-check; the runner probe goes through lib/runner-probe.js (where / command -v) and never spawns the runner. Read-only and advisory — performs no installation and spawns no npm subprocess.
  * @checksum sha256:placeholder
  *

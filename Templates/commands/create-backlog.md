@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Create GitHub epics and stories from a PRD, using the IDPF framework.
 argument-hint: "<issue-number> (e.g., 151) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -216,9 +216,25 @@ For each PRD AC about to be materialized into a story body in Phase 6, apply the
 | **Drop** | Work appears in `phaseFeasibility.ownedElsewhere` — another command's checklist discharges it (CHANGELOG, tagging, release publication → `/prepare-release`) | Nothing. Note the drop in the report; do **not** emit or annotate a story checkbox |
 | **Drop** | AC restates the project's test command passing ("`npm test` passes", "the test suite passes") — `dischargedByWorkflow`; the `/work` Step 4f sweep already runs it | Nothing. Note the drop, naming `/work` Step 4f, in the report. **Keep it** when `keptWhen` holds (no verification set declared, so Step 4f runs nothing) |
 | **Annotate** | Gate is genuinely load-bearing (required human review or sign-off) | `- [ ] {acText} → GATE: {phase}` per `phaseFeasibility.annotationFormat` |
+| **File post-release** | Check runs only on the released hub | Once the issue exists, `node .claude/scripts/shared/lib/qa-issue.js --title "QA: <criterion>" --body-file $QA_BODY_FILE` (never `--parent`); write the AC **checked** `- [x] {acText} → GATE: release → QA: #N` — never blocks; `/qa` verifies it post-release |
 
 Report both dispositions (`Annotated → GATE: review — "{acText}"` / `Dropped (owned by /prepare-release) — "{acText}"`) so the user sees what changed on the way in.
 **"Document updated" AC (#3646).** When each story or epic's scope changes the project's architecture, constraints, test strategy or a key decision, **ASK USER** whether to add an AC naming the living document it updates — `Project/Architecture.md`, `Project/Constraints.md`, `Project/Test-Strategy.md` or a `Construction/Design-Decisions/` entry (e.g. `- [ ] Project/Architecture.md updated to describe <the change>`). An AC may name `CHARTER.md` only when the work introduces a new kind of entity or adopts a new technology: a new Key Entities or Tech Stack row, with no count and no version. Never an AC updating a count or a version in `CHARTER.md` — counts are derived, versions live in manifests; `/review-issue` flags one (`charter-ac-stored-value`). Declined → nothing added.
+## Phase 5.6: Infer Missing `**Depends on:**` Statements (#3785)
+**Runs before Phase 6 writes any line.** A PRD authored before `/create-prd` Phase 4.7 has stories with no `**Depends on:**` statement; writing `none (not stated in the PRD)` for each left `/work --concurrent` starting stories before their prerequisites existed. Same inference as `/create-prd` — **the rule lives only in `.claude/scripts/shared/lib/story-dependency-inference.js` (`RULE`)**:
+```bash
+node .claude/scripts/shared/lib/story-dependency-inference.js --prd PRD/{name}/PRD-{name}.md
+```
+`missing` lists stories with no statement; `candidates[<id>]` holds each one's inferred edges (`on`, `artifact`, `ac`, `reason`). A story **with** a statement is untouched — copied verbatim as before. `unknown` (stated edge to a story not in this PRD; Phase 6b leaves it verbatim) and `unreadable` (stated entry that is not a story id) are shown to the user before Phase 6 — an unreadable line is copied verbatim, never rewritten as `none`.
+1. **Offer the candidates.** For every `missing` story with a candidate, print a table (story, candidate `Depends on`, reason) and **ASK USER** via `AskUserQuestion` — one prompt for the set — accept all, accept with corrections, or decline.
+2. **Accepted** edges become that story's statement for Phase 6 (`Story 1.1, Story 1.3`); Phase 6b turns them into issue numbers like a PRD-stated line.
+3. **`none (not stated in the PRD)` is written only when the user declines, or when the helper found no candidate for that story.** Never a bare `none` for an unstated story.
+4. **Cycle → report, never write.** The helper's `ok`/`cycle`/`message` check the graph it would write (stated lines plus every candidate). After a partial accept or corrections, re-check the accepted graph before Phase 6:
+   ```bash
+   node -e "const {checkCycle}=require('./.claude/scripts/shared/lib/story-dependency-inference.js');console.log(JSON.stringify(checkCycle(JSON.parse(process.argv[1]))))" 'GRAPH'
+   ```
+   `GRAPH` (the single-quoted argument, never inlined into the script) = `{ "<story id>": ["<id>", …] }` of stated lines plus accepted edges. `ok: false` → print `message` (it names every story in the cycle), ask which edge to drop; **no edge of a cycle is written**, and Phase 6 waits for `ok: true`.
+Report: `Depends on inferred: N stories offered, M accepted, K left as none (not stated in the PRD)`.
 ## Phase 6: Create Story Issues
 
 For each story:
@@ -240,7 +256,7 @@ Link to epic: `gh pmu sub add {epic_number} {story_number} || true`. Cleanup: `r
 
 | Template Section | Source |
 |---|---|
-| **Depends on** | PRD story's `**Depends on:**` statement, written **verbatim** at creation (`Story 1.1`, `none`); rewritten to issue numbers by Phase 6b. A PRD story with no statement gets `none (not stated in the PRD)` |
+| **Depends on** | PRD story's `**Depends on:**` statement, written **verbatim** at creation (`Story 1.1`, `none`); rewritten to issue numbers by Phase 6b. A PRD story with no statement gets the edges accepted in Phase 5.6, else `none (not stated in the PRD)` |
 | **Description** | PRD user story (As a / I want / So that) |
 | **Relevant Skills** | No input. Renders `N/A` when configured — the list is project-wide, not story-specific (#2817) |
 | **E2E** | `framework-config.json` `testing.suites[]` → the suite whose `role` is `e2e` — the declaration (#2851). Inverts the #2817 row, which named the Test-Strategy document and forbade a config key: that Framework table is now **rendered from** this declaration, so reading it would be reading a view. No detection heuristic |
@@ -331,7 +347,7 @@ Replace `/add-story` base DoD:
 ```
 ⚠️ #{story_number}: Depends on "Story {id}" did not resolve to an issue in this backlog — left verbatim.
 ```
-**`none (not stated in the PRD)` is the honest empty value**, not a fabricated `none`: it parses as empty (parenthetical ignored) while saying nobody asserted it. List those stories in the Phase 8 summary.
+**`none (not stated in the PRD)` is the honest empty value**, not a fabricated `none`: it parses as empty (parenthetical ignored) while saying nobody asserted it; written only where Phase 5.6 offered nothing or the user declined. List those stories in the Phase 8 summary.
 
 **Why issue numbers:** `/work --nonstop`/`--concurrent` read the line to order members once the per-member STOP is gone, resolving `#N` against the epic's sub-issues; a story id names nothing it can look up.
 

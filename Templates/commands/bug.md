@@ -1,5 +1,5 @@
 ---
-version: "v0.121.0"
+version: "v0.122.0"
 description: Create a bug issue from the IDPF framework's standard template.
 argument-hint: "<title> [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -47,6 +47,7 @@ If AC text in description mentions a verification mechanism (see `.claude/metada
 | **Drop** | Work appears in `phaseFeasibility.ownedElsewhere` — CHANGELOG, tagging, release publication belong to `/prepare-release` | Do not author the AC; tell the user which command owns it |
 | **Drop** | AC restates the project's test command passing ("`npm test` passes", "the test suite passes") — `dischargedByWorkflow`; the `/work` Step 4f sweep already runs it | Do not author the AC; tell the user `/work` Step 4f owns it. **Keep it** when `keptWhen` holds (no verification set declared, so Step 4f runs nothing) |
 | **Annotate** | Gate is genuinely load-bearing (required human review or sign-off) | `- [ ] {acText} → GATE: {phase}` per `annotationFormat`, and **name the event that resolves it** — a token that cannot name one is not a gate |
+| **File post-release** | Check runs only on the released hub | Once the issue exists, `node .claude/scripts/shared/lib/qa-issue.js --title "QA: <criterion>" --body-file $QA_BODY_FILE` (never `--parent`); write the AC **checked** `- [x] {acText} → GATE: release → QA: #N` — never blocks; `/qa` verifies it post-release |
 Prefer annotation over deletion when the requirement is real: the goal is to stop the gate deadlocking `in_review`, not to remove the requirement. **Warning-only, as `verificationGate` is** — do **not** block creation. `/bug` and `/enhancement` take free text and often carry no ACs, so blocking would stop capture over an AC nobody wrote.
 ### Step 2b: Detect Version
 Priority: `package.json` → `version` | git tag (`git describe --tags --abbrev=0`) | prompt user.
