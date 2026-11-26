@@ -32,7 +32,10 @@
         {
           "id": "severity-proportionate",
           "name": "Severity proportionate to impact",
-          "autoCheck": "Re-read .claude/metadata/bug-priority-rubric.json from disk. Match the bug's stated impact (Description, Actual Behavior, Scope, Deployment Impact) against each class's description and signals, apply the rubric's precedence (highest matching priority wins; no match → fallback), and compare the result to the issue's board priority. Evidence names the matched class id, the rubric priority and the current priority. Mismatch → ⚠️ naming the rubric priority, which /resolve-review proposes (#2992)"
+          "autoCheck": "Re-read .claude/metadata/bug-priority-rubric.json from disk. Match the bug's stated impact (Description, Actual Behavior, Scope, Deployment Impact) against each class's description and signals, apply the rubric's precedence (highest matching priority wins; no match → fallback), and compare the result to the issue's board priority. Evidence names the matched class id, the rubric priority and the current priority. Mismatch → ⚠️ naming the rubric priority, which /resolve-review proposes (#2992)",
+          "alwaysAsk": {
+            "reason": "A change here moves the board priority, which orders the user's work."
+          }
         },
         {
           "id": "test-coverage-bug",
@@ -243,7 +246,10 @@
           "id": "scope-boundaries",
           "name": "Scope boundaries defined",
           "overrides": "scope-boundaries",
-          "autoCheck": "Check for in-scope / out-of-scope sections or boundary statements"
+          "autoCheck": "Check for in-scope / out-of-scope sections or boundary statements",
+          "alwaysAsk": {
+            "reason": "A change here edits what is in or out of scope — what the issue commits to deliver."
+          }
         },
         {
           "id": "success-measurable",

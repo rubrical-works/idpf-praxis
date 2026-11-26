@@ -1,7 +1,7 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
- * @description Select issues by board status for a multi-issue command. Exports resolveStatusIssues() (the gh pmu list query /work --status and /review-issue --status share), main() (a read-only CLI, `--status <status>`, printing { issues } or { error } as JSON; #3815) and classifyError() (the gh error classifier work-preamble.js re-exports). Status validation and typed-number merging live in review-preamble.js selectByStatus().
+ * @framework-script 0.123.0
+ * @description Select issues by board status for a multi-issue command. Exports resolveStatusIssues() (the gh pmu list query /work --status and /review-issue --status share), main() (a read-only CLI, `--status <status>`, printing { issues } or { error } as JSON; #3815), runCli() (the CLI entry, any rejection printed as an INTERNAL error envelope; #3821) and classifyError() (the gh error classifier work-preamble.js re-exports). Status validation and typed-number merging live in review-preamble.js selectByStatus().
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -73,6 +73,17 @@ async function resolveStatusIssues(status, deps = {}) {
       }
     };
   }
+  // #3821: every item must be an object carrying a positive-integer number —
+  // a null item would throw, and a missing number would pass on as an issue.
+  const badIndex = list.findIndex(i => !(i && typeof i === 'object' && Number.isInteger(i.number) && i.number > 0));
+  if (badIndex !== -1) {
+    return {
+      error: {
+        code: 'UNRECOGNIZED_RESPONSE_SHAPE',
+        message: `${errorMsg}: gh pmu list item ${badIndex} is ${describeShape(list[badIndex])}, expected an object with a positive-integer number`
+      }
+    };
+  }
   const issues = list.map(i => i.number);
   return { issues };
 }
@@ -115,12 +126,30 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   return result.error ? 1 : 0;
 }
 
+/**
+ * Run main() as the CLI entry. Any rejection — a throw from deps.write, or
+ * anything resolveStatusIssues did not anticipate — still prints the JSON
+ * error envelope callers parse, never an unhandled rejection (#3821).
+ * @param {string[]} [argv]
+ * @param {object} [deps] - passed to main()
+ * @returns {Promise<void>} resolves once process.exitCode is set
+ */
+function runCli(argv, deps) {
+  return main(argv, deps)
+    .then((code) => { process.exitCode = code; })
+    .catch((e) => {
+      process.stdout.write(JSON.stringify({ error: { code: 'INTERNAL', message: e.message } }) + '\n');
+      process.exitCode = 1;
+    });
+}
+
 module.exports = {
   resolveStatusIssues,
   classifyError,
-  main
+  main,
+  runCli
 };
 
 if (require.main === module) {
-  main().then((code) => { process.exitCode = code; });
+  runCli();
 }

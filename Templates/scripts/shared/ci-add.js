@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Add selected CI features to a project's GitHub Actions workflows. Applies feature templates with YAML merging, handles confirmation prompts, and provides error recovery. Part of the /ci --add subcommand.
  * @checksum sha256:placeholder
  *
@@ -12,8 +12,8 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
-const { loadFeatureRegistry } = require('./ci-list.js');
-const { modifyWorkflow, validateYaml, createBackup, serializeEdited } = require('./ci-modify.js');
+const { loadFeatureRegistry, detectStructurally } = require('./ci-list.js');
+const { modifyWorkflow, validateYaml, writeWithBackup, serializeEdited } = require('./ci-modify.js');
 const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
 
 /**
@@ -27,6 +27,10 @@ const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
  * 'config-files' features write `template.yaml` to `template.configFile` and
  * `template.workflow` to `template.workflowFile`, touching no existing workflow
  * (#3016). Neither file is ever overwritten.
+ * 'job' features add `template.yaml`'s single job to the workflow as a job of
+ * its own, so a feature with its own matrix and permissions never edits an
+ * existing job (#3791). A workflow created for one starts from
+ * `template.workflow` rather than a stub job.
  */
 const FEATURE_TYPE_MAP = {
   'cross-os-testing': 'strategy',
@@ -39,7 +43,7 @@ const FEATURE_TYPE_MAP = {
   'dependency-audit': 'step-with-script',
   'dependabot': 'config-files',
   'deploy-on-tag': 'trigger',
-  'codeql-analysis': 'step',
+  'codeql-analysis': 'job',
   'coverage-upload': 'step',
   'conventional-commits': 'step',
   'stale-cleanup': 'step',
@@ -47,6 +51,34 @@ const FEATURE_TYPE_MAP = {
   'artifact-conditional-upload': 'step-modify',
   'artifact-cleanup': 'step'
 };
+
+/**
+ * CodeQL `languages` identifier for each language ci-detect-lang.js reports
+ * (#3791). A detected language with no entry is one CodeQL does not analyze.
+ * Keys are limited to identifiers ci-detect-lang.js can emit, so the refusal
+ * message names only languages detection can find.
+ */
+const CODEQL_LANGUAGE_MAP = {
+  javascript: 'javascript-typescript',
+  typescript: 'javascript-typescript',
+  python: 'python',
+  go: 'go',
+  java: 'java-kotlin',
+  ruby: 'ruby'
+};
+
+/** CodeQL languages that are compiled, so the job builds them before analyzing. */
+const CODEQL_COMPILED = ['go', 'java-kotlin'];
+
+/**
+ * The CodeQL language matrix for a set of detected languages (#3791):
+ * mapped, deduplicated, in detection order.
+ * @param {string[]} detected - ci-detect-lang.js identifiers
+ * @returns {string[]}
+ */
+function codeqlLanguages(detected) {
+  return [...new Set((detected || []).map(l => CODEQL_LANGUAGE_MAP[l]).filter(Boolean))];
+}
 
 /**
  * Top-level key for features that use addTopLevel operation.
@@ -104,6 +136,12 @@ function isFeatureAlreadyEnabled(projectDir, featureId, fileName) {
   for (const file of files) {
     try {
       const content = fs.readFileSync(path.join(workflowsDir, file), 'utf8');
+      // A workflow shape is judged on the parsed file, never a regex (#3852)
+      const structural = detectStructurally(featureId, content);
+      if (structural !== null) {
+        if (structural) return true;
+        continue;
+      }
       for (const pattern of feature.detectionPatterns.yaml) {
         let regex;
         try { regex = new RegExp(pattern, 'i'); } catch { continue; }
@@ -294,13 +332,19 @@ function addCIFeature(projectDir, featureId, options = {}) {
     target = suggestWorkflowForFeature(projectDir, featureId);
   }
 
+  const isJob = FEATURE_TYPE_MAP[featureId] === 'job';
+  const job = isJob ? buildFeatureJob(projectDir, featureId) : null;
+  if (job && !job.ok) return { success: false, message: job.message };
+
   let created = null;
   if (target.createNew) {
-    created = createMinimalWorkflow(projectDir, target.suggestedName);
+    created = createMinimalWorkflow(projectDir, target.suggestedName, isJob ? validation.feature.template.workflow : undefined);
     target.file = created.file;
   }
 
-  const result = applyFeatureToWorkflow(projectDir, featureId, target, { paths: options.paths });
+  const result = job
+    ? addFeatureJob(target.file, validation.feature, job)
+    : applyFeatureToWorkflow(projectDir, featureId, target, { paths: options.paths });
   // A feature that fails on the workflow it just created takes it back out
   // (#3369): the stub is scaffolding for this feature, not the user's file.
   if (!result.success && created) removeCreated(created);
@@ -333,17 +377,110 @@ function resolveTargetFile(projectDir, name) {
  * recording which directories this call created so a failure can undo it.
  * @param {string} projectDir
  * @param {string} suggestedName
+ * @param {string} [body] - The feature's own workflow skeleton (#3791); the
+ *   default is a CI workflow with one stub job for a step to land in
  * @returns {{file: string, dirs: string[]}} dirs deepest-first
  */
-function createMinimalWorkflow(projectDir, suggestedName) {
+function createMinimalWorkflow(projectDir, suggestedName, body) {
   const githubDir = path.join(projectDir, '.github');
   const workflowsDir = path.join(githubDir, 'workflows');
   const dirs = [workflowsDir, githubDir].filter(d => !fs.existsSync(d));
   fs.mkdirSync(workflowsDir, { recursive: true });
   const { validateFilename } = require('./lib/input-validation');
   const newFile = path.join(workflowsDir, validateFilename(suggestedName));
-  fs.writeFileSync(newFile, `name: CI\non: push\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n`);
+  fs.writeFileSync(newFile, typeof body === 'string' ? body
+    : `name: CI\non: push\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n`);
   return { file: newFile, dirs };
+}
+
+/**
+ * Build a job feature's job from its template (#3791). For codeql-analysis
+ * the `language` axis is filled from the detected languages — the steps read
+ * ${{ matrix.language }}, so an empty axis is refused, not written — and a
+ * compiled language gets an autobuild step before analyze.
+ * @param {string} projectDir
+ * @param {string} featureId
+ * @returns {{ok: true, name: string, job: object, languages: string[]}|{ok: false, message: string}}
+ */
+function buildFeatureJob(projectDir, featureId) {
+  const feature = loadFeatureRegistry()[featureId];
+  const parsed = yaml.parse(feature.template.yaml) || {};
+  const entries = Object.entries(parsed.jobs || {});
+  if (entries.length !== 1) {
+    return { ok: false, message: `Feature "${featureId}" template must define exactly one job. No changes were written.` };
+  }
+  const [name, job] = entries[0];
+  let languages = [];
+  if (featureId === 'codeql-analysis') {
+    const { detectLanguages } = require('./ci-detect-lang.js');
+    languages = codeqlLanguages(detectLanguages(projectDir));
+    if (!languages.length) {
+      return {
+        ok: false,
+        message: 'Found no language CodeQL analyzes (looked for '
+          + `${Object.keys(CODEQL_LANGUAGE_MAP).join(', ')}). No changes were written.`
+      };
+    }
+    // #3870: autobuild goes before analyze, so a template without one is refused.
+    const at = Array.isArray(job.steps)
+      ? job.steps.findIndex(s => /codeql-action\/analyze/.test((s && s.uses) || ''))
+      : -1;
+    if (at === -1) {
+      return {
+        ok: false,
+        message: `Feature "${featureId}" template has no github/codeql-action/analyze step. No changes were written.`
+      };
+    }
+    job.strategy = job.strategy || {};
+    job.strategy.matrix = { ...(job.strategy.matrix || {}), language: languages };
+    const compiled = languages.filter(l => CODEQL_COMPILED.includes(l));
+    if (compiled.length) {
+      job.steps.splice(at, 0, {
+        name: 'Autobuild',
+        if: compiled.map(l => `matrix.language == '${l}'`).join(' || '),
+        uses: 'github/codeql-action/autobuild@v3'
+      });
+    }
+  }
+  return { ok: true, name, job, languages };
+}
+
+/**
+ * Add a built job to a workflow under a name no existing job has, so a
+ * project's own job of that name is never replaced (#3791).
+ * @param {string} file - Workflow path
+ * @param {object} feature - Registry entry
+ * @param {{name: string, job: object, languages: string[]}} built
+ * @returns {{ success: boolean, message: string, file?: string, feature?: string, job?: string }}
+ */
+function addFeatureJob(file, feature, built) {
+  try {
+    let jobName = built.name;
+    const edited = editWorkflowDocument(file, (doc) => {
+      const jobs = doc.get('jobs', true);
+      if (jobs != null && !yaml.isMap(jobs)) {
+        return { ok: false, message: `jobs: in ${path.basename(file)} is not a mapping. No changes were written.` };
+      }
+      const taken = new Set(yaml.isMap(jobs) ? jobs.items.map(i => String(yaml.isScalar(i.key) ? i.key.value : i.key)) : []);
+      for (let n = 2; taken.has(jobName); n++) jobName = `${built.name}-${n}`;
+      if (yaml.isMap(jobs)) jobs.set(jobName, doc.createNode(built.job));
+      else doc.set('jobs', doc.createNode({ [jobName]: built.job }));
+      return { ok: true, changed: true };
+    });
+    if (!edited.ok) return { success: false, message: edited.message };
+    const langs = built.languages.length ? `, languages: ${built.languages.join(', ')}` : '';
+    return {
+      success: true,
+      message: `Added "${feature.name}" to ${path.basename(file)} as job "${jobName}"${langs}`,
+      file,
+      feature: feature.id,
+      job: jobName
+    };
+  } catch (err) {
+    const result = { success: false, message: `Failed to add feature: ${err.message}` };
+    if (err.backupPath) result.backupPath = err.backupPath;
+    return result;
+  }
 }
 
 /**
@@ -817,10 +954,13 @@ function applyFeatureToWorkflow(projectDir, featureId, target, options = {}) {
       feature: featureId
     };
   } catch (err) {
-    return {
+    const result = {
       success: false,
       message: `Failed to add feature: ${err.message}`
     };
+    // A failed write keeps the backup; name where it is (#3793)
+    if (err.backupPath) result.backupPath = err.backupPath;
+    return result;
   }
 }
 
@@ -859,8 +999,7 @@ function editWorkflowDocument(filePath, edit) {
   if (result.changed === false) return { ok: true, changed: false };
   const output = serializeEdited(original, doc);
   validateYaml(output);
-  createBackup(filePath);
-  fs.writeFileSync(filePath, output);
+  writeWithBackup(filePath, output);
   return { ok: true, changed: true };
 }
 
@@ -1009,5 +1148,5 @@ if (require.main === module) {
 module.exports = {
   addCIFeature, validateFeatureName, isFeatureAlreadyEnabled,
   layoutPathsIgnore, filterPatternToRegex, runtimeMarkdownMatches, IDPF_ARTIFACT_DIRS,
-  triggerScopePaths, TRIGGER_SCOPE_CRON, parseCliArgs
+  triggerScopePaths, TRIGGER_SCOPE_CRON, parseCliArgs, codeqlLanguages
 };

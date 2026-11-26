@@ -27,7 +27,10 @@
       ],
       "type": "objective",
       "autoCheck": "Verify title is specific (>3 words), contains actionable context, not generic like 'Fix bug' or 'Update code'",
-      "description": "Issue title is clear and descriptive"
+      "description": "Issue title is clear and descriptive",
+      "alwaysAsk": {
+        "reason": "A change here rewords the title, the name the user and the board know the issue by."
+      }
     },
     "description-sufficient": {
       "name": "Description sufficient?",
@@ -118,7 +121,10 @@
       ],
       "type": "objective",
       "autoCheck": "Check for in-scope / out-of-scope sections or explicit boundary statements",
-      "description": "Issue or document defines what is and is not in scope"
+      "description": "Issue or document defines what is and is not in scope",
+      "alwaysAsk": {
+        "reason": "A change here edits what is in or out of scope — what the issue commits to deliver."
+      }
     },
     "success-criteria-measurable": {
       "name": "Success criteria measurable?",

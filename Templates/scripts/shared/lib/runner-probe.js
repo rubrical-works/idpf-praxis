@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Runner-presence probe for the verification gates and the startup dependency check (#3012). Resolves the first token of a suite command on PATH — `where` on win32, `command -v` through `sh` elsewhere — without ever spawning the runner itself, and names the suites each missing runner would have served.
  * @checksum sha256:placeholder
  *
@@ -27,7 +27,8 @@
 
 'use strict';
 
-const { execFileTimed } = require('./exec.js');
+const path = require('path');
+const { execFileTimed, execTimed } = require('./exec.js');
 const { firstToken } = require('./test-runner.js');
 
 /** A PATH lookup is instant; anything longer is a hung shell, not a slow one. */
@@ -119,4 +120,46 @@ function probeSuites(suites, options = {}) {
   return { runners, missing };
 }
 
-module.exports = { probeRunner, probeSuites, PROBE_TIMEOUT_MS };
+/** How long one selector may run before it counts as failed and the per-AC run falls back. */
+const SELECTOR_TIMEOUT_MS = 120000;
+
+/**
+ * Run one suite selector for `test-runner.js scoped` (#3880).
+ *
+ * The spawn lives here, beside the probe, so test-runner.js stays spawn-free.
+ * A selector is a project-declared command line carrying `{files}` already
+ * expanded and shell-checked, so it runs through the shell form. Nothing is
+ * thrown: a non-zero exit is `{exitCode, stdout}`, and a timeout or failed
+ * spawn is `spawnError` — both make the plan fall back to the touched tree.
+ *
+ * @param {{command: string, cwd: string|null}} run - from selectorInvocations
+ * @param {{root?: string, exec?: Function}} [options] - `exec` replaces execTimed in tests
+ * @returns {{exitCode: number|null, stdout: string, spawnError?: string}}
+ */
+function runSelectorCommand(run, { root = process.cwd(), exec = execTimed } = {}) {
+  // A suite `cwd` is config-declared and reaches a spawn: contain it to the
+  // root before anything runs (#3880 review). Refused, not thrown, so the
+  // plan falls back and names why.
+  const base = path.resolve(root);
+  const cwd = run.cwd ? path.resolve(base, run.cwd) : base;
+  const rel = path.relative(base, cwd);
+  // A parent segment, not a '..' prefix (#3892): '..cache/x' is in the root.
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
+    return { exitCode: null, stdout: '', spawnError: `suite cwd ${JSON.stringify(run.cwd)} resolves outside the project root` };
+  }
+  try {
+    const stdout = exec(run.command, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: SELECTOR_TIMEOUT_MS,
+    });
+    return { exitCode: 0, stdout: String(stdout || '') };
+  } catch (err) {
+    if (Number.isInteger(err.status)) return { exitCode: err.status, stdout: String(err.stdout || '') };
+    return { exitCode: null, stdout: '', spawnError: err.code || err.message };
+  }
+}
+
+module.exports = { probeRunner, probeSuites, runSelectorCommand, PROBE_TIMEOUT_MS, SELECTOR_TIMEOUT_MS };

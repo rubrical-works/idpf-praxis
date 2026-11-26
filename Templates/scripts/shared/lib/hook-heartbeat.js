@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Hook heartbeats (#2917): a per-hook, project-local health record of each framework hook's last success, last error and consecutive-failure count, the process-exit recorder hooks install, the load check the startup self-test runs, and the assessment the startup Hook Health row is rendered from.
  * @checksum sha256:placeholder
  *
@@ -152,6 +152,106 @@ function beat(hookName, outcome = {}, opts = {}) {
   }
 }
 
+/*
+ * Kill tracking (#3876). A hook the harness stops at its `timeout` is killed,
+ * and a killed process never fires `exit`, so the exit recorder alone wrote
+ * nothing and the hook kept reading healthy. A hook installed with
+ * `trackKills` writes a per-run marker `<hook>.<pid>.running` at start and
+ * removes it on exit; a marker left behind by a process that is no longer
+ * running is a run that never reached exit, and the next assessment records it
+ * as a failure. Opt-in, because the marker is a write per run and a hook that
+ * runs on every tool call (measure-tap.js) must keep writing only on a change.
+ */
+const MARKER_SUFFIX = '.running';
+const KILLED_MESSAGE = 'killed or timed out';
+
+function runMarkerPath(root, hookName, pid) {
+  return path.join(heartbeatDir(root), `${hookName}.${pid}${MARKER_SUFFIX}`);
+}
+
+/** Write this run's marker. Returns its path, or null when it could not be written. */
+function writeRunMarker(root, hookName, { pid = process.pid, now = new Date() } = {}) {
+  try {
+    if (!nonEmpty(root) || typeof hookName !== 'string' || !SAFE_NAME.test(hookName) || hookName.startsWith('.')) return null;
+    fs.mkdirSync(heartbeatDir(root), { recursive: true });
+    const file = runMarkerPath(root, hookName, pid);
+    fs.writeFileSync(file, JSON.stringify({ hook: hookName, pid, startedAt: now.toISOString() }) + '\n');
+    return file;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** The pids of every run marker this hook has in the heartbeat directory. */
+function listRunMarkers(root, hookName) {
+  let entries;
+  try {
+    entries = fs.readdirSync(heartbeatDir(root));
+  } catch (_) {
+    return [];
+  }
+  const prefix = `${hookName}.`;
+  const found = [];
+  for (const f of entries) {
+    if (!f.startsWith(prefix) || !f.endsWith(MARKER_SUFFIX)) continue;
+    const middle = f.slice(prefix.length, f.length - MARKER_SUFFIX.length);
+    if (/^\d+$/.test(middle)) found.push({ pid: Number(middle), file: path.join(heartbeatDir(root), f) });
+  }
+  return found;
+}
+
+/** Signal 0 tests for existence; EPERM means it exists under another user. */
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return Boolean(e && e.code === 'EPERM');
+  }
+}
+
+/*
+ * The longest a hook run can legitimately last (#3886): the longest framework
+ * hook timeout (worktree-create-hook.js, 600 s — also Claude Code's default
+ * hook timeout) plus a 5-minute margin. A marker older than this is a killed
+ * run even when its pid answers signal 0, because a killed hook's pid can be
+ * reused by an unrelated live process — quickly, on Windows — and liveness
+ * alone would then trust the marker forever.
+ */
+const MAX_RUN_MS = (600 + 300) * 1000;
+
+/** When the marker's run started, in ms: its recorded `startedAt`, else the file's mtime, else null. */
+function markerStartMs(file) {
+  let startedAt = null;
+  try { startedAt = JSON.parse(fs.readFileSync(file, 'utf8')).startedAt || null; } catch (_) { /* unreadable marker */ }
+  const parsed = startedAt ? Date.parse(startedAt) : NaN;
+  if (Number.isFinite(parsed)) return { startedAt, startMs: parsed };
+  try { return { startedAt, startMs: fs.statSync(file).mtimeMs }; } catch (_) { return { startedAt, startMs: null }; }
+}
+
+/**
+ * Record each marker whose process is gone — or which is older than any hook
+ * may run (`MAX_RUN_MS`), whatever its pid answers — as a killed run, and
+ * remove it. A recent marker whose process is still running is a run in
+ * progress — never a failure, and left in place. The marker is unlinked before
+ * the failure is recorded, so two sessions sweeping at once count it once:
+ * only the one whose unlink succeeds records it.
+ * @returns {number} killed runs recorded
+ */
+function sweepKilledRuns(root, hookName, { isAlive = pidAlive, now = new Date(), maxRunMs = MAX_RUN_MS } = {}) {
+  let recorded = 0;
+  for (const { pid, file } of listRunMarkers(root, hookName)) {
+    const { startedAt, startMs } = markerStartMs(file);
+    const expired = startMs !== null && now.getTime() - startMs > maxRunMs;
+    if (!expired && isAlive(pid)) continue;
+    try { fs.unlinkSync(file); } catch (_) { continue; }
+    const detail = startedAt ? ` (pid ${pid}, started ${startedAt})` : ` (pid ${pid})`;
+    const r = beat(hookName, { ok: false, error: `${KILLED_MESSAGE}${detail}` }, { root, now, pid });
+    if (r.written) recorded += 1;
+  }
+  return recorded;
+}
+
 /**
  * Wire a hook to record its outcome when its process exits.
  *
@@ -167,19 +267,27 @@ function beat(hookName, outcome = {}, opts = {}) {
  * would report it failing on every block. An uncaught exception is recorded as
  * a failure whatever the exit code.
  *
+ * `trackKills` (#3876) writes a per-run marker at install, removed on exit, so
+ * a run killed before exit — a hook timeout — is recorded by the next
+ * `assessHooks()`. The marker is anchored to the root known at install; the
+ * exit handler removes that same file whatever `setCwd` later supplies.
+ *
  * @param {string} hookName
- * @param {{okCodes?: number[]}} [opts]
+ * @param {{okCodes?: number[], trackKills?: boolean}} [opts]
  * @returns {{fail: (err: unknown) => void, setCwd: (cwd: string) => void}}
  */
-function installHeartbeat(hookName, { proc = process, env = process.env, okCodes = [0] } = {}) {
+function installHeartbeat(hookName, { proc = process, env = process.env, okCodes = [0], trackKills = false } = {}) {
   let failed = false;
   let inputCwd = null;
   let captured = null;
+  let marker = null;
   const root = () => resolveProjectRoot({ env, cwd: inputCwd, fallback: proc.cwd() });
 
   try {
+    if (trackKills) marker = writeRunMarker(root(), hookName, { pid: proc.pid });
     proc.on('uncaughtExceptionMonitor', (err) => { captured = err; });
     proc.on('exit', (code) => {
+      if (marker) { try { fs.unlinkSync(marker); } catch (_) { /* already gone */ } }
       if (failed) return;
       const ok = Array.isArray(okCodes) && okCodes.includes(code) && !captured;
       if (ok) beat(hookName, { ok: true }, { root: root() });
@@ -265,11 +373,16 @@ function hookFilesFromManifest(manifest) {
 /**
  * Classify each hook. Status precedence: unloadable, unreadable, no-record,
  * failing, healthy. A hook that has never beaten is `no-record` — never healthy.
+ *
+ * Before a hook's record is read, its run markers are swept (#3876): a marker
+ * whose process is gone is recorded as a killed-or-timed-out failure. This is
+ * the one write an assessment makes, and only when such a marker exists.
  */
-function assessHooks({ root, hooksDir, hookFiles, loadCheck: check = loadCheck }) {
+function assessHooks({ root, hooksDir, hookFiles, loadCheck: check = loadCheck, isAlive = pidAlive, now = new Date() }) {
   const hooks = hookFiles.map((file) => {
     const name = path.basename(file, '.js');
     const load = check(path.join(hooksDir, file));
+    sweepKilledRuns(root, name, { isAlive, now });
     const rec = readRecord(root, name);
     let status;
     if (!load.ok) status = 'unloadable';
@@ -322,6 +435,13 @@ module.exports = {
   readRecord,
   beat,
   installHeartbeat,
+  runMarkerPath,
+  writeRunMarker,
+  listRunMarkers,
+  pidAlive,
+  sweepKilledRuns,
+  MAX_RUN_MS,
+  KILLED_MESSAGE,
   relativeRequires,
   loadCheck,
   hookFilesFromManifest,

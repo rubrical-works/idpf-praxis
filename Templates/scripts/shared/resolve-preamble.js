@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Consolidate /resolve-review setup into a single script call. Parses review comments from the issue, extracts individual findings with severity and status, classifies each as auto-fixable or requiring user input, reports the issue's type so an epic can be expanded, and returns structured envelope for LLM-driven resolution.
  * @checksum sha256:placeholder
  *
@@ -27,27 +27,57 @@ const { findLatestReview, extractRecommendation, classifyReviewState, STATES } =
 // ─── Argument Parsing ───
 
 function parseArgs(args) {
-  if (!args || args.length === 0) {
+  if (!Array.isArray(args)) args = [];
+  // Flags are read in any position, as review-preamble.js reads them (#3900):
+  // `--accept 12` is the issue 12 with --accept, not an invalid issue number.
+  // Flag-shaped tokens are collected and reported, never fatal and never
+  // silently dropped (#3545) — 02-github-workflow.md's pass-through
+  // convention, so a `--step-wise` passed here is visible rather than lost.
+  // `--accept` (#3879) is the one recognized flag: Pass 2 applies each finding
+  // the shared accept-classifier marks `accept` and asks only the held ones.
+  const isFlag = (a) => /^--[A-Za-z]/.test(a);
+  const flags = args.filter(isFlag);
+  const positionals = args.filter((a) => !isFlag(a));
+  if (positionals.length === 0) {
     return { error: { code: 'MISSING_ARGUMENT', message: 'No issue number provided. Usage: node resolve-preamble.js <issue>' } };
   }
 
-  const cleaned = args[0].replace(/^#/, '');
+  const cleaned = positionals[0].replace(/^#/, '');
   const num = parseInt(cleaned, 10);
   // The same check review-preamble.js and review-finalize.js apply, so the two
   // halves of one review cycle validate the argument identically (#3600):
   // '12abc' and '12.5' are not issue 12.
   if (isNaN(num) || num <= 0 || String(num) !== cleaned) {
-    return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: ${args[0]}` } };
+    return { error: { code: 'INVALID_ARGUMENT', message: `Invalid issue number: ${positionals[0]}` } };
   }
 
-  // Flag-shaped tokens after the issue number are collected and reported,
-  // never fatal and never silently dropped (#3545) — the review-preamble.js
-  // contract and 02-github-workflow.md's pass-through convention, so a
-  // `--step-wise` passed here is visible rather than lost.
-  const unrecognizedFlags = args.slice(1).filter((a) => /^--[A-Za-z]/.test(a));
+  // One issue per call: a second positional is refused by name, never
+  // silently dropped (#3900). /resolve-review runs this once per issue.
+  if (positionals.length > 1) {
+    const extra = positionals.slice(1).join(' ');
+    return { error: { code: 'EXTRA_ARGUMENTS', message: `resolve-preamble.js takes one issue number; unexpected argument(s): ${extra}. Run it once per issue.` } };
+  }
+
+  const unrecognizedFlags = flags.filter((a) => a !== '--accept');
   const result = { issue: num };
+  if (flags.includes('--accept')) result.accept = true;
   if (unrecognizedFlags.length > 0) result.unrecognizedFlags = unrecognizedFlags;
   return result;
+}
+
+/**
+ * Carry this run's recognized flags into the envelope's `context` (#3879):
+ * `accept` only when passed — absent, never false, as review-preamble.js
+ * contextFlags does. Rule 09's Pass 2 reads it; Step 4's re-review is never
+ * handed it, since that run is `--step-wise` and could not act on it.
+ *
+ * @param {object} envelope - buildSuccessEnvelope() result
+ * @param {{accept?: boolean}} args - parseArgs() result
+ * @returns {object} The envelope, updated
+ */
+function applyRunFlags(envelope, args) {
+  if (args && args.accept && envelope && envelope.context) envelope.context.accept = true;
+  return envelope;
 }
 
 // ─── Issue Type (#2872) ───
@@ -376,6 +406,7 @@ async function main() {
     buildSuccessEnvelope(reviewResult, classified, suggestions, issueType, recommendation),
     issueData, issue
   );
+  applyRunFlags(envelope, args);
   reportUnrecognizedFlags(envelope, args);
   process.stdout.write(JSON.stringify(envelope, null, 2) + '\n');
 }
@@ -405,6 +436,7 @@ module.exports = {
   extractRecommendation,
   buildSuccessEnvelope,
   applyStaleReview,
+  applyRunFlags,
   buildErrorEnvelope,
   reportUnrecognizedFlags,
 };

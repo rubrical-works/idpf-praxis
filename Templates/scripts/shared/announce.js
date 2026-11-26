@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
- * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send.
+ * @framework-script 0.123.0
+ * @description Derive, compose and record a /work, review-lifecycle, branch-operation or /done push-group peer announcement in one call. For /work it runs the `git log --grep` itself so the commit payload is never transcribed, and verifies every identifier against the object store; for the review events it makes the --force suppression and the labelAssigned verdict mapping its own decisions. Every composed announcement is recorded to the sender-side ledger. Delivery remains the caller's SendMessage tool call — this script, like peer-announce.js, cannot send. A session's exit (#3912) is recorded, never sent: written to the exit record addressed to a live /overwatch alone, else to every addressable sibling.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -47,7 +47,7 @@
 
 const { execFileSync } = require('child_process');
 
-const { buildAnnouncement, EVENTS } = require('./peer-announce.js');
+const { buildAnnouncement, EVENTS, SESSION_EXITED, composeSessionExit } = require('./peer-announce.js');
 const { issueRefGrepPattern } = require('./lib/issue-ref-match.js');
 const { BASE_REF_CANDIDATES, resolveBranchBase } = require('./lib/branch-diff.js');
 const ledger = require('./lib/announce-ledger.js');
@@ -316,6 +316,21 @@ function compositionDispatch(announcement) {
   return { dispatch: 'pending', detail: null };
 }
 
+/**
+ * The monitor a targeted announcement was routed to, for its ledger entry
+ * (#3911). The receipt reply is recorded later by THIS session, which has
+ * nothing else naming the monitor; routing has already proven the name unique
+ * among the recipients (`monitor-name-ambiguous` otherwise falls back to
+ * broadcast), so the recorded pair resolves one session however many peers
+ * and subagents share the directory. Broadcast records nothing.
+ */
+function monitorFields(announcement) {
+  const routing = announcement && announcement.routing;
+  if (!routing || routing.applied !== 'targeted') return {};
+  if (!Number.isInteger(routing.monitorPid) || typeof routing.monitorName !== 'string' || !routing.monitorName) return {};
+  return { monitorPid: routing.monitorPid, monitorName: routing.monitorName };
+}
+
 /** The caller's next step for a recorded composition. */
 function dispatchReportFor(recorded, composition, noIdMessage) {
   if (!recorded.ok) return noIdMessage;
@@ -413,23 +428,192 @@ function resolveSessionPid(env = process.env) {
  * answer as an absent key.
  */
 function branchOperationGate(cwd, env) {
+  const off = masterSwitchOff(cwd, env);
+  if (off && off.kind === 'master') {
+    return { emit: false, reason: `Nothing sent: cross-session messaging is off by the master switch (${off.cause}); branch-operation notices honor it.` };
+  }
+  if (off && off.kind === 'discovery') {
+    return { emit: false, reason: 'Nothing sent: discovery is off, so no peers were discovered to broadcast a branch-operation notice to.' };
+  }
+  return { emit: true, reason: null };
+}
+
+/**
+ * The master-switch half of the cross-session resolver, shared by the events
+ * no announcement group governs: the branch-operation notices (#2960) and the
+ * session exit (#3912). `null` is enabled — also the answer when the resolver
+ * fails, the same as an absent key.
+ */
+function masterSwitchOff(cwd, env) {
   let state;
   try {
     const { readCrossSessionConfig } = require('./lib/cross-session-config.js');
     state = readCrossSessionConfig(cwd || process.cwd(), env);
   } catch {
-    return { emit: true, reason: null };
+    return null;
   }
   if (!state.enabled) {
     const cause = state.source === 'environment'
       ? `IDPF_X_SESSION=${state.envOverride && state.envOverride.value} (this session only)`
       : 'crossSessionMessaging enabled: false';
-    return { emit: false, reason: `Nothing sent: cross-session messaging is off by the master switch (${cause}); branch-operation notices honor it.` };
+    return { kind: 'master', cause };
   }
-  if (!state.discovery) {
-    return { emit: false, reason: 'Nothing sent: discovery is off, so no peers were discovered to broadcast a branch-operation notice to.' };
+  if (!state.discovery) return { kind: 'discovery', cause: 'discovery: false' };
+  return null;
+}
+
+// ─── Session exit (#3912) ───
+
+/**
+ * Who is exiting. The pid is `CLAUDE_PID`, the identity every other seam here
+ * uses (#2896); the SessionEnd payload's `session_id` finds the registry entry
+ * when the pid is absent, and the entry supplies the name a peer knows the
+ * session by. Nothing here throws: an unreadable registry leaves name null.
+ */
+function resolveExitingSession({ env = process.env, sessionId = null, registryDir, homeDir } = {}) {
+  let pid = resolveSessionPid(env);
+  let name = null;
+  let sid = typeof sessionId === 'string' && sessionId ? sessionId : null;
+  const warnings = [];
+  try {
+    const path = require('path');
+    const os = require('os');
+    const { readRegistry } = require('./peers-check.js');
+    const dir = registryDir || path.join(homeDir || os.homedir(), '.claude', 'sessions');
+    const entry = readRegistry(dir).entries.find((e) => (pid !== null && Number(e.pid) === pid) || (sid !== null && e.sessionId === sid));
+    if (entry) {
+      if (pid === null && Number.isInteger(Number(entry.pid)) && Number(entry.pid) > 0) pid = Number(entry.pid);
+      if (typeof entry.name === 'string' && entry.name.trim()) name = entry.name.trim();
+      if (sid === null && typeof entry.sessionId === 'string') sid = entry.sessionId;
+    }
+  } catch (err) {
+    // Identified by pid alone (no name); recordSessionExit refuses when no pid results.
+    warnings.push(`Session registry could not be read for the exiting session's name (${err && err.message ? err.message : 'unknown'}).`);
   }
-  return { emit: true, reason: null };
+  return warnings.length ? { pid, name, sessionId: sid, warnings } : { pid, name, sessionId: sid };
+}
+
+/**
+ * The exit announcement's routing inputs. Always ASKS for targeting, whatever
+ * the `broadcast` lever says: the contract is "to /overwatch if it is running,
+ * otherwise to every sibling", and the existing routing decision
+ * (`announce-routing.js`) is exactly that when asked to target — a live,
+ * uniquely addressable monitor, else broadcast with the reason named. The
+ * work, review and push events keep reading the lever (readRouting).
+ */
+function readExitRouting(cwd) {
+  try {
+    const { readPresence, markerPath } = require('./lib/overwatch-presence.js');
+    const root = cwd || process.cwd();
+    const presence = readPresence(root);
+    // readPresence reports an unreadable marker as no-marker by design; a
+    // marker path that exists but read as none is named, not passed off.
+    if (presence && presence.reason === 'no-marker' && require('fs').existsSync(markerPath(root))) {
+      return {
+        broadcast: false,
+        presence,
+        warnings: ['Overwatch marker exists but could not be read; routed to every sibling.'],
+      };
+    }
+    return { broadcast: false, presence };
+  } catch (err) {
+    // Safe — broadcast still reaches a live monitor as one sibling — but named,
+    // so the fallback is not passed off as "no marker".
+    return {
+      broadcast: false,
+      presence: null,
+      warnings: [`Overwatch marker could not be read (${err && err.message ? err.message : 'unknown'}); routed to every sibling.`],
+    };
+  }
+}
+
+const EXIT_NOT_PUSHED = 'Nothing to send: an exit announcement is recorded, not pushed — the session gets no turn after '
+  + 'SessionEnd and a subprocess cannot call SendMessage (#2660). Recipients read it at their next pass.';
+
+/**
+ * Compose and RECORD a session's exit announcement (#3912).
+ *
+ * The record is written as its own file in `.claude/.overwatch/session-exits/`
+ * (peers-check.js appendExitRecord) with the recipients the routing decision
+ * chose in `addressedTo`. Nothing is sent and the announce ledger is not
+ * written: there is no dispatch to close out. No peer to address → nothing
+ * recorded, and the envelope says why. Never throws.
+ */
+function recordSessionExit({ session, reason, peers, cwd, routing: suppliedRouting, env = process.env, now, warnings: extraWarnings } = {}) {
+  // Caller-supplied warnings (peer discovery, the session's identity) join this
+  // call's own; whatever is raised before the write travels in the record, so
+  // the reader sees a degraded exit, not only the discarded hook output.
+  const warnings = [
+    ...(Array.isArray(extraWarnings) ? extraWarnings : []),
+    ...(session && Array.isArray(session.warnings) ? session.warnings : []),
+  ];
+  try {
+    const off = masterSwitchOff(cwd, env);
+    if (off) {
+      const why = off.kind === 'master'
+        ? `cross-session messaging is off by the master switch (${off.cause})`
+        : 'discovery is off, so no peers were discovered to address it to';
+      return { ok: true, event: SESSION_EXITED, suppressed: true, recorded: false, reason: `Nothing recorded: ${why}.`, routing: null, exitRecord: null, warnings };
+    }
+    // An exit no reader can match to a session (no pid from CLAUDE_PID or the
+    // registry) is a failure, never a record naming "an unidentified session".
+    const pidNum = Number(session && session.pid);
+    if (!(Number.isInteger(pidNum) && pidNum > 0)) {
+      return {
+        ok: false, event: SESSION_EXITED, recorded: false, routing: null, exitRecord: null,
+        notice: 'Exit announcement NOT recorded: the exiting session could not be identified (no CLAUDE_PID, and no registry entry for its session_id).',
+        dispatchReport: EXIT_NOT_PUSHED, warnings,
+      };
+    }
+    const routingInputs = suppliedRouting && typeof suppliedRouting === 'object' ? suppliedRouting : readExitRouting(cwd);
+    if (Array.isArray(routingInputs.warnings)) warnings.push(...routingInputs.warnings);
+    const composed = composeSessionExit({
+      session, reason, peers, broadcast: routingInputs.broadcast, presence: routingInputs.presence,
+    });
+    if (!composed.shouldRecord) {
+      // Peers that could not be discovered (null, or not an array), or a
+      // composition that threw, are failures, not "no peers": ok false, so the
+      // CLI exits 1 and the SessionEnd hook records it on its heartbeat.
+      const failed = !Array.isArray(peers) || composed.failed === true;
+      return {
+        ok: !failed, event: SESSION_EXITED, recorded: false, routing: composed.routing || null, exitRecord: null,
+        notice: composed.notice, announcement: composed, dispatchReport: EXIT_NOT_PUSHED, warnings,
+      };
+    }
+    const at = now !== undefined ? now : Date.now();
+    const root = cwd || process.cwd();
+    const row = {
+      id: `${at.toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      ts: new Date(at).toISOString(),
+      event: SESSION_EXITED,
+      session: composed.session,
+      cwd: root,
+      reason: composed.reason,
+      routing: composed.routing,
+      addressedTo: composed.recipients.map((p) => ({ pid: Number(p.pid), name: typeof p.name === 'string' ? p.name : null })),
+      text: composed.text,
+    };
+    if (warnings.length > 0) row.warnings = [...warnings];
+    const { appendExitRecord } = require('./peers-check.js');
+    const written = appendExitRecord(root, row, { now: at });
+    if (!written.ok) warnings.push(`Exit record could not be written to ${written.path} (${written.error}).`);
+    // A failed write is a failure (ok false, so the CLI exits 1): the SessionEnd
+    // hook records a non-zero child on its heartbeat and still exits 0 itself.
+    return {
+      ok: written.ok,
+      event: SESSION_EXITED,
+      recorded: written.ok,
+      routing: composed.routing,
+      exitRecord: written.ok ? row : null,
+      path: written.path,
+      notice: written.ok ? composed.notice : `Exit announcement NOT recorded: ${written.error}`,
+      announcement: composed,
+      dispatchReport: EXIT_NOT_PUSHED,
+      warnings,
+    };
+  } catch (err) {
+    return { ok: false, event: SESSION_EXITED, recorded: false, error: err && err.message ? err.message : 'exit record failed', warnings };
+  }
 }
 
 /** Compose one branch-operation notice (#2960). */
@@ -465,7 +649,7 @@ function composeBranchOperation({ name, resolved, issue, branch, tag, peers, cwd
 
   const composition = compositionDispatch(announcement);
   const recorded = ledger.record(
-    { event: name, issues: tracker ? [tracker] : [], branch: branchName, ...composition },
+    { event: name, issues: tracker ? [tracker] : [], branch: branchName, ...composition, ...monitorFields(announcement) },
     { cwd, sessionPid: resolveSessionPid(env) }
   );
   if (!recorded.ok) {
@@ -522,7 +706,10 @@ function composePush({ name, resolved, issues, outcome, runUrl, ciResult, peers,
   let recorded = { ok: false, error: 'nothing was composed' };
   const composition = compositionDispatch(announcement);
   if (composed) {
-    recorded = ledger.record({ event: name, issues: list, ...composition }, { cwd, sessionPid: resolveSessionPid(env) });
+    recorded = ledger.record(
+      { event: name, issues: list, ...composition, ...monitorFields(announcement) },
+      { cwd, sessionPid: resolveSessionPid(env) }
+    );
     if (!recorded.ok) {
       warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); its dispatch cannot be audited.`);
     } else {
@@ -684,7 +871,10 @@ function compose({ event, issue, issues, peers, cwd, commits: supplied, force = 
   }
 
   const composition = compositionDispatch(announcement);
-  const recorded = ledger.record({ event: name, issues: [issueNumber], ...composition }, { cwd, sessionPid: resolveSessionPid(env) });
+  const recorded = ledger.record(
+    { event: name, issues: [issueNumber], ...composition, ...monitorFields(announcement) },
+    { cwd, sessionPid: resolveSessionPid(env) }
+  );
   if (!recorded.ok) {
     warnings.push(`Announcement was not recorded to the ledger (${recorded.error}); pairing cannot be audited for this event.`);
   }
@@ -737,8 +927,14 @@ function closeDispatch({ ledgerId, result, detail, cwd } = {}) {
   return { ok: true, report, warnings };
 }
 
+/** Why a flagged receipt's sender is unverified (#3911). */
+const FLAG_REASON = 'no monitor was recorded for the announcement (broadcast routing), so its sender is unverified';
+
 /**
  * Record a receipt reply against its ledger entry (#2922).
+ *
+ * The sender is the monitor recorded on the entry when it was routed (#3911);
+ * `from` is optional and only checked against it.
  *
  * Called by the session that RECEIVES the reply, which is usually after the
  * command that sent the announcement has ended — so this is an entry point of
@@ -749,48 +945,83 @@ function recordReceipt({ ledgerId, from, cwd } = {}) {
   if (!updated.ok) {
     return { ok: false, error: updated.error, report: `Receipt NOT recorded: ${updated.error}` };
   }
+  if (updated.flag) {
+    return {
+      ok: true,
+      flag: updated.flag,
+      receiptFrom: updated.receiptFrom,
+      report: `Receipt recorded but FLAGGED — ${FLAG_REASON}${updated.receiptFrom ? ` (--from ${updated.receiptFrom}, unchecked)` : ''}.`,
+    };
+  }
   return {
     ok: true,
-    report: `Announcement received by ${from || 'the overwatch'} — recorded. This confirms that hop only; it claims nothing about sessions the monitor relays to.`,
+    flag: null,
+    receiptFrom: updated.receiptFrom,
+    report: `Announcement received by ${updated.receiptFrom} — recorded. This confirms that hop only; it claims nothing about sessions the monitor relays to.`,
   };
 }
 
+/** One refused id's reason, short enough for the summary line. */
+function refusalReason(updated) {
+  if (/^No ledger (entry|to update)/.test(updated.error)) return 'no ledger entry';
+  if (updated.code === 'FROM_MISMATCH') {
+    return `--from ${updated.from} is not ${updated.monitorName}, the monitor it was routed to`;
+  }
+  return updated.error;
+}
+
 /**
- * Record several receipt replies from one monitor in one call (#3455), with
- * ONE summary line naming every id recorded and every id refused. Each id goes
- * through recordReceipt's contract: an unknown id is named, never recorded,
- * and fails the call — the ids beside it are still recorded.
+ * Record several receipt replies in one call (#3455), with ONE summary line
+ * naming every id recorded, flagged and refused. Each id goes through
+ * recordReceipt's contract: an unknown id is named, never recorded, and fails
+ * the call — the ids beside it are still recorded.
+ *
+ * The sender is the monitor recorded on each entry (#3911), so `from` is
+ * optional and only checked: a `from` naming any other session is refused for
+ * that id. An entry with no recorded monitor is recorded FLAGGED.
  */
 function recordReceipts({ ledgerIds, from, cwd } = {}) {
   const ids = Array.isArray(ledgerIds) ? ledgerIds : [];
-  const sender = from || 'the overwatch';
   if (ids.length === 0) {
-    return { ok: false, recorded: [], refused: [], warnings: [], line: 'Receipt NOT recorded: no --ledger-id given.' };
+    return { ok: false, recorded: [], flagged: [], refused: [], warnings: [], line: 'Receipt NOT recorded: no --ledger-id given.' };
   }
   const recorded = [];
+  const flagged = [];
   const refused = [];
   const warnings = [];
+  const bySender = new Map();
   for (const id of ids) {
     const updated = ledger.updateReceipt(id, { from }, { cwd });
-    if (updated.ok) recorded.push(id);
-    else refused.push({ id, error: /^No ledger (entry|to update)/.test(updated.error) ? 'no ledger entry' : updated.error });
+    if (updated.ok) {
+      recorded.push(id);
+      if (updated.flag) flagged.push({ id, from: updated.receiptFrom });
+      else bySender.set(updated.receiptFrom, [...(bySender.get(updated.receiptFrom) || []), id]);
+    } else {
+      refused.push({ id, error: refusalReason(updated) });
+    }
     // One fallback, one warning: every id in the batch resolves the same path.
     if (updated.ledgerWarning && !warnings.includes(updated.ledgerWarning)) warnings.push(updated.ledgerWarning);
   }
   const count = (n) => (n === 1 ? 'Receipt' : 'Receipts');
-  let line = `${count(recorded.length)} recorded from ${sender}: ${recorded.length}`;
-  if (recorded.length > 0) line += ` (${recorded.join(', ')})`;
+  const parts = [...bySender].map(([sender, list]) => `${count(list.length)} recorded from ${sender}: ${list.length} (${list.join(', ')})`);
+  if (flagged.length > 0) {
+    const named = flagged.map((f) => (f.from ? `${f.id} from ${f.from}` : `${f.id}, no sender named`));
+    parts.push(`${count(flagged.length)} recorded but FLAGGED — ${FLAG_REASON}: ${flagged.length} (${named.join(', ')})`);
+  }
+  if (parts.length === 0) parts.push('Receipts recorded: 0');
+  let line = parts.join('; ');
   if (refused.length > 0) {
     line += `; NOT recorded: ${refused.length} (${refused.map((r) => `${r.id} — ${r.error}`).join(', ')})`;
   }
   if (warnings.length > 0) line += `; ${warnings.join('; ')}`;
-  return { ok: refused.length === 0, recorded, refused, warnings, line };
+  return { ok: refused.length === 0, recorded, flagged: flagged.map((f) => f.id), refused, warnings, line };
 }
 
 function parseArgs(argv) {
   const out = {
     event: null, issue: null, dispatchResult: null, ledgerId: null, ledgerIds: [], receiptReceived: false, from: null,
     detail: null, force: false, schema: false, branch: null, tag: null, unrecognizedFlags: [],
+    reason: null, sessionId: null,
     issues: null, outcome: null, runUrl: null, ciResultFile: null,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -816,6 +1047,9 @@ function parseArgs(argv) {
     else if (a === '--outcome' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.outcome = argv[++i];
     else if (a === '--run-url' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.runUrl = argv[++i];
     else if (a === '--ci-result-file' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.ciResultFile = argv[++i];
+    // The session exit (#3912): the SessionEnd reason and session_id.
+    else if (a === '--reason' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.reason = argv[++i];
+    else if (a === '--session-id' && argv[i + 1] !== undefined && !/^--/.test(argv[i + 1])) out.sessionId = argv[++i];
     else if (a === '--force') out.force = true;
     // finalize's labelAssigned, verbatim. The literal `null` is the #2694
     // failed-swap value, so it is read as null rather than as a label named
@@ -834,6 +1068,9 @@ function parseArgs(argv) {
   // The three entry points that are not a composition: they carry a ledger id,
   // not an event, so the event/issue validation below does not apply to them.
   if (out.schema || out.dispatchResult || out.receiptReceived) return out;
+
+  // Keyed by the exiting session, not an issue (#3912).
+  if (out.event === SESSION_EXITED) return out;
 
   const hasLabel = Object.prototype.hasOwnProperty.call(out, 'labelAssigned');
   if (out.event && hasLabel) {
@@ -875,9 +1112,11 @@ function readPeers(cwd) {
   try {
     const { checkPeers } = require('./peers-check.js');
     const result = checkPeers({ cwd: cwd || process.cwd() });
-    return { peers: result.peers || [], warnings: [] };
+    // `failed` separates "could not discover" from "discovered none" for the
+    // session exit (#3912); the other events read `peers` exactly as before.
+    return { peers: result.peers || [], warnings: [], failed: result.state === 'unavailable' };
   } catch (err) {
-    return { peers: [], warnings: [`Peers could not be discovered (${err && err.message ? err.message : 'unknown'}); composing with no recipients.`] };
+    return { peers: [], warnings: [`Peers could not be discovered (${err && err.message ? err.message : 'unknown'}); composing with no recipients.`], failed: true };
   }
 }
 
@@ -895,8 +1134,9 @@ function main() {
         'announce.js --event push-started|push-rejected --issues <N,N,...>   (/done push group, routed like the work events — #2972)',
         'announce.js --event ci-terminal --issues <N,N,...> --outcome armed|armed-degraded|skipped-no-workflows|skipped-paths-ignore [--run-url <url>]',
         'announce.js --event ci-resolved --issues <N,N,...> --ci-result-file <path to ci-watch.js stdout, unaltered>',
+        'announce.js --event session-exited [--reason <SessionEnd reason>] [--session-id <id>]   (the SessionEnd hook: RECORDED as one file in .claude/.overwatch/session-exits/, not pushed — to a live /overwatch alone, else every addressable sibling — #3912)',
         'announce.js --dispatch-result sent|failed|skipped --ledger-id <id> [--detail "<text>"]',
-        'announce.js --receipt-received --ledger-id <id>[,<id>...] [--ledger-id <id>...] [--from <monitor session name>]   (/overwatch receipt replies arrived; prints one summary line, exit 1 when any id is unknown)',
+        'announce.js --receipt-received --ledger-id <id>[,<id>...] [--ledger-id <id>...] [--from <monitor session name>]   (/overwatch receipt replies arrived; the sender is the monitor recorded on each entry when it was routed, so --from is optional and only checked — one naming any other session is refused; an entry routed by broadcast is recorded FLAGGED; prints one summary line, exit 1 when any id is unknown or refused)',
       ],
       envelope: {
         ok: 'boolean',
@@ -907,7 +1147,7 @@ function main() {
         routing: '{broadcast, applied: broadcast|targeted, monitorPid, monitorName, fallbackReason} — where the announcement went (#2915)',
         announcement: 'the peer-announce.js envelope, including text, recipients, shouldSend, notice, verified, unresolvedCommits',
         ledgerId: 'string|null — pass back with --dispatch-result',
-        receipt: 'ledger axis beside dispatch: unconfirmed until a /overwatch receipt reply is recorded with --receipt-received, then received (#2922)',
+        receipt: 'ledger axis beside dispatch: unconfirmed until a /overwatch receipt reply is recorded with --receipt-received, then received (#2922); receiptFrom is the monitorName recorded on the entry for a targeted announcement, and a broadcast one carries receiptFlag: no-recorded-monitor (#3911)',
         dispatchReport: 'the exact command that closes the dispatch outcome out',
         warnings: 'string[] — relay verbatim',
       },
@@ -934,6 +1174,17 @@ function main() {
       ledgerId: args.ledgerId, result: args.dispatchResult, detail: args.detail,
     });
     process.stdout.write(JSON.stringify({ ...result, unrecognizedFlags: args.unrecognizedFlags }, null, 2) + '\n');
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  if (args.event === SESSION_EXITED) {
+    const { peers, warnings: peerWarnings, failed } = readPeers();
+    const session = resolveExitingSession({ sessionId: args.sessionId });
+    // A discovery failure reaches recordSessionExit as null, never as [].
+    // Peer-discovery warnings go in, so they travel in the record (#3912).
+    const result = recordSessionExit({ session, reason: args.reason, peers: failed ? null : peers, warnings: peerWarnings });
+    if (args.unrecognizedFlags.length > 0) result.warnings.push(`Unrecognized flag(s) ignored: ${args.unrecognizedFlags.join(', ')}.`);
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exit(result.ok ? 0 : 1);
   }
 
@@ -980,6 +1231,9 @@ module.exports = {
   deriveCommits,
   makeCommitVerifier,
   compose,
+  recordSessionExit,
+  resolveExitingSession,
+  readExitRouting,
   closeDispatch,
   recordReceipt,
   recordReceipts,

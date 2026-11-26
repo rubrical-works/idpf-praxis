@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * review-references.js — Back the `references-valid` review criterion: check
  * the paths, `#N` issues and `/commands` an issue body names against project
  * state (#3540).

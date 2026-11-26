@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description List available CI features with enabled/disabled status. Detects active features by scanning workflow YAML files and formats output with status indicators. Part of the /ci --list subcommand.
  * @checksum sha256:placeholder
  *
@@ -91,12 +91,58 @@ function detectEnabledFeatures(workflowsPath, registry) {
 }
 
 /**
+ * Features whose presence is a workflow shape no regex over the file can
+ * judge, keyed by feature id. A detector here replaces the feature's
+ * detectionPatterns for /ci --list, /ci --add and /ci remove (#3852) — a
+ * regex is satisfied by a comment or a step's with: block.
+ *
+ * trigger-scope (#3795): schedule + workflow_dispatch alone matched any
+ * weekly maintenance job. The check is ci-recommend.js triggerScopeApplied —
+ * a scanner step plus paths:-filtered push/pull_request plus schedule and
+ * dispatch, the scanners read from SCANNER_STEPS itself. Required lazily:
+ * ci-recommend.js requires this module at load. Its ci-features.json
+ * detectionPatterns entry is the never-matching placeholder `(?!)`, kept only
+ * because the registry schema requires the key: a scanner list copied there
+ * drifted from SCANNER_STEPS with nothing to catch it.
+ */
+const STRUCTURAL_DETECTORS = {
+  'trigger-scope': (parsed) => {
+    if (!parsed || typeof parsed !== 'object') return false;
+    const { triggerScopeApplied } = require('./ci-recommend.js');
+    const jobs = parsed.jobs && typeof parsed.jobs === 'object'
+      ? Object.values(parsed.jobs).map(job => ({ steps: (job && Array.isArray(job.steps)) ? job.steps : [] }))
+      : [];
+    return triggerScopeApplied({ on: parsed.on, jobs });
+  }
+};
+
+/**
+ * Judge a feature in one workflow's text by its structural detector (#3852).
+ * @param {string} featureId - Feature identifier
+ * @param {string} content - Raw workflow YAML
+ * @returns {boolean|null} null when the feature has no structural detector
+ *   (the caller falls back to detectionPatterns); false for unparseable YAML
+ */
+function detectStructurally(featureId, content) {
+  const detector = STRUCTURAL_DETECTORS[featureId];
+  if (!detector) return null;
+  let parsed;
+  try { parsed = yaml.parse(content); } catch { return false; }
+  return detector(parsed);
+}
+
+/**
  * Check if a feature is enabled based on workflow content
  * @param {Array} workflowContents - Array of {file, content, parsed} objects
  * @param {Object} feature - Feature definition
  * @returns {boolean} True if feature is detected
  */
 function isFeatureEnabled(workflowContents, feature) {
+  const structural = STRUCTURAL_DETECTORS[feature.id];
+  if (structural) {
+    return workflowContents.some(workflow => structural(workflow.parsed));
+  }
+
   const patterns = feature.detectionPatterns.yaml || [];
 
   for (const workflow of workflowContents) {
@@ -199,4 +245,4 @@ if (require.main === module) {
   console.log(result);
 }
 
-module.exports = { listCIFeatures, loadFeatureRegistry };
+module.exports = { listCIFeatures, loadFeatureRegistry, detectStructurally, STRUCTURAL_DETECTORS };

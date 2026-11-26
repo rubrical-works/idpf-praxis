@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Consolidate deterministic setup for the /work command into a single script invocation. Replaces 7-9 sequential tool round-trips. Fetches issue metadata, validates state and labels, detects epic vs story vs branch tracker, checks branch assignment, and returns structured JSON envelope for LLM workflow routing.
  * @checksum sha256:placeholder
  *
@@ -1235,18 +1235,23 @@ function resolveRunBriefContext(root = process.cwd()) {
  * Under `--nonstop` with at least one group the run is the rolling schedule
  * (#3274, `schedule: 'rolling'`): the steps are nextSteps' first output, and
  * the run state — layers, dependencies, cap, members — is written to
- * `.tmp-rolling-<tracker>.json` for the `next-steps` CLI. Default mode keeps
- * the fixed groups (`schedule: 'groups'`) and their per-group STOP.
+ * `.tmp-rolling-<tracker>.json` for the `next-steps` CLI. With `deferStart`
+ * (a selection, #3846) nothing starts yet: the one step is `rolling-start`,
+ * run after the selection review gate with `--excluded N` for each member it
+ * dropped. Default mode keeps the fixed groups (`schedule: 'groups'`), run
+ * to the end in one invocation with one STOP after the run report (#3846).
  * @param {object} plan - buildPlan result
  * @param {Array<{number: number, title?: string, body?: string}>} active
  * @param {boolean} nonstop
- * @param {{writeBrief?: function(string, string): void, warnings?: object[], tracker?: number, noReview?: boolean, briefContext?: object}} [io] -
+ * @param {{writeBrief?: function(string, string): void, warnings?: object[], tracker?: number, noReview?: boolean, briefContext?: object, deferStart?: boolean}} [io] -
  *   writeBrief (also writes the rolling state file) injectable for tests; a
- *   failed write is pushed onto `warnings`; `noReview` (`--no-review`, #3269) turns every Tier 3 spawn into a review-skip;
+ *   failed write is pushed onto `warnings`, and a failed state-file write
+ *   returns no `stateFile` (#3867); `noReview` (`--no-review`, #3269) turns every Tier 3 spawn into a review-skip;
  *   `briefContext` (#3570) is the resolveRunBriefContext() result, injectable so a
- *   test never reads the real framework-config.json or specialist file — absent, it is resolved from disk
+ *   test never reads the real framework-config.json or specialist file — absent, it is resolved from disk;
+ *   `deferStart` (#3846): `rolling-start` is the only step — nothing starts until the selection review gate has run
  */
-function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => fs.writeFileSync(p, text), warnings = [], tracker, noReview = false, briefContext: injectedBriefContext } = {}) {
+function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => fs.writeFileSync(p, text), warnings = [], tracker, noReview = false, briefContext: injectedBriefContext, deferStart = false } = {}) {
   const members = {};
   const scopeOf = (n) => {
     const info = ((plan && plan.members) || []).find(m => m.number === n);
@@ -1281,17 +1286,39 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
   const ledgerFile = `${rootDir}/.tmp-concurrent-${tracker}.json`;
   if (nonstop && Array.isArray(plan.groups) && plan.groups.length > 0) {
     const stateFile = `${rootDir}/.tmp-rolling-${tracker}.json`;
-    const first = nextSteps({
+    const input = {
       layers: plan.layers || [], dependsOn: plan.dependsOn || {}, maxAgents: plan.maxAgents, members, tddChecklist,
       root: process.cwd(), inlineBriefs, noReview, tail: (plan.tail || []).map(t => t.number), stateFile, ledgerFile, finishOnly: plan.finishOnly || [], briefContext,
-    });
+    };
+    // #3846: a selection's review gate decides before anything starts, so the
+    // first next-steps call is the parent's, with --excluded for its drops.
+    let first = deferStart ? { start: [], state: input, steps: [] } : nextSteps(input);
+    // #3867: a failed write returns no stateFile, as the groups branch does,
+    // so no step (nor planSelection's gate text) names a file never written.
+    // The state written is nextSteps' own output, so the steps are built
+    // first; on a failed write they are rebuilt without the file (#3893).
+    let written = true;
     try {
       writeBrief(stateFile, JSON.stringify(first.state, null, 2));
     } catch (err) {
-      warnings.push({ code: 'RUN_STATE_WRITE_FAILED', message: `Could not write ${stateFile} (${err && err.message ? err.message : String(err)}); the rolling schedule cannot advance past its first steps — re-run the preamble.` });
+      written = false;
+      const effect = deferStart
+        ? 'nothing in this run can start, since the rolling-start step needs it'
+        : 'the rolling schedule cannot advance past its first steps';
+      warnings.push({ code: 'RUN_STATE_WRITE_FAILED', message: `Could not write ${stateFile} (${err && err.message ? err.message : String(err)}); ${effect} — re-run the preamble.` });
+      // nextSteps is pure, so the rebuild matches the first call bar the file.
+      if (!deferStart) first = nextSteps({ ...input, stateFile: null });
+    }
+    if (deferStart) {
+      first.steps.push({
+        kind: 'rolling-start', step: 'rolling-start', owner: 'parent', scope: 'run',
+        instruction: written
+          ? `Once the selection review gate has decided (and after any reclaim offer), run \`node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state ${stateFile}\`, adding \`--excluded N\` for each member the gate excluded, and execute what it prints; from then on follow the rolling schedule as on an epic or branch tracker.`
+          : 'The rolling run state could not be written, so the schedule cannot start: once the selection review gate has decided, re-run the preamble without the members it excluded. Nothing has started yet.',
+      });
     }
     const total = (plan.layers || []).flat().length + (plan.tail || []).length;
-    return { schedule: 'rolling', start: first.start, steps: first.steps, total, stateFile, ledgerFile, templates: { ...MEMBER_TEMPLATES }, tasks: memberTasks({ plan, members, rolling: true }), specialistNotice: briefContext.notice };
+    return { schedule: 'rolling', start: first.start, steps: first.steps, total, ...(written ? { stateFile } : {}), ledgerFile, templates: { ...MEMBER_TEMPLATES }, tasks: memberTasks({ plan, members, rolling: true }), specialistNotice: briefContext.notice };
   }
   // The run's inputs, for the replan CLI (#3269): the Review-State Gate and
   // worktree creation decide after this plan is built, and a re-plan drops a
@@ -1319,10 +1346,12 @@ function buildConcurrentRun(plan, active, nonstop, { writeBrief = (p, text) => f
  * selection. Every disk and git read is injectable through `options`.
  *
  * @param {{active: object[], processingOrder: number[], dependencyGraph: object,
- *   runKey: number|string, nonstop: boolean, options: object, warnings: object[]}} input
+ *   runKey: number|string, nonstop: boolean, options: object, warnings: object[],
+ *   deferStart?: boolean}} input - `deferStart` (#3846): `rolling-start` is the only
+ *   step of a rolling run — nothing starts until the selection review gate has run
  * @returns {Promise<{concurrencyPlan: object, concurrentRun: object}>}
  */
-async function planConcurrentRun({ active, processingOrder, dependencyGraph, runKey, nonstop, options, warnings }) {
+async function planConcurrentRun({ active, processingOrder, dependencyGraph, runKey, nonstop, options, warnings, deferStart = false }) {
   // #3224: a member worktree starts from the tracker's HEAD only when the
   // WorktreeCreate hook is registered; absent (or unreadable settings),
   // the plan falls back to sequential. Injectable so tests read no disk.
@@ -1385,7 +1414,8 @@ async function planConcurrentRun({ active, processingOrder, dependencyGraph, run
     ...(options.briefContext ? { briefContext: options.briefContext } : {}),
     warnings,
     tracker: runKey,
-    noReview: !!options.noReview
+    noReview: !!options.noReview,
+    deferStart
   });
   concurrencyPlan.reclaimable = reclaimable;
   // The offer comes before every other step, so no member is spawned first;
@@ -1415,8 +1445,10 @@ function selectionRunKey(tracker) {
  * than two workable members → CONCURRENT_IGNORED; no tracker →
  * CONCURRENT_NO_TRACKER; either way no plan and the members run
  * sequentially. A `**Depends on:**` cycle among members fails the selection.
- * `--nonstop` stays ignored on a selection (NONSTOP_IGNORED), so the run keeps
- * fixed groups.
+ * `--nonstop --concurrent` runs the rolling schedule, as on an epic or branch
+ * tracker (#3846, retiring NONSTOP_IGNORED for a planned selection): its
+ * start waits for the selection review gate, so the gate's exclusions reach
+ * the first `next-steps` call as `--excluded N`.
  *
  * @param {object[]} results - runSingleIssueWithShared results, in selection order
  * @param {number|null} tracker
@@ -1462,17 +1494,21 @@ async function planSelection(results, tracker, options, warnings) {
   const dependencyGraph = { edges: dependencies.graph.edges, blockedBy: dependencies.graph.blockedBy, invalid: dependencies.graph.invalid };
   const planned = await planConcurrentRun({
     active, processingOrder: dependencies.order, dependencyGraph,
-    runKey: selectionRunKey(tracker), nonstop: false, options, warnings
+    runKey: selectionRunKey(tracker), nonstop: !!options.nonstop, options, warnings, deferStart: true
   });
   planned.concurrencyPlan.excluded = excluded;
   planned.concurrencyPlan.tracker = tracker;
   // The selection review gate runs over the whole selection before any member
-  // agent spawns (#2750, #3681): first in the run, so a member it stops or
-  // excludes is re-planned out before a worktree exists for it.
+  // agent spawns (#2750, #3681): first in the run, so a member it excludes is
+  // re-planned out before a worktree exists for it. Its other outcomes end the
+  // run (#3846): resolve-now and stop STOP, and under --nonstop a member still
+  // findings-pending halts — nothing has started, so nothing is kept.
   const run = planned.concurrentRun;
-  const replan = run.stateFile
-    ? ` For each member it stops or excludes, run \`node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state ${run.stateFile} --stopped <N>\` and continue from the steps it prints.`
-    : ' The run state could not be written, so a stopped or excluded member cannot be re-planned: re-run the preamble without it.';
+  const replan = !run.stateFile
+    ? ' The run state could not be written, so an excluded member cannot be re-planned: re-run the preamble without it.'
+    : run.schedule === 'rolling'
+      ? ' Record each member it excludes and pass it to the rolling-start step as `--excluded <N>`; nothing has started yet.'
+      : ` For each member it excludes, run \`node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state ${run.stateFile} --excluded <N>\` and continue from the steps it prints.`;
   run.steps.unshift({
     kind: 'selection-review-gate', step: '2b-ii', owner: 'parent', scope: 'run',
     members: [...dependencies.order],
@@ -2448,13 +2484,8 @@ async function runBatch(issueNums, options) {
     results.push(await runSingleIssueWithShared(num, shared, options));
   }
 
-  // #3260: a flag only an epic or branch tracker uses is reported once,
-  // never dropped silently. Members are never trees on this path (TREE_IN_BATCH).
   const warnings = [];
   if (frameworkConfig.warning) warnings.push(frameworkConfig.warning);   // #3266
-  if (options && options.nonstop) {
-    warnings.push({ code: 'NONSTOP_IGNORED', message: '--nonstop applies to an epic or branch tracker; ignored for a selection of issues.' });
-  }
 
   // A batch in which every member failed is a failed batch (#3260); one that
   // has any member to work is ok, with per-member errors in results[].
@@ -2465,6 +2496,12 @@ async function runBatch(issueNums, options) {
     : {};
   if (options && options.concurrent && allFailed) {
     warnings.push({ code: 'CONCURRENT_IGNORED', message: '--concurrent needs two or more workable members in a selection; none is workable, so it is ignored.' });
+  }
+  // #3260: a flag the run cannot use is reported once, never dropped
+  // silently. #3846: a planned --concurrent selection uses --nonstop (the
+  // rolling schedule), so it is ignored only when no concurrent plan formed.
+  if (options && options.nonstop && !selection.concurrentRun) {
+    warnings.push({ code: 'NONSTOP_IGNORED', message: '--nonstop applies to an epic, a branch tracker, or a selection planned under --concurrent; no concurrent plan formed here, so it is ignored.' });
   }
   const errors = allFailed
     ? [{ code: 'ALL_MEMBERS_FAILED', message: `Every member of the selection failed: ${results.map((r) => `#${r.issueNum}`).join(', ')}.` }]
@@ -2513,7 +2550,7 @@ function buildSchema() {
     context: {
       name: 'context',
       type: 'object',
-      description: 'Issue data (number, title, labels, body, state), branch/status data, unreviewed (true only under --unreviewed, #3537: the Review-State Gate is waived for this run; absent otherwise), type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason, worktreeBase { registered, layer, base } } — worktreeBase is present in both cases (#3568): layer names the first settings layer registering the hook (project, project-local, user) or null, and base is "tracker tip" when registered, "sequential fallback" when not; zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks, specialistNotice } (#3129; specialistNotice, #3501, is the one specialist notice of the run for the parent to report — a string when no specialist was loaded, else null — on both schedules) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups, one STOP per group) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]`, which re-plans without that member\'s later steps (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE. A .tmp-wt-* worktree on a wt/* branch that holds nothing — its branch an ancestor of the tracker HEAD, its tree clean, untracked files included — is reclaimable whether the ledger records it or not (#3714): warned RECLAIMABLE_WORKTREE instead of UNMATCHED_WORKTREE or KEPT_WORKTREE, never held, listed in concurrencyPlan.reclaimable ([{ branch, worktreePath, issue, recorded }]), and offered by a reclaim-offer step ahead of every spawn whose accept command is merge-back-gate.js reclaim (decline runs nothing). With --concurrent on a selection (--issues, several #N, or --status — #3681) the batch envelope carries concurrencyPlan and concurrentRun at its top level, built the same way over the workable members (ok, not redirected) in selection order with **Depends on:** edges among them; concurrencyPlan adds tracker (the current branch\'s tracker, the merge-back target) and excluded ([{ number, reason, detail }]: reason "redirect" with the command, or the member\'s error code such as TREE_IN_BATCH). Its concurrentRun.steps open with one selection-review-gate step (step "2b-ii", members in plan order) before any spawn, naming the replan --stopped command for a member the gate stops or excludes. Its state files are keyed <tracker>-selection (.tmp-concurrent-<tracker>-selection.json and the .tmp-run-/.tmp-rolling- files), never a tracker-rooted run\'s. Fewer than two workable members warns CONCURRENT_IGNORED, no open tracker warns CONCURRENT_NO_TRACKER — no plan either way, the members run sequentially; a **Depends on:** cycle among members fails the batch with DEPENDENCY_CYCLE; --nonstop stays NONSTOP_IGNORED, so the schedule is "groups".'
+      description: 'Issue data (number, title, labels, body, state), branch/status data, unreviewed (true only under --unreviewed, #3537: the Review-State Gate is waived for this run; absent otherwise), type ("branch"/"epic"/"standard"), tracker number, framework config, sub-issues, skipped, and processing order. On an epic or branch tracker (#3128): processingOrder is a topological sort of the **Depends on:** graph with declaredOrder (the **Processing Order:** section, else ascending) breaking ties, and dependencyGraph { edges, blockedBy, invalid } carries the graph; a cycle fails the preamble with DEPENDENCY_CYCLE before any status move, and so — under --nonstop only — does a dependency on a skipped qa-required member (DEPENDS_ON_QA_REQUIRED; a warning otherwise). in_review/done members satisfy their dependents. With --concurrent on an epic or branch tracker (#3126): concurrencyPlan { maxAgents, source ("default"|"flag"), groups (number[][] in Processing Order, each at most maxAgents), tail ([{ number, cause, reason }]), members, noGroupReason, worktreeBase { registered, layer, base } } — worktreeBase is present in both cases (#3568): layer names the first settings layer registering the hook (project, project-local, user) or null, and base is "tracker tip" when registered, "sequential fallback" when not; zero groups, every member in the tail and a noGroupReason naming the hook when no settings layer (.claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json) registers the WorktreeCreate hook worktree-create-hook.js; an unreadable or malformed layer warns WORKTREE_HOOK_SETTINGS_UNREADABLE and counts as absent (#3224) — and concurrentRun { steps, total, templates, tasks, specialistNotice } (#3129; specialistNotice, #3501, is the one specialist notice of the run for the parent to report — a string when no specialist was loaded, else null — on both schedules) — the parent\'s step sequence from concurrent-orchestration.js, a worktree spawn request on each group member\'s spawn step whose prompt names the member brief written to .tmp-brief-<N>.md at the root (request.briefPath; the brief is inline only when a write failed, warned BRIEF_WRITE_FAILED — #3280), and one task per member naming its group. A step carries either instruction text or, for the per-member gate steps (gate-tier1, gate-tier2, gate-tier3, gate-outcome), a template id and params: its instruction is templates[template] with each {{key}} replaced by params[key] (instructionOf in concurrent-orchestration.js, #3280). concurrentRun.schedule is "groups" (default --concurrent: fixed groups run to the end in one invocation — each next group follows the previous group\'s merge-back — with one STOP after the run report, a final summary step whose text names every group, each member\'s status and the tail; a hard stop halts with a halt step, #3846) or "rolling" (--nonstop --concurrent, #3274): steps are only what runs first, start names the members started, and stateFile (.tmp-rolling-<tracker>.json) holds the run state — after each member\'s merge-back, and after each batch\'s reports, run `node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state <stateFile> [--merged N ...] [--passed N ...]` and execute the steps it prints, until done is true; a member the Review-State Gate stops, or whose worktree cannot be created, is reported with next-steps --stopped N / --not-started N[=<path>] and halts the run. Under "groups" stateFile (.tmp-run-<tracker>.json) holds the run\'s inputs: the review-state-gate and spawn steps name `node .claude/scripts/shared/lib/concurrent-orchestration.js replan --state <stateFile> --stopped N` / `--not-started N[=<path>]` — either halts the run (#3846) — and `replan --state <stateFile> --excluded N` drops a member the selection review gate excluded and carries on (#3269). --no-review turns every Tier 3 reviewer spawn into a review-skip step under --concurrent, and skips the sequential /work review otherwise (#3457); it applies in every mode and sets context.noReview. A resumed run (#3264): concurrencyPlan.finishOnly names members whose Refs #N commits reached the tracker through a merge — each gets a resume-finish step and its remaining steps, never a spawn; concurrencyPlan.held names members with a worktree kept from an earlier run (matched through the run ledger, concurrentRun.ledgerFile = .tmp-concurrent-<tracker>.json, which the record-spawn command in each spawn step onSpawned writes) and heldBehind what depends on them — warned KEPT_WORKTREE with the merge-back command; a wt/* worktree no ledger names is warned UNMATCHED_WORKTREE. A .tmp-wt-* worktree on a wt/* branch that holds nothing — its branch an ancestor of the tracker HEAD, its tree clean, untracked files included — is reclaimable whether the ledger records it or not (#3714): warned RECLAIMABLE_WORKTREE instead of UNMATCHED_WORKTREE or KEPT_WORKTREE, never held, listed in concurrencyPlan.reclaimable ([{ branch, worktreePath, issue, recorded }]), and offered by a reclaim-offer step ahead of every spawn whose accept command is merge-back-gate.js reclaim (decline runs nothing). With --concurrent on a selection (--issues, several #N, or --status — #3681) the batch envelope carries concurrencyPlan and concurrentRun at its top level, built the same way over the workable members (ok, not redirected) in selection order with **Depends on:** edges among them; concurrencyPlan adds tracker (the current branch\'s tracker, the merge-back target) and excluded ([{ number, reason, detail }]: reason "redirect" with the command, or the member\'s error code such as TREE_IN_BATCH). Its concurrentRun.steps open with one selection-review-gate step (step "2b-ii", members in plan order) before any spawn, naming the replan --excluded N command for a member the gate excludes (under the rolling schedule nothing starts before the gate: the only other step is rolling-start, which runs next-steps with --excluded N — #3846). Its state files are keyed <tracker>-selection (.tmp-concurrent-<tracker>-selection.json and the .tmp-run-/.tmp-rolling- files), never a tracker-rooted run\'s. Fewer than two workable members warns CONCURRENT_IGNORED, no open tracker warns CONCURRENT_NO_TRACKER — no plan either way, the members run sequentially; a **Depends on:** cycle among members fails the batch with DEPENDENCY_CYCLE; --nonstop --concurrent runs the rolling schedule as on an epic or branch tracker (#3846); NONSTOP_IGNORED is warned only when --nonstop meets a selection with no concurrent plan.'
     },
     gates: {
       name: 'gates',

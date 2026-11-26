@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * test-runner.js — suite resolution, scoped routing, sweep sets, run
  * classification (#2852).
  *
@@ -9,6 +9,11 @@
  * processes, and the rule owns what blocks `in_review` (#2857 AC2). Keeping
  * the decision here and the action there is what makes "prerequisite failed"
  * testable without a subprocess.
+ *
+ * The command line (#3880), `test-runner.js scoped --files <changed...>`,
+ * runs each suite's per-AC selector — never a test — and prints the plan
+ * `scopedPlan` builds from the results. The selector spawn is runner-probe.js's
+ * `runSelectorCommand`, injected, so this module still spawns nothing itself.
  *
  * ONE SHAPE, WHATEVER THE DECLARATION FORM. `resolveSuites` desugars the
  * `testCommand` string and the `verificationCommands` array into the same
@@ -166,13 +171,38 @@ function resolveConcurrency(suite) {
 }
 
 /**
+ * Whether a suite reads files across the whole repository rather than only
+ * the files it matches (#3856): a spelling sweep, a contract test that
+ * enumerates every command spec. Declared by the project as `wholeRepo: true`.
+ */
+function isWholeRepo(suite) {
+  return Boolean(suite) && suite.wholeRepo === true;
+}
+
+/**
+ * Whether a parallel suite is held back from a worktree as whole-repo (#3856).
+ * A sparse worktree lacks the files outside its cone, and a suite that reads
+ * the whole repository passes there without checking them. `sparse` is the
+ * caller's statement about the worktree: `false` (a full checkout) runs the
+ * suite in place; `true` or unstated defers it, since a worktree not known to
+ * be full may be missing files — the guard fails safe.
+ */
+function deferredAsWholeRepo(suite, sparse) {
+  return isWholeRepo(suite) && sparse !== false && resolveConcurrency(suite).value === 'parallel';
+}
+
+/**
  * Split suites by where they may run (#3132). Manual-only and invalid suites
- * are in neither set, and named, so nothing leaves the report silently.
+ * are in neither set, and named, so nothing leaves the report silently. A
+ * whole-repo suite counts as exclusive unless the worktree is stated full
+ * (#3856, deferredAsWholeRepo).
  *
+ * @param {object[]} suites
+ * @param {{sparse?: boolean}} [opts]
  * @returns {{parallel: object[], exclusive: object[], manualOnly: string[],
  *   invalid: Array<{suiteId: string, declared: *, error: string}>, warnings: string[]}}
  */
-function partitionByConcurrency(suites) {
+function partitionByConcurrency(suites, { sparse } = {}) {
   const out = { parallel: [], exclusive: [], manualOnly: [], invalid: [], warnings: [] };
   for (const suite of suites) {
     if (isManualOnly(suite)) {
@@ -185,7 +215,7 @@ function partitionByConcurrency(suites) {
       out.warnings.push(concurrency.error);
       continue;
     }
-    (concurrency.value === 'exclusive' ? out.exclusive : out.parallel).push(suite);
+    (concurrency.value === 'exclusive' || deferredAsWholeRepo(suite, sparse) ? out.exclusive : out.parallel).push(suite);
   }
   return out;
 }
@@ -294,15 +324,45 @@ const COMMAND_LINE_LIMITS = Object.freeze({ win32: 8191 });
 /**
  * Head-room under the limit for the wrapper Node adds around a `shell: true`
  * command on win32 (`/d /s /c "…"`), so a split invocation stays under the
- * limit as cmd.exe counts it, not only as this helper does.
+ * limit as cmd.exe counts it, not only as this helper does. Measured (#3855):
+ * with no shim the longest accepted command was 8,152 characters, 39 short.
  */
-const SHELL_WRAPPER_RESERVE = 32;
+const SHELL_WRAPPER_RESERVE = 40;
 
-/** cmd.exe's refusal of an over-limit line, as it prints it. */
-const TOO_LONG_RE = /The command line is too long\./i;
+/**
+ * Head-room for a `.cmd` shim re-expanding the line (#3855). `npx jest …`
+ * runs `npx.cmd`, whose last line is `"%NODE_EXE%" "%NPX_CLI_JS%" %*`: the
+ * re-expanded line carries both paths, and its length depends on where Node
+ * is installed. A fixed, conservative reserve rather than a measurement — an
+ * extra part costs seconds, a refused one fails the sweep.
+ */
+const CMD_SHIM_RESERVE = 512;
+
+/**
+ * cmd.exe's refusals of an over-limit line, as it prints them: the line
+ * itself ("The command line is too long.") and a `.cmd` shim's re-expanded
+ * line ("The input line is too long.", exit 255 — #3855).
+ */
+const TOO_LONG_RE = /The (?:command|input) line is too long\./i;
+
+/**
+ * The other message a shim prints for a re-expanded line it cannot hold
+ * (#3855). It is also cmd.exe's answer to ordinary bad syntax, so it names a
+ * refusal only for a command already over the budget.
+ */
+const SYNTAX_REFUSAL_RE = /The syntax of the command is incorrect\./i;
 
 function commandLineLimit(platform = process.platform) {
   return Object.prototype.hasOwnProperty.call(COMMAND_LINE_LIMITS, platform) ? COMMAND_LINE_LIMITS[platform] : null;
+}
+
+/**
+ * The longest command `expandChunked` builds on a platform: the limit less
+ * the wrapper and shim reserves, or null where no limit applies (#3855).
+ */
+function commandLineBudget(platform = process.platform) {
+  const limit = commandLineLimit(platform);
+  return limit === null ? null : limit - SHELL_WRAPPER_RESERVE - CMD_SHIM_RESERVE;
 }
 
 /**
@@ -324,11 +384,10 @@ function commandLineLimit(platform = process.platform) {
  */
 function expandChunked(template, files, platform) {
   const whole = expandPlaceholders(template, files);
-  const limit = commandLineLimit(platform);
-  if (limit === null || whole.length < limit - SHELL_WRAPPER_RESERVE || !template.includes('{files}')) {
+  const budget = commandLineBudget(platform);
+  if (budget === null || whole.length < budget || !template.includes('{files}')) {
     return [{ command: whole, files }];
   }
-  const budget = limit - SHELL_WRAPPER_RESERVE;
   // Each further file adds one separator plus its quoted form per `{files}`.
   const perFile = template.split('{files}').length - 1;
   const groups = [];
@@ -446,8 +505,15 @@ function resolveSuites(cwd = process.cwd()) {
  *   A `{files}` expansion longer than `platform`'s command line (#3778) is
  *   split into consecutive runs, each with its own `files` and a
  *   `chunk: {index, of}`; callers already run every entry of `runs`.
+ *   `selectionTier` (#3880) names the tier `selections` were built at:
+ *   `scoped` (default — the per-AC run) or `sweep` (merge-back Tier 1), so a
+ *   suite is reached only by a selector of that tier.
+ *   `sparse` (#3856) states whether the worktree is a sparse checkout; with
+ *   `inWorktree`, a `wholeRepo` suite is deferred as exclusive (source
+ *   `whole-repo`) unless `sparse` is `false`.
  */
-function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false, selections, platform = process.platform } = {}) {
+function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false, sparse, selections, selectionTier = 'scoped', platform = process.platform } = {}) {
+  assertTier(selectionTier);
   const runs = [];
   const warnings = [];
   const notRun = [];
@@ -464,10 +530,14 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
   // — never dropped, so a role-default e2e suite is never skipped. An
   // invalid declaration is named and is in neither set. Outside a worktree
   // nothing is partitioned and every gate suite runs, as before.
+  // #3856: a whole-repo suite in a worktree that may be sparse is deferred the
+  // same way — it would pass there over files the cone left out.
   const split = inWorktree
-    ? partitionByConcurrency(suites)
+    ? partitionByConcurrency(suites, { sparse })
     : { parallel: suites.filter((s) => !isManualOnly(s)), exclusive: [], manualOnly: suites.filter(isManualOnly).map((s) => s.id), invalid: [], warnings: [] };
-  const deferred = split.exclusive.map((s) => ({ suiteId: s.id, concurrency: 'exclusive', source: resolveConcurrency(s).source }));
+  const deferred = split.exclusive.map((s) => ({
+    suiteId: s.id, concurrency: 'exclusive', source: deferredAsWholeRepo(s, sparse) ? 'whole-repo' : resolveConcurrency(s).source,
+  }));
   const { invalid, manualOnly } = split;
   warnings.push(...split.warnings);
 
@@ -478,7 +548,7 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
     // #3394: the suite's own declarations are honored before its selector is
     // consulted — a selector reads every changed file, so it reaches the suite
     // even when its match globs do not.
-    const reached = files.length > 0 || (selectionAware && declaresSelector(suite));
+    const reached = files.length > 0 || (selectionAware && declaresSelector(suite, selectionTier));
     if (reached && !SCOPING_MODES.includes(mode)) {
       // Named, never silently skipped: an unrecognized mode is a declaration
       // the project believes is in force.
@@ -507,7 +577,7 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
 
     let fallback = null;
     if (selectionAware) {
-      const picked = selectedRun(suite, selections[suite.id], changedFiles, platform);
+      const picked = selectedRun(suite, selections[suite.id], changedFiles, platform, selectionTier);
       if (picked.runs) {
         // The selector read every changed file, so it reached them all.
         changedFiles.forEach((f) => matchedAny.add(f));
@@ -528,9 +598,12 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
       // #3407: a selector reached this suite and then fell back, but there is
       // no touched tree to fall back to — so nothing ran. Named, since every
       // fallback is reported; a suite with no selector was simply not reached.
-      if (fallback && declaresSelector(suite) && changedFiles.length > 0) {
+      if (fallback && declaresSelector(suite, selectionTier) && changedFiles.length > 0) {
         const reason = `${fallback.report}, and none of the changed files match this suite`;
-        notRun.push({ suiteId: suite.id, reason });
+        // `selectorFallback` (#3880): the suite was reached only through its
+        // selector — a gate may treat this as advisory, since without the
+        // selector it was never reached at all.
+        notRun.push({ suiteId: suite.id, reason, selectorFallback: true });
         warnings.push(`Suite "${suite.id}" was not run: ${reason}`);
       }
       continue;
@@ -604,13 +677,15 @@ function scopedInvocations({ suites = [], changedFiles = [], inWorktree = false,
  *
  * @returns {{runs?: object[], none?: object, fallback?: object}} exactly one key
  */
-function selectedRun(suite, result, changedFiles, platform) {
+function selectedRun(suite, result, changedFiles, platform, tier = 'scoped') {
   const touched = (selection) => ({
     fallback: { mode: 'touched', fallback: selection.fallback, report: `touched tree — ${selection.report.replace(/^full — /, '')}` },
   });
-  if (!declaresSelector(suite)) return touched({ fallback: 'no-selector', report: 'no sweepSelect declared' });
+  if (!declaresSelector(suite, tier)) {
+    return touched({ fallback: 'no-selector', report: tier === 'scoped' ? 'no scopedSelect or sweepSelect declared' : 'no sweepSelect declared' });
+  }
 
-  const selection = resolveSelection(suite, result, changedFiles);
+  const selection = resolveSelection(suite, result, changedFiles, tier);
   if (selection.mode === 'none') {
     return { none: { suiteId: suite.id, report: selection.report, reason: selection.reason, verdict: 'selected none — ran nothing, not a pass' } };
   }
@@ -659,12 +734,17 @@ function selectedRun(suite, result, changedFiles, platform) {
  * the exclusive ones, at the tracker — never in a worktree, never dropped: an
  * unmatched one is in `unmatchedCannotNarrow`, an unknown id in `warnings`.
  *
+ * Whole-repo suites (#3856) a member's worktree deferred are among the
+ * exclusive ones here, under the same `sparse` statement scopedInvocations
+ * took: unstated or `true` runs them once on the tracker; `false` leaves them
+ * to the members, which ran them in place.
+ *
  * @returns {{runs: object[], collapsed: object[], serial: true, manualOnly: string[],
  *   invalid: object[], scopedSkipped: object[], unmatchedExclusive: string[],
  *   unmatchedCannotNarrow: string[], warnings: string[]}}
  */
-function deferredInvocations({ suites = [], changedFiles = [], cannotNarrow = [] } = {}) {
-  const { exclusive, parallel, invalid, manualOnly, warnings } = partitionByConcurrency(suites);
+function deferredInvocations({ suites = [], changedFiles = [], cannotNarrow = [], sparse } = {}) {
+  const { exclusive, parallel, invalid, manualOnly, warnings } = partitionByConcurrency(suites, { sparse });
 
   const narrowIds = [...new Set(cannotNarrow)];
   const unknown = narrowIds.filter((id) => !parallel.some((s) => s.id === id));
@@ -735,8 +815,34 @@ function isSwept(suite, sweepScope, changedFiles) {
   return !(sweepScope === 'touched' && filesForSuite(suite, changedFiles).length === 0);
 }
 
-function declaresSelector(suite) {
-  return typeof suite.sweepSelect === 'string' && suite.sweepSelect.trim() !== '';
+/**
+ * The two selection tiers (#3880). `sweep` — the Step 4f sweep and merge-back
+ * Tier 1 — reads `sweepSelect` alone. `scoped` — the per-AC run — reads
+ * `scopedSelect` and falls back to `sweepSelect` when it is absent, so a
+ * project declaring one selector gets it at both scopes.
+ */
+const SELECTION_TIERS = Object.freeze(['sweep', 'scoped']);
+
+const isCommand = (value) => typeof value === 'string' && value.trim() !== '';
+
+/**
+ * The key naming the selector a suite runs at `tier`, or null for none.
+ * @returns {'scopedSelect'|'sweepSelect'|null}
+ */
+function assertTier(tier) {
+  if (!SELECTION_TIERS.includes(tier)) {
+    throw new Error(`Unrecognized selection tier ${JSON.stringify(tier)} — expected one of ${SELECTION_TIERS.join(', ')}.`);
+  }
+}
+
+function selectorKey(suite, tier = 'sweep') {
+  assertTier(tier);
+  if (tier === 'scoped' && isCommand(suite.scopedSelect)) return 'scopedSelect';
+  return isCommand(suite.sweepSelect) ? 'sweepSelect' : null;
+}
+
+function declaresSelector(suite, tier = 'sweep') {
+  return selectorKey(suite, tier) !== null;
 }
 
 /**
@@ -752,17 +858,32 @@ function declaresSelector(suite) {
  * PURE, like the rest of this helper: the caller runs each command and hands
  * `{exitCode, stdout, spawnError}` back to `sweepInvocations` as `selections`.
  *
- * @returns {{runs: Array<{suiteId: string, command: string, cwd: string|null}>,
+ * `tier` (#3880): `sweep` (default — Step 4f and merge-back Tier 1) runs
+ * `sweepSelect`; `scoped` (the per-AC run) runs `scopedSelect`, else
+ * `sweepSelect`, and names the key it ran as `selector`. Any other value throws.
+ *
+ * @returns {{runs: Array<{suiteId: string, command: string, cwd: string|null, selector?: string}>,
  *            notRun: {suiteId: string, reason: string}[]}}
  */
-function selectorInvocations({ suites = [], sweepScope = 'all', changedFiles = [] } = {}) {
+function selectorInvocations({ suites = [], sweepScope = 'all', changedFiles = [], tier = 'sweep' } = {}) {
   const runs = [];
   const notRun = [];
+  // Validated before the empty-input return, so a misspelled tier is caught
+  // whatever changed.
+  assertTier(tier);
   if (changedFiles.length === 0) return { runs, notRun };
   for (const suite of suites) {
-    if (!isSwept(suite, sweepScope, changedFiles) || !declaresSelector(suite)) continue;
+    // #3880: a per-AC run is not the sweep, so `sweep: false` and
+    // `sweepScope: touched` do not apply to it — only manual-only does, as
+    // scopedInvocations itself never runs a manual-only suite.
+    const reached = tier === 'scoped' ? !isManualOnly(suite) : isSwept(suite, sweepScope, changedFiles);
+    const key = reached ? selectorKey(suite, tier) : null;
+    if (!key) continue;
     try {
-      runs.push({ suiteId: suite.id, command: expandPlaceholders(suite.sweepSelect, changedFiles), cwd: suiteCwd(suite) });
+      const run = { suiteId: suite.id, command: expandPlaceholders(suite[key], changedFiles), cwd: suiteCwd(suite) };
+      // The per-AC tier names which selector it ran, since it has two.
+      if (tier === 'scoped') run.selector = key;
+      runs.push(run);
     } catch (err) {
       notRun.push({ suiteId: suite.id, reason: err.message });
     }
@@ -781,9 +902,9 @@ function selectorInvocations({ suites = [], sweepScope = 'all', changedFiles = [
  * @returns {{mode: 'selected'|'none'|'full', report: string, fallback?: string,
  *            reason?: string, tests?: string[], selected?: number, total?: number}}
  */
-function resolveSelection(suite, result, changedFiles) {
+function resolveSelection(suite, result, changedFiles, tier = 'sweep') {
   const full = (fallback, why) => ({ mode: 'full', fallback, report: `full — ${why}` });
-  if (!declaresSelector(suite)) return full('no-selector', 'no sweepSelect declared');
+  if (!declaresSelector(suite, tier)) return full('no-selector', 'no sweepSelect declared');
   if (changedFiles.length === 0) return full('no-changed-files', 'no changed files to select from');
   if (!result) return full('selector-not-run', 'the selector was not run');
   if (result.spawnError) return full('selector-failed', `the selector could not be spawned (${result.spawnError})`);
@@ -808,12 +929,17 @@ function resolveSelection(suite, result, changedFiles) {
   // `selected` naming no valid test contradicts itself: it cannot narrow, so it runs full (#3216).
   if (tests.length === 0) return full('selector-unparseable', 'the selector chose selected but named no valid tests');
   const total = Number.isInteger(out.total) ? out.total : undefined;
+  // The selector's reason is kept beside the report, never folded into it
+  // (#3885): a narrowing the selector names (the ac tier's skipped data-file
+  // hops) reaches the per-AC report while "selected N of M" stays as it was.
+  const reason = typeof out.reason === 'string' && out.reason !== '' ? out.reason : undefined;
   return {
     mode: 'selected',
     tests,
     selected: tests.length,
     ...(total === undefined ? {} : { total }),
     report: total === undefined ? `selected ${tests.length}` : `selected ${tests.length} of ${total}`,
+    ...(reason === undefined ? {} : { reason }),
   };
 }
 
@@ -938,25 +1064,39 @@ function sweepInvocations({ suites = [], sweepScope = 'all', changedFiles = [], 
  * line over 8,191 characters with "The command line is too long." and exit
  * 1 — the code a test failure uses — so without this check the verdict blamed
  * the tests for a command that never started. It is recognized from the
- * captured `output`, or, on a platform with a limit, from a non-zero exit of
- * a `command` longer than it; the verdict names the limit and the length.
- * Checked first: neither the build nor the tests ran.
+ * captured `output`, or — only when no output was captured — on a platform
+ * with a limit, from an integer non-zero exit of a `command` longer than it;
+ * the verdict names the limit and the length. Checked after the missing-runner
+ * check and before `prepare` (#3831): neither the build nor the tests ran, and
+ * a null exit (timeout or signal kill) is never read as a refusal. A `.cmd`
+ * shim's refusal (#3855) is recognized too: "The input line is too long."
+ * always, and "The syntax of the command is incorrect." only for a command
+ * over `commandLineBudget`, since cmd.exe prints it for ordinary bad syntax.
  *
  * @returns {{verdict: string, phase: string, blocksReview: boolean, runner?: string|null,
  *            length?: number, limit?: number}}
  */
 function classifyRunResult({ phase, exitCode, spawnError, command, runner, output, platform = process.platform } = {}) {
-  if (exitCode !== 0 && exitCode !== undefined) {
-    const refused = typeof output === 'string' && TOO_LONG_RE.test(output);
-    const limit = commandLineLimit(platform);
-    const length = typeof command === 'string' ? command.length : null;
-    if (refused || (limit !== null && length !== null && length > limit)) {
-      return { verdict: 'command line too long', phase, blocksReview: true, length, limit: limit || COMMAND_LINE_LIMITS.win32 };
-    }
-  }
+  // #3831: a missing runner is decided before the length heuristic, so an
+  // over-limit command whose runner is absent still names the runner.
   if (exitCode === 127 || spawnError === 'ENOENT') {
     const name = runner || firstToken(command);
     return { verdict: 'runner not found', phase, blocksReview: true, runner: name || null };
+  }
+  // Only an integer non-zero exit can be a refusal: null (timeout, signal
+  // kill) never is. Captured output decides when there is any; the
+  // length-only rule applies only when nothing was captured.
+  if (Number.isInteger(exitCode) && exitCode !== 0) {
+    const captured = typeof output === 'string' && output.trim() !== '';
+    const limit = commandLineLimit(platform);
+    const length = typeof command === 'string' ? command.length : null;
+    const budget = commandLineBudget(platform);
+    const overBudget = budget !== null && length !== null && length > budget;
+    const refused = captured && (TOO_LONG_RE.test(output) || (overBudget && SYNTAX_REFUSAL_RE.test(output)));
+    const overLimit = !captured && limit !== null && length !== null && length > limit;
+    if (refused || overLimit) {
+      return { verdict: 'command line too long', phase, blocksReview: true, length, limit: limit || COMMAND_LINE_LIMITS.win32 };
+    }
   }
   if (exitCode === 0) {
     return { verdict: 'passed', phase, blocksReview: false };
@@ -967,12 +1107,128 @@ function classifyRunResult({ phase, exitCode, spawnError, command, runner, outpu
   return { verdict: 'tests failed', phase: 'full', blocksReview: true };
 }
 
+/**
+ * The per-AC run as a plan an agent can execute (#3880): the commands to run
+ * after an acceptance criterion's change, each with its suite ids and its
+ * selection report.
+ *
+ * Resolves the suites, runs each selector at the per-AC tier (`scopedSelect`,
+ * else `sweepSelect`) through `runSelector`, and hands the results to
+ * `scopedInvocations` as `selections`. Runs no test: the caller runs each
+ * printed command. `runSelector` is the one side effect, injected so the plan
+ * is testable without a subprocess; the command line passes
+ * runner-probe.js's `runSelectorCommand`.
+ *
+ * @param {{root?: string, changedFiles?: string[], platform?: string,
+ *   runSelector: (run: {suiteId: string, command: string, cwd: string|null, selector: string}) =>
+ *     {exitCode: number|null, stdout: string, spawnError?: string}}} input
+ * @returns {object} `ok: false` with `error` when the config cannot be read;
+ *   otherwise `runs[]` (`command`, `suiteIds`, `cwd`, `files`, `selection`,
+ *   `selectionReason` when the selector gave one (#3885), `chunk` when split), `selectors[]`, `selectedNone`, `notRun`, `unmatched`,
+ *   `reason`, `scopedSkipped`, `manualOnly` and `warnings`.
+ */
+function scopedPlan({ root = process.cwd(), changedFiles = [], runSelector, platform = process.platform } = {}) {
+  const resolved = resolveSuites(root);
+  if (resolved.source === 'unreadable') {
+    return { ok: false, tier: 'scoped', source: resolved.source, error: `framework-config.json could not be read: ${resolved.error}` };
+  }
+  const files = changedFiles.map((f) => String(f).replace(/\\/g, '/'));
+  const selectorSet = selectorInvocations({ suites: resolved.suites, changedFiles: files, tier: 'scoped' });
+  const selections = {};
+  const selectors = [];
+  for (const run of selectorSet.runs) {
+    const result = runSelector(run) || {};
+    selections[run.suiteId] = result;
+    selectors.push({
+      suiteId: run.suiteId, selector: run.selector, command: run.command, exitCode: result.exitCode,
+      ...(result.spawnError ? { spawnError: result.spawnError } : {}),
+    });
+  }
+  const scoped = scopedInvocations({ suites: resolved.suites, changedFiles: files, selections, platform });
+  return {
+    ok: true,
+    tier: 'scoped',
+    source: resolved.source,
+    changedFiles: files,
+    selectors,
+    runs: scoped.runs.map((r) => ({
+      command: r.command,
+      suiteIds: r.suiteIds,
+      cwd: r.cwd,
+      files: r.files,
+      selection: r.selection ? r.selection.report : 'touched tree',
+      ...(r.selection && r.selection.reason ? { selectionReason: r.selection.reason } : {}),
+      ...(r.chunk ? { chunk: r.chunk } : {}),
+    })),
+    selectedNone: scoped.selectedNone || [],
+    notRun: [...selectorSet.notRun, ...scoped.notRun],
+    unmatched: scoped.unmatched,
+    reason: scoped.reason,
+    scopedSkipped: scoped.scopedSkipped,
+    manualOnly: scoped.manualOnly,
+    warnings: scoped.warnings,
+    ...(resolved.source === 'none' ? { message: 'No suite is declared in framework-config.json, so there is nothing to run.' } : {}),
+  };
+}
+
+/**
+ * The command line's selector runner. The spawn is runner-probe.js's, through
+ * lib/exec.js — this module stays spawn-free. Required here, not at the top:
+ * runner-probe.js requires this module.
+ */
+function defaultSelectorRunner(root) {
+  const { runSelectorCommand } = require('./runner-probe.js');
+  return (run) => runSelectorCommand(run, { root });
+}
+
+const USAGE = 'node .claude/scripts/shared/lib/test-runner.js scoped --files <changed-file...> [--root <project-root>]';
+
+/**
+ * Command line (#3880). `scoped --files <changed...>` prints the per-AC plan
+ * as JSON. Exit 0 with a plan, 1 when the config cannot be read, 2 on a usage
+ * error. `seams.runSelector` and `seams.log` replace the spawn and stdout in
+ * tests.
+ */
+function cli(argv = process.argv.slice(2), seams = {}) {
+  const log = seams.log || ((s) => console.log(s));
+  const print = (doc) => log(JSON.stringify(doc, null, 2));
+  const [sub, ...rest] = argv;
+  if (sub !== 'scoped') {
+    print({ ok: false, error: sub ? `unknown subcommand: ${sub}` : 'missing subcommand', usage: USAGE });
+    return 2;
+  }
+  let files = null;
+  let root = process.cwd();
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--files') {
+      files = [];
+      while (i + 1 < rest.length && !rest[i + 1].startsWith('--')) files.push(rest[++i]);
+    } else if (rest[i] === '--root' && i + 1 < rest.length) {
+      root = rest[++i];
+    } else {
+      print({ ok: false, error: `unrecognized argument: ${rest[i]}`, usage: USAGE });
+      return 2;
+    }
+  }
+  if (!files || files.length === 0) {
+    print({ ok: false, error: '--files takes at least one changed file', usage: USAGE });
+    return 2;
+  }
+  const plan = scopedPlan({ root, changedFiles: files, runSelector: seams.runSelector || defaultSelectorRunner(root) });
+  print(plan);
+  return plan.ok ? 0 : 1;
+}
+
 module.exports = {
+  scopedPlan,
+  cli,
+  resolveSelection,
   resolveSuites,
   scopedInvocations,
   sweepInvocations,
   selectorInvocations,
   resolveConcurrency,
+  isWholeRepo,
   deferredInvocations,
   leftoverWorktrees,
   CONCURRENCY_VALUES,
@@ -980,7 +1236,16 @@ module.exports = {
   WORKTREE_PREFIX,
   classifyRunResult,
   commandLineLimit,
+  commandLineBudget,
+  expandChunked,
   firstToken,
   SCOPING_MODES,
   DEFAULT_SCOPING_MODE,
+  SELECTION_TIERS,
 };
+
+// After module.exports: runner-probe.js, which the command line requires,
+// requires this module back and must find its exports complete.
+if (require.main === module) {
+  process.exitCode = cli();
+}

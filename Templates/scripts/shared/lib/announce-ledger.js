@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  *
  * Sender-side record of peer announcements, and the opener/closer
  * reconciliation over it (#2790).
@@ -235,7 +235,212 @@ function ensureLedgerDir(file) {
  */
 const DISPATCH_UPDATE = 'dispatch-update';
 const RECEIPT_UPDATE = 'receipt-update';
+/** A receipt for an entry with no recorded monitor: its sender is unverified (#3911). */
+const NO_RECORDED_MONITOR = 'no-recorded-monitor';
 const UPDATE_EVENTS = Object.freeze([DISPATCH_UPDATE, RECEIPT_UPDATE]);
+
+/**
+ * The writers' lock (#3830). The startup purge replaces the ledger with a
+ * rename; an append that lands between its last size check and that rename
+ * goes into the file the rename discards — and on POSIX a writer that opened
+ * the path before the rename writes into the unlinked old file. Every writer
+ * therefore holds `<ledger>.lock`, created exclusively (`wx`), for its whole
+ * write: an append for one line, the purge from its read to its rename.
+ *
+ * Bounded, never a hang: a lock older than LOCK_WAIT_MS is abandoned (its
+ * holder crashed) and is removed; a writer that still cannot take it by then
+ * appends anyway — the ledger is advisory and a row is never dropped for want
+ * of a lock. A waiter's budget is counted per holder, not from its own start
+ * (#3860): whenever the lock passes to a new holder — the lock file's inode or
+ * mtime changes — the waiter restarts its LOCK_WAIT_MS deadline. The purge
+ * refuses to rename once it has held the lock for PURGE_HOLD_MS, half that
+ * budget, so every waiter's deadline lies at least LOCK_WAIT_MS after the
+ * purge took the lock, and no waiter reaches it while a purge that took the
+ * lock less than PURGE_HOLD_MS ago is still before its rename. A waiter can
+ * therefore wait longer than LOCK_WAIT_MS in total, but never longer than one
+ * budget per holder it observes.
+ *
+ * Taking over an abandoned lock is itself serialized: a waiter that sees the
+ * lock stale must first create `<ledger>.lock.takeover` (also `wx`), then
+ * re-checks the lock's age and removes it only if it is still stale. Two
+ * waiters that both saw the same abandoned lock cannot both remove it — the
+ * second would otherwise delete the fresh lock the first just created. A
+ * takeover file older than LOCK_WAIT_MS is itself abandoned and removed.
+ *
+ * Release is owned (#3860, #3884): the lock file carries a token (pid plus a
+ * random id) written at acquisition, and a holder removes the lock only if it
+ * still holds that token. The release is one more user of the takeover file:
+ * it takes `<ledger>.lock.takeover` before reading the token and keeps it
+ * until after the removal. Only a takeover holder or the lock's owner removes
+ * the lock, so while the release holds the takeover file the lock cannot
+ * change hands between the check and the removal. A holder that outlived
+ * LOCK_WAIT_MS — its lock taken over as stale and re-created by another
+ * writer, before its release took the takeover file — sees the new holder's
+ * token and leaves that lock alone.
+ *
+ * Two residual cases. A release that stalls past LOCK_WAIT_MS while holding
+ * the takeover file can have it removed as abandoned, and a takeover can then
+ * land in its check-to-removal gap — the same exposure the takeover protocol
+ * itself accepts for a stalled takeover holder. A release that cannot take the
+ * takeover file within LOCK_WAIT_MS removes nothing: its lock is left to age
+ * out and be taken over as stale.
+ */
+const LOCK_WAIT_MS = 5000;
+const PURGE_HOLD_MS = LOCK_WAIT_MS / 2;
+const LOCK_SUFFIX = '.lock';
+const TAKEOVER_SUFFIX = '.takeover';
+// The lock this process holds. Writes are synchronous, so the only re-entry is
+// a purge test seam appending in-process; it must not wait on itself.
+let heldLock = null;
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isStale(p) {
+  return Date.now() - fs.statSync(p).mtimeMs > LOCK_WAIT_MS;
+}
+
+/** Which lock file is at `p` — its inode and mtime — or `null` when there is none. */
+function lockIdentity(p) {
+  try {
+    const st = fs.statSync(p);
+    return `${st.ino}:${st.mtimeMs}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove `lock` if it is still abandoned, holding the takeover file so no
+ * other waiter can remove it — or a fresh lock in its place — at the same time.
+ */
+function takeOverStaleLock(lock) {
+  const takeover = `${lock}${TAKEOVER_SUFFIX}`;
+  try {
+    fs.closeSync(fs.openSync(takeover, 'wx'));
+  } catch {
+    try { if (isStale(takeover)) fs.unlinkSync(takeover); } catch { /* gone or busy: retry later */ }
+    return;
+  }
+  try {
+    if (isStale(lock)) fs.unlinkSync(lock);
+  } catch {
+    // Released meanwhile: nothing to take over.
+  } finally {
+    try { fs.unlinkSync(takeover); } catch { /* already gone */ }
+  }
+}
+
+/**
+ * Take the writers' lock for `file`; `null` when it could not be taken in time.
+ * `waitMs` and `onStale` (called when a stale lock is seen, before the
+ * takeover) are test seams.
+ */
+function acquireLock(file, { waitMs = LOCK_WAIT_MS, onStale } = {}) {
+  const lock = `${file}${LOCK_SUFFIX}`;
+  if (heldLock === lock) return { lock, reentrant: true, at: Date.now() };
+  let deadline = Date.now() + waitMs;
+  let holder = null;
+  // A new holder restarts the budget (#3860).
+  const observeHolder = () => {
+    const seen = lockIdentity(lock);
+    if (seen === null) return;
+    if (holder !== null && seen !== holder) deadline = Date.now() + waitMs;
+    holder = seen;
+  };
+  for (;;) {
+    try {
+      const fd = fs.openSync(lock, 'wx');
+      const token = `${process.pid}-${newId()}`;
+      try {
+        fs.writeSync(fd, token);
+      } catch (writeErr) {
+        fs.closeSync(fd);
+        try { fs.unlinkSync(lock); } catch { /* best effort */ }
+        throw writeErr;
+      }
+      fs.closeSync(fd);
+      heldLock = lock;
+      return { lock, token, reentrant: false, at: Date.now() };
+    } catch (err) {
+      // EPERM: Windows reports a lock file pending deletion this way.
+      if (!err || (err.code !== 'EEXIST' && err.code !== 'EPERM')) return null;
+    }
+    observeHolder();
+    let stale = false;
+    try {
+      stale = isStale(lock);
+    } catch {
+      // Released between the open and the stat: try again.
+    }
+    if (stale) {
+      if (typeof onStale === 'function') onStale();
+      takeOverStaleLock(lock);
+    }
+    // Observed again immediately before the deadline check, so a handover
+    // during the takeover is never missed.
+    observeHolder();
+    if (Date.now() >= deadline) return null;
+    sleepSync(10);
+  }
+}
+
+/**
+ * Take `<lock>.takeover` for a release, waiting out a takeover in progress and
+ * removing an abandoned one; `false` when it could not be taken in time.
+ */
+function holdTakeoverForRelease(takeover) {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(takeover, 'wx'));
+      return true;
+    } catch (err) {
+      // EPERM: Windows reports a file pending deletion this way.
+      if (!err || (err.code !== 'EEXIST' && err.code !== 'EPERM')) return false;
+    }
+    try { if (isStale(takeover)) fs.unlinkSync(takeover); } catch { /* gone or busy: retry */ }
+    if (Date.now() >= deadline) return false;
+    sleepSync(10);
+  }
+}
+
+/**
+ * Remove the lock only while it still holds this holder's token (#3860, #3884):
+ * a holder whose lock was taken over as stale must not delete the lock the
+ * next writer created in its place. The check and the removal run while this
+ * holder holds `<lock>.takeover`, so no takeover can land between them.
+ * `beforeRemove` (between the check and the removal) is a test seam.
+ */
+function releaseLock(handle, { beforeRemove } = {}) {
+  if (!handle || handle.reentrant) return;
+  heldLock = null;
+  const takeover = `${handle.lock}${TAKEOVER_SUFFIX}`;
+  // Not taken in time: leave the lock to age out rather than remove it unguarded.
+  if (!holdTakeoverForRelease(takeover)) return;
+  try {
+    if (fs.readFileSync(handle.lock, 'utf8') === handle.token) {
+      if (typeof beforeRemove === 'function') beforeRemove();
+      fs.unlinkSync(handle.lock);
+    }
+  } catch {
+    // Already gone: nothing to release.
+  } finally {
+    try { fs.unlinkSync(takeover); } catch { /* already gone */ }
+  }
+}
+
+/** Append text to the ledger under the writers' lock; `options` carries the lock seams. */
+function appendLocked(file, text, options = {}) {
+  ensureLedgerDir(file);
+  const lock = acquireLock(file, { waitMs: options._lockWaitMs, onStale: options._onStaleLock });
+  try {
+    fs.appendFileSync(file, text, 'utf8');
+  } finally {
+    releaseLock(lock, { beforeRemove: options._beforeReleaseRemove });
+  }
+}
 
 /** Append one update row; `beforeWrite` is a test seam for the interleaving case. */
 function appendUpdate(row, options = {}) {
@@ -243,8 +448,7 @@ function appendUpdate(row, options = {}) {
   // resolveLedgerPath, not ledgerPath: a working-tree fallback after a git
   // failure is reported on the update paths too, as record() reports it (#3485).
   const { path: file, warning } = resolveLedgerPath(options.cwd || process.cwd(), { git: options._git });
-  ensureLedgerDir(file);
-  fs.appendFileSync(file, `${JSON.stringify({ id: newId(), ts: new Date().toISOString(), ...row })}\n`, 'utf8');
+  appendLocked(file, `${JSON.stringify({ id: newId(), ts: new Date().toISOString(), ...row })}\n`, options);
   return { warning };
 }
 
@@ -257,7 +461,24 @@ function foldUpdate(entry, update) {
     entry.receipt = 'received';
     entry.receiptFrom = update.receiptFrom;
     entry.receiptAt = update.receiptAt;
+    // #3911: a receipt for an entry with no recorded monitor carries a flag;
+    // a later verified receipt clears it.
+    if (typeof update.receiptFlag === 'string') entry.receiptFlag = update.receiptFlag;
+    else delete entry.receiptFlag;
   }
+}
+
+/**
+ * The monitor an announcement was routed to, as recorded on its entry (#3911),
+ * or null. Both halves are required: the pid alone cannot be compared with a
+ * `--from` name, and a name alone could be any session's.
+ */
+function recordedMonitor(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const pid = entry.monitorPid;
+  const name = typeof entry.monitorName === 'string' ? entry.monitorName.trim() : '';
+  if (!Number.isInteger(pid) || pid <= 0 || name === '') return null;
+  return { pid, name };
 }
 
 function newId() {
@@ -349,6 +570,14 @@ function record(entry, options = {}) {
     };
     if (recordOnly) row.recordOnly = true;
     if (branch) row.branch = branch;
+    // #3911: the monitor a targeted announcement was routed to. A receipt
+    // reply is recorded by the SENDER, which has no other way to know the
+    // monitor's name; absent under broadcast routing.
+    const monitor = recordedMonitor(entry);
+    if (monitor) {
+      row.monitorPid = monitor.pid;
+      row.monitorName = monitor.name;
+    }
     // #3271: the gate bookkeeping fields, only on the events that carry them.
     if (GATE_EVENTS.includes(event)) {
       if (Number.isInteger(entry.root)) row.root = entry.root;
@@ -357,8 +586,7 @@ function record(entry, options = {}) {
     }
 
     const { path: file, warning } = resolveLedgerPath(options.cwd || process.cwd(), { git: options._git });
-    ensureLedgerDir(file);
-    fs.appendFileSync(file, `${JSON.stringify(row)}\n`, 'utf8');
+    appendLocked(file, `${JSON.stringify(row)}\n`, options);
     return warning ? { ok: true, id: row.id, entry: row, ledgerWarning: warning } : { ok: true, id: row.id, entry: row };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
@@ -468,20 +696,44 @@ function updateDispatch(id, outcome = {}, options = {}) {
  * REFUSED and names itself, for the same reason updateDispatch refuses one:
  * applying it to the most recent entry would attribute a receipt to whichever
  * announcement happened to be last.
+ *
+ * The sender is the monitor recorded on the entry at composition time (#3911),
+ * never a name the caller supplies from memory: the caller is the announcing
+ * session, so its own identity names the sender, not the monitor.
+ *   - recorded monitor, no `from`       -> receiptFrom is the recorded monitor
+ *   - recorded monitor, matching `from` -> recorded
+ *   - recorded monitor, other `from`    -> REFUSED (FROM_MISMATCH), both named
+ *   - no recorded monitor (broadcast)   -> recorded with receiptFlag
+ *     'no-recorded-monitor': the sender is unverified, and says so
  */
 function updateReceipt(id, details = {}, options = {}) {
   const { entries, exists } = readLedger({ ...options, includeRecordOnly: true });
   if (!exists) return { ok: false, error: 'No ledger to update.' };
-  if (!entries.some((e) => e.id === id)) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
+  const entry = entries.find((e) => e.id === id);
+  if (!entry) return { ok: false, error: `No ledger entry with id ${JSON.stringify(id)}.` };
+
+  const from = typeof details.from === 'string' && details.from.trim() !== '' ? details.from.trim() : null;
+  const monitor = recordedMonitor(entry);
+  if (monitor && from && from !== monitor.name) {
+    return {
+      ok: false,
+      code: 'FROM_MISMATCH',
+      from,
+      monitorName: monitor.name,
+      error: `--from ${JSON.stringify(from)} does not match the monitor this announcement was routed to `
+        + `(${JSON.stringify(monitor.name)}, pid ${monitor.pid}) — receipt refused; omit --from to record it from the routed monitor.`,
+    };
+  }
+  const receiptFrom = monitor ? monitor.name : from;
+  const flag = monitor ? null : NO_RECORDED_MONITOR;
 
   try {
-    const { warning } = appendUpdate({
-      event: RECEIPT_UPDATE,
-      ref: id,
-      receiptFrom: typeof details.from === 'string' && details.from.trim() !== '' ? details.from.trim() : null,
-      receiptAt: new Date().toISOString(),
-    }, options);
-    return warning ? { ok: true, id, ledgerWarning: warning } : { ok: true, id };
+    const row = { event: RECEIPT_UPDATE, ref: id, receiptFrom, receiptAt: new Date().toISOString() };
+    if (flag) row.receiptFlag = flag;
+    const { warning } = appendUpdate(row, options);
+    const out = { ok: true, id, receiptFrom, flag };
+    if (warning) out.ledgerWarning = warning;
+    return out;
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : 'ledger write failed' };
   }
@@ -705,12 +957,22 @@ function selectKept(text, now) {
  * to a sibling file that is renamed over the ledger, so a reader sees the old
  * file or the new one, never a torn one; the sibling exists only for the
  * rename and is removed on any failure, so the ledger stays one file. The
- * size is re-checked immediately before the rename and the carry-over repeated
- * if it moved; after PURGE_ATTEMPTS the purge gives up and leaves the file as
- * it was rather than risk a lost row.
+ * size is re-checked before the rename and the carry-over repeated if it
+ * moved; after PURGE_ATTEMPTS the purge gives up and leaves the file as it was.
+ *
+ * What makes it lossless is the writers' lock (#3830), held from before the
+ * read until after the rename: record() and appendUpdate() take the same lock
+ * for each append, so no other session can append between the size check and
+ * the rename. The carry-over remains for the one writer the lock does not stop
+ * — an appender that waited out LOCK_WAIT_MS — and the purge never renames
+ * after holding the lock for PURGE_HOLD_MS while a waiter's budget restarts
+ * when the purge takes the lock, so that writer only ever appends to a file
+ * this purge then leaves alone. A lock it cannot take in time means
+ * another writer is busy: the purge is skipped and the file left unchanged.
  *
  * `_duringPurge` (after the read, before the replace) and `_beforeReplace`
- * (immediately before the rename) are test seams.
+ * (after the last size check, immediately before the rename) are test seams,
+ * as are `_lockWaitMs` and `_purgeHoldMs`, which shorten the two budgets.
  *
  * @returns {{ok: true, purged: number, path: string}|{ok: false, error: string, path: string|null}}
  */
@@ -718,9 +980,12 @@ function purgeStale(options = {}) {
   const now = Number.isFinite(options.now) ? options.now : Date.now();
   let file = null;
   let tmp = null;
+  let lock = null;
   try {
     file = ledgerPath(options.cwd || process.cwd(), { git: options._git });
     if (!fs.existsSync(file)) return { ok: true, purged: 0, path: file };
+    lock = acquireLock(file, { waitMs: options._lockWaitMs });
+    if (!lock) throw new Error('the ledger lock is held by another writer; left unchanged');
     const original = fs.readFileSync(file);
     // Judge only complete lines: a torn trailing write belongs to the carry-over.
     const cut = original.lastIndexOf(0x0a) + 1;
@@ -738,8 +1003,10 @@ function purgeStale(options = {}) {
         fs.appendFileSync(tmp, current.subarray(copied));
         copied = current.length;
       }
-      if (typeof options._beforeReplace === 'function') options._beforeReplace();
       if (fs.statSync(file).size !== copied) continue;
+      if (typeof options._beforeReplace === 'function') options._beforeReplace();
+      const holdMs = Number.isFinite(options._purgeHoldMs) ? options._purgeHoldMs : PURGE_HOLD_MS;
+      if (Date.now() - lock.at > holdMs) throw new Error('the purge held the ledger lock too long; left unchanged');
       fs.renameSync(tmp, file);
       tmp = null;
       return { ok: true, purged, path: file };
@@ -750,6 +1017,8 @@ function purgeStale(options = {}) {
       try { fs.unlinkSync(tmp); } catch { /* best effort: nothing else to report */ }
     }
     return { ok: false, error: err && err.message ? err.message : 'ledger purge failed', path: file };
+  } finally {
+    releaseLock(lock, { beforeRemove: options._beforeReleaseRemove });
   }
 }
 // PURGE-END
@@ -776,6 +1045,8 @@ module.exports = {
   readLedger,
   updateDispatch,
   updateReceipt,
+  recordedMonitor,
+  NO_RECORDED_MONITOR,
   RECEIPT_STATES,
   reconcile,
   GATE_EVENTS,

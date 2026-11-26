@@ -45,6 +45,20 @@
                   "type": "boolean",
                   "description": "True for a criterion whose warning blocks nothing (#3587). When every non-pass criterion of a review is advisory and no acceptance-criterion verdict is warn or fail, review-finalize.js assigns the reviewed label and records Ready for work. Omitted means false."
                 },
+                "alwaysAsk": {
+                  "type": "object",
+                  "description": "Marks a criterion whose finding is always asked under --accept (#3879): the shared accept-classifier holds it, and /review-issue Step 3c or /resolve-review Pass 2 asks it through AskUserQuestion instead of applying it. `reason` is shown beside the held finding. Omitted means the finding may be auto-accepted.",
+                  "required": ["reason"],
+                  "properties": {
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "description": "Why a change to this criterion needs the user's decision"
+                    }
+                  },
+                  "additionalProperties": false
+                },
                 "env": {
                   "type": "string",
                   "enum": ["dev", "deployed", "both"],

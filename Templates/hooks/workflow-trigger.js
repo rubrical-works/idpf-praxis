@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * workflow-trigger.js
  *
  * UserPromptSubmit hook that:
@@ -96,7 +96,10 @@ function createGhBudget(totalMs) {
 
 let heartbeat = { fail() {}, setCwd() {} };
 if (require.main === module && !isBranchLookup) {
-  try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('workflow-trigger'); } catch (_) { /* reported by the load check */ }
+  // trackKills (#3876): this hook runs once per prompt under a 10 s timeout, and
+  // a run the harness kills never reaches exit — without the per-run marker the
+  // kill is invisible and the prompt's routing silently never happened.
+  try { heartbeat = require('../scripts/shared/lib/hook-heartbeat.js').installHeartbeat('workflow-trigger', { trackKills: true }); } catch (_) { /* reported by the load check */ }
 }
 // crash.log above is unchanged: an uncaught error still writes it and exits 1,
 // and the heartbeat records the same error through its exit recorder.
@@ -1059,13 +1062,20 @@ function statusAfterIn(words, i, statuses) {
  * later "in", so `review all in the morning, the issues in ready` routes
  * nothing. As with the work phrase, only a configured alias is returned.
  *
+ * The pattern is data, so its flags are not trusted (#3839): a `g` (or `y`)
+ * flag would make String.prototype.match drop `.index`, and a NaN slice
+ * offset would scan the whole prompt — `review all in ready` would read
+ * `in review` off its own phrase. The match runs on a non-global copy, and a
+ * match without an integer index routes nothing.
+ *
  * @param {string} prompt
  * @param {RegExp|null} re - anchored pattern ending at the preposition
  * @returns {string|null}
  */
 function resolveAnchoredStatusFilter(prompt, re) {
-    const match = re ? String(prompt).match(re) : null;
-    if (!match) return null;
+    const single = re ? new RegExp(re.source, re.flags.replace(/[gy]/g, '')) : null;
+    const match = single ? single.exec(String(prompt)) : null;
+    if (!match || !Number.isInteger(match.index)) return null;
     const statuses = new Set(readConfiguredStatuses());
     if (statuses.size === 0) return null;
     const words = ['in', ...statusWords(String(prompt).slice(match.index + match[0].length))];

@@ -50,7 +50,7 @@
     "category": "efficiency",
     "languages": ["*"],
     "detectionPatterns": {
-      "yaml": ["workflow_dispatch[\\s\\S]*schedule:[\\s\\S]*cron", "schedule:[\\s\\S]*cron[\\s\\S]*workflow_dispatch"]
+      "yaml": ["(?!)"]
     },
     "template": {
       "yaml": "on:\n  push:\n    paths:\n      - 'package.json'\n      - 'package-lock.json'\n      - '.github/workflows/security.yml'\n  schedule:\n    - cron: '0 6 * * 1'\n  workflow_dispatch:"
@@ -158,7 +158,8 @@
     },
     "removalPatterns": { "uses": ["^github/codeql-action/"] },
     "template": {
-      "yaml": "- uses: github/codeql-action/init@v3\n  with:\n    languages: ${{ matrix.language }}\n- uses: github/codeql-action/analyze@v3"
+      "yaml": "jobs:\n  codeql:\n    name: CodeQL\n    runs-on: ubuntu-latest\n    permissions:\n      actions: read\n      contents: read\n      security-events: write\n    strategy:\n      fail-fast: false\n      matrix:\n        language: []\n    steps:\n      - uses: actions/checkout@v4\n      - uses: github/codeql-action/init@v3\n        with:\n          languages: ${{ matrix.language }}\n      - uses: github/codeql-action/analyze@v3\n        with:\n          category: '/language:${{ matrix.language }}'\n",
+      "workflow": "name: CodeQL\non:\n  push:\n  pull_request:\n"
     }
   },
   "coverage-upload": {

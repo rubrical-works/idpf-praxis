@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Remove CI features from GitHub Actions workflow files. Locates feature configuration across workflow YAML files and cleanly removes associated sections (top-level keys, job steps, triggers). Part of the /ci remove subcommand.
  * @checksum sha256:placeholder
  *
@@ -12,8 +12,9 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
-const { loadFeatureRegistry } = require('./ci-list.js');
-const { createBackup, validateYaml, serializeEdited } = require('./ci-modify.js');
+const { isDeepStrictEqual } = require('util');
+const { loadFeatureRegistry, detectStructurally } = require('./ci-list.js');
+const { writeWithBackup, validateYaml, serializeEdited } = require('./ci-modify.js');
 
 /**
  * Top-level keys associated with features that can be cleanly removed.
@@ -22,6 +23,70 @@ const FEATURE_TOP_LEVEL_KEYS = {
   'concurrency-groups': 'concurrency',
   'push-pr-dedup': 'concurrency'
 };
+
+/**
+ * Features ci-add.js adds as a job of their own (its FEATURE_TYPE_MAP 'job'
+ * entries, #3791). Removing one removes the job it added (#3850): filtering
+ * its steps left a job of checkout, the language matrix and permissions.
+ */
+const JOB_FEATURES = new Set(['codeql-analysis']);
+
+/** The action a `uses:` names, without its ref: `actions/checkout@v4` → `actions/checkout`. */
+function actionName(uses) {
+  return String(uses).split('@')[0].toLowerCase();
+}
+
+/**
+ * Whether a job is the one a job feature added (#3850): it holds at least one
+ * step the feature's removalPatterns match, and every other step is one of the
+ * template job's own steps (by action, any ref). A job the user wrote with any
+ * further step is theirs, and is left alone.
+ * @param {*} job - The job as plain data
+ * @param {Object} feature - Feature definition with removalPatterns and template
+ * @returns {boolean}
+ */
+function isFeatureJob(job, feature) {
+  if (!job || !Array.isArray(job.steps)) return false;
+  const template = yaml.parse(feature.template.yaml) || {};
+  const templateJob = Object.values(template.jobs || {})[0] || {};
+  const ownActions = new Set((templateJob.steps || [])
+    .filter((step) => step && typeof step.uses === 'string' && !stepMatches(step, feature.removalPatterns))
+    .map((step) => actionName(step.uses)));
+  let featureSteps = 0;
+  for (const step of job.steps) {
+    if (stepMatches(step, feature.removalPatterns)) { featureSteps++; continue; }
+    if (!step || typeof step.uses !== 'string' || !ownActions.has(actionName(step.uses))) return false;
+  }
+  return featureSteps > 0;
+}
+
+/**
+ * Names of the jobs in a workflow that a job feature added.
+ * @param {*} parsed - The workflow as plain data
+ * @param {Object} feature
+ * @returns {string[]}
+ */
+function featureJobNames(parsed, feature) {
+  const jobs = parsed && parsed.jobs && typeof parsed.jobs === 'object' ? parsed.jobs : {};
+  return Object.keys(jobs).filter((name) => isFeatureJob(jobs[name], feature));
+}
+
+/**
+ * Among the detected files, the first holding a job the feature added (#3850).
+ * @param {Array<{ file: string, patterns: string[] }>} candidates
+ * @param {Object} feature
+ * @returns {{ file: string, patterns: string[] }|null}
+ */
+function findOwnedJob(candidates, feature) {
+  for (const candidate of candidates) {
+    try {
+      if (featureJobNames(yaml.parse(fs.readFileSync(candidate.file, 'utf8')), feature).length) return candidate;
+    } catch (_e) {
+      continue;
+    }
+  }
+  return null;
+}
 
 /**
  * Whether a top-level block is this feature's own (#3396). Both concurrency
@@ -63,6 +128,13 @@ function findAllFeatureWorkflows(projectDir, featureId) {
     const filePath = path.join(workflowsDir, file);
     try {
       const content = fs.readFileSync(filePath, 'utf8');
+      // A workflow shape is judged on the parsed file, never a regex (#3852);
+      // such a feature names no matched pattern.
+      const structural = detectStructurally(featureId, content);
+      if (structural !== null) {
+        if (structural) found.push({ file: filePath, patterns: [] });
+        continue;
+      }
       const matchedPatterns = [];
 
       for (const pattern of feature.detectionPatterns.yaml) {
@@ -164,11 +236,13 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
   const feature = registry[featureId];
   const candidates = findAllFeatureWorkflows(projectDir, featureId);
   const topLevelKey = FEATURE_TOP_LEVEL_KEYS[featureId];
+  const isJobFeature = JOB_FEATURES.has(featureId);
   // Refuse on the first detected file only when no detected file holds a block
-  // (#3410) or a step (#3733) this feature owns.
-  const owned = topLevelKey
-    ? findOwnedTopLevelBlock(candidates, featureId, topLevelKey)
-    : (feature.removalPatterns ? findOwnedStep(candidates, feature) : null);
+  // (#3410), a step (#3733) or a job (#3850) this feature owns.
+  let owned = null;
+  if (topLevelKey) owned = findOwnedTopLevelBlock(candidates, featureId, topLevelKey);
+  else if (isJobFeature) owned = findOwnedJob(candidates, feature);
+  else if (feature.removalPatterns) owned = findOwnedStep(candidates, feature);
   const found = owned || candidates[0];
   if (!found) {
     return {
@@ -192,6 +266,8 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
     // Read and parse with comment preservation
     const original = fs.readFileSync(found.file, 'utf8');
     const doc = yaml.parseDocument(original);
+
+    if (isJobFeature) return removeFeatureJobs(found.file, original, doc, feature, featureId);
 
     let removed;
     if (topLevelKey) {
@@ -222,9 +298,9 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
     const output = serializeEdited(original, doc);
     validateYaml(output);
 
-    // Back up only once a change is certain, then write
-    createBackup(found.file);
-    fs.writeFileSync(found.file, output);
+    // Back up only once a change is certain, then write; the backup is
+    // deleted once the write validates (#3793)
+    writeWithBackup(found.file, output);
 
     return {
       success: true,
@@ -233,10 +309,13 @@ function removeCIFeature(projectDir, featureId, _options = {}) {
       feature: featureId
     };
   } catch (err) {
-    return {
+    const result = {
       success: false,
       message: `Failed to remove feature: ${err.message}`
     };
+    // A failed write keeps the backup; name where it is (#3793)
+    if (err.backupPath) result.backupPath = err.backupPath;
+    return result;
   }
 }
 
@@ -281,6 +360,136 @@ function removeFeatureSteps(doc, feature) {
     }
   }
   return removed;
+}
+
+/**
+ * Whether the text carries any YAML comment — a whole-line one or an inline
+ * one after a value (#3895). Read from the parsed Document, not a line regex,
+ * so `on: push # keep` counts and a `#` inside a quoted string does not.
+ * @param {string} text - The file's text as read
+ * @returns {boolean}
+ */
+function hasComment(text) {
+  const doc = yaml.parseDocument(text);
+  if (doc.commentBefore || doc.comment) return true;
+  let found = false;
+  yaml.visit(doc, (_key, node) => {
+    if (node && (node.commentBefore || node.comment)) {
+      found = true;
+      return yaml.visit.BREAK;
+    }
+    return undefined;
+  });
+  return found;
+}
+
+/**
+ * Whether a workflow, its feature jobs removed, is exactly the feature's
+ * template.workflow (#3870): the same top-level keys and values and no
+ * comment. Anything else is content the user wrote.
+ * @param {string} original - The file's text as read
+ * @param {yaml.Document} doc - The document with the feature's jobs deleted
+ * @param {Object} feature - Registry entry
+ * @returns {boolean}
+ */
+function matchesTemplateWorkflow(original, doc, feature) {
+  const workflow = feature.template && feature.template.workflow;
+  if (typeof workflow !== 'string') return false;
+  if (hasComment(original)) return false;
+  const { jobs: _jobs, ...rest } = doc.toJS() || {};
+  const expected = yaml.parse(workflow) || {};
+  return isDeepStrictEqual(rest, expected);
+}
+
+/**
+ * The jobs, other than those being removed, whose `needs:` (a string or a
+ * list) names one of the removed jobs (#3934).
+ * @param {Object} workflow - The parsed workflow
+ * @param {string[]} removed - Job names about to be deleted
+ * @returns {string[]}
+ */
+function jobsNeeding(workflow, removed) {
+  const jobs = (workflow && workflow.jobs) || {};
+  return Object.keys(jobs).filter((name) => {
+    if (removed.includes(name)) return false;
+    const job = jobs[name];
+    const needs = job && job.needs;
+    const list = Array.isArray(needs) ? needs : (needs == null ? [] : [needs]);
+    return list.some((n) => removed.includes(n));
+  });
+}
+
+/**
+ * Remove the jobs a job feature added (#3850), and the workflow file when that
+ * leaves it with no job and it is the feature's template.workflow (#3870) — a
+ * jobless workflow with content of its own is refused and left unchanged, with
+ * no backup written either way. A job of the same name the user wrote is not the
+ * feature's (isFeatureJob) and stays, so nothing is removed and the file is
+ * unchanged.
+ * @param {string} file - Workflow path
+ * @param {string} original - The file's text as read
+ * @param {yaml.Document} doc - The parsed document
+ * @param {Object} feature - Registry entry
+ * @param {string} featureId
+ * @returns {{ success: boolean, message: string, file?: string, feature?: string, deletedFile?: boolean }}
+ */
+function removeFeatureJobs(file, original, doc, feature, featureId) {
+  const base = path.basename(file);
+  const names = featureJobNames(doc.toJS(), feature);
+  if (!names.length) {
+    return {
+      success: false,
+      message: `Feature "${featureId}" is detected in ${base} but no job there is the one it adds — a job with any step of its own is left alone. Nothing was removed and the file is unchanged.`,
+      file,
+      feature: featureId
+    };
+  }
+  // #3934: a remaining job naming a removed job in `needs:` would reference a
+  // job that no longer exists, and GitHub rejects the workflow. Refuse rather
+  // than rewrite the user's `needs`.
+  const dependents = jobsNeeding(doc.toJS(), names);
+  if (dependents.length) {
+    return {
+      success: false,
+      message: `Removing "${feature.name}" would delete job ${names.map((n) => `"${n}"`).join(', ')} from ${base}, but ${dependents.map((d) => `"${d}"`).join(', ')} ${dependents.length === 1 ? 'names it' : 'name it'} in needs:. Nothing was removed and the file is unchanged — remove those needs: entries first.`,
+      file,
+      feature: featureId
+    };
+  }
+
+  for (const name of names) doc.deleteIn(['jobs', name]);
+
+  const jobs = doc.get('jobs', true);
+  if (!yaml.isMap(jobs) || jobs.items.length === 0) {
+    // #3870: only a workflow /ci --add made from template.workflow is deleted;
+    // one with content of its own is the user's, and is left as it was.
+    if (!matchesTemplateWorkflow(original, doc, feature)) {
+      return {
+        success: false,
+        message: `Removing "${feature.name}" would leave ${base} with no job, but the workflow has content of its own beyond what /ci --add creates. Nothing was removed and the file is unchanged — remove ${file} yourself if you no longer want it.`,
+        file,
+        feature: featureId
+      };
+    }
+    fs.rmSync(file);
+    return {
+      success: true,
+      message: `Removed "${feature.name}" and deleted ${base}, whose only job it was`,
+      file,
+      feature: featureId,
+      deletedFile: true
+    };
+  }
+
+  const output = serializeEdited(original, doc);
+  validateYaml(output);
+  writeWithBackup(file, output);
+  return {
+    success: true,
+    message: `Removed "${feature.name}" from ${base} (job ${names.map((n) => `"${n}"`).join(', ')})`,
+    file,
+    feature: featureId
+  };
 }
 
 // CLI entry point

@@ -87,7 +87,7 @@ This line previously asserted the behavior with nothing having checked it. Measu
 
 **What would break:** If rules stopped auto-loading, the assistant would lose its quality guardrails mid-session. Anti-hallucination rules prevent version number invention during releases. GitHub workflow rules enforce STOP boundaries. Without these, the assistant becomes unreliable for framework development.
 
-### 3. Hooks (15 hook registrations, 7 event types)
+### 3. Hooks (16 hook registrations, 8 event types)
 
 **How it works:** Claude Code fires JavaScript hooks in response to events. Hooks are registered in `.claude/settings.local.json` under the `hooks` key. Each hook specifies an event type, a matcher pattern (for the events that support one), and a command to execute.
 
@@ -99,11 +99,11 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 
 | Basis | Count | What it counts |
 |-------|-------|----------------|
-| **Registrations** (used above) | **15** | Entries in this repo's `settings.local.json`, across 7 event types |
-| Files in `.claude/hooks/` | 15 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/`, while `pre-push` and the two dev-only hooks below are files without a `settings.local.json` registration of this shape |
-| Deployed to user projects | 13 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 12 `.js` plus the non-`.js` `pre-push` script |
+| **Registrations** (used above) | **16** | Entries in this repo's `settings.local.json`, across 8 event types |
+| Files in `.claude/hooks/` | 16 | A *different* set — `guard-commands-src.js` is registered but lives under `.claude/scripts/framework/`, while `pre-push` and the two dev-only hooks below are files without a `settings.local.json` registration of this shape |
+| Deployed to user projects | 14 | `framework-manifest.json` `deploymentFiles.scripts.hooks` — 13 `.js` plus the non-`.js` `pre-push` script |
 
-**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js`, `shell-safety-hook.js`, `ask-question-shape-hook.js`, `task-phase-hook.js`, `worktree-create-hook.js` and `worktree-remove-hook.js` are deployed but registered by the hub installer (from `deploymentFiles.hooksConfig`), not by this file.
+**This section describes this repository's wiring, not a deployed project's.** `precompact-hook.js` and `test-on-change.js` are in `excludedFromDeployment` and never reach user projects; `block-cd.js`, `shell-safety-hook.js`, `ask-question-shape-hook.js`, `task-phase-hook.js`, `worktree-create-hook.js`, `worktree-remove-hook.js` and `session-end-hook.js` are deployed but registered by the hub installer (from `deploymentFiles.hooksConfig`), not by this file.
 
 **Event types we use:**
 
@@ -124,6 +124,7 @@ The exclusion is exactly one command string, taken from `measure-wiring.js` `TAP
 | `PreCompact` | — | `precompact-hook.js` | Fires **before** compaction begins |
 | `WorktreeCreate` | — (the event supports no matcher) | `worktree-create-hook.js` | Replaces Claude Code's default worktree creation: every worktree — a subagent's `isolation: "worktree"`, `claude --worktree`, `EnterWorktree` — is created from the **caller's branch tip** under `<root>/.tmp-wt-<name>`, with hub links and the merge-driver entry recreated inside before the path is printed (#3122, #3123, #3125) |
 | `WorktreeRemove` | — (the event supports no matcher) | `worktree-remove-hook.js` | Replaces Claude Code's fallback removal at session exit and `ExitWorktree` — a git removal that would delete through the worktree's hub links — with `worktree-teardown.js`: refuse anything not a `.tmp-wt-*` directly under the root, unlink and verify the links, `git worktree remove` without `--force`, then `git branch -d wt/<name>` (#3187) |
+| `SessionEnd` | — (registered without one, so every exit reason fires it) | `session-end-hook.js` | Records the session's exit announcement — addressed to a live `/overwatch` alone, else to every addressable sibling — as its own file in `.claude/.overwatch/session-exits/` (so exits at the same moment cannot drop each other), read by `/overwatch` each tick and by a sibling's next peer discovery. Recorded, not pushed: no turn follows SessionEnd. Bounded child, 5 s timeout, exits 0 on any internal failure; best-effort, as a hard kill fires nothing (#3912) |
 
 #### WorktreeCreate in deployed projects (#3125)
 
@@ -140,8 +141,8 @@ Until both ship, Phase 2 of the Concurrent-Work PRD (hook, link recreation, tear
 
 **What we depend on:**
 - `settings.local.json` format is stable (JSON with `hooks` key)
-- Seven event types exist: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `PreCompact`, `WorktreeCreate`, `WorktreeRemove`
-- Matcher patterns work — `Edit|Write` and `Bash` for `PreToolUse`, `Edit|Write` for `PostToolUse`, and `startup`/`clear`/`resume`/`compact` for `SessionStart`; `WorktreeCreate` accepts none and fires on every creation
+- Eight event types exist: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `PreCompact`, `WorktreeCreate`, `WorktreeRemove`, `SessionEnd`
+- Matcher patterns work — `Edit|Write` and `Bash` for `PreToolUse`, `Edit|Write` for `PostToolUse`, and `startup`/`clear`/`resume`/`compact` for `SessionStart`; `WorktreeCreate` accepts none and fires on every creation; `SessionEnd` is registered without one, so it fires for every exit reason
 - `SessionStart` distinguishes its four matchers, so `compact` fires only after compaction
 - `WorktreeCreate` reads the worktree `name` from the hook's stdin and takes the **last non-empty stdout line** as the created worktree's absolute path; a non-zero exit fails the creation with no fallback to the default
 - `WorktreeRemove` reads `worktree_path` from stdin; exit 0 means the worktree counts as removed (nothing else is read), and a non-zero exit fails the removal while the directory exists, with no git fallback. `worktree-remove-hook.js` uses two non-zero codes: exit 2 when it refused, kept or halted the removal (the hook doing its job), exit 1 only for an unexpected failure or unparseable input; its heartbeat is installed with okCodes `[0, 2]`, so only exit 1 counts toward the Hook Health row (#3190). It fires at session exit and `ExitWorktree`, **not** when a subagent finishes — Claude Code keeps a subagent's hook-made worktree and its branch

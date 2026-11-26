@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * framework-config.js — Read/validate/write helper for framework-config.json
  *
  * Purpose: Single entry point for all writers of framework-config.json. Every
@@ -24,7 +24,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const Ajv = require('ajv').default;
 const { atomicWriteSync } = require('./shell-safe');
 const { isEnabled: tmpCleanupEnabled } = require('./tmp-cleanup');
 const { parseAgentsValue, DEFAULT_MAX_AGENTS } = require('./concurrency-plan');
@@ -62,6 +61,16 @@ const SCHEMA_REL_PATH = '.claude/metadata/framework-config.schema.json';
 let cachedValidator = null;
 
 /**
+ * ajv, loaded at first validation rather than at require (#3856): the startup
+ * hook and the WorktreeCreate hook read framework-config.json through this
+ * module's resolvers, which validate nothing, and ajv is ~41ms paid on every
+ * session start otherwise.
+ */
+function loadAjv() {
+  return require('ajv').default;
+}
+
+/**
  * Build (and cache) the ajv validator function for framework-config.schema.json.
  *
  * @param {string} cwd - Project root (used to resolve the schema file)
@@ -72,6 +81,7 @@ function getValidator(cwd) {
   const schemaPath = path.join(cwd, SCHEMA_REL_PATH);
   const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
   // ajv 8 default export supports draft-07, which matches the schema's $schema declaration
+  const Ajv = loadAjv();
   const ajv = new Ajv({ allErrors: true, strict: false });
   cachedValidator = ajv.compile(schema);
   return cachedValidator;
@@ -158,6 +168,7 @@ function getXSessionValidator(cwd) {
   if (cachedXSessionValidator) return cachedXSessionValidator;
   const schemaPath = path.join(cwd, X_SESSION_SCHEMA_REL_PATH);
   const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const Ajv = loadAjv();
   const ajv = new Ajv({ allErrors: true, strict: false });
   cachedXSessionValidator = ajv.compile(schema);
   return cachedXSessionValidator;
@@ -654,6 +665,179 @@ function resolveReviewConcurrency({ agents, config, issueCount } = {}) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// worktrees — sparse framework worktrees and their LFS treatment (#3856)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Directories every sparse framework worktree checks out, whatever the cone
+ * says: framework steps write there (/work Step 3b writes
+ * Construction/Design-Decisions/), and `git add` refuses a path outside the
+ * cone. Root-level files need no entry — cone mode always checks them out.
+ */
+const WORKTREE_CONE_FLOOR = Object.freeze(['.claude', 'Construction']);
+
+/** The LFS modes a framework worktree may be created with; the first is the default. */
+const WORKTREE_LFS_MODES = Object.freeze(['smudge', 'skip', 'pull']);
+
+/**
+ * Characters no cone directory may carry: glob syntax, a backslash, a drive
+ * colon — and a line break (#3878), since the hook writes the cone to
+ * `git sparse-checkout set --stdin` one entry per line.
+ */
+const NOT_IN_DIR = /[*?[\]!\\:\r\n]/;
+
+/** One path segment of a cone directory: not empty, not `.` or `..`, no forbidden character. */
+const isDirSegment = (seg) => seg !== '' && seg !== '.' && seg !== '..' && !NOT_IN_DIR.test(seg);
+
+/** A cone directory: relative, `/`-separated segments (the schema's `include` pattern). */
+const isConeDir = (dir) => !dir.startsWith('/') && dir.split('/').every(isDirSegment);
+
+/** An excluded top-level directory: one segment (the schema's `exclude` pattern). */
+const isTopLevelDir = (dir) => isDirSegment(dir);
+
+/**
+ * Keep the entries `accepts` admits, trailing slash dropped; name each dropped
+ * one. An entry is kept as written otherwise — never trimmed — so a directory
+ * whose name begins or ends with a space is the directory the cone names, as
+ * the hook's byte-for-byte tree listing sees it (#3856 work re-review). A
+ * whitespace-only entry names nothing and is refused.
+ */
+function cleanDirs(list, accepts, key, warnings) {
+  const kept = [];
+  for (const raw of list) {
+    const entry = typeof raw === 'string' ? raw.replace(/\/+$/, '') : raw;
+    if (typeof entry === 'string' && entry.trim() !== '' && accepts(entry)) {
+      if (!kept.includes(entry)) kept.push(entry);
+    } else {
+      warnings.push(`worktrees.sparse.${key} entry ${JSON.stringify(raw)} is not a valid directory — ignored.`);
+    }
+  }
+  return kept;
+}
+
+/**
+ * What a parsed framework-config.json declares for framework worktrees (#3856).
+ * Pure: the caller passes the object.
+ *
+ * `mode` is what the WorktreeCreate hook does — `full` unless a non-empty,
+ * valid `include` or `exclude` list is declared. `sparse.declared` says which
+ * form was found: `absent` (no `sparse` key), `empty` (an object with no list,
+ * or an empty one), `full` (`sparse: false`), `include` or `exclude`.
+ * `needsOffer` is true while the cone is undecided — absent or empty — which
+ * is when the startup hook evaluates the repository and offers a
+ * configuration. A declaration the schema would refuse, hand-edited onto
+ * disk, is named in `warnings` and ignored, never half-applied.
+ *
+ * @param {object|null|undefined} config
+ * @returns {{mode: 'full'|'sparse', needsOffer: boolean,
+ *   sparse: {declared: 'absent'|'empty'|'full'|'include'|'exclude', include: string[]|null, exclude: string[]|null},
+ *   lfs: {declared: 'absent'|'set', mode: 'smudge'|'skip'|'pull', include: string[]},
+ *   floor: string[], warnings: string[]}}
+ */
+function normalizeWorktreeConfig(config) {
+  const warnings = [];
+  const block = config && typeof config.worktrees === 'object' && config.worktrees !== null && !Array.isArray(config.worktrees)
+    ? config.worktrees : {};
+  if (config && config.worktrees !== undefined && block !== config.worktrees) {
+    warnings.push(`worktrees ${JSON.stringify(config.worktrees)} is not an object — ignored; full checkout.`);
+  }
+
+  const sparse = { declared: 'absent', include: null, exclude: null };
+  const s = block.sparse;
+  if (s === false) {
+    sparse.declared = 'full';
+  } else if (s && typeof s === 'object' && !Array.isArray(s)) {
+    const both = Array.isArray(s.include) && Array.isArray(s.exclude) && s.include.length > 0 && s.exclude.length > 0;
+    if (both) {
+      warnings.push('worktrees.sparse declares both include and exclude — ignored; full checkout.');
+      sparse.declared = 'empty';
+    } else {
+      const inc = Array.isArray(s.include) ? cleanDirs(s.include, isConeDir, 'include', warnings) : [];
+      const exc = Array.isArray(s.exclude) ? cleanDirs(s.exclude, isTopLevelDir, 'exclude', warnings) : [];
+      if (inc.length > 0) { sparse.declared = 'include'; sparse.include = inc; }
+      else if (exc.length > 0) { sparse.declared = 'exclude'; sparse.exclude = exc; }
+      else sparse.declared = 'empty';
+    }
+  } else if (s !== undefined) {
+    warnings.push(`worktrees.sparse ${JSON.stringify(s)} is neither false nor an object — ignored; full checkout.`);
+    sparse.declared = 'empty';
+  }
+
+  const lfs = { declared: 'absent', mode: WORKTREE_LFS_MODES[0], include: [] };
+  const l = block.lfs;
+  if (l && typeof l === 'object' && !Array.isArray(l)) {
+    lfs.declared = 'set';
+    if (WORKTREE_LFS_MODES.includes(l.mode)) lfs.mode = l.mode;
+    else warnings.push(`worktrees.lfs.mode ${JSON.stringify(l.mode)} is not one of ${WORKTREE_LFS_MODES.join(', ')} — resolved to ${WORKTREE_LFS_MODES[0]}.`);
+    if (lfs.mode === 'pull') {
+      const inc = Array.isArray(l.include) ? l.include.filter((p) => typeof p === 'string' && p.trim() !== '' && !p.includes(',')) : [];
+      if (inc.length === 0) {
+        warnings.push('worktrees.lfs.mode pull declares no usable include pattern — resolved to skip, leaving pointer files.');
+        lfs.mode = 'skip';
+      } else lfs.include = inc;
+    }
+  } else if (l !== undefined) {
+    warnings.push(`worktrees.lfs ${JSON.stringify(l)} is not an object — ignored; LFS content is smudged.`);
+  }
+
+  return {
+    mode: sparse.declared === 'include' || sparse.declared === 'exclude' ? 'sparse' : 'full',
+    needsOffer: sparse.declared === 'absent' || sparse.declared === 'empty',
+    sparse,
+    lfs,
+    floor: [...WORKTREE_CONE_FLOOR],
+    warnings,
+  };
+}
+
+/**
+ * normalizeWorktreeConfig for the project at `cwd`, reading framework-config.json.
+ * No file is the default — a full checkout, with the offer open. An unreadable
+ * file is a full checkout with a warning and NO offer: an acceptance could not
+ * be written to a file that does not parse.
+ *
+ * @param {string} [cwd]
+ * @returns {ReturnType<typeof normalizeWorktreeConfig> & {source: 'framework-config.json'|'default'}}
+ */
+function resolveWorktreeConfig(cwd = process.cwd()) {
+  let config;
+  try {
+    config = read(cwd);
+  } catch (err) {
+    const missing = !fs.existsSync(path.join(cwd, CONFIG_FILENAME));
+    const out = { ...normalizeWorktreeConfig(null), source: 'default' };
+    if (!missing) {
+      out.needsOffer = false;
+      out.warnings.push(`worktrees resolved to a full checkout: ${err.message}`);
+    }
+    return out;
+  }
+  const declared = config && config.worktrees !== undefined;
+  return { ...normalizeWorktreeConfig(config), source: declared ? CONFIG_FILENAME : 'default' };
+}
+
+/**
+ * Write the `worktrees` keys an accepted startup offer settles (#3856),
+ * against the file as it is now (updateKey) and schema-validated (write).
+ * Only `sparse` and `lfs` are replaced, and only when given; anything else in
+ * the block is kept.
+ *
+ * @param {string} cwd
+ * @param {{sparse?: false|{include?: string[], exclude?: string[]}, lfs?: {mode: string, include?: string[]}}} worktrees
+ * @returns {boolean} whether a write happened
+ */
+function writeWorktreeConfig(cwd, worktrees) {
+  return updateKey(cwd, (fresh) => {
+    const current = fresh.worktrees && typeof fresh.worktrees === 'object' && !Array.isArray(fresh.worktrees) ? fresh.worktrees : {};
+    const next = { ...current };
+    if (worktrees.sparse !== undefined) next.sparse = worktrees.sparse;
+    if (worktrees.lfs !== undefined) next.lfs = worktrees.lfs;
+    if (JSON.stringify(next) === JSON.stringify(fresh.worktrees)) return null;
+    return { ...fresh, worktrees: next };
+  });
+}
+
 /**
  * The defaults a declared suite acquires when it omits them (#2849).
  *
@@ -720,6 +904,12 @@ module.exports = {
   DEFAULT_VERIFICATION_MODE,
   normalizeSuite,
   SUITE_DEFAULTS,
+  // worktrees (#3856)
+  normalizeWorktreeConfig,
+  resolveWorktreeConfig,
+  writeWorktreeConfig,
+  WORKTREE_CONE_FLOOR,
+  WORKTREE_LFS_MODES,
   validate,
   write,
   ensureReviewSweep,

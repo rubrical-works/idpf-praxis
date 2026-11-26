@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-criterion-classes-schema.json",
+  "title": "Review Criterion Classes",
+  "description": "Schema for review-criterion-classes.json (#3907): each diff-review criterion classified correctness (a warn is fixed before merge) or process (a warn is admitted). A criterion the file does not list is treated as the `unclassified` class, which is always correctness.",
+  "type": "object",
+  "required": ["version", "unclassified", "criteria"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "_meta": { "type": "object", "description": "Provenance. Not read at runtime.", "additionalProperties": true },
+    "unclassified": { "const": "correctness", "description": "How a criterion this file does not list is treated: fix-first, never silently admitted." },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "class", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "class": { "enum": ["correctness", "process"] },
+          "codeReviewCategories": {
+            "type": "array",
+            "description": "The /code-review Step 5 categories (lowercased, spaces as hyphens) a finding on this criterion is filed under, so /code-review Step 8 can recognize a bug the gate filed.",
+            "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+            "uniqueItems": true
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

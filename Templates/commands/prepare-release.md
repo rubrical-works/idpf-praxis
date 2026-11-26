@@ -1,5 +1,5 @@
 ---
-version: "v0.122.0"
+version: "v0.123.0"
 description: Prepare a release by opening a PR, merging to main, and tagging, using the IDPF framework.
 argument-hint: "[version] [--skip-coverage] [--skip-review] [--dry-run] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -168,6 +168,8 @@ Refuses a release with an unreviewed change or an introduced high-severity findi
 | `README-DIST.md` | **If present** — verify skill/specialist counts match actuals, license populated. Absent in most consuming projects |
 | `framework-config.json` | (Self-hosted only) Update `frameworkVersion` and `installedDate` |
 
+**CHANGELOG heading format (#3877).** The new section's heading is exactly `## [X.Y.Z] - YYYY-MM-DD` — the version with no leading `v`, in brackets, then the release date (`## [1.8.0] - 2026-11-22`). `update-release-notes.js` finds the section by this heading at Step 4.8, after the tag is pushed; a `## [vX.Y.Z]` heading is not found there. Step 3.2 checks it before the commit.
+
 **CHANGELOG lead contract (#2777).** The *lead* is the prose between the version heading and `**Upgrade notes:**`. `update-release-notes.js` copies it verbatim into the GitHub release body, so it is the first thing a user installing this release reads. Write it as a user would read it on the releases page:
 - **One short paragraph, about three to five sentences**, saying what is new and what changed for the user.
 - **No bug narrative, no root-cause explanation, no post-mortem of the release run itself.** Those have homes — `Construction/Design-Decisions/` and the release test plan — and repeating them at the top of the release page adds length and reads as an incident report.
@@ -178,6 +180,12 @@ Structured parts unchanged: `**Upgrade notes:**` bullets and the `### Added` / `
 <!-- USER-EXTENSION-END: pre-commit -->
 
 ### Step 3.2: Commit Preparation
+
+**CHANGELOG heading check (#3877).** Before the commit, confirm Step 4.8 will find the section Step 3.1 wrote — the same `extractChangelogSection` lookup, run now instead of after the tag push:
+```bash
+node .claude/scripts/shared/update-release-notes.js --check "$VERSION"
+```
+**Exit 1 STOPs the release here**, before anything is committed, pushed or tagged: report its `message` and `expectedHeading` (`## [X.Y.Z] - YYYY-MM-DD`), fix the CHANGELOG heading, and re-run the check. It reads only and publishes nothing.
 
 ```bash
 for path in CHANGELOG.md README.md README-DIST.md Docs/; do

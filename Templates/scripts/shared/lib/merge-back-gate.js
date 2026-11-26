@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * merge-back-gate.js — The Merge-Back Review Gate for concurrent `/work`
  * (#3130, PRD Concurrent-Work Story 1.13)
  *
@@ -24,8 +24,10 @@
  *     both are reported, never silent.
  *
  * What the parent does with the result — merge, the one fix cycle, a halt —
- * is #3141's. This module only guarantees that `mayMerge` is false for any
- * Tier 1 failure, so unattributed work can never merge.
+ * is #3141's, decided by `decideOutcome`. There is one admission rule:
+ * `mayMerge` is true exactly when `decideOutcome(...).action` is `merge` for
+ * the same inputs (#3935), and both are false for any Tier 1 failure, so
+ * unattributed work can never merge.
  *
  * git and the suite runner are injected into every function; only the
  * command-line entry point at the bottom (#3158) spawns — real git, and each
@@ -56,7 +58,7 @@ const path = require('path');
 const scopeDrift = require('../scope-drift-check.js');
 const logChangedFiles = require('../log-changed-files.js');
 const { extractAcceptanceCriteria } = require('./checkbox-scan.js');
-const { scopedInvocations } = require('./test-runner.js');
+const { scopedInvocations, selectorInvocations } = require('./test-runner.js');
 // A path as git wrote it, unquoted (#3377); shared since #3382.
 const { unquoteGitPath } = require('./git-path.js');
 
@@ -94,10 +96,18 @@ function parseCommits(raw) {
  */
 function notRunFailure(scoped) {
   const named = [];
-  for (const n of scoped.notRun || []) named.push(`${n.suiteId} (${n.reason})`);
+  // #3880: a suite reached only by a selector that fell back, matching none of
+  // the touched files, is what Tier 1 never reached before it ran selectors —
+  // advisory (notRunAdvisory), never a failure. The Step 4f sweep runs it.
+  for (const n of scoped.notRun || []) if (!n.selectorFallback) named.push(`${n.suiteId} (${n.reason})`);
   for (const i of scoped.invalid || []) named.push(`${i.suiteId} (invalid concurrency declaration)`);
   if (named.length === 0) return null;
   return { check: 'suites', message: `Suite(s) not run: ${named.join(', ')}.` };
+}
+
+/** The selector-fallback suites notRunFailure leaves out, named for the report (#3880). */
+function notRunAdvisory(scoped) {
+  return (scoped.notRun || []).filter((n) => n.selectorFallback).map((n) => ({ suiteId: n.suiteId, reason: n.reason }));
 }
 
 /**
@@ -202,14 +212,64 @@ function reusableRun(run, sources) {
  * merge, why, and where it runs instead.
  *
  * @param {string} suiteId
- * @param {'exclusive'|'cannot-narrow'} reason
+ * @param {'exclusive'|'cannot-narrow'|'selected-none'} reason
  * @returns {string}
  */
 function deferredNote(suiteId, reason) {
-  const why = reason === 'exclusive'
-    ? 'it is exclusive, so it never runs inside a worktree'
-    : "its command cannot be narrowed to the member's files (declare scoped.mode: path with a {files} command to run it here)";
+  const why = {
+    exclusive: 'it is exclusive, so it never runs inside a worktree',
+    'selected-none': "its selector chose no test over the member's files, though the suite's globs match them",
+  }[reason] || "its command cannot be narrowed to the member's files (declare scoped.mode: path with a {files} command to run it here)";
   return `${suiteId} was not run before merge: ${why}; it runs once on the tracker after merge-back.`;
+}
+
+/**
+ * The selected-none suites whose own globs match the member's files (#3889),
+ * as cannot-narrow deferrals. Before #3880 such a suite ran on those files;
+ * left in `selectedNone` alone it was neither run, deferred nor failed, so
+ * Tier 1 passed as though it had been checked. `reason` stays
+ * `cannot-narrow` — the class the tracker's deferred-suites run consumes,
+ * running the suite over the matched files without a selector — and `cause`
+ * names why. A suite matching none of the files was never reached before
+ * #3880 and stays in `selectedNone` only.
+ */
+function selectedNoneDeferrals({ suites, changedFiles, selectedNone = [] }) {
+  const ids = new Set(selectedNone.map((s) => s.suiteId));
+  const matched = scopedInvocations({ suites: suites.filter((s) => ids.has(s.id)), changedFiles, inWorktree: true });
+  const reached = new Set([
+    ...matched.runs.flatMap((r) => r.suiteIds || [r.suiteId]),
+    ...(matched.notRun || []).map((n) => n.suiteId),
+  ]);
+  return selectedNone.filter((s) => reached.has(s.suiteId)).map((s) => ({
+    suiteId: s.suiteId, concurrency: 'parallel', reason: 'cannot-narrow', cause: 'selected-none', note: deferredNote(s.suiteId, 'selected-none'),
+  }));
+}
+
+/**
+ * The selector results Tier 1 hands to scopedInvocations (#3880), or
+ * undefined when no selector runner is wired — which leaves the runs exactly
+ * as before. Tier 1 is a gate, so it runs the sweep tier (`sweepSelect`),
+ * never the per-AC `scopedSelect`: a test the full tier selects — a contract
+ * test reading a member's changed source — then runs before the merge rather
+ * than first at the tracker's Step 4f sweep.
+ *
+ * @param {{suites: object[], changedFiles: string[], root: string,
+ *   runSelector?: (run: {suiteId: string, command: string, cwd: string|null}, opts: {root: string}) =>
+ *     {exitCode: number|null, stdout: string, spawnError?: string}}} input
+ * @returns {object|undefined} selector results keyed by suite id
+ */
+function selectorSelections({ suites, changedFiles, root, runSelector }) {
+  if (typeof runSelector !== 'function') return undefined;
+  const selections = {};
+  for (const run of selectorInvocations({ suites, changedFiles }).runs) {
+    selections[run.suiteId] = runSelector(run, { root });
+  }
+  return selections;
+}
+
+/** A Tier 1 suite run's record, carrying the selection report when the run has one (#3880). */
+function suiteRunRecord(run, fields) {
+  return { ...fields, ...(run.selection ? { selection: run.selection.report } : {}) };
 }
 
 /**
@@ -218,17 +278,18 @@ function deferredNote(suiteId, reason) {
  * @param {{issue: number, body: string, trackerTip: string, branch: string,
  *   worktreePath: string, git: (args: string[], opts?: {cwd?: string}) => string,
  *   suites?: object[], runSuite?: (run: {command: string, cwd: string, suiteIds: string[], files: string[], mode: string}) => {exitCode: number},
- *   protectedPaths?: Array<{pattern: string}>, registrarExemption?: object}} input
+ *   runSelector?: Function, protectedPaths?: Array<{pattern: string}>, registrarExemption?: object}} input
  *   `suites` is `resolveSuites().suites`; `protectedPaths` defaults to the
- *   drift gate's own metadata.
+ *   drift gate's own metadata. `runSelector` runs a suite's selector in the
+ *   worktree (#3880, selectorSelections); absent, no selector runs.
  * @returns {{tier: 1, ok: boolean, failures: Array<{check: string, message: string}>,
  *   commits: Array<{sha: string, attributed: boolean}>, uncommitted: string[],
  *   scope: object, filesChanged: string, acceptanceCriteria: object, suiteRuns: object[],
- *   deferredSuites: Array<{suiteId: string, concurrency: string, reason: 'exclusive'|'cannot-narrow', note: string}>}}
+ *   deferredSuites: Array<{suiteId: string, concurrency: string, reason: 'exclusive'|'cannot-narrow', cause?: 'selected-none', note: string}>}}
  */
 function runTier1({
   issue, body, trackerTip, branch, worktreePath, git,
-  suites = [], runSuite, protectedPaths, registrarExemption,
+  suites = [], runSuite, runSelector, protectedPaths, registrarExemption,
 }) {
   const range = `${memberBase({ git, trackerTip, branch })}..${branch}`;
   const failures = [];
@@ -282,21 +343,25 @@ function runTier1({
   // declares no narrowed command — a linter, until this repo declared one —
   // left no tier checking it before merge-back. A suite opts in by declaring
   // `scoped.mode: path` with a `{files}` command.
+  // #3880: the selector reaches tests the member's files do not match.
   const suiteRuns = [];
-  const scoped = scopedInvocations({ suites, changedFiles: scope.touched, inWorktree: true });
+  const selections = selectorSelections({ suites, changedFiles: scope.touched, root: worktreePath, runSelector });
+  const scoped = scopedInvocations({ suites, changedFiles: scope.touched, inWorktree: true, selections, selectionTier: 'sweep' });
   const deferredSuites = (scoped.deferred || []).map((d) => ({ ...d, reason: 'exclusive', note: deferredNote(d.suiteId, 'exclusive') }));
   for (const run of scoped.runs.filter((r) => !r.narrowed)) {
     for (const suiteId of run.suiteIds || [run.suiteId]) {
       deferredSuites.push({ suiteId, concurrency: 'parallel', reason: 'cannot-narrow', note: deferredNote(suiteId, 'cannot-narrow') });
     }
   }
+  // #3889: a selector that chose nothing over files the suite matches is not a check.
+  deferredSuites.push(...selectedNoneDeferrals({ suites, changedFiles: scope.touched, selectedNone: scoped.selectedNone }));
   for (const run of scoped.runs.filter((r) => r.narrowed)) {
     const cwd = run.cwd && run.cwd !== '.' ? path.posix.join(worktreePath, run.cwd) : worktreePath;
     const suiteIds = run.suiteIds || [run.suiteId];
     const files = [...(run.files || [])];
     const result = runSuite ? runSuite({ command: run.command, cwd, suiteIds, files, mode: run.mode }) : { exitCode: null };
     const ok = result.exitCode === 0;
-    suiteRuns.push({ suiteIds, command: run.command, cwd, files, exitCode: result.exitCode, ok });
+    suiteRuns.push(suiteRunRecord(run, { suiteIds, command: run.command, cwd, files, exitCode: result.exitCode, ok }));
   }
   const failed = suiteRuns.filter((r) => !r.ok);
   if (failed.length > 0) {
@@ -323,6 +388,8 @@ function runTier1({
     acceptanceCriteria,
     suiteRuns,
     deferredSuites,
+    suitesAdvisory: notRunAdvisory(scoped),
+    ...(scoped.selectedNone ? { selectedNone: scoped.selectedNone } : {}),
   };
 }
 
@@ -400,7 +467,7 @@ function planTier3({ issue, acceptanceCriteria = [], filesToModify = [], range, 
   const prompt = [
     `You are a code reviewer. Review ONLY the commit range ${range}.`,
     // Sequential /work (#3457): other issues' commits can sit inside the range.
-    ...(commits.length ? [`Within it, review ONLY #${issue}'s own commits: ${commits.join(', ')} (git show <sha>); changes from any other commit are not under review.`] : []),
+    ...(commits.length ? [`Within it, review ONLY #${issue}'s own commits: ${commits.join(', ')} (git show -W <sha>, the skill's per-commit function-context read); changes from any other commit are not under review.`] : []),
     '',
     'Inputs:',
     `- Issue: #${issue}. Acceptance criteria:`,
@@ -487,7 +554,7 @@ const SCRATCH_FILE = /^\.tmp-(?:gate|brief|rolling|concurrent)-[^/\\]+$/;
  * brief, then the result file the implementer writes at the root. tier1 stays
  * first — `--tier1-only` and `--keep-tier1` slice on that position.
  */
-const memberScratch = (n) => [`.tmp-gate-${n}-tier1.json`, `.tmp-gate-${n}-tier3.json`, `.tmp-gate-${n}-tree-before.txt`, `.tmp-brief-${n}.md`, `.tmp-gate-${n}-member.json`];
+const memberScratch = (n) => [`.tmp-gate-${n}-tier1.json`, `.tmp-gate-${n}-tier3.json`, `.tmp-gate-${n}-tree-before.txt`, `.tmp-brief-${n}.md`, `.tmp-gate-${n}-member.json`, `.tmp-gate-${n}-fix-record.json`];
 
 /**
  * Remove a run's scratch files (#3360) — the one remover, so no step names a
@@ -586,7 +653,7 @@ function checkReviewerTree({ before = '', after = '', issue, outputPath = `.tmp-
   const allowed = new Set([outputPath, `.tmp-gate-${issue}-tree-before.txt`]);
   // #3559: member.json too — a sibling still running writes its result file at
   // the root during this member's Tier 3 window.
-  for (const m of siblings) for (const f of ['tier1.json', 'tier3.json', 'tree-before.txt', 'member.json']) allowed.add(`.tmp-gate-${m}-${f}`);
+  for (const m of siblings) for (const f of ['tier1.json', 'tier3.json', 'tree-before.txt', 'member.json', 'fix-record.json']) allowed.add(`.tmp-gate-${m}-${f}`);
   // #3729: only a directory line (`dir/`) can be a ledgered worktree.
   const ledgered = new Set((runWorktrees || []).map(normalizeDir));
   const isRunWorktree = (p) => p.endsWith('/') && ledgered.has(normalizeDir(p));
@@ -741,6 +808,126 @@ const unsweptOf = (opts) => (opts['--unswept'] || []).map(Number).filter(Number.
 const REVIEWER_PROCESS_ERRORS = new Set(['tier-3-snapshot-changed', 'tier-3-missing', 'tier-3-stale-output', 'tier-3-wrote-outside-contract']);
 const isReviewerProcessFailure = (tier3) => !!(tier3 && !tier3.skipped && REVIEWER_PROCESS_ERRORS.has(tier3.error));
 
+// ─── Correctness criteria (#3907) ───
+//
+// Which diff-review criteria are correctness — a warn on one is a defect
+// report, fixed before merge — is data, never a list here. A criterion the
+// file does not list is treated as correctness and named unclassified.
+
+const CRITERION_CLASSES_FILE = path.join('.claude', 'metadata', 'review-criterion-classes.json');
+const CRITERION_CLASSES_SCHEMA = path.join('.claude', 'metadata', 'review-criterion-classes-schema.json');
+
+/**
+ * The project's criterion classes, schema-validated. NEVER THROWS: a missing,
+ * unparseable or invalid file returns `ok: false` with the error and empty
+ * sets, so every non-pass finding is unclassified — fix-first, reported.
+ *
+ * @returns {{ok: boolean, error?: string, correctness: Set<string>, process: Set<string>, codeReviewCategories: Map<string, string[]>}}
+ */
+function loadCriterionClasses(root = process.cwd()) {
+  const fs = require('fs');
+  const empty = (error) => ({ ok: false, error, correctness: new Set(), process: new Set(), codeReviewCategories: new Map() });
+  let data;
+  let schema;
+  try {
+    data = JSON.parse(fs.readFileSync(path.join(root, CRITERION_CLASSES_FILE), 'utf8'));
+    schema = JSON.parse(fs.readFileSync(path.join(root, CRITERION_CLASSES_SCHEMA), 'utf8'));
+  } catch (e) {
+    return empty(`${CRITERION_CLASSES_FILE.replace(/\\/g, '/')} unreadable: ${String(e.message).split('\n')[0]}`);
+  }
+  try {
+    const Ajv = require('ajv/dist/2020');
+    const { $schema: _dialect, ...body } = schema;
+    const validate = new Ajv({ allErrors: true, strict: false }).compile(body);
+    if (!validate(data)) {
+      return empty(`${CRITERION_CLASSES_FILE.replace(/\\/g, '/')} fails its schema: ${(validate.errors || []).map((e) => `${e.instancePath || '/'} ${e.message}`).join('; ')}`);
+    }
+  } catch (e) {
+    return empty(`${CRITERION_CLASSES_FILE.replace(/\\/g, '/')} could not be validated: ${String(e.message).split('\n')[0]}`);
+  }
+  const out = { ok: true, correctness: new Set(), process: new Set(), codeReviewCategories: new Map() };
+  for (const c of data.criteria) {
+    if (out.correctness.has(c.id) || out.process.has(c.id)) return empty(`${CRITERION_CLASSES_FILE.replace(/\\/g, '/')} lists ${c.id} twice`);
+    out[c.class].add(c.id);
+    out.codeReviewCategories.set(c.id, Array.isArray(c.codeReviewCategories) ? [...c.codeReviewCategories] : []);
+  }
+  return out;
+}
+
+/**
+ * Split a review's NON-PASS findings by class. A criterion in neither set is
+ * correctness and its id is listed in `unclassified`, once.
+ */
+function classifyFindings(findings = [], classes = { correctness: new Set(), process: new Set() }) {
+  const out = { correctness: [], process: [], unclassified: [] };
+  for (const f of Array.isArray(findings) ? findings : []) {
+    if (!f || f.status === 'pass') continue;
+    if (classes.process.has(f.criterion)) {
+      out.process.push(f);
+      continue;
+    }
+    out.correctness.push(f);
+    if (!classes.correctness.has(f.criterion) && !out.unclassified.includes(f.criterion)) out.unclassified.push(f.criterion);
+  }
+  return out;
+}
+
+/** Why a correctness finding is filed instead of fixed — the two the fallback admits. */
+const FILE_REASONS = {
+  outsideScope: 'fixing it needs a change outside the declared scope',
+  stillFlagged: 'the re-review still flags it after the fix cycle',
+};
+
+/**
+ * Whether `file` lies in the declared scope: an exact or glob match
+ * (scope-drift-check.js `matchesAny`), or under a declared directory. A
+ * finding with no file, or an issue declaring nothing, is in scope — the fix
+ * cycle is never skipped for want of a declaration.
+ */
+function inDeclaredScope(file, scope = []) {
+  if (!file || !Array.isArray(scope) || scope.length === 0) return true;
+  const f = String(file).replace(/\\/g, '/');
+  if (scopeDrift.matchesAny(f, scope)) return true;
+  return scope.some((p) => {
+    const d = String(p).replace(/\\/g, '/');
+    return d.endsWith('/') && f.startsWith(d);
+  });
+}
+
+/**
+ * What a Tier 3 `warn` asks for once its findings are classified (#3907).
+ * Null for anything but a readable warn. Otherwise:
+ *   admit — every non-pass finding is on a process criterion: as before;
+ *   fix   — a correctness finding in the declared scope, no cycle spent yet:
+ *           the one fix cycle, as a fail gets (out-of-scope ones wait in
+ *           `toFile` for the fallback);
+ *   file  — the fallback: a correctness finding the fix cycle cannot reach
+ *           (outside the declared scope) or did not clear (the re-review
+ *           still flags it). Each is filed, then the gate admits.
+ * The order is fixed — no prompt chooses between fix and file.
+ */
+function correctnessDisposition({ tier3, classes, fixCycles = 0, declaredScope = [] } = {}) {
+  if (!tier3 || tier3.skipped || tier3.ok === false || tier3.verdict !== 'warn') return null;
+  const cls = classifyFindings(tier3.findings, classes);
+  const base = { correctness: cls.correctness, process: cls.process, unclassified: cls.unclassified };
+  if (!cls.correctness.length) return { action: 'admit', ...base, toFix: [], toFile: [] };
+  const outside = cls.correctness.filter((f) => !inDeclaredScope(f.file, declaredScope));
+  const inside = cls.correctness.filter((f) => inDeclaredScope(f.file, declaredScope));
+  if (fixCycles === 0 && inside.length) {
+    return { action: 'fix', ...base, toFix: inside, toFile: outside.map((finding) => ({ finding, reason: FILE_REASONS.outsideScope })) };
+  }
+  return {
+    action: 'file', ...base, toFix: [],
+    toFile: [
+      ...outside.map((finding) => ({ finding, reason: FILE_REASONS.outsideScope })),
+      ...inside.map((finding) => ({ finding, reason: FILE_REASONS.stillFlagged })),
+    ],
+  };
+}
+
+/** The run report's line naming unclassified criteria, or none. */
+const unclassifiedLines = (ids = []) => (ids.length ? [`Unclassified criteria, treated as correctness (fix-first): ${ids.join(', ')} — classify them in ${CRITERION_CLASSES_FILE.replace(/\\/g, '/')}.`] : []);
+
 /**
  * The structured comment the parent posts on the sub-issue when a member
  * merges (#3141): every tier's result and every finding, so the review is
@@ -780,11 +967,29 @@ function formatFindingsComment({ issue, tier1, tier3, fixCycles = 0 } = {}) {
  * `unswept` (#3223): members a --nonstop run already moved to in_review with
  * no sweep yet; every halt here names them, as merge-back's does (#3202).
  */
-function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries = 0, resumedFromCompaction = false, epic, unswept = [] } = {}) {
+/**
+ * The one admission rule (#3935), shared by `decideOutcome` and `mayMerge` so
+ * the two can never disagree: the tiers must pass (`gatePassed`), and a warn's
+ * correctness disposition (#3907) must not be `fix` — `admit` and the filing
+ * fallback `file` both merge. `cycles` is the fix-cycle count after the
+ * compaction adjustment.
+ */
+function admission({ tier1, tier3, cycles = 0, classes, root = process.cwd() } = {}) {
+  // #3907: a warn is classified before it is admitted — a correctness finding
+  // gets the fix cycle, or the filing fallback once that cycle is spent.
+  const disp = tier1 && tier1.ok && tier3 && tier3.verdict === 'warn'
+    ? correctnessDisposition({ tier3, classes: classes || loadCriterionClasses(root), fixCycles: cycles, declaredScope: (tier1.scope && tier1.scope.declaredScope) || [] })
+    : null;
+  return { admitted: gatePassed(tier1, tier3) && !(disp && disp.action === 'fix'), disp };
+}
+
+function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries = 0, resumedFromCompaction = false, epic, unswept = [], classes, root = process.cwd() } = {}) {
   const cycles = resumedFromCompaction ? Math.max(fixCycles, 1) : fixCycles;
   const issue = member.issue;
-  if (gatePassed(tier1, tier3)) {
-    return { action: 'merge', issue, fixCycles: cycles, comment: { issue, body: formatFindingsComment({ issue, tier1, tier3, fixCycles: cycles }) } };
+  const { admitted, disp } = admission({ tier1, tier3, cycles, classes, root });
+  const correctnessFields = disp ? { correctness: disp.correctness, unclassified: disp.unclassified, toFile: disp.toFile } : { correctness: [], unclassified: [], toFile: [] };
+  if (admitted) {
+    return { action: 'merge', issue, fixCycles: cycles, ...correctnessFields, comment: { issue, body: formatFindingsComment({ issue, tier1, tier3, fixCycles: cycles }) } };
   }
   const findings = findingLines(tier1, tier3);
   if (tier1 && tier1.ok && isReviewerProcessFailure(tier3)) {
@@ -807,9 +1012,11 @@ function decideOutcome({ member = {}, tier1, tier3, fixCycles = 0, reviewRetries
     const message = [
       `Merge-Back Review findings for #${issue} — fix cycle 1 of 1`,
       ...findings,
+      ...(disp ? [`The verdict is warn, but ${disp.toFix.length} finding${disp.toFix.length === 1 ? ' is' : 's are'} on a correctness criterion: fix ${disp.toFix.length === 1 ? 'it' : 'them'} before merge (#3907).`] : []),
+      ...unclassifiedLines(correctnessFields.unclassified),
       `Fix these in your worktree (${member.worktreePath}) and commit each fix as \`Refs #${issue} — <what>\`. Do not push, do not merge, do not move the issue. Reply when done; every tier re-runs once, and a second fail halts the run.`,
     ].join('\n');
-    return { action: 'send-findings', issue, to: member.agent, worktreePath: member.worktreePath, fixCycle: 1, rerunAllTiers: true, findings, message };
+    return { action: 'send-findings', issue, to: member.agent, worktreePath: member.worktreePath, fixCycle: 1, rerunAllTiers: true, findings, ...correctnessFields, message };
   }
   const report = [
     `Halted: Merge-Back Review Gate failed for #${issue} after one fix cycle${resumedFromCompaction ? ' (resumed after compaction — the resumed re-run was the cycle)' : ''}.`,
@@ -883,12 +1090,28 @@ function formatReviewComment({ issue, tier3, fixCycles = 0 }) {
  * in_review. A reviewer-process failure re-reviews once without spending the
  * fix cycle, then halts on the reviewer (#3222). A skip proceeds, reported.
  */
-function decideReviewOutcome({ issue, tier3, fixCycles = 0, reviewRetries = 0 } = {}) {
+function decideReviewOutcome({ issue, tier3, fixCycles = 0, reviewRetries = 0, classes, declaredScope = [], root = process.cwd() } = {}) {
   if (!tier3 || tier3.skipped) {
     return { action: 'proceed', issue, skipped: true, reason: tier3 && tier3.reason, comment: null, report: (tier3 && tier3.message) || `Review skipped for #${issue}.` };
   }
-  if (tier3.verdict === 'pass' || tier3.verdict === 'warn') {
-    return { action: 'proceed', issue, verdict: tier3.verdict, fixCycles, comment: { issue, body: formatReviewComment({ issue, tier3, fixCycles }) } };
+  // #3907: a correctness warn is fixed first, and filed only when the fix
+  // cycle cannot reach it or did not clear it.
+  const disp = tier3.verdict === 'warn'
+    ? correctnessDisposition({ tier3, classes: classes || loadCriterionClasses(root), fixCycles, declaredScope })
+    : null;
+  const correctnessFields = disp ? { correctness: disp.correctness, unclassified: disp.unclassified, toFile: disp.toFile } : { correctness: [], unclassified: [], toFile: [] };
+  if (tier3.verdict === 'pass' || (tier3.verdict === 'warn' && disp && disp.action !== 'fix')) {
+    return { action: 'proceed', issue, verdict: tier3.verdict, fixCycles, ...correctnessFields, comment: { issue, body: formatReviewComment({ issue, tier3, fixCycles }) } };
+  }
+  if (disp && disp.action === 'fix') {
+    const message = [
+      `Work Review findings for #${issue} — fix cycle 1 of 1`,
+      ...findingLines(null, tier3),
+      `The verdict is warn, but ${disp.toFix.length} finding${disp.toFix.length === 1 ? ' is' : 's are'} on a correctness criterion: fix ${disp.toFix.length === 1 ? 'it' : 'them'} before in_review (#3907).`,
+      ...unclassifiedLines(disp.unclassified),
+      `Fix each in a \`Refs #${issue} — <what>\` commit, re-run the sweep, then re-review; a correctness finding the re-review still flags is filed as a bug, and a fail halts before in_review.`,
+    ].join('\n');
+    return { action: 'fix', issue, fixCycle: 1, rereview: true, findings: findingLines(null, tier3), ...correctnessFields, message };
   }
   const findings = findingLines(null, tier3);
   if (isReviewerProcessFailure(tier3)) {
@@ -906,6 +1129,277 @@ function decideReviewOutcome({ issue, tier3, fixCycles = 0, reviewRetries = 0 } 
     action: 'halt', issue, findings,
     report: [`Halted before in_review: the review of #${issue} failed again after one fix cycle.`, '  Findings (file:line):', ...findings.map((l) => `  ${l}`), `  Resume: fix, commit Refs #${issue}, then /work ${issue}.`].join('\n'),
   };
+}
+
+// ─── Correctness fix cycle: record and filing fallback (#3907) ───
+//
+// The fix action writes a fix record — each correctness finding and the head
+// it was found at. When the gate later admits, the record becomes a
+// `### Correctness fix cycle` section of the comment posted on the issue: per
+// finding, its fixing commits and the re-review's result. A finding the cycle
+// could not reach or did not clear is filed through file-issue.js first, and
+// its number goes in the same section; a filing that fails is never admitted.
+
+/** The fix record of issue N, a top-level gate file of the member. */
+const fixRecordFile = (n) => `.tmp-gate-${n}-fix-record.json`;
+
+const sameFinding = (a, b) => !!(a && b && a.criterion === b.criterion && String(a.file || '') === String(b.file || ''));
+
+/**
+ * Pair each earlier finding with at most one later finding on the same
+ * criterion and file — the nearest line first, since a fix moves lines — so
+ * two findings of one criterion in one file are never conflated. Returns a
+ * Map from the earlier finding to its later match (absent: no match).
+ */
+function pairFindings(earlier = [], later = []) {
+  const lineOf = (f) => (Number.isInteger(f && f.line) ? f.line : null);
+  const candidates = [];
+  earlier.forEach((e, i) => later.forEach((l, j) => {
+    if (!sameFinding(e, l)) return;
+    const a = lineOf(e);
+    const b = lineOf(l);
+    candidates.push({ i, j, d: a === null || b === null ? Number.MAX_SAFE_INTEGER : Math.abs(a - b) });
+  }));
+  candidates.sort((x, y) => x.d - y.d || x.i - y.i || x.j - y.j);
+  const usedE = new Set();
+  const usedL = new Set();
+  const out = new Map();
+  for (const c of candidates) {
+    if (usedE.has(c.i) || usedL.has(c.j)) continue;
+    usedE.add(c.i);
+    usedL.add(c.j);
+    out.set(earlier[c.i], later[c.j]);
+  }
+  return out;
+}
+const findingAt = (f) => `${f.criterion} ${at(f)}`;
+const mdAt = (f) => `${f.criterion} \`${f.file || '(no file)'}\`${f.line === null || f.line === undefined ? '' : `:${f.line}`}`;
+
+/**
+ * `Refs #N` commits between the head a finding was found at and `head` that
+ * touch its file — the fixing commits. `head` is HEAD on the sequential path
+ * and the member branch on the concurrent one. A git failure is no commits.
+ */
+function fixingCommits({ git, issue, from, head = 'HEAD', file }) {
+  if (!from || !file) return [];
+  const { issueRefGrepPattern } = require('./issue-ref-match.js');
+  try {
+    return String(git(['log', '--format=%H', `--grep=${issueRefGrepPattern(issue)}`, `${from}..${head}`, '--', file]) || '')
+      .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  } catch (_e) {
+    return [];
+  }
+}
+
+/**
+ * The marker a fallback-filed bug carries in its body, read by
+ * issue-duplicates.js so `/code-review --diff` reports the finding as
+ * `already filed #N` instead of filing it again.
+ */
+function formatFindingMarker({ issue, finding, categories = [] }) {
+  const line = Number.isInteger(finding.line) ? finding.line : null;
+  const lineEnd = Number.isInteger(finding.lineEnd) ? finding.lineEnd : line;
+  const payload = { from: issue, file: finding.file || null, criterion: finding.criterion, lines: line === null ? null : [line, lineEnd], categories };
+  return `<!-- review-finding: ${JSON.stringify(payload)} -->`;
+}
+
+/** The file-issue.js entry for one finding the fix cycle did not resolve. */
+function buildFindingBug({ issue, finding, reason, categories = [] }) {
+  const where = at(finding);
+  const evidence = finding.evidence || '(no evidence recorded)';
+  const short = evidence.length > 70 ? `${evidence.slice(0, 67)}...` : evidence;
+  return {
+    type: 'bug',
+    title: `${finding.criterion} in ${where}: ${short}`,
+    priority: 'p2',
+    status: 'backlog',
+    fields: {
+      description: [
+        `The independent review of #${issue} flagged a correctness finding (\`${finding.criterion}\`) at \`${where}\` that was not fixed before merge: ${reason}.`,
+        '',
+        `**Evidence:** ${evidence}`,
+        '',
+        formatFindingMarker({ issue, finding, categories }),
+      ].join('\n'),
+      stepsToReproduce: `Read \`${where}\` against the evidence: ${evidence}`,
+      expectedBehavior: `The \`${finding.criterion}\` criterion passes for \`${finding.file || '(no file)'}\`.`,
+      actualBehavior: evidence,
+      inScope: `The ${finding.criterion} finding at ${where}`,
+      outOfScope: `Other findings of the #${issue} review`,
+      acceptanceCriteria: [`The \`${finding.criterion}\` finding at \`${where}\` is fixed, with a test that fails without the fix`],
+    },
+    source: { file: finding.file || null, lines: Number.isInteger(finding.line) ? String(finding.line) : '', severity: 'medium', category: finding.criterion },
+  };
+}
+
+/** The `### Correctness fix cycle` section: one row per finding. */
+function formatFixCycleRecord(rows = [], unclassified = []) {
+  if (!rows.length && !unclassified.length) return '';
+  const lines = ['### Correctness fix cycle', ''];
+  if (rows.length) {
+    lines.push('| Finding | Fixing commit | Re-review |', '|---|---|---|');
+    for (const r of rows) {
+      const commits = r.commits && r.commits.length ? r.commits.map((c) => `\`${c.slice(0, 8)}\``).join(', ') : '—';
+      lines.push(`| ${mdAt(r.finding)} — ${String(r.finding.evidence || '').replace(/\|/g, '\\|')} | ${commits} | ${r.result} |`);
+    }
+  }
+  lines.push(...unclassifiedLines(unclassified).map((l) => `\n${l}`));
+  return lines.join('\n');
+}
+
+function readFixRecord(root, issue) {
+  try {
+    return JSON.parse(require('fs').readFileSync(path.join(root, fixRecordFile(issue)), 'utf8'));
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Remove the fix record once the comment carrying its `### Correctness fix
+ * cycle` table has been posted (#3913). Absent already is not an error.
+ */
+function clearFixRecord(root, issue) {
+  try { require('fs').unlinkSync(path.join(root, fixRecordFile(issue))); } catch (_e) { /* already gone */ }
+}
+
+const defaultFileIssues = (entries, deps) => require('../file-issue.js').fileIssues(entries, deps);
+
+/**
+ * Carry a gate decision through the #3907 record and fallback. On a fix
+ * action, writes the fix record. On an admitting action (`proceed`/`merge`),
+ * files every `toFile` finding, then adds the record section to the comment
+ * and `correctnessReport` + `report` to the result — or returns a `halt`
+ * when a filing failed, since an unfiled finding must never merge silently.
+ * Any other action passes through unchanged.
+ */
+function settleCorrectness({ issue, decision, tier3, root = process.cwd(), git, head = 'HEAD', fileIssues = defaultFileIssues, classes } = {}) {
+  const fs = require('fs');
+  const recordPath = path.join(root, fixRecordFile(issue));
+  if (decision.action === 'fix' || decision.action === 'send-findings') {
+    if (!(decision.correctness || []).length) return decision;
+    let reviewedHead = null;
+    try { reviewedHead = String(git(['rev-parse', head]) || '').trim() || null; } catch (_e) { reviewedHead = null; }
+    const outside = (decision.toFile || []).map((t) => t.finding);
+    const findings = decision.correctness.map((f) => ({ ...f, outOfScope: outside.some((o) => sameFinding(o, f)) }));
+    // Numbers an earlier filing halt kept stay in the record (#3907 review).
+    const kept = (readFixRecord(root, issue) || {}).filed;
+    fs.writeFileSync(recordPath, JSON.stringify({ issue, reviewedHead, head, findings, ...(Array.isArray(kept) && kept.length ? { filed: kept } : {}) }, null, 2) + '\n');
+    return { ...decision, fixRecord: fixRecordFile(issue) };
+  }
+  if (decision.action !== 'proceed' && decision.action !== 'merge') return decision;
+  if (decision.skipped) return decision;
+
+  const prior = readFixRecord(root, issue);
+  const toFile = (decision.toFile || []).map((t) => {
+    const was = prior && (prior.findings || []).find((p) => sameFinding(p, t.finding));
+    return was && was.outOfScope ? { ...t, reason: FILE_REASONS.outsideScope } : t;
+  });
+  const cls = classes || loadCriterionClasses(root);
+  const categoriesOf = (criterion) => (cls.codeReviewCategories && cls.codeReviewCategories.get(criterion)) || [];
+
+  // A filing made by an earlier, halted run of this step is in the record's
+  // `filed` list: it is reused, never filed again (#3907 review).
+  const alreadyFiledList = ((prior && prior.filed) || []).map((x) => ({ ...x }));
+  const reuse = (t) => {
+    const i = alreadyFiledList.findIndex((x) => !x.used && x.criterion === t.finding.criterion && String(x.file || '') === String(t.finding.file || '') && x.line === (Number.isInteger(t.finding.line) ? t.finding.line : null));
+    if (i === -1) return null;
+    alreadyFiledList[i].used = true;
+    return alreadyFiledList[i];
+  };
+  const numberText = (n) => (Number.isInteger(n) ? `#${n}` : '(number not reported — check the board)');
+
+  let filed = [];
+  // Writes the record with every number filed so far: the earlier ones kept,
+  // this run's successes added. Both the filing halt and a clean filing call
+  // it, so no re-run ever files a finding twice (#3907 review, #3913).
+  const persistFiled = () => {
+    const record = { ...(prior || { issue, reviewedHead: null, head, findings: [] }) };
+    record.filed = [
+      ...((prior && prior.filed) || []),
+      ...filed.filter((f) => f.ok && !f.reused).map((f) => ({ criterion: f.finding.criterion, file: f.finding.file || null, line: Number.isInteger(f.finding.line) ? f.finding.line : null, number: f.number })),
+    ];
+    fs.writeFileSync(recordPath, JSON.stringify(record, null, 2) + '\n');
+  };
+  if (toFile.length) {
+    const reused = toFile.map((t) => reuse(t));
+    const pending = toFile.map((t, i) => ({ t, i })).filter(({ i }) => !reused[i]);
+    const entries = pending.map(({ t }) => buildFindingBug({ issue, finding: t.finding, reason: t.reason, categories: categoriesOf(t.finding.criterion) }));
+    let result = { ok: true, results: [] };
+    if (entries.length) {
+      try {
+        // Body files go to the OS temp dir, never the root a sibling reviewer
+        // is watching (#3907; the parent-scratch rule of --concurrent).
+        result = fileIssues(entries, { cwd: require('os').tmpdir() });
+      } catch (e) {
+        result = { ok: false, results: entries.map((_e, index) => ({ index, ok: false, number: null, error: String(e && e.message ? e.message : e).split('\n')[0] })) };
+      }
+    }
+    filed = toFile.map((t, i) => {
+      if (reused[i]) return { ...t, ok: true, number: reused[i].number, reused: true };
+      const r = (result.results || []).find((x) => x.index === pending.findIndex((p) => p.i === i)) || {};
+      // ok with no number is file-issue.js's "created, number not parsed":
+      // the issue exists, so it is filed — re-filing would duplicate it.
+      return { ...t, ok: !!r.ok, number: Number.isInteger(r.number) ? r.number : null, error: r.ok ? null : (r.error || 'not filed'), warning: r.ok && !Number.isInteger(r.number) ? (r.warning || 'filed, but no issue number was reported') : null };
+    });
+    const failed = filed.filter((f) => !f.ok);
+    if (failed.length) {
+      // Persist what did file, so the resumed step files only the rest.
+      persistFiled();
+      const report = [
+        `Halted: #${issue} has correctness finding${failed.length === 1 ? '' : 's'} the fix cycle did not resolve, and filing ${failed.length === 1 ? 'it' : 'them'} through file-issue.js failed — an unfiled finding is never admitted (#3907).`,
+        ...failed.map((f) => `  - ${findingAt(f.finding)} — ${f.reason}: ${f.error}`),
+        ...filed.filter((f) => f.ok).map((f) => `  - filed ${numberText(f.number)}: ${findingAt(f.finding)} (kept in ${fixRecordFile(issue)}; not filed again)`),
+        `  Resume: re-run the outcome step — it files only what is left — or fix ${failed.length === 1 ? 'it' : 'them'} first.`,
+      ].join('\n');
+      return { action: 'halt', issue, attributedTo: 'filing', findings: decision.findings || findingLines(null, tier3), filed: filed.filter((f) => f.ok).map((f) => ({ number: f.number, criterion: f.finding.criterion, file: f.finding.file, line: f.finding.line })), report };
+    }
+  }
+
+  // Each earlier finding pairs with at most one re-review finding (nearest
+  // line), so two findings of one criterion in one file stay two rows.
+  const priorFindings = (prior && prior.findings) || [];
+  const nonPass = ((tier3 && tier3.findings) || []).filter((x) => x.status !== 'pass');
+  const paired = pairFindings(priorFindings, nonPass);
+  const rows = [];
+  const fixed = [];
+  const filedShown = new Set();
+  for (const p of priorFindings) {
+    const commits = fixingCommits({ git, issue, from: prior.reviewedHead, head, file: p.file });
+    const now = paired.get(p);
+    let fl = now ? filed.find((x) => x.finding === now) : null;
+    // A finding filed with no re-review match (outside scope at the first
+    // review) pairs with its own earlier finding.
+    if (!fl && !now) fl = filed.find((x) => !filedShown.has(x) && !nonPass.includes(x.finding) && sameFinding(x.finding, p) && x.finding.line === p.line) || null;
+    if (fl) filedShown.add(fl);
+    const result = fl ? `${now ? 'still flagged' : 'not fixed'} → filed ${numberText(fl.number)} (${fl.reason})` : now ? 'still flagged' : 'resolved';
+    rows.push({ finding: p, commits, result });
+    if (!fl && !now) fixed.push({ criterion: p.criterion, file: p.file, line: p.line, commits });
+  }
+  for (const fl of filed) {
+    if (filedShown.has(fl)) continue;
+    rows.push({ finding: fl.finding, commits: [], result: `filed ${numberText(fl.number)} (${fl.reason})` });
+  }
+  // The record outlives this call (#3913): it is removed by clearFixRecord()
+  // only once the comment carrying its table is posted, so a failed post
+  // re-runs with the filed numbers and the prior-findings rows intact.
+  if (prior || filed.some((f) => f.ok && !f.reused)) persistFiled();
+  const unclassified = decision.unclassified || [];
+  const section = formatFixCycleRecord(rows, unclassified);
+  const correctnessReport = {
+    fixed,
+    filed: filed.map((f) => ({ number: f.number, criterion: f.finding.criterion, file: f.finding.file, line: f.finding.line, reason: f.reason, ...(f.warning ? { warning: f.warning } : {}) })),
+    unclassified,
+  };
+  const reportLines = [
+    ...fixed.map((f) => `Correctness finding fixed: ${findingAt(f)}${f.commits.length ? ` (${f.commits.map((c) => c.slice(0, 8)).join(', ')})` : ''}`),
+    ...correctnessReport.filed.map((f) => `Correctness finding filed ${numberText(f.number)}: ${findingAt(f)} — ${f.reason}`),
+    ...unclassifiedLines(unclassified),
+  ];
+  const out = { ...decision, correctnessReport };
+  if (reportLines.length) out.report = [decision.report, ...reportLines].filter(Boolean).join('\n');
+  if (section && decision.comment) out.comment = { ...decision.comment, body: `${decision.comment.body}\n\n${section}` };
+  return out;
 }
 
 /**
@@ -1017,7 +1511,7 @@ function overlapMessage(overlaps) {
  */
 function runGroupTier1({
   base, head = 'HEAD', members = [], epic, regenerated: givenRegenerated = [], cwd, git,
-  suites = [], runSuite, protectedPaths, registrarExemption, prior = [], own: givenOwn = [], recorded = [], reuse,
+  suites = [], runSuite, runSelector, protectedPaths, registrarExemption, prior = [], own: givenOwn = [], recorded = [], reuse,
 }) {
   const range = `${base}..${head}`;
   const failures = [];
@@ -1151,7 +1645,8 @@ function runGroupTier1({
   }
 
   const suiteRuns = [];
-  const scoped = scopedInvocations({ suites, changedFiles: [...touched], inWorktree: true });
+  const selections = selectorSelections({ suites, changedFiles: [...touched], root: cwd, runSelector });
+  const scoped = scopedInvocations({ suites, changedFiles: [...touched], inWorktree: true, selections, selectionTier: 'sweep' });
   // #3774: a clean merge, nothing regenerated and the head's tree equal to the
   // tree Tier 1 tested — the suites Tier 1 ran would repeat its verdict, so
   // their results stand, named. A suite Tier 1 deferred always runs.
@@ -1168,7 +1663,7 @@ function runGroupTier1({
       continue;
     }
     const result = runSuite ? runSuite({ command: run.command, cwd: runCwd, suiteIds, files, mode: run.mode }) : { exitCode: null };
-    suiteRuns.push({ suiteIds, command: run.command, cwd: runCwd, files, exitCode: result.exitCode, ok: result.exitCode === 0 });
+    suiteRuns.push(suiteRunRecord(run, { suiteIds, command: run.command, cwd: runCwd, files, exitCode: result.exitCode, ok: result.exitCode === 0 }));
   }
   const failed = suiteRuns.filter((r) => !r.ok);
   if (failed.length > 0) {
@@ -1196,6 +1691,7 @@ function runGroupTier1({
     suiteRuns,
     suiteReuse: reuseReport(suiteReuse, reusedIds, suiteRuns),
     deferredSuites: scoped.deferred || [],
+    suitesAdvisory: notRunAdvisory(scoped),
   };
 }
 
@@ -1268,13 +1764,13 @@ function postMergeOutcome({ group, tier1, tier2, worktreesKept = [], epic, unswe
  * read of framework-config.json (#3575).
  */
 function evaluateMember({
-  member = {}, body, trackerTip, git, suites = [], runSuite, protectedPaths, registrarExemption,
+  member = {}, body, trackerTip, git, suites = [], runSuite, runSelector, protectedPaths, registrarExemption,
   acceptanceCriteria, filesToModify = [], charterPath, noReview = false, skillPresent, review, schema,
   fixCycles = 0, resumedFromCompaction = false, epic, root = process.cwd(), briefContext,
 } = {}) {
   const tier1 = runTier1({
     issue: member.issue, body, trackerTip, branch: member.branch, worktreePath: member.worktreePath,
-    git, suites, runSuite, protectedPaths, registrarExemption,
+    git, suites, runSuite, runSelector, protectedPaths, registrarExemption,
   });
   const acs = acceptanceCriteria || tier1.acceptanceCriteria.items;
   const plan = planTier3({ issue: member.issue, acceptanceCriteria: acs, filesToModify, range: tier1.range, charterPath, noReview, skillPresent, ...briefOf(briefContext, root) });
@@ -1290,7 +1786,7 @@ function evaluateMember({
     tier3 = parseReview(text, { issue: member.issue, schema, root });
   }
   const tier2 = buildTier2({ issue: member.issue, files: tier1.scope.touched, acceptanceCriteria: acs });
-  return { tier1, tier2, tier3, ...decideOutcome({ member, tier1, tier3, fixCycles, resumedFromCompaction, epic }) };
+  return { tier1, tier2, tier3, ...decideOutcome({ member, tier1, tier3, fixCycles, resumedFromCompaction, epic, root }) };
 }
 
 // ─── Reviewed hashes in .code-review-manifest.json (#3131) ───
@@ -1430,12 +1926,17 @@ function verifyRecordedHashes({ cwd = process.cwd(), manifest, paths = [] } = {}
  * Whether the gate permits the merge. Any Tier 1 failure forbids it — so an
  * unattributed or uncommitted member never merges. A Tier 3 that ran must
  * have returned `pass` or `warn`; a `fail`, or a document nobody could read,
- * forbids it. A reported skip does not.
+ * forbids it. A reported skip does not. A `warn` carrying a correctness
+ * finding (#3907) forbids it while the fix cycle is still due (an in-scope
+ * finding, `fixCycles` 0); after it, the filing fallback admits it.
+ *
+ * It takes `decideOutcome`'s inputs and applies the same `admission` rule, so
+ * for the same inputs it is true exactly when `decideOutcome(...).action` is
+ * `merge` (#3935) — the declared scope is read from `tier1.scope.declaredScope`.
  */
-function mayMerge({ tier1, tier3 } = {}) {
-  if (!tier1 || !tier1.ok) return false;
-  if (!tier3 || tier3.skipped === true) return true;
-  return tier3.verdict === 'pass' || tier3.verdict === 'warn';
+function mayMerge({ tier1, tier3, fixCycles = 0, resumedFromCompaction = false, classes, root = process.cwd() } = {}) {
+  const cycles = resumedFromCompaction ? Math.max(fixCycles, 1) : fixCycles;
+  return admission({ tier1, tier3, cycles, classes, root }).admitted;
 }
 
 // ─── Command-line entry point (#3158) ───
@@ -1457,7 +1958,7 @@ const USAGE = [
   '  group-tier1 --base SHA [--head H] --member N ... [--body-file N=F ...] [--epic N: the root issue — the epic, or the own issue of a branch tracker] [--regenerated P ...] [--group G] [--unswept N ...] [--prior N ...] [--kept-worktree P ...] [--own SHA ...] [--state F: the run-state file; its recorded regenerated commits count as --own] [--member-tier1-sha N=SHA ... [--member-tier1 N=F, default .tmp-gate-<N>-tier1.json] --clean-merge: #3774 — reuse each member\'s Tier 1 suite results when the merge was clean, nothing was regenerated and the head\'s tree is the tree Tier 1 tested]',
   '  batch-range --member N ... --base-of N=SHA ... --head H',
   '  clear-member --issue N [--ledger F] [--keep-tier1 | --tier1-only] — removes the member\'s gate files and brief; keeps all when the ledger\'s worktree for N still exists',
-  '  reclaim     --reclaim [N:]wt/<branch>:<path> ... — #3714: re-checks each worktree is on the tracker and clean, tears it down through worktree-teardown.js, deletes its branch with git branch -d and clears a recorded member\'s scratch',
+  '  reclaim     --reclaim [N:]wt/<branch>:<path> ... — #3714: re-checks each worktree is on the tracker and clean, removes a lock left by its own creation (reason initializing, #3853), tears it down through worktree-teardown.js, deletes its branch with git branch -d and clears a recorded member\'s scratch',
   '  clear-run   --file F ... — removes the run\'s state and ledger; top-level .tmp-gate-/brief-/rolling-/concurrent- files only',
   '  Common: --root DIR (default: the current directory). Bodies not given by --body-file are read with gh pmu view N --body-stdout.',
 ].join('\n');
@@ -1592,7 +2093,9 @@ const errText = (e) => String(e && e.message ? e.message : e).trim();
  * branch (#3716); re-check that branch is an ancestor of the tracker HEAD
  * (exit 1 — commits off the tracker; any other failure — unresolvable) and
  * its tree is clean (untracked files count), else `refused` and nothing
- * touched; tear down through `teardown` (worktree-teardown.js); once
+ * touched; remove a lock with reason `initializing`, left by a creation
+ * killed at its bound (#3853: `unlocked: true`, set only then), and no other
+ * lock; tear down through `teardown` (worktree-teardown.js); once
  * `removed`, delete the branch the teardown reports with `git branch -d`
  * (refuses an unmerged branch — reported, never forced) and, for a recorded
  * member, clear its kept gate files and brief. A throw while reclaiming one
@@ -1616,6 +2119,39 @@ function reclaimWorktrees({ root, worktrees = [], git, teardown }) {
       return { ...out, status: 'error', reason: `reclaiming ${worktreePath} threw: ${errText(e)}` };
     }
   });
+}
+
+/**
+ * The lock reason `git worktree list --porcelain` reports for `worktreePath`
+ * (#3853): the reason text, `''` for a lock with none, or null when the
+ * worktree is not locked, not listed or the list cannot be read — the caller
+ * then removes no lock and the teardown decides.
+ * @param {{git: Function, worktreePath: string}} input
+ * @returns {string|null}
+ */
+function creationLockOf({ git, worktreePath }) {
+  // Real paths, so a form git does not print — an 8.3 short name (#3150), a
+  // link — still finds its entry; a path that does not exist compares as given.
+  const norm = (p) => {
+    let real = path.resolve(p);
+    try { real = require('fs').realpathSync.native(real); } catch (_) { /* compared as given */ }
+    const n = real.replace(/\\/g, '/');
+    return process.platform === 'win32' ? n.toLowerCase() : n;
+  };
+  let listed;
+  try {
+    listed = String(git(['worktree', 'list', '--porcelain']) || '');
+  } catch (_) {
+    return null;
+  }
+  for (const block of listed.split(/\r?\n\r?\n/)) {
+    const lines = block.split(/\r?\n/);
+    const head = lines.find((l) => l.startsWith('worktree '));
+    if (!head || norm(head.slice('worktree '.length)) !== norm(worktreePath)) continue;
+    const lock = lines.find((l) => l === 'locked' || l.startsWith('locked '));
+    return lock === undefined ? null : lock.slice('locked'.length).trim();
+  }
+  return null;
 }
 
 /**
@@ -1654,6 +2190,17 @@ function reclaimOne({ root, out, git, teardown, scratch }) {
     return { ...out, status: 'refused', reason: `cannot read the tree of ${worktreePath}: ${errText(e)} — kept` };
   }
   if (dirty) return { ...out, status: 'refused', reason: `${worktreePath} has uncommitted or untracked changes — kept` };
+  // #3853: a creation killed at its bound leaves the worktree locked with
+  // reason `initializing`, and git refuses to remove a locked worktree.
+  // The re-check above has passed, so that lock — and no other — is removed.
+  if (creationLockOf({ git, worktreePath }) === 'initializing') {
+    try {
+      git(['worktree', 'unlock', worktreePath]);
+      out.unlocked = true;
+    } catch (e) {
+      return { ...out, status: 'refused', reason: `cannot remove the initializing lock on ${worktreePath}: ${errText(e)} — kept` };
+    }
+  }
   const t = teardown({ root, worktreePath });
   out.status = t && t.status ? t.status : 'kept';
   out.reason = t && t.reason ? t.reason : null;
@@ -1727,6 +2274,8 @@ function runCli(argv, seams = {}) {
   const root = path.resolve(opts['--root'] || process.cwd());
   const git = seams.git || cliGit(root);
   const runSuite = seams.runSuite || cliRunSuite;
+  // #3880: Tier 1 runs each suite's selector; the spawn is runner-probe.js's.
+  const runSelector = seams.runSelector || ((run, o) => require('./runner-probe.js').runSelectorCommand(run, o));
   const bodyOf = seams.readBody || ((n, files) => readBody(root, n, files));
   const num = (v) => (v === undefined ? undefined : Number(v));
   // #3668: a positive integer written as one — Number('') is 0 and Number('7 ')
@@ -1745,7 +2294,7 @@ function runCli(argv, seams = {}) {
     const tier1 = runTier1({
       issue, body: bodyOf(issue, bodyFileMap(opts['--body-file'], issue)), trackerTip: opts['--tracker-tip'],
       branch: opts['--branch'], worktreePath: path.resolve(root, opts['--worktree']), git,
-      suites: resolveSuites(root).suites, runSuite,
+      suites: resolveSuites(root).suites, runSuite, runSelector,
     });
     const tier2 = buildTier2({ issue, files: tier1.scope.touched, acceptanceCriteria: tier1.acceptanceCriteria.items });
     const doc = { ok: tier1.ok, subcommand: sub, tier1, tier2 };
@@ -1827,13 +2376,21 @@ function runCli(argv, seams = {}) {
       });
       if (ledger.error) tier3 = { ...tier3, ledgerError: ledger.error };
     }
-    const decision = decideOutcome({
+    const decided = decideOutcome({
       member: { issue, worktreePath: opts['--worktree'], branch: opts['--branch'] },
       tier1, tier3, fixCycles: num(opts['--fix-cycles']) || 0, reviewRetries: num(opts['--review-retries']) || 0, resumedFromCompaction: !!opts['--resumed'], epic: num(opts['--epic']), unswept: unsweptOf(opts),
+      root,
     });
+    // #3907: the fix record on a fix cycle; the filing fallback and the record
+    // section on a merge — read against the member branch, not HEAD.
+    const decision = settleCorrectness({ issue, decision: decided, tier3, root, git, head: opts['--branch'] || 'HEAD', fileIssues: seams.fileIssues });
+    if (decision.action === 'halt' && decision.attributedTo === 'filing') {
+      return { code: 1, envelope: { ok: true, subcommand: sub, tier3, ...decision, worktreeKept: opts['--worktree'] } };
+    }
     if (opts['--post-comment'] && decision.action === 'merge') {
       try {
         const posted = postComment({ issue, body: decision.comment.body, root, ghExec: seams.ghExec || cliGhExec });
+        if (!decision.skipped) clearFixRecord(root, issue); // #3913: only once its table is posted
         return { code: 0, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted } };
       } catch (e) {
         return { code: 1, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted: null, postError: String(e.stderr || e.message).trim() } };
@@ -1881,10 +2438,14 @@ function runCli(argv, seams = {}) {
       treeBefore, treeBeforeIntact: sha256(treeBefore) === String(opts['--tree-before-sha']).toLowerCase(),
       treeAfter: git(TREE_STATUS_ARGS), root, ...(runPaths.length ? { runPaths } : {}),
     });
-    const decision = decideReviewOutcome({ issue, tier3, fixCycles: num(opts['--fix-cycles']) || 0, reviewRetries: num(opts['--review-retries']) || 0 });
-    if (opts['--post-comment'] && decision.comment) {
+    const decided = decideReviewOutcome({ issue, tier3, fixCycles: num(opts['--fix-cycles']) || 0, reviewRetries: num(opts['--review-retries']) || 0, declaredScope: runPaths, root });
+    // #3907: the fix record on a fix cycle; the filing fallback and the record section on proceed.
+    const decision = settleCorrectness({ issue, decision: decided, tier3, root, git, head: 'HEAD', fileIssues: seams.fileIssues });
+    if (opts['--post-comment'] && decision.comment && decision.action !== 'halt') {
       try {
         const posted = postComment({ issue, body: decision.comment.body, root, ghExec: seams.ghExec || cliGhExec });
+        // #3913: only once its table is posted; a fix action keeps its record.
+        if (decision.action === 'proceed' && !decision.skipped) clearFixRecord(root, issue);
         return { code: 0, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted } };
       } catch (e) {
         return { code: 1, envelope: { ok: true, subcommand: sub, tier3, ...decision, posted: null, postError: String(e.stderr || e.message).trim() } };
@@ -1918,6 +2479,10 @@ function runCli(argv, seams = {}) {
     if (miss) return fail(miss);
     const members = opts['--member'].map(parseMemberSpec);
     if (members.some((m) => !Number.isInteger(m.issue) || !m.branch)) return fail('--member takes N:BRANCH[:WORKTREE]');
+    // #3834: checked before any merge — a NaN hold would let reclaimMerged
+    // delete the tier1 file the post-merge readers still need.
+    const holdSpecs = opts['--hold-tier1'] || [];
+    if (!holdSpecs.every(isIssueNumber)) return fail('--hold-tier1 takes an issue number');
     const { mergeBack } = require('./concurrent-orchestration.js');
     const gitStatus = (args) => {
       const { spawnSync } = require('child_process');
@@ -1946,7 +2511,7 @@ function runCli(argv, seams = {}) {
     // #3799: a halt reclaims nothing — every worktree stays for KEPT_WORKTREE
     // on resume. A clean merge-back reclaims each merged member itself.
     if (!result.ok) return { code: 1, envelope: { subcommand: sub, ...result, reclaimed: [] } };
-    const holdTier1 = (opts['--hold-tier1'] || []).map(Number);
+    const holdTier1 = holdSpecs.map(Number);
     const { reclaimed, kept } = reclaimMerged({ root, members, merged: result.merged, git, teardown: teardownOf(seams), holdTier1 });
     return { code: 0, envelope: { subcommand: sub, ...result, reclaimed, kept } };
   }
@@ -2004,7 +2569,7 @@ function runCli(argv, seams = {}) {
       reuse,
       recorded,
       base: opts['--base'], head: opts['--head'] || 'HEAD', members, epic: num(opts['--epic']),
-      regenerated: opts['--regenerated'] || [], cwd: root, git, suites: resolveSuites(root).suites, runSuite,
+      regenerated: opts['--regenerated'] || [], cwd: root, git, suites: resolveSuites(root).suites, runSuite, runSelector,
       prior: (opts['--prior'] || []).map(Number).filter(Number.isInteger),
       own: opts['--own'] || [],
     });
@@ -2120,6 +2685,16 @@ module.exports = {
   planSequentialReview,
   decideReviewOutcome,
   formatReviewComment,
+  loadCriterionClasses,
+  classifyFindings,
+  correctnessDisposition,
+  fixingCommits,
+  formatFindingMarker,
+  buildFindingBug,
+  formatFixCycleRecord,
+  settleCorrectness,
+  clearFixRecord,
+  fixRecordFile,
   parseReview,
   checkReviewerTree,
   readLedgerWorktrees,

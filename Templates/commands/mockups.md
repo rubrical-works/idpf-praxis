@@ -1,5 +1,5 @@
 ---
-version: "v0.122.0"
+version: "v0.123.0"
 description: Create text-based or diagrammatic screen mockups, using the IDPF framework.
 argument-hint: "[#NN] [--from-image <path>] [--serve [{Name}]] [--port <N>] [--open] [--showcase] [--apply-decisions] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -156,8 +156,8 @@ Post-compaction: re-read spec, check `Mockups/{Name}/` for partially created fil
 
 Call `getMockupPalette(projectRoot)` from `.claude/scripts/shared/lib/dtcg-token-reader`; pass result through `paletteToCSS()` and `paletteToDrawioColors()` from `.claude/scripts/shared/mockup-token-styles`.
 
-- `palette.hasTokens === true`: tokens from `Design-System/idpf-design.tokens.json` — use token-derived values
-- `palette.hasTokens === false`: built-in defaults — styling unchanged
+- `palette.hasTokens === true`: tokens from `Design-System/idpf-design.tokens.json` — use token-derived values; `false`: built-in defaults — styling unchanged
+- **Custom property names:** `paletteToCSS()` emits `--color-*`, `--font-*`, `--spacing-*`, `--gradient-*`; every token-path character outside `[A-Za-z0-9_-]` maps to `-` (a dotted name is invalid CSS and dropped). Reference the mapped name: `semantic.background` → `var(--color-semantic-background)`, `fontSize.xs` → `var(--spacing-fontSize-xs)`. Two paths mapping to one name (`a.b`, `a-b`): first kept, warning names both.
 
 Record for Step 7: `tokenStatus = palette.hasTokens ? 'Design-System/idpf-design.tokens.json (applied)' : 'not found (defaults used)'`
 

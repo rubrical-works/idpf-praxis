@@ -532,14 +532,14 @@ Each acceptance criterion goes through this cycle. You'll see progress as it wor
 
 **For epics:** Before the first story is touched, the assistant checks the review state of the epic and every story it will work, reviews any that were never reviewed (telling you how many first), and asks one question if any carry unresolved findings. It then works through the stories one at a time, with a STOP boundary after each story reaches `in_review`. You review and approve each story before the next one begins.
 
-**Three ways to run an epic.** The default above is one story at a time with a STOP after each. `--nonstop` removes the STOPs and runs every story to `in_review` before stopping once. `--concurrent` keeps the one-at-a-time safety where it matters and adds parallelism where it is provably safe: stories whose declared files do not overlap and whose `**Depends on:**` lines are satisfied run at once, each in its own worktree with its own agent, and are merged back through a review gate. It **STOPs once per group** after the group has merged back (add `--nonstop` to remove those STOPs too); stories the plan cannot prove safe run one at a time afterwards.
+**Three ways to run an epic.** The default above is one story at a time with a STOP after each. `--nonstop` removes the STOPs and runs every story to `in_review` before stopping once. `--concurrent` keeps the one-at-a-time safety where it matters and adds parallelism where it is provably safe: stories whose declared files do not overlap and whose `**Depends on:**` lines are satisfied run at once, each in its own worktree with its own agent, and are merged back through a review gate. It runs every group in one go — no STOP per group — and **STOPs once, at the end**, with a report naming every group and each story's status; stories the plan cannot prove safe run one at a time after the last group. Anything that needs you (a merge conflict, a failed gate, unresolved review findings, a failing test sweep) halts the run with every worktree kept. Add `--nonstop` for the rolling schedule: a story starts as soon as a slot frees rather than when its whole group has finished.
 
 | Choose | When |
 |---|---|
 | default | You want to read each story before the next one starts |
 | `--nonstop` | The stories are reviewed and small, and you will read them together at the end |
-| `--concurrent` | The epic has several reviewed stories with disjoint `**Files to modify:**` blocks — a backlog from `/create-backlog` usually does — and you want wall-clock time back without giving up the per-group checkpoint |
-| `--nonstop --concurrent` | Same, unattended; a halt leaves every worktree in place for you (see [When Things Go Wrong](05-When-Things-Go-Wrong.md)) |
+| `--concurrent` | The epic has several reviewed stories with disjoint `**Files to modify:**` blocks — a backlog from `/create-backlog` usually does — and you want wall-clock time back, with each group fully swept before the next starts |
+| `--nonstop --concurrent` | Same, on the rolling schedule with one sweep at the end — faster when stories finish at different speeds; a halt leaves every worktree in place for you (see [When Things Go Wrong](05-When-Things-Go-Wrong.md)) |
 
 Prefer `--concurrent` over `--nonstop` whenever the stories declare their files: the gate reads every merge before it lands, which `--nonstop` alone never does. If the plan finds no safe group it says so and runs sequentially, so trying it costs nothing.
 
@@ -611,6 +611,7 @@ All three levels of review are valid. The depth of your review is a quality mult
 
 ### Phase 3: Prepare
 - Updates version files: `CHANGELOG.md`, `README.md`, `framework-config.json`
+- Checks that the new CHANGELOG section's heading is exactly `## [X.Y.Z] - YYYY-MM-DD` (no leading `v`), the form the release-notes step looks for after tagging. A heading it cannot find stops the release before anything is committed, pushed or tagged, so you fix the heading and continue
 - Generates a test plan in `Construction/Test-Plans/`
 - Commits and pushes the version bump. On a branch already pushed to the remote, the PR to `main` is opened first, so its checks run on the head the release merges
 
@@ -705,6 +706,10 @@ You can review any issue type for quality:
 
 When an interactive review ends with findings, `/review-issue` resolves them once on the spot — the same prompts as `/resolve-review` — and then re-reviews the issue one time. If findings still remain, it names `/resolve-review #N` as the next step.
 
+Each prompt opens its preview with a two-line summary (`Changes:` and `Effect:`), then the exact text that would be written, then the text it replaces. When a change is too long for the preview, the preview is clipped and the complete change is saved to a file whose path the option's description names, so you never accept a change you cannot see.
+
+To answer fewer prompts, add `--accept` (to `/review-issue` or `/resolve-review`): suggestions are applied without asking, and you are asked only about the ones held back — criteria that always need you, suggestions claiming runtime behavior that could not be run, and findings the assistant holds for a specific stated reason, such as two plausible fixes with different intent — each shown with its reason. The closing report lists what was applied and what was held.
+
 ### Batch Reviews
 
 When you have multiple issues to review, batching all reviews and resolutions together before starting implementation is significantly faster. Instead of reviewing one issue, resolving findings, then working it — repeat — you run all the reviews first, resolve all findings, then start implementation as a separate pass.
@@ -727,7 +732,7 @@ When you have multiple issues to review, batching all reviews and resolutions to
 ...
 ```
 
-**How a multi-issue review runs.** Two or more issues are reviewed concurrently by default, one reviewer agent per issue, at most three at once. Change the cap with `--agents N` (or set `reviewAgents` in `framework-config.json`); `--sequential` or `--agents 1` reviews them one at a time instead. `/review-issue --status ready` — or just "review all in ready" — selects every open issue in that board status. Either way the run is two-phase: every first-pass review finishes before any findings are resolved, and the on-the-spot resolve pass then runs one issue at a time, so Pass 2 above is only needed for what that pass leaves open. The run closes with a roster naming each issue's result.
+**How a multi-issue review runs.** Two or more issues are reviewed concurrently by default, one reviewer agent per issue, at most three at once. Change the cap with `--agents N` (or set `reviewAgents` in `framework-config.json`); `--sequential` or `--agents 1` reviews them one at a time instead. `/review-issue --status ready` — or just "review all in ready" — selects every open issue in that board status. Either way the run is two-phase: every first-pass review finishes, and its result is shown to you, before any findings are resolved, and the on-the-spot resolve pass then runs one issue at a time, so Pass 2 above is only needed for what that pass leaves open. The run closes with a roster naming each issue's result.
 
 **Shortcut:** Skip Pass 3 entirely by using `--assign` on `/work`, which auto-assigns the issue to the current branch before starting:
 

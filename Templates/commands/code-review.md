@@ -1,5 +1,5 @@
 ---
-version: "v0.122.0"
+version: "v0.123.0"
 description: Run a comprehensive code review with manifest-driven incremental tracking, using the IDPF framework.
 argument-hint: "[--full] [--status] [--scope <globs>] [--diff [<base>]] [--batch <N>] [--agents <N>] [--with <domains>] [--suggest] [--refactor] [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -35,7 +35,7 @@ Combinable: `--scope "src/**/*.js" --batch 10 --with security`, `--diff --with s
 ### Step 1: Parse Arguments
 Accept: none, `--full`, `--status`, `--scope "globs"`, `--diff [<base>]` (base = next token not starting `--`), `--batch N`, `--agents N`, `--with`, `--suggest`, `--refactor`. `--agents` takes a positive integer; a non-integer or zero value is an invalid argument: report `--agents requires a positive integer, got <value>.` → STOP. `--suggest` and `--with` mutually exclusive → error+STOP. `--refactor` with `--with` or `--suggest` → report "`--refactor` and `--with` cannot be combined: domain criteria are not refactor criteria." (or `--suggest`, naming the flag given) → STOP. Invalid → error+STOP.
 ### Steps 2–12: Review Workflow
-Read and execute `{frameworkPath}/Reference/code-review-execution.md` § `/code-review` — Workflow, Steps 2–12, with Step 1's arguments (discovery, per-file review, `file-issue.js` filing, report, manifest + `lastDiffReview`, `--diff` commit, summary). Where it says *end the review*, continue at Step 13. `--refactor`: same steps as its § Refactor Mode amends them (refactor criteria + manifest, all-files scan per candidate, `-refactor.md` report, no `lastDiffReview` write).
+Read and execute `{frameworkPath}/Reference/code-review-execution.md` § `/code-review` — Workflow, Steps 2–12, with Step 1's arguments (discovery, per-file review, `file-issue.js` filing (a finding a review gate already filed → `already filed #N`, never re-filed), report, manifest + `lastDiffReview`, `--diff` commit, summary). Where it says *end the review*, continue at Step 13. `--refactor`: same steps as its § Refactor Mode amends them (refactor criteria + manifest, all-files scan per candidate, `-refactor.md` report, no `lastDiffReview` write).
 If the file cannot be read, report its path and STOP: `Could not read {frameworkPath}/Reference/code-review-execution.md; /code-review cannot run without it.` Never review from memory.
 ### Step 13: Closing Cleanup
 The prune is **part of** this step, and this step is **numbered**, so an unpruned list surfaces as an unfinished task (#2641).

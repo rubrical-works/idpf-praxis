@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Compose peer announcements for /work and /done lifecycle events and resolve which discovered peers can receive them. Composition only — delivery is the SendMessage tool call the command spec instructs, because slash commands can call tools and this helper cannot. Pure and synchronous: no socket, no spawn, no filesystem write, and no path that can throw into the sequence that called it.
  * @checksum sha256:placeholder
  *
@@ -998,8 +998,111 @@ function buildAnnouncement(options) {
   }
 }
 
+// ─── Session exit (#3912) ───
+
+/**
+ * The exit announcement's event name. Deliberately NOT a member of EVENTS:
+ * EVENTS is the vocabulary a peer RECEIVES through SendMessage, and /overwatch
+ * and overwatch-signals.json enumerate it exactly. An exit announcement is
+ * never sent — the model gets no turn after SessionEnd fires and a Node
+ * subprocess cannot call SendMessage (#2660) — so it is RECORDED, addressed by
+ * the routing decision, and read by its recipients at their next pass
+ * (peers-check.js readExitRecords).
+ */
+const SESSION_EXITED = 'session-exited';
+
+/**
+ * The exit text. Says what a reader should do — drop the session from its
+ * in-flight picture — and what the record cannot prove: SessionEnd does not
+ * fire on a hard kill (#2792), so a missing record never proves a session alive.
+ */
+function formatSessionExited({ pid, name, reason }) {
+  const who = pid ? `${name} (#${pid})` : name;
+  const why = reason ? ` (reason: ${reason})` : '';
+  return `Session ${who} has exited this working directory${why}. `
+    + 'Drop it from the in-flight picture: anything it announced as started and never completed was left unfinished. '
+    + 'Recorded at exit, not pushed — and best-effort: a hard kill records nothing, so a missing exit record never proves a session is alive.';
+}
+
+/**
+ * Compose one exit announcement: the text, and who it is addressed to.
+ *
+ * Routing is the existing decision (`announce-routing.js`), asked to target:
+ * a live, uniquely addressable /overwatch marker → the monitor alone;
+ * otherwise every addressable sibling, with the fallback reason named. The
+ * caller passes `broadcast: false` so the monitor is always preferred; any
+ * other value is honored, so this function stays a pure pass-through.
+ *
+ * The exiting session itself is never a recipient, whatever `peers` holds.
+ * No throwing path, like buildAnnouncement.
+ */
+function composeSessionExit(options) {
+  try {
+    const opts = options && typeof options === 'object' ? options : {};
+    const s = opts.session && typeof opts.session === 'object' ? opts.session : {};
+    const pidNum = Number(s.pid);
+    const pid = Number.isInteger(pidNum) && pidNum > 0 ? pidNum : null;
+    const name = typeof s.name === 'string' && s.name.trim() ? s.name.trim() : (pid ? `pid ${pid}` : 'an unidentified session');
+    const reason = typeof opts.reason === 'string' && opts.reason.trim() ? opts.reason.trim() : null;
+    const session = { pid, name, sessionId: typeof s.sessionId === 'string' && s.sessionId ? s.sessionId : null };
+
+    if (opts.peers === null || opts.peers === undefined) {
+      return { ...inert('Exit announcement not recorded: session registry unavailable.'), shouldRecord: false, event: SESSION_EXITED, session, reason };
+    }
+    if (!Array.isArray(opts.peers)) {
+      return {
+        ...inert(`Exit announcement not recorded: peers argument was ${describeMalformed(opts.peers)}, not an array.`),
+        shouldRecord: false, event: SESSION_EXITED, session, reason,
+      };
+    }
+
+    const others = opts.peers.filter((p) => !(p && pid !== null && Number(p.pid) === pid));
+    const routed = routeRecipients({
+      ...resolveRecipients(others),
+      broadcast: opts.broadcast,
+      presence: opts.presence,
+    });
+    const text = formatSessionExited({ pid, name, reason });
+    const base = {
+      event: SESSION_EXITED,
+      session,
+      reason,
+      text,
+      recipients: routed.recipients,
+      skipped: routed.skipped,
+      routing: routed.routing,
+      terminal: false,
+    };
+    if (routed.recipients.length === 0) {
+      return {
+        ...base,
+        shouldRecord: false,
+        notice: routed.skipped.length > 0
+          ? `Exit announcement not recorded: no addressable peer (${summarizeUnreachable(routed.skipped)}).`
+          : 'Exit announcement not recorded: no peers in this working directory.',
+      };
+    }
+    const to = routed.routing.applied === 'targeted'
+      ? `addressed to overwatch ${routed.routing.monitorName} (#${routed.routing.monitorPid}) alone`
+      : `addressed to ${routed.recipients.length} sibling session(s)${routed.routing.fallbackReason
+        ? ` — targeted routing fell back to broadcast (${describeFallback(routed.routing.fallbackReason)}; ${routed.routing.fallbackReason})`
+        : ''}`;
+    return {
+      ...base,
+      shouldRecord: true,
+      notice: `Exit announcement recorded, ${to}; recipients read it at their next pass — it is not pushed.`,
+    };
+  } catch (err) {
+    // `failed` separates a composition error from "nobody to address" (#3912).
+    return { ...inert(`Exit announcement not recorded: ${err && err.message ? err.message : 'composition failed'}.`), shouldRecord: false, failed: true, event: SESSION_EXITED };
+  }
+}
+
 module.exports = {
   buildAnnouncement,
+  SESSION_EXITED,
+  formatSessionExited,
+  composeSessionExit,
   resolveRecipients,
   formatWorkStarted,
   formatWorkCompleted,

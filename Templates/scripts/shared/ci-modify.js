@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Modify a workflow YAML file safely, preserving comments and structure. Supports adding top-level keys, inserting steps into jobs, and merging configuration blocks. Used by ci-add.js and ci-remove.js for non-destructive YAML edits.
  * @checksum sha256:placeholder
  *
@@ -52,13 +52,56 @@ function modifyWorkflow(filePath, operation) {
   validateYaml(output);
 
   // Back up only once the edit is known to succeed (#3307): a refused merge
-  // leaves no trace on disk. The file still holds the original content here.
-  createBackup(filePath);
-
-  // Write using fs (no heredocs — Windows safe)
-  fs.writeFileSync(filePath, output);
+  // leaves no trace on disk. The backup lives only until the write validates
+  // (#3793).
+  writeWithBackup(filePath, output);
 
   return { success: true, message: `Modified ${path.basename(filePath)}` };
+}
+
+/**
+ * Write an edited workflow behind a temporary backup (#3793).
+ *
+ * The original is copied to `.backup/` first; once the new content is on disk
+ * and parses, the backup is deleted, and the `.backup/` directory with it when
+ * nothing else is in it — a kept backup sat untracked in the repository until
+ * a later `git add -A` committed it.
+ *
+ * A write that fails, or leaves content that does not parse, keeps the backup:
+ * the thrown error names its path and carries it as `backupPath`.
+ *
+ * @param {string} filePath - Path to the workflow file (still holding the original)
+ * @param {string} output - Validated new content
+ * @throws {Error} with `backupPath` when the write fails
+ */
+function writeWithBackup(filePath, output) {
+  const backupPath = createBackup(filePath);
+  try {
+    // Write using fs (no heredocs — Windows safe)
+    fs.writeFileSync(filePath, output);
+    validateYaml(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    const failure = new Error(
+      `${err.message} — the original ${path.basename(filePath)} is kept at ${backupPath}`
+    );
+    failure.backupPath = backupPath;
+    throw failure;
+  }
+  discardBackup(backupPath);
+}
+
+/**
+ * Delete a backup, and its directory once that is empty.
+ * @param {string} backupPath - Path returned by createBackup
+ */
+function discardBackup(backupPath) {
+  fs.rmSync(backupPath, { force: true });
+  const backupDir = path.dirname(backupPath);
+  try {
+    if (fs.readdirSync(backupDir).length === 0) fs.rmdirSync(backupDir);
+  } catch (_e) {
+    // Directory already gone or not removable — the backup itself is deleted.
+  }
 }
 
 /**
@@ -303,6 +346,7 @@ function setJobProperty(doc, jobName, propPath, value) {
 /**
  * Create a timestamped backup of a workflow file.
  * @param {string} filePath - Path to the workflow file
+ * @returns {string} Path of the backup written
  */
 function createBackup(filePath) {
   const dir = path.dirname(filePath);
@@ -330,10 +374,12 @@ function createBackup(filePath) {
     ? `${prefix}.bak`
     : `${prefix}_${String(highest + 1).padStart(2, '0')}.bak`;
 
-  fs.copyFileSync(filePath, path.join(backupDir, backupName));
+  const backupPath = path.join(backupDir, backupName);
+  fs.copyFileSync(filePath, backupPath);
 
   // Clean up old backups
   cleanupBackups(backupDir, fileName);
+  return backupPath;
 }
 
 /**
@@ -490,4 +536,4 @@ if (require.main === module) {
   console.log('This module is used programmatically by /ci --add and /ci remove.');
 }
 
-module.exports = { modifyWorkflow, createBackup, cleanupBackups, validateYaml, setJobProperty, serializeEdited, TO_STRING_OPTIONS };
+module.exports = { modifyWorkflow, writeWithBackup, createBackup, cleanupBackups, validateYaml, setJobProperty, serializeEdited, TO_STRING_OPTIONS };

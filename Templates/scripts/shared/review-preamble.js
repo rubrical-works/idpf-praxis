@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Consolidate /review-issue setup into a single JSON response. Fetches issue metadata, detects type for routing (redirects to /review-proposal, /review-prd, /review-test-plan as needed), loads review mode and criteria (common + type-specific + domain extensions), and computes review sequence number. Pass --no-redirect to suppress redirect and load criteria directly (used by redirected review commands to avoid infinite loops).
  * @checksum sha256:placeholder
  *
@@ -88,7 +88,9 @@ function parseArgs(args) {
   let noRedirect = false;
   let priorArt = false;
   let stepWise = false;
+  let accept = false;
   let status = null;
+  let agents = null;
   const typedIssues = [];
   const unrecognizedFlags = [];
 
@@ -104,6 +106,19 @@ function parseArgs(args) {
       }
       status = val;
       i += arg === '--status' ? 2 : 1;
+    } else if (arg === '--agents' || arg.startsWith('--agents=')) {
+      // #3849: the multi-issue concurrency cap, read by
+      // resolveReviewConcurrency(). Declared so it claims its value — left
+      // to the unrecognized-flag branch, `N` was parsed as an issue number.
+      const val = arg === '--agents' ? args[i + 1] : arg.slice('--agents='.length);
+      if (!val || val.startsWith('--')) {
+        return { error: { code: 'MISSING_ARGUMENT', message: '--agents requires a value.' } };
+      }
+      if (!/^[1-9]\d*$/.test(val)) {
+        return { error: { code: 'INVALID_ARGUMENT', message: `Invalid --agents value: "${val}". Must be a positive integer.` } };
+      }
+      agents = parseInt(val, 10);
+      i += arg === '--agents' ? 2 : 1;
     } else if (arg === '--with') {
       withExtensions = args[i + 1] || null;
       i += 2;
@@ -128,6 +143,13 @@ function parseArgs(args) {
       // the single inline resolve pass. Passed by every non-interactive caller
       // and by the pass's own --force re-review, so a pass never nests.
       stepWise = true;
+      i += 1;
+    } else if (arg === '--accept') {
+      // #3879: the Step 3c resolve pass applies each Pass 2 suggestion the
+      // shared accept-classifier marks `accept`, and asks only the held ones.
+      // Takes no value. Under --step-wise Step 3c does not run — flagWarnings
+      // reports that, so the flag is never silently dropped.
+      accept = true;
       i += 1;
     } else if (arg === '--prior-art') {
       // Documented in /review-issue's Arguments table. Recorded here but
@@ -170,6 +192,13 @@ function parseArgs(args) {
     return { error: { code: 'MISSING_ARGUMENT', message: 'No issue number provided.' } };
   }
 
+  // #3900: without --status this preamble reviews one issue, and each
+  // positional above overwrote `issue` — `12 13` silently reviewed only #13.
+  // Refuse by name instead; a multi-issue review calls this once per issue.
+  if (status === null && typedIssues.length > 1) {
+    return { error: { code: 'EXTRA_ARGUMENTS', message: `review-preamble.js takes one issue number without --status; got ${typedIssues.join(', ')}. Run it once per issue.` } };
+  }
+
   const result = status === null ? { issue } : { status, typedIssues };
   if (withExtensions !== null) result.withExtensions = withExtensions;
   if (withoutExtensions !== null) result.withoutExtensions = withoutExtensions;
@@ -178,6 +207,8 @@ function parseArgs(args) {
   if (noRedirect) result.noRedirect = true;
   if (priorArt) result.priorArt = true;
   if (stepWise) result.stepWise = true;
+  if (accept) result.accept = true;
+  if (agents !== null) result.agents = agents;
   if (unrecognizedFlags.length > 0) result.unrecognizedFlags = unrecognizedFlags;
   return result;
 }
@@ -916,7 +947,7 @@ async function main() {
   // Surface env-filter warnings in the envelope too (#2516) — the filter has
   // to be observable to a caller reading stdout, not only to a direct
   // loadCriteria() caller.
-  const allWarnings = [...issueWarnings, ...extensionResult.warnings, ...(criteria.warnings || [])];
+  const allWarnings = [...issueWarnings, ...extensionResult.warnings, ...(criteria.warnings || []), ...flagWarnings(args)];
 
   // Build context
   const context = {
@@ -937,17 +968,39 @@ async function main() {
 
 /**
  * The run flags the envelope's `context` carries: `force` always; `stepWise`
- * (#3545) and `priorArt` (#3555) only when passed — absent, never false.
+ * (#3545), `priorArt` (#3555) and `accept` (#3879) only when passed — absent,
+ * never false.
  *
- * @param {{force?: boolean, stepWise?: boolean, priorArt?: boolean}} [args] - parsed CLI arguments from parseArgs
- * @returns {{force: boolean, stepWise?: true, priorArt?: true}} the flags to spread into `context`
+ * @param {{force?: boolean, stepWise?: boolean, priorArt?: boolean, accept?: boolean}} [args] - parsed CLI arguments from parseArgs
+ * @returns {{force: boolean, stepWise?: true, priorArt?: true, accept?: true}} the flags to spread into `context`
  */
 function contextFlags(args) {
   const flags = { force: Boolean(args && args.force) };
   if (args && args.stepWise) flags.stepWise = true;
   // #3555: recorded here, consumed at 2a-iv (rule 09) — absent when not passed.
   if (args && args.priorArt) flags.priorArt = true;
+  // #3879: consumed by the Step 3c resolve pass (rule 09).
+  if (args && args.accept) flags.accept = true;
   return flags;
+}
+
+/**
+ * Warnings about how this run's flags combine (#3879). `--accept` acts only
+ * in the Step 3c resolve pass, which `--step-wise` skips — so the pair is
+ * reported as having no effect on this run, never dropped without a word.
+ *
+ * @param {{accept?: boolean, stepWise?: boolean}} [args] - parsed CLI arguments from parseArgs
+ * @returns {Array<{code: string, message: string}>}
+ */
+function flagWarnings(args) {
+  const warnings = [];
+  if (args && args.accept && args.stepWise) {
+    warnings.push({
+      code: 'ACCEPT_NO_EFFECT',
+      message: '--accept has no effect on this run: --step-wise stops at a pending verdict, so the Step 3c resolve pass it applies to does not run.',
+    });
+  }
+  return warnings;
 }
 
 // ─── Module Guard ───
@@ -966,6 +1019,7 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   contextFlags,
+  flagWarnings,
   reportUnrecognizedFlags,
   computeReviewNumber,
   resolveReviewNumber,

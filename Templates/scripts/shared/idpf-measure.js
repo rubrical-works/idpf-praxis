@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * idpf-measure.js
  *
  * CLI for `/idpf-measure` (#2794). Binds the three helpers together:
@@ -36,7 +36,8 @@ const SCHEMA = {
   mode: 'start | stop | report | reset | schema',
   discarded: 'object — {calls, spanMs} cleared by --reset',
   report: 'string — rendered report (stop, report)',
-  analysis: 'object — raw figures behind the report (stop, report)',
+  analysis: 'object — raw figures behind the report (stop, report); headline figures are the main thread\'s, '
+    + 'and timelines[] holds one decomposition per timeline — main thread and each agent (#3914)',
   marker: 'object — marker state as read (start, stop, report)',
   wiring: 'object — what changed on disk (start, stop)',
   errors: '[{code, message}]',

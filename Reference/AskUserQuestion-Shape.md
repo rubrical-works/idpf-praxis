@@ -1,5 +1,5 @@
 # AskUserQuestion Shape
-**Version:** v0.122.0
+**Version:** v0.123.0
 **Source:** Reference/AskUserQuestion-Shape.md
 **Purpose:** How a prompt sent through `AskUserQuestion` is laid out. On demand; rule `06-runtime-triggers.md` points here, and every `.claude/hooks/ask-question-shape-hook.js` correction closes with a pointer here (#3233, #3440).
 ## Why
@@ -58,19 +58,24 @@ A table of candidates or findings printed before a prompt has **first column `{n
 **Detail:** the body names no Files to modify section
 Tables are for rows that map to options; Claude Code draws every row with box borders and a rule.
 ## Previews showing a change
-**BEFORE / AFTER** blocks, never diff `-`/`+` markers, which collide with `- [ ]` checkboxes:
+**Summary, then AFTER, then BEFORE** (#3909), never diff `-`/`+` markers, which collide with `- [ ]` checkboxes:
 ```
-BEFORE
-- [ ] AC names the old path
+Changes: renames the path the AC names
+Effect: the AC matches the moved file
 AFTER
 - [ ] AC names the new path
+BEFORE
+- [ ] AC names the old path
 ```
-### Line budget (#3788, #3820)
-The pane has a fixed height; Claude Code clips overflow behind a `✂ N lines hidden` marker, so with BEFORE first a long BEFORE pushes AFTER — the text being accepted — below the cut (observed: full BEFORE, then `AFTER:` and `✂ 18 lines hidden`).
-**Budget: 8 lines** of preview content — from one observation (~9 lines visible before the cut); re-measure and change it here.
-**Within budget:** BEFORE / AFTER as above — the whole change, on screen while deciding.
-**Over budget:** the option carries no `preview`; the complete BEFORE / AFTER printed above the call is the only copy, and the option's `description` points at it (e.g. `Apply the change printed above`). A trimmed preview could only restate, lossily, text already on screen — on #3815 it was cut off mid-sentence beside the complete version.
-The complete BEFORE and AFTER are always printed as markdown above the call (rule 1); they are the record, a preview only a view of it.
+The summary is two `/bluf`-style one-clause lines, `Changes:` and `Effect:`; `not stated` for a clause with no honest answer, never invented. Claude writes it; `change-preview.js` builds the verbatim AFTER and BEFORE, never by hand. AFTER — the text being accepted — precedes BEFORE.
+### Line budget (#3788, #3820, #3848, #3909)
+The pane has a fixed height; Claude Code clips overflow behind a `✂ N lines hidden` marker, so when BEFORE came first a long BEFORE pushed AFTER — the text being accepted — below the cut (observed: full BEFORE, then `AFTER:` and `✂ 18 lines hidden`).
+**Budget: 14 lines** of preview content — the figure that always fits the smaller window. Measured 2026-11-23 (Windows 11, #3909): larger window, a 40-line preview showed through line 32, a 20-line one in full; smaller window, through line 14, then `✂` (resizing reveals more). The earlier 8-line single observation is withdrawn. `change-preview.js` `DEFAULT_BUDGET` carries it; re-measure and change both together.
+**Within budget:** summary, then the whole AFTER, then the whole BEFORE, as above — the whole change, on screen while deciding.
+**Over budget:** the same shape clipped to the budget — summary, AFTER clipped with a `… (+N more lines)` marker, then BEFORE as exactly one clipped line under a `BEFORE (clipped)` heading; the marker and heading say what was cut, and no label points elsewhere.
+**Over budget, also a scratch file:** write the complete summary, AFTER and BEFORE to `.tmp-<issue>-change-<random>.md` and name its full path in the option's `description` only, never the preview (e.g. `Clipped preview — full change in <path>`) — on a multi-issue run earlier assistant text may be collapsed; the file stays reachable. Write it to the session scratchpad, never the repository root, whenever a reviewer agent may still be running.
+Text printed before the call is not visible while the dialog is open (#3233, #3361, #3788): #3820's no-preview form had the user accept a change they could not see — on #3830, "cannot see change printed above" (#3848); the condensed label's pointer to that text always failed — the user decides from the pane alone (#3909). The clipping marker and `BEFORE (clipped)` heading meet #3820's concern.
+The complete BEFORE and AFTER are always printed as markdown before the call (rule 1), in the same message as the call with no other output between them — a transcript record, readable after the dialog closes, not what the user reads while deciding.
 ## Several questions in one call
 **One option table per question**, under a bold heading matching its `header`, numbering restarting at 1.
 ## Where

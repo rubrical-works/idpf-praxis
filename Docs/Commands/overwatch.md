@@ -45,6 +45,7 @@ No new transport is involved: by default announcements already reach every reach
 - Sends no lifecycle announcements of its own; it performs no work, so it adds no broadcast traffic to other sessions
 - Sends one targeted message, an overlap notice, only to the sessions involved when their in-flight issues declare the same files — see below
 - Replies to each announcement it receives with a short receipt, so the sending session can record that the monitor got it — see below
+- Reports sessions that exit in this directory, and stops treating their unfinished work as attributed to them — see below
 - With `--auto-create`, files bugs only for findings marked filable, behind a dedupe window and a per-session cap, and always after a prior-art sweep
 - Enhancements are always offered, never filed unattended
 - Degrades to git-only observation when cross-session discovery is disabled, and reports that it has done so
@@ -67,6 +68,17 @@ Sending a message to another session tells you the send succeeded, not that anyo
 - **What it does not claim:** that the monitor acted on the message, or that any session the monitor relays to heard anything. It confirms one hop.
 - **When no receipt arrives:** nothing changes. Nothing waits for one, nothing is retried, and no command fails. The sending session keeps saying delivery was not confirmed, which remains true.
 - **Never a loop:** the monitor does not reply to receipts or to its own overlap notices.
+
+## Session Exits
+
+A session that ends cannot send a message on its way out, so instead it records its exit as a file in `.claude/.overwatch/session-exits/`. While a monitor is running, that record is addressed to the monitor alone; otherwise it is addressed to every other reachable session in the directory. The monitor reads these records on every tick, and for each new one:
+
+- **Reports the exit** to its own user, naming the session and when it ended.
+- **Drops the session from the in-flight picture.** An issue that session announced starting and never announced finishing is now treated as unattributed, so overlap notices stop naming the departed session as a recipient.
+
+If the exit records cannot be read, the monitor says exits are unknown or incomplete — never that there were none — and tries again on the next tick.
+
+**This is best-effort.** A session that is killed outright records no exit, so a missing exit record never proves a session is still alive. An exit record is not a message, so it gets no receipt reply.
 
 ## One Monitor Per Directory
 

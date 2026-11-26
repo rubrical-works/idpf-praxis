@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Charter shape analysis for the /charter --refresh shape step (#3418).
  * @checksum sha256:placeholder
  *
@@ -61,7 +61,7 @@ const path = require('path');
 const { execSync, execFileSync } = require('child_process');
 const { parseCharterSections, sectionBullets } = require('./charter-scope');
 const { escapeRegExp } = require('./input-validation');
-const { loadCharterContract, checkContractShape, headingMatches, tableCells, fencedLines, sectionsOutOfOrder } = require('./charter-template');
+const { loadCharterContract, contractHeadings, checkContractShape, headingMatches, tableCells, fencedLines, sectionsOutOfOrder } = require('./charter-template');
 
 /**
  * The shape the step targets — the charter contract's `requiredSections`
@@ -416,6 +416,8 @@ function insertLines(out, at, texts, eol) {
 function proposeShape(charterText, opts = {}) {
   const sources = opts.sources || [];
   const thresholds = { ...shapeThresholds(), ...(opts.thresholds || {}) };
+  // The In Scope repair step finds its section by the contract's key (#3854).
+  const inScopeHeading = contractHeadings(loadCharterContract()).inScope;
   // Lines are matched without their terminators — on a CRLF charter the
   // heading match never fired (#3429) — and each keeps its own: rewriting
   // every line to one ending put untouched lines in the consent diff (#3437).
@@ -439,7 +441,7 @@ function proposeShape(charterText, opts = {}) {
     const heading = line.match(/^##\s+(.*)$/);
     if (heading) {
       // Sections are identified by the contract heading rule (#3695), as detection identifies them.
-      section = headingMatches(heading[1], 'In Scope') ? 'in' : headingMatches(heading[1], 'Out of Scope') ? 'out' : null;
+      section = headingMatches(heading[1], inScopeHeading) ? 'in' : headingMatches(heading[1], 'Out of Scope') ? 'out' : null;
       // The heading and every non-blank line under it mark where moved
       // exclusions go — a prose-only section is still the section (#3437).
       if (section === 'out') lastOutOfScope = out.length;
@@ -1018,10 +1020,22 @@ const countNote = (cell) => !/^(\d+|tbd|)$/i.test(withoutCode(cell).trim());
 /** A Tech Stack cell carries a note when it explains: a parenthesis, a dash, a colon or a semicolon. */
 const technologyNote = (cell) => /[(;:—–]|\s-\s/.test(withoutCode(cell));
 
-/** Notes found in the charter's Key Entities and Tech Stack cells, keyed by row name. */
+/**
+ * The Key Entities and Tech Stack section names the contract keys (#3887):
+ * `keyEntities.heading` and `storedValues.techStack.heading`, the source
+ * detection reads, so a renamed heading is repaired where it is reported.
+ * @returns {{keyEntities: string, techStack: string}}
+ */
+function tableHeadings() {
+  const contract = loadCharterContract();
+  return { keyEntities: contract.keyEntities.heading, techStack: contractHeadings(contract).techStack };
+}
+
+/** Notes found in the charter's Key Entities and Tech Stack cells, keyed by section name. */
 function cellNotes(charterLines) {
-  const notes = { 'Key Entities': [], 'Tech Stack': [] };
-  const entities = sectionTable(charterLines, 'Key Entities');
+  const { keyEntities, techStack } = tableHeadings();
+  const notes = { [keyEntities]: [], [techStack]: [] };
+  const entities = sectionTable(charterLines, keyEntities);
   if (entities) {
     for (const row of entities.rows) {
       const name = row[0];
@@ -1029,14 +1043,14 @@ function cellNotes(charterLines) {
       const carries = entities.header.some((col, i) => i > 0 && row[i] && (/count/i.test(col) ? countNote(row[i]) : locationNote(row[i])));
       if (!carries) continue;
       const text = entities.header.map((col, i) => (i > 0 && row[i] ? `${col}: ${row[i]}` : null)).filter(Boolean).join('; ');
-      notes['Key Entities'].push(`- **${name}** — ${text}`);
+      notes[keyEntities].push(`- **${name}** — ${text}`);
     }
   }
-  const stack = sectionTable(charterLines, 'Tech Stack');
+  const stack = sectionTable(charterLines, techStack);
   if (stack) {
     for (const row of stack.rows) {
       const tech = row.slice(1).filter(Boolean).join(' | ');
-      if (row[0] && tech && technologyNote(tech)) notes['Tech Stack'].push(`- **${row[0]}** — ${tech}`);
+      if (row[0] && tech && technologyNote(tech)) notes[techStack].push(`- **${row[0]}** — ${tech}`);
     }
   }
   return notes;
@@ -1053,7 +1067,8 @@ function copyInventoryNotes(root, opts = {}, ctx = {}) {
   const charter = readText(path.join(root, 'CHARTER.md'));
   if (charter === null) return { id, status: 'blocked', copied: [], message: 'No CHARTER.md — no table to read.' };
   const notes = cellNotes(charter.split(/\r?\n/));
-  const all = [...notes['Key Entities'], ...notes['Tech Stack']];
+  const groups = Object.keys(notes);
+  const all = groups.flatMap((g) => notes[g]);
   if (!all.length) return { id, status: 'already', copied: [], message: 'already repaired — no table cell carries a note' };
   const target = `${PROJECT_DIR}/Architecture.md`;
   const abs = path.join(root, target);
@@ -1072,7 +1087,7 @@ function copyInventoryNotes(root, opts = {}, ctx = {}) {
     while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
     lines.push('', `## ${INVENTORY_HEADING}`, '', INVENTORY_INTRO, '');
   }
-  for (const group of ['Key Entities', 'Tech Stack']) {
+  for (const group of groups) {
     const missing = notes[group].filter((n) => !lines.includes(n));
     if (!missing.length) continue;
     const section = headingSpan(lines, INVENTORY_HEADING, 2);
@@ -1362,7 +1377,7 @@ function rewriteTable(lines, name) {
   const sep = lines[span.start + 1];
   const body = lines.slice(span.start + 2, span.end).map(tableCells);
   let after;
-  if (name === 'Key Entities') {
+  if (name === tableHeadings().keyEntities) {
     const loc = header.findIndex((h) => /location/i.test(h));
     if (loc === -1) return null;
     const keep = [0, loc];
@@ -1374,13 +1389,17 @@ function rewriteTable(lines, name) {
   return { span, before: lines.slice(span.start, span.end).join('\n'), after: after.join('\n'), afterLines: after };
 }
 
-const REWRITE_TABLES = ['Key Entities', 'Tech Stack'];
+/** The charter tables the rewrite touches, named by the contract (#3887). */
+const rewriteTables = () => {
+  const h = tableHeadings();
+  return [h.keyEntities, h.techStack];
+};
 
 /** BEFORE / AFTER for each charter table. Writes nothing. */
 function planTableRewrite(charterText) {
   const lines = String(charterText || '').split(/\r?\n/);
   const tables = [];
-  for (const name of REWRITE_TABLES) {
+  for (const name of rewriteTables()) {
     const r = rewriteTable(lines, name);
     if (r) tables.push({ name, before: r.before, after: r.after, changed: r.before !== r.after });
   }
@@ -1402,7 +1421,7 @@ function applyTableRewrite(root, { consent } = {}) {
   const notes = copyInventoryNotes(root);
   if (notes.status === 'blocked') return { status: 'blocked', tables: plan.tables, message: `table rewrite refused: its notes cannot be copied yet — ${notes.message}` };
   const lines = text.split(/\r?\n/);
-  for (const name of REWRITE_TABLES) {
+  for (const name of rewriteTables()) {
     const r = rewriteTable(lines, name);
     if (r && r.before !== r.after) lines.splice(r.span.start, r.span.end - r.span.start, ...r.afterLines);
   }

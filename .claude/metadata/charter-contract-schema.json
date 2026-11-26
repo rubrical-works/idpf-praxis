@@ -73,6 +73,7 @@
           "additionalProperties": false,
           "required": ["version", "parenthesizedQuantity"],
           "properties": {
+            "heading": { "type": "string", "minLength": 1, "description": "Heading text of the Tech Stack section, without the leading hashes (#3854). Optional and additive at version 2: a reader takes the heading from here and falls back to the literal \"Tech Stack\" when the key is absent." },
             "version": { "$ref": "#/$defs/pattern" },
             "parenthesizedQuantity": { "$ref": "#/$defs/pattern" },
             "description": { "type": "string" }
@@ -141,6 +142,7 @@
       "additionalProperties": false,
       "required": ["inScopeBulletWords"],
       "properties": {
+        "inScopeHeading": { "type": "string", "minLength": 1, "description": "Heading text of the In Scope section these thresholds apply to, without the leading hashes (#3854). Optional and additive at version 2: a reader takes the heading from here and falls back to the literal \"In Scope\" when the key is absent." },
         "inScopeBulletWords": { "type": "integer", "minimum": 1, "description": "An In Scope bullet longer than this many words is a shape finding." }
       }
     },

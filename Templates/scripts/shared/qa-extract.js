@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Auto-create QA sub-issues for unverifiable ACs in a /work issue. Reads
  * qa-config.json for keyword triggers, fetches the parent issue body via gh pmu, matches
  * unchecked AC lines against keywords (case-insensitive), and creates a labeled sub-issue
@@ -434,8 +434,55 @@ function fetchIssue(issueNumber, execFn = execSync) {
 // the branch placement through assign-branch.js. Re-exported below so callers
 // and tests that import them from here keep working.
 const {
-  QA_STATUS_ALIAS, createSubIssue, createStandaloneIssue, setSubIssueStatus, placeSubIssue,
+  QA_LABEL, QA_STATUS_ALIAS, createSubIssue, createStandaloneIssue, setSubIssueStatus, placeSubIssue,
 } = require('./lib/qa-issue.js');
+
+/**
+ * Every open `qa-required` issue as `{number, title, state}` (#3825), for the
+ * post-release retry dedupe in extract(). A post-release issue is standalone,
+ * so the parent's sub-issue list never holds it; the board list does.
+ *
+ * Both response shapes are read (#3868): `{ items: [...] }` (gh pmu 1.8.0) and
+ * the bare array older versions return (#3784). Any other shape throws, never
+ * an empty list (#3815) — extract() turns the throw into its "could not be
+ * read" warning, where an empty list would silently let a retry file duplicates.
+ */
+function listOpenQaIssues(execFileFn = execFileSync) {
+  const raw = execFileFn('gh', ['pmu', 'list', '--label', QA_LABEL, '--state', 'open', '--limit', '0', '--json=number,title,state'], { encoding: 'utf8' });
+  const data = JSON.parse(raw);
+  const list = Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : null);
+  if (list === null) {
+    throw new Error('unrecognized gh pmu list response: expected an array or { items: [...] }');
+  }
+  return list.map((i) => ({ number: i.number, title: i.title, state: i.state }));
+}
+
+/** Every open issue in `list` titled exactly `title`, in list order. */
+function filterOpenByTitle(list, title) {
+  return list.filter((s) => s && s.title === title && String(s.state || 'OPEN').toUpperCase() === 'OPEN');
+}
+
+/** An open issue in `list` titled exactly `title`, or undefined. */
+function findOpenByTitle(list, title) {
+  return filterOpenByTitle(list, title)[0];
+}
+
+/** Line endings unified and surrounding whitespace dropped, for a containment check. */
+function normalizeText(text) {
+  return String(text).replace(/\r\n/g, '\n').trim();
+}
+
+/**
+ * Whether a post-release QA issue's body was filed for `parentIssue` (#3868):
+ * it carries qa-config.json postReleaseNote rendered for that parent, exactly
+ * as extract() appends it. The whole rendered note is compared, so #42 never
+ * matches the note written for #4200. No note configured → nothing matches.
+ */
+function bodyNamesParent(body, postReleaseNote, parentIssue) {
+  if (!postReleaseNote || typeof body !== 'string') return false;
+  const note = normalizeText(renderBody(postReleaseNote, { parentIssue }));
+  return note.length > 0 && normalizeText(body).includes(note);
+}
 
 /**
  * The parent's sub-issues as `{number, title, state}` (#3268), for the retry
@@ -463,10 +510,12 @@ function findGateMarker(acText, markers) {
   return hit ? hit.id : null;
 }
 
+// Replacer functions insert the values verbatim: a string replacement would
+// expand `$&`, `$'` and `` $` `` in the AC text (#3826).
 function buildAnnotation(format, acText, subIssueNumber) {
   return format
-    .replace('{acText}', acText)
-    .replace('{subIssueNumber}', String(subIssueNumber));
+    .replace('{acText}', () => acText)
+    .replace('{subIssueNumber}', () => String(subIssueNumber));
 }
 
 // ─── Post-release QA kind (#3817) ───
@@ -497,7 +546,7 @@ function postReleaseCriterion(acText, gateMarkers) {
   return acText.replace(new RegExp(`\\s*${release.pattern.source}\\s*$`), '').trim();
 }
 
-async function extract({ issueNumber, config, fetchFn, createFn, createStandaloneFn, existingFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null, fillWarning = null, gateMarkers = loadGateMarkers() }) {
+async function extract({ issueNumber, config, fetchFn, createFn, createStandaloneFn, existingFn, existingStandaloneFn, standaloneBodyFn, placeFn, writeTemp, unlinkTemp, dryRun, fill = null, fillWarning = null, gateMarkers = loadGateMarkers() }) {
   // placeFn is injected, never defaulted to the live implementation. Every
   // other dependency here follows that rule and main() supplies all of them;
   // a live default would let any caller that forgot the stub reach `gh`
@@ -529,6 +578,51 @@ async function extract({ issueNumber, config, fetchFn, createFn, createStandalon
     }
   }
 
+  // The open standalone QA issues (#3825), read once and only when a
+  // post-release filing needs them. The post-release kind is never a
+  // sub-issue, so `existing` cannot dedupe it; without this list a retry
+  // before the caller annotates the parent filed every post-release AC again.
+  let standalone = null;
+  const openStandalone = () => {
+    if (standalone !== null) return standalone;
+    standalone = [];
+    if (typeof existingStandaloneFn !== 'function') {
+      warnings.push('open post-release QA issues could not be listed (no lister supplied); a retry before annotation may file duplicates');
+      return standalone;
+    }
+    try {
+      standalone = existingStandaloneFn() || [];
+    } catch (e) {
+      warnings.push(`open post-release QA issues could not be read (${e.message}); a retry before annotation may file duplicates`);
+    }
+    return standalone;
+  };
+
+  // The open qa-required list holds every parent's QA issues (#3868), so a
+  // title match alone could reuse another parent's issue and file nothing.
+  // A candidate is this parent's only when its body carries the postReleaseNote
+  // rendered for this parent. `gh pmu list --json` offers no body field, so a
+  // candidate listed without one is read through standaloneBodyFn.
+  const findOwnStandalone = (list, title) => {
+    for (const c of filterOpenByTitle(list, title)) {
+      let candidateBody = typeof c.body === 'string' ? c.body : null;
+      if (candidateBody === null) {
+        if (typeof standaloneBodyFn !== 'function') {
+          warnings.push(`the body of open QA issue #${c.number} could not be read (no body reader supplied); it is not reused, and a duplicate may be filed`);
+          continue;
+        }
+        try {
+          candidateBody = standaloneBodyFn(c.number);
+        } catch (e) {
+          warnings.push(`the body of open QA issue #${c.number} could not be read (${e.message}); it is not reused, and a duplicate may be filed`);
+          continue;
+        }
+      }
+      if (bodyNamesParent(candidateBody, config.postReleaseNote, issueNumber)) return c;
+    }
+    return undefined;
+  };
+
   for (const acText of acs) {
     // An AC that already points at its gate is not extracted again (#3161):
     // the keyword `QA:` otherwise matches the AC's own `→ QA: #N` annotation
@@ -552,12 +646,23 @@ async function extract({ issueNumber, config, fetchFn, createFn, createStandalon
     // retry before annotation (compaction, a partial failure) filed every AC
     // again. An open QA sub-issue already titled for this AC is reused: its
     // annotation is returned for the caller to apply, and nothing is created.
-    // A post-release issue is never a sub-issue, so the sub-issue list cannot
-    // hold it: the dedupe applies to the blocking kind only.
-    const prior = !postRelease && existing.find((s) => s && s.title === `QA: ${acText}` && String(s.state || 'OPEN').toUpperCase() === 'OPEN');
-    if (prior) {
-      matched.push({ acText, keyword, subIssueNumber: prior.number, annotation: buildAnnotation(config.annotationFormat, acText, prior.number), existing: true });
-      continue;
+    // A post-release issue is never a sub-issue (#3825), so it is looked up
+    // among the open standalone QA issues under its own title — the criterion
+    // without its release marker — and reused the same way, but only when its
+    // body names this parent (#3868): the list holds every parent's issues.
+    if (postRelease) {
+      const criterion = postReleaseCriterion(acText, gateMarkers);
+      const priorStandalone = config.postReleaseAnnotationFormat && findOwnStandalone(openStandalone(), `QA: ${criterion}`);
+      if (priorStandalone) {
+        matched.push({ acText, keyword, subIssueNumber: priorStandalone.number, annotation: buildAnnotation(config.postReleaseAnnotationFormat, criterion, priorStandalone.number), kind: 'post-release', placement: 'standalone', existing: true });
+        continue;
+      }
+    } else {
+      const prior = findOpenByTitle(existing, `QA: ${acText}`);
+      if (prior) {
+        matched.push({ acText, keyword, subIssueNumber: prior.number, annotation: buildAnnotation(config.annotationFormat, acText, prior.number), existing: true });
+        continue;
+      }
     }
     // #3362: a keyword match proposes a QA issue; it files one only once every
     // automation route has a specific reason it cannot reach the check (the
@@ -669,6 +774,8 @@ async function main() {
       createFn: (p, t, b) => createSubIssue(p, t, b),
       createStandaloneFn: (t, b) => createStandaloneIssue(t, b),
       existingFn: (p) => listSubIssues(p),
+      existingStandaloneFn: () => listOpenQaIssues(),
+      standaloneBodyFn: (n) => fetchIssue(n).body || '',
       placeFn: (a) => placeSubIssue(a),
       writeTemp: (p, c) => fs.writeFileSync(p, c),
       unlinkTemp: (p) => { try { fs.unlinkSync(p); } catch { /* best-effort */ } },
@@ -711,6 +818,7 @@ module.exports = {
   resolveFill,
   loadFillFile,
   listSubIssues,
+  listOpenQaIssues,
   QA_PLACEHOLDER,
   DEFAULT_FIXTURES_TEMPLATE
 };

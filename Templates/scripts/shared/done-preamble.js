@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Consolidate deterministic validation and status transitions for the /done command into a single script invocation. Replaces 6-8 sequential tool round-trips. Validates issue state, checks acceptance criteria, detects epic membership, and returns structured JSON envelope for LLM continuation.
  *
  * Epic guard (#2367): the conditional auto-move-to-done is skipped when the
@@ -690,8 +690,27 @@ function gatePatterns(markersPath = GATE_MARKERS_PATH) {
   return { release: new RegExp(release.pattern), qa: qa ? new RegExp(qa.pattern) : null };
 }
 
-/** A release gate followed by its QA pointer, ending a box's text; group 1 is the QA number (#3817). */
-const POST_RELEASE_POINTER = /\s*→ GATE: release\s*→ QA: #(\d+)\s*$/;
+/**
+ * A box's post-release QA pointer, read from the loaded patterns (#3823): the
+ * box carries both the release-gate and the qa marker, in either order. The
+ * QA number is the qa marker's own match; the criterion is the text with every
+ * occurrence of both markers removed. Null when the box is not a pointer —
+ * including a qa match with no digits (#3866): a box is never checked off
+ * against a QA issue it cannot name. classifyReleaseGates blocks that box.
+ * @param {string} text - the checkbox text, without its `- [ ]` prefix
+ * @param {RegExp} release - the gate-release marker pattern
+ * @param {RegExp|null} qa - the qa marker pattern; null reads no pointer
+ * @returns {{criterion: string, qaNumber: number}|null}
+ */
+function readPostReleasePointer(text, release, qa) {
+  if (!qa || !release.test(text)) return null;
+  const match = text.match(qa);
+  if (!match) return null;
+  const digits = match[0].match(/\d+/);
+  if (!digits) return null;
+  const strip = new RegExp(`\\s*(?:${release.source}|${qa.source})`, 'g');
+  return { criterion: text.replace(strip, '').trim(), qaNumber: Number(digits[0]) };
+}
 
 /**
  * Whether an issue body can be handed off: every unchecked checkbox line
@@ -705,7 +724,9 @@ const POST_RELEASE_POINTER = /\s*→ GATE: release\s*→ QA: #(\d+)\s*$/;
  * write checked (#3817) — is `pointed`: its check is owned by that QA issue,
  * so it neither blocks nor is offered for a second hand-off. Written
  * unchecked, it is checked in place before the move; nothing is filed again.
- * A plain `→ QA: #N` box is still blocking: that gate is unchanged.
+ * A plain `→ QA: #N` box is still blocking: that gate is unchanged. So is a
+ * release-gated box whose qa marker yields no QA number (#3866): it is
+ * neither checked off nor offered for a second hand-off.
  * @param {string} body
  * @returns {{eligible: boolean, gated: Array<{index: number, line: string, criterion: string}>,
  *   pointed: Array<{index: number, line: string, criterion: string, qaNumber: number}>, blocking: string[]}}
@@ -722,11 +743,14 @@ function classifyReleaseGates(body, markersPath = GATE_MARKERS_PATH) {
   for (const box of scanCheckboxes(text)) {
     if (box.checked) continue;
     const line = lines[box.line];
-    const pointer = qa && pattern.test(box.text) && qa.test(box.text) ? box.text.match(POST_RELEASE_POINTER) : null;
+    const pointer = readPostReleasePointer(box.text, pattern, qa);
     if (pointer) {
-      pointed.push({ index: box.line, line, criterion: box.text.replace(POST_RELEASE_POINTER, '').trim(), qaNumber: Number(pointer[1]) });
+      pointed.push({ index: box.line, line, ...pointer });
+    } else if (qa && qa.test(box.text)) {
+      // A qa marker that yields no QA number (#3866), or a plain `→ QA: #N` gate.
+      blocking.push(line.trim());
     } else if (pattern.test(box.text)) {
-      gated.push({ index: box.line, line, criterion:box.text.replace(/\s*→ GATE: release\s*$/, '').trim() });
+      gated.push({ index: box.line, line, criterion: box.text.replace(new RegExp(`\\s*${pattern.source}\\s*$`), '').trim() });
     } else {
       blocking.push(line.trim());
     }
@@ -755,7 +779,9 @@ function checkPointedBoxes(body, pointed) {
  * unreadable ac-gate-markers.json — missing, not JSON, no gate-release marker
  * — is a coded warning, never an UNEXPECTED envelope. No hand-off is offered
  * then; `gh pmu move` still validates the checkboxes itself.
- * @returns {{ gates: {eligible: boolean, gated: Array, blocking?: string[]}, warning: {code: string, message: string}|null }}
+ * @returns {{ gates: {eligible: boolean, gated: Array, pointed: Array, blocking?: string[]}, warning: {code: string, message: string}|null }}
+ *   `gates` is classifyReleaseGates' result; on the warning path it is
+ *   `{eligible: false, gated: [], pointed: []}` and `blocking` is absent.
  */
 function readReleaseGates(issueNum, body, markersPath) {
   try {
@@ -793,12 +819,17 @@ function buildHandoffQaBody({ parent, parentTitle, criterion }, configPath = QA_
     '2. Record the evidence (run or scan URL, output) in a comment on this issue.',
     `3. Close with \`/qa\` once it holds. #${parent} was closed by \`/done\` with this check handed off (post-release gate, #3453).`,
   ].join('\n');
-  return template
-    .replace('{acDescription}', criterion)
-    .replace('{parentIssue}', String(parent))
-    .replace('{parentTitle}', parentTitle || '')
-    .replace('{steps}', steps)
-    .replace('{expectedResult}', `${criterion} — holds after the release deploys.`);
+  const values = {
+    acDescription: criterion,
+    parentIssue: String(parent),
+    parentTitle: parentTitle || '',
+    steps,
+    expectedResult: `${criterion} — holds after the release deploys.`,
+  };
+  // One pass with a replacer function: values are inserted verbatim — no `$&`
+  // expansion (#3826) — and never rescanned, so a literal `{steps}` in a
+  // criterion or title is not taken for a placeholder (#3866).
+  return template.replace(/\{(acDescription|parentIssue|parentTitle|steps|expectedResult)\}/g, (_, key) => values[key]);
 }
 
 async function defaultWriteBody(issueNum, body) {

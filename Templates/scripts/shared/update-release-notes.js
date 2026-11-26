@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Extract CHANGELOG section and update GitHub Release page with formatted notes. Transforms raw CHANGELOG entries into standardized release page format with title, date, summary, and category sections. Used by /prepare-release post-tag phase.
  * @checksum sha256:placeholder
  *
@@ -39,6 +39,30 @@ function extractChangelogSection(changelog, version) {
         `## \\[${escapedVersion}\\]\\s*-\\s*(\\d{4}-\\d{2}-\\d{2})\\r?\\n([\\s\\S]*?)(?=## \\[|$)`
     );
     return changelog.match(versionPattern);
+}
+
+/**
+ * Pre-tag check (#3877): can extractChangelogSection find this version's
+ * section? /prepare-release runs it before the Step 3.2 commit, so a heading
+ * Step 4.8 cannot read stops the release before the irreversible tag push.
+ * @param {string} changelog - CHANGELOG.md content
+ * @param {string} version - Version, with or without a leading 'v'
+ * @returns {{ok: boolean, expectedHeading: string, date?: string, message: string}}
+ */
+function checkChangelogSection(changelog, version) {
+    const bare = String(version).replace(/^v/, '');
+    const expectedHeading = `## [${bare}] - YYYY-MM-DD`;
+    const match = extractChangelogSection(changelog, bare);
+    if (match) {
+        return { ok: true, expectedHeading, date: match[1], message: `CHANGELOG section found for ${bare} (${match[1]})` };
+    }
+    const vHeading = `## [v${bare}]`;
+    const found = changelog.includes(vHeading) ? ` Found \`${vHeading}\` — remove the leading \`v\`.` : '';
+    return {
+        ok: false,
+        expectedHeading,
+        message: `No CHANGELOG section that update-release-notes.js can read for ${bare}: the heading must be \`${expectedHeading}\`.${found}`
+    };
 }
 
 /**
@@ -355,7 +379,38 @@ function transformToReleaseFormat(version, date, rawContent, repoUrl, previousTa
     return notes;
 }
 
+/**
+ * `--check <version>`: run checkChangelogSection against ./CHANGELOG.md and
+ * exit 1 when the section cannot be found. Reads only; publishes nothing.
+ */
+function runCheck(rawVersion) {
+    let version;
+    try {
+        version = validateVersion(rawVersion || '');
+    } catch (err) {
+        console.log(JSON.stringify({ success: false, message: `--check needs a version: ${err.message}` }));
+        process.exit(1);
+    }
+    const changelogPath = path.join(process.cwd(), 'CHANGELOG.md');
+    if (!fs.existsSync(changelogPath)) {
+        console.log(JSON.stringify({ success: false, message: 'CHANGELOG.md not found' }));
+        process.exit(1);
+    }
+    const result = checkChangelogSection(fs.readFileSync(changelogPath, 'utf8'), version);
+    console.log(JSON.stringify({
+        success: result.ok,
+        message: result.message,
+        expectedHeading: result.expectedHeading,
+        ...(result.date ? { date: result.date } : {})
+    }));
+    process.exit(result.ok ? 0 : 1);
+}
+
 async function main() {
+    if (process.argv[2] === '--check') {
+        return runCheck(process.argv[3]);
+    }
+
     // Get version from args or try to detect from latest tag
     let version = process.argv[2] ? validateVersion(process.argv[2]) : undefined;
 
@@ -468,6 +523,7 @@ module.exports = {
     getRepoUrl,
     escapeRegex,
     extractChangelogSection,
+    checkChangelogSection,
     main
 };
 

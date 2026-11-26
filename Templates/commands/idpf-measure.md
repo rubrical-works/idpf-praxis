@@ -1,79 +1,91 @@
 ---
-version: "v0.122.0"
+version: "v0.123.0"
 description: Instrument an IDPF command run and report where its time went.
 argument-hint: "--start | --stop | --report [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
+
 <!-- MANAGED -->
 # /idpf-measure
-Instruments a command run and reports where its time went, separating **tool execution time** from **model generation time**. Collection is armed and disarmed explicitly, so no session pays unless someone asked.
-**MANAGED, no `USER-EXTENSION` blocks** — no per-project customization surface: what is recorded is fixed by the decomposition, and the one tunable (per-spawn cost) is calibrated, not configured (#2746).
-**Not `/idpf-stats`,** which measures repository output; this measures one run's execution.
+Instruments a command run and reports where its time went, separating **tool execution time** from **model generation time**. Collection is armed and disarmed explicitly, so no session pays for it unless someone asked.
+**MANAGED, with no `USER-EXTENSION` blocks.** What it records is fixed by the decomposition; the one tunable value — per-spawn hook cost — is calibrated on the machine, not configured (same reasoning as #2746).
+**Not `/idpf-stats`**, which measures repository output (commits, issues, velocity). This measures one command run's execution.
 ## Prerequisites
-Node only — built-ins; no `gh pmu` call.
+- Nothing beyond Node. The tap uses built-ins only; no `gh pmu` call is made.
 ## Arguments
 Exactly one mode per invocation.
 | Argument | Behavior |
 |----------|-----------|
-| `--start` | Arm: calibrate spawn cost, reset log, write marker, wire tap |
-| `--stop` | Disarm — remove marker and wiring — and print report |
-| `--report` | Print report **without** disarming, so a long `--nonstop` run can be inspected mid-flight |
-| `--reset` | Clear the event log **without** disarming: marker, calibrated `spawnMs`/`startedAt` and wiring all untouched. Reports events discarded and the span they covered |
+| `--start` | Arm collection: calibrate the spawn cost, reset the log, write the marker, wire the tap |
+| `--stop` | Disarm — remove the marker, remove the wiring — and print the report |
+| `--report` | Print the report **without** disarming, so a long `--nonstop` run can be inspected mid-flight |
+| `--reset` | Clear the event log **without** disarming: the marker, its calibrated `spawnMs` and `startedAt`, and the wiring are untouched. Reports how many events were discarded and the span they covered |
+| `--schema` | Print the envelope reference and exit, mutating nothing |
 | `--help` | Open this command's docs page. Takes precedence over every other argument and performs no action. |
-
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js idpf-measure`, report its output, and STOP.
-
-**`--reset` is NOT "clear everything" — `--start` already does that**, unlinking the log on every arm, while `--stop` retains it so a post-hoc `--report` works. So the arm/disarm cycle already gives a clean log per run, and a clear-everything reset would be a second spelling of `--start`. What no combination gives is clearing the log while **staying armed**: you arm, do setup — inspect a file, check a branch, fix a typo — then run what you meant to measure, setup calls already in the log.
-`--stop` then `--start` is more disruptive than warranted: it recalibrates, so figures either side sit on different bases; rewrites the git-tracked settings file twice for a log truncation; and briefly disarms, a visible window where peers may be collecting.
-| `--schema` | Print the envelope reference; mutates nothing |
-Two modes at once is an error, not a silent choice. An unrecognized flag is reported and ignored, **never silently dropped** — `02-github-workflow.md`'s pass-through convention at the script layer.
+**`--reset` is not "clear everything" — `--start` already does that** (it unlinks the log on every arm; `--stop` retains it for a post-hoc `--report`). What no combination provides is clearing the log while **staying armed**: arm, do setup, then run what you meant to measure without the setup calls in the log. `--stop` then `--start` instead recalibrates (figures either side on different bases), rewrites the git-tracked settings file twice, and briefly disarms where peers may be collecting.
+Two modes at once is an error, not a silent choice. An unrecognized flag is reported and ignored, never silently dropped (`02-github-workflow.md` pass-through convention, at the script layer).
 ## Execution
-Delegate to the CLI; do NOT re-implement any part of the lifecycle inline.
+Delegate to the CLI; do not re-implement any part of the lifecycle inline.
 ```bash
 node .claude/scripts/shared/idpf-measure.js --start
 node .claude/scripts/shared/idpf-measure.js --stop
 node .claude/scripts/shared/idpf-measure.js --report
 ```
-Parse the envelope. `ok: false` → report `errors[0].message`, **STOP**. `ok: true` → print `report` if present, then relay every `warnings` entry **verbatim**. Warnings are the only channel for a stale marker or an already-wired tap; summarizing them away hides the two states a user most needs to see.
-**On `--start` in this repo, report the tracked-file caveat:** `.claude/settings.local.json` is git-tracked here, so arming produces a tracked diff that `--stop` reverts. Say so, rather than letting it surface later as an unexplained modification. Deployed projects lack the file entirely and `--start` creates it — nothing to warn about there.
+Parse the JSON envelope. `ok: false` → report `errors[0].message` and **STOP**. `ok: true` → print `report` when present, then relay every `warnings` entry verbatim — the only channel for a stale marker or an already-wired tap; never summarize them away.
+**Report the tracked-file caveat on `--start` in this repository:** `.claude/settings.local.json` is git-tracked here, so arming produces a tracked diff `--stop` reverts. In a deployed project the file is absent and `--start` creates it — nothing to warn about.
 ## What the report separates, and why it can
-One event per tool call at `PostToolUse`, each carrying the harness's own `duration_ms`.
+The tap records one event per tool call at `PostToolUse`, each carrying the harness's own `duration_ms`.
 | Figure | Derived from |
 |---|---|
 | tool execution time | summed `duration_ms` — the harness's measurement, not the instrument's |
 | model generation time | summed inter-event gaps, each less the following call's `duration_ms` |
 | instrument overhead | calls − 1, times the calibrated per-spawn cost |
-**This is the one thing manual marking cannot do:** every hand-recorded interval contains both components with no way to split them.
-**`PostToolUse` only — deliberately; do NOT "fix" this back to a pair.** A `PreToolUse`/`PostToolUse` subtraction measures the instrument's own two spawns along with the tool: inflation 1.8×–8.3×, worst where the tool is fastest, which is where task-call counting lives. Reading `duration_ms` is more accurate *and* half the cost. See `Construction/Design-Decisions/2026-09-06-idpf-measure-posttooluse-only.md`.
-**Overhead is disclosed, and charged to model generation only.** The spawn does not cancel between events — the session waits for the hook process to exit before the model resumes — so each gap carries exactly one. Tool execution carries none. The report states the figure so that bucket reads net of the instrument.
-## Why armed, not always on
-A permanent tap spawns a Node process per tool call in every session forever, measured or not — ~95ms a call, ~6s on a 66-call run. A diagnostic that taxes all users for occasional use is a bad trade, worse downstream where nobody asked for it. **A marker check inside the hook does not help:** the spawn IS the cost and happens before the hook's code runs. Only unwiring removes it.
+**Manual marking cannot do this** — every hand-recorded interval contains both components with no way to split them.
+**`PostToolUse` only — deliberately; must not be "fixed" back to a pair.** The `PreToolUse`/`PostToolUse` subtraction measures the instrument's two spawns with the tool: 1.8×–8.3× inflation, worst where the tool is fastest. Reading `duration_ms` is more accurate *and* half the cost. See `Construction/Design-Decisions/2026-09-06-idpf-measure-posttooluse-only.md`.
+**Overhead is disclosed and charged to model generation only.** The session waits for the hook process to exit before the model resumes, so each gap carries exactly one spawn; tool execution carries none.
+## Why collection is armed rather than always on
+A permanently-registered tap spawns a Node process on every tool call in every session — ~95ms a call, ~6s on a 66-call run — taxing all users for occasional use. **A marker check inside the hook does not help:** the spawn *is* the cost, and happens before the hook's code runs. Only wiring and unwiring removes it.
 ## Scope: collection is project-wide, reporting is session-filtered (#2798)
-**Different scopes — the non-obvious part.** The tap is wired via `.claude/settings.local.json`, a project file with no per-session form, so it fires for **every** session in the working directory and all their calls land in one log. Reporting then filters to the active session from `CLAUDE_CODE_SESSION_ID`.
-**Filtering is correctness, not presentation.** Tool execution sums independent `duration_ms` and survives interleaving. Model generation does not: it derives from inter-record *gaps*, which assume consecutive records are one serial timeline. Across an interleaved log a gap can span a peer's whole tool call and go negative against the next call's duration. Within one session it is correct — sessions run in parallel, so the interval between one session's consecutive calls is its own generation time whatever a peer did.
-The report names excluded sessions and their call counts, so a filtered report never reads like one with no peer present. Records with no session id (logged before attribution existed) are an **unattributed** group, excluded, never folded into the active session's totals.
-**Every session still pays the per-call spawn** whether or not its records are reported — the wiring is project-scoped with no per-session form. Inherent to the mechanism, not a filtering gap.
+The tap is wired through `.claude/settings.local.json`, which has no per-session form, so it fires for **every** session in the working directory into one log. Reporting filters to the active session, from `CLAUDE_CODE_SESSION_ID`.
+**Filtering is a correctness requirement.** Tool execution sums independent `duration_ms` and survives interleaving; model generation is derived from inter-record *gaps*, which assume one serial timeline. Across an interleaved log a gap can span a peer's whole call and go negative. Within one session's records the interval between consecutive calls is that session's own generation time.
+The report names each excluded session and its call count, so a filtered report never reads like one with no peer present. Records with no session id (logged before attribution) are an **unattributed** group, excluded — never folded into the active session's totals.
+**Every session still pays the per-call spawn** whether or not its records are reported — inherent to project-scoped wiring.
+## Timelines: the main thread and each agent (#3914)
+**Session filtering is not enough when agents run.** A spawned agent's calls carry its parent's `session_id`, so they land among the main thread's records; with agents running at once, the record after a main-thread call is often an agent's, and that gap is nobody's generation time — #2798 one level down. `/work --concurrent` and the review gates spawn agents routinely.
+**The tap records which timeline made each call.** A live `PostToolUse` dump showed `agent_id`/`agent_type` on calls inside an agent and neither on main-thread calls; `transcript_path` and the hook environment are identical for both. Every record carries `agent_id` and `agent_type`, `null` on the main thread; an `Agent` call also records `background` and `launched_agent_id` from its response. See `Construction/Design-Decisions/2026-11-24-idpf-measure-per-agent-timelines.md`.
+| Element | Behavior |
+|---|---|
+| Headline figures | The **main thread's** only; an agent's calls are never folded in |
+| **Timelines** section | One row per timeline — main thread and each agent, labeled by type and id — with calls, tool execution, model generation, overhead and elapsed time. Shown only when the session ran an agent or holds unattributed records |
+| Model generation | Derived from gaps **within** one timeline; no gap joins two timelines |
+| Overhead | Charged per timeline: each of its gaps carries one hook spawn |
+| Agent elapsed time | The span of the agent's **own** records (first call start → last call end) |
+| Background `Agent` call | Listed as **`Agent (launch)`** and labeled launch time: the call returns when the agent starts, so its `duration_ms` is not the agent's work |
+| Overlap | Timelines run at the same time, so the report says so and gives **no combined total** — adding them would count the same time more than once |
 ## What arming does to the working tree (#2803)
-**In this repo `.claude/settings.local.json` is git-tracked** — the opposite of a PHM project, where the file is absent and `--start` creates it (#2794 AC3). Arming here produces a **tracked diff every session sharing the directory can see**, and a crash between `--start` and `--stop` leaves it modified.
-`--stop` restores byte-for-byte and the redness is working-tree-local; committed state is unaffected. But while armed the tree is not private to the measuring session, which is why the `Docs/02-Advanced/Claude-Code-Dependencies.md` §3 guard excludes the tap from its derived count: without that, arming turned `npx jest` red repo-wide, and Step 4f's sweep is a hard gate — one developer measuring blocked every other session from completing an issue on a failure they did not cause.
+**In this repository `.claude/settings.local.json` is git-tracked**, unlike a PHM-bootstrapped project where `--start` creates it (#2794 AC3). Arming produces a **tracked diff every session sharing the working directory can see**; a crash between `--start` and `--stop` leaves it modified.
+`--stop` restores the file byte-for-byte; committed state is unaffected. While armed the tree is not private to the measuring session, which is why the `Docs/02-Advanced/Claude-Code-Dependencies.md` §3 guard excludes the tap from its derived count — otherwise arming turned `npx jest` red repo-wide and blocked other sessions' Step 4f sweeps.
 ## Degradation
 | Situation | Behavior |
 |---|---|
-| `--stop`, nothing armed | Warning, not error — a normal state |
-| Marker present, session died | Reported **stale** and cleaned up. NEVER silently honored — that leaves collection armed forever |
-| Live marker, another session | Left in place, and said so. This `--stop` must not strand a concurrent one |
-| `--start` when already wired | Idempotent; reported, wiring unchanged. **Stores no restore baseline** — it did not add the tap and holds no pre-tap contents, so it must not offer any (#2807) |
-| `--stop` after such a `--start` | Removes the tap **surgically** and says so, never reporting a clean verbatim restore. Storing the tapped file as baseline made the wired state a **fixed point**: `--stop` wrote the tap back and reported success, so no arm/disarm cycle returned the tree to clean. Co-tenants survive; formatting may be normalized, and the warning says so |
-| Empty log | "No events were collected" plus likely causes — never zeros, which assert a run happened and took no time |
-| Call with no `duration_ms` | Counted, excluded, surfaced as making the total partial. A missing duration is the harness declining to report, NOT a 0ms call |
-| Fewer than two events | Model generation **not measurable**, not zero. With no gap it is unmeasured; 0 would assert the model spent no time thinking |
-| No marker at report time | Coverage **qualified**: collection had stopped, so figures cover only up to the last recorded call and may omit later activity. Marker absence suffices alone — no timestamp threshold: a report legitimately runs after the last call, so any bare timeout is invented (#2800) |
-| Spawn cost unavailable from marker | Overhead line marks the value a **fallback constant**, not this machine's calibration, so the model-generation figure it is subtracted from is approximate. The fallback is deliberate, so an older marker still renders; printing it like a calibration was the defect (#2800) |
-| Marker present, records stop early | **NOT** inferred. A gap between last record and reporting time is reported via the fields above, never a truncation verdict on its own — the marker, not a clock, decides |
-| `--reset`, nothing armed | Warning, not error — matches `--stop`. Any log from a previous run is still cleared, unarmed state reported |
-| `--reset`, no log present | Reports nothing to clear. Not an error: indistinguishable in effect from a successful reset |
-| `--reset`, live foreign marker | **Refuses**, log intact, naming the owning pid. The log is shared across sessions, so clearing discards a peer's events — the stranding `--stop`'s guard prevents. Refusing not prompting avoids a second convention (#2799) |
-| First call has no `duration_ms` | Measured span underivable, so shares are **withheld** rather than computed against an assumed zero, which is shorter than the run and overstates all. Totals still print (#2797) |
+| `--stop` with nothing armed | Warning, not an error. Nothing to disarm is a normal state |
+| Marker present but its session died | Reported **stale** and cleaned up. Never silently honored — that would leave collection armed forever |
+| A live marker from another session | Left in place, and said so. This session's `--stop` must not strand a concurrent one |
+| `--start` when already wired | Idempotent; reported, wiring unchanged. **Stores no restore baseline** — it did not add the tap and holds no pre-tap contents (#2807) |
+| `--stop` after such a `--start` | Removes the tap **surgically** and says so, never a clean verbatim restore. Storing the tapped file as baseline made the wired state a fixed point no arm/disarm cycle could clean. Co-tenant hooks survive; unrelated formatting may be normalized, and the warning states that |
+| Empty log | "No events were collected", with likely causes — never a report of zeros |
+| A call with no `duration_ms` | Counted, excluded from the total, surfaced as making the figure partial. A missing duration is the harness declining to report, not a 0ms call |
+| Fewer than two events | Model generation **not measurable**, not zero |
+| No marker at report time | **Coverage** qualified: collection had already stopped, so figures cover only up to the last recorded call. The marker's absence suffices — no timestamp threshold, since any bare timeout would be invented (#2800) |
+| Spawn cost unavailable from the marker | Overhead marked a **fallback constant**, not this machine's calibration, and model generation called correspondingly approximate. The fallback is deliberate (older markers still render); presenting it as a calibration was the defect (#2800) |
+| Marker present, but records stop early | **Not** inferred — reported through the fields above, never a truncation verdict; the marker, not a clock, decides |
+| `--reset` with nothing armed | Warning, not an error, as `--stop`. Any previous log is still cleared and the unarmed state reported |
+| `--reset` with no log present | Reports nothing to clear. Not an error |
+| `--reset` against a live foreign marker | **Refuses**, log intact, naming the owning pid: the shared log holds a concurrent session's events. Refusing rather than prompting avoids a second convention for the same situation (#2799) |
+| First call has no `duration_ms` | Measured span cannot be derived, so every share is **withheld** rather than computed against an assumed zero. Component totals still print (#2797) |
+| Records with no `agent_id` field among attributed ones | Written before #3914: an **unattributed** group with its own row, excluded from the main thread's figures and every other timeline. Folding them into the main thread would bring the merge back |
+| No record carries an `agent_id` field | Nothing to separate: the session is decomposed whole as before, and the report says the main thread and any agents cannot be separated |
 ## STOP — Workflow Boundary
-`--start` and `--stop` mutate `.claude/settings.local.json`. Report what changed and **STOP**. Do NOT run, interpret, or act on a measured command on the user's behalf — arming an instrument is not permission to use it.
+`--start` and `--stop` mutate `.claude/settings.local.json`. Report what changed and **STOP**. Do not proceed to run, interpret, or act on a measured command on the user's behalf — arming an instrument is not permission to use it.
 **End of /idpf-measure Command**

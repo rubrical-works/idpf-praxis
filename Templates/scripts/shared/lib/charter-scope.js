@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Charter scope inputs shared by the commands that create work (#3001, #3645).
  * @checksum sha256:placeholder
  *
@@ -36,7 +36,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { classifyCharterFile, tryLoadCharterContract, headingMatches, fencedLines } = require('./charter-template');
+const { classifyCharterFile, tryLoadCharterContract, contractHeadings, headingMatches, fencedLines } = require('./charter-template');
 const { readFlagValues } = require('./command-args');
 
 const DATA_REL = path.join('.claude', 'metadata', 'charter-enforcement.json');
@@ -73,10 +73,16 @@ function sectionBullets(charterText, heading) {
   return bullets;
 }
 
-/** The charter's scope bullets: In Scope and Out of Scope. */
+/**
+ * The charter's scope bullets: In Scope and Out of Scope. The In Scope heading
+ * is the contract's `shapeThresholds.inScopeHeading` (#3854), the literal name
+ * when the key is absent or the contract cannot be loaded.
+ */
 function parseCharterSections(charterText) {
+  const loaded = tryLoadCharterContract();
+  const inScopeHeading = contractHeadings(loaded.ok ? loaded.contract : null).inScope;
   return {
-    inScope: sectionBullets(charterText, 'In Scope'),
+    inScope: sectionBullets(charterText, inScopeHeading),
     outOfScope: sectionBullets(charterText, 'Out of Scope'),
   };
 }

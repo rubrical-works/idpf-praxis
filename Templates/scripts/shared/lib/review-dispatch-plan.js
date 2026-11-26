@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Plan a concurrent multi-issue /review-issue run. Exports planDispatch(), nextDispatches(), decideTestPlanHold(), planResolvePhase(). Pure: takes each member's review-preamble.js envelope and returns the parent-handled members (PRD before its test plan), the deduplicated dispatch queue with epic children ahead of their epic, the cap-bounded groups and the run mode; planResolvePhase() returns the deferred resolve phase once every member has settled (#3808).
  * @checksum sha256:placeholder
  *
@@ -108,17 +108,20 @@ function planDispatch(input = {}) {
     const c = classifyMember(member);
     if (c.dispatch && c.dispatch.type === 'epic') {
       // Expand: children ascending, `expansionCap` per epic; the epic itself
-      // waits on every reached child that a reviewer takes. A child already
-      // seen (typed earlier, or under another epic) is reviewed once.
+      // waits on every child in the run that a reviewer takes. A child already
+      // seen (typed earlier, or under another epic) is reviewed once, takes no
+      // cap slot, and — when queued — gates the epic whatever its index (#3835).
       const children = [...new Set(Array.isArray(member.children) ? member.children : [])].sort((a, b) => a - b);
       const childEnvelopes = member.childEnvelopes || {};
       const after = [];
-      children.forEach((child, i) => {
-        if (i >= expansionCap) {
-          if (!seen.has(child)) notReached.push({ issue: child, epic: member.issue, reason: 'expansion-cap' });
-          return;
-        }
+      let expanded = 0;
+      for (const child of children) {
         if (!seen.has(child)) {
+          if (expanded >= expansionCap) {
+            notReached.push({ issue: child, epic: member.issue, reason: 'expansion-cap' });
+            continue;
+          }
+          expanded += 1;
           seen.add(child);
           const env = childEnvelopes[child];
           add(env ? classifyMember({ issue: child, envelope: env }) : { dispatch: { issue: child, type: null } });
@@ -126,7 +129,7 @@ function planDispatch(input = {}) {
           if (last && last.issue === child) last.epic = member.issue;
         }
         if (queued.has(child)) after.push(child);
-      });
+      }
       add({ dispatch: { ...c.dispatch, after } });
       continue;
     }
@@ -312,19 +315,38 @@ const FIRST_PASS_OUTCOMES = Object.freeze(['reviewed', 'pending', 'error']);
  * Takes the plan, never the mode: the concurrent and sequential paths share one
  * ordering because the order is a property of the queue, not of completion.
  *
+ * **Readiness (#3859, #3848).** When the parent passes `relayed`, a dispatched
+ * member is settled only once its reviewer has returned **and** its result has
+ * been relayed to the user: a result relayed after a resolve prompt is printed
+ * pushes the prompt's printed change out of view. A returned-but-unrelayed
+ * member is named in `unsettled` and in `unrelayed`. Parent-handled members
+ * have no reviewer result to relay. Without `relayed` only the outcome is read.
+ *
  * @param {object} plan - planDispatch result
- * @param {{outcomes?: Object<number, string>, stepWise?: boolean}} state
- *   `outcomes`: issue → first-pass outcome (`reviewed`, `pending`, `error`, `held`)
+ * @param {{outcomes?: Object<number, string>, relayed?: Object<number, boolean>|number[], stepWise?: boolean}} state
+ *   `outcomes`: issue → first-pass outcome (`reviewed`, `pending`, `error`, `held`);
+ *   `relayed`: issue → true once its result was relayed (or an array of those issues)
  * @returns {{ phase: 'review'|'resolve'|'done', settled: boolean, unsettled: number[],
- *   resolveOrder: number[], errored: number[], held: number[], skipped: ?string,
- *   step3aInput: number[] }}
+ *   unrelayed: number[], resolveOrder: number[], errored: number[], held: number[],
+ *   skipped: ?string, step3aInput: number[] }}
  */
 function planResolvePhase(plan, state = {}) {
   const outcomes = state.outcomes || {};
   const outcomeOf = (issue) => outcomes[issue];
+  const tracksRelay = state.relayed !== undefined && state.relayed !== null;
+  const relayedSet = new Set(
+    Array.isArray(state.relayed)
+      ? state.relayed.map(Number)
+      : Object.entries(state.relayed || {}).filter(([, v]) => v === true).map(([k]) => Number(k))
+  );
   const unsettled = [];
+  const unrelayed = [];
   for (const item of plan.queue || []) {
     if (!FIRST_PASS_OUTCOMES.includes(outcomeOf(item.issue))) unsettled.push(item.issue);
+    else if (tracksRelay && !relayedSet.has(item.issue)) {
+      unsettled.push(item.issue);
+      unrelayed.push(item.issue);
+    }
   }
   for (const h of plan.parentHandled || []) {
     if (h.awaitsPrd !== undefined && outcomeOf(h.issue) === undefined) unsettled.push(h.issue);
@@ -335,7 +357,7 @@ function planResolvePhase(plan, state = {}) {
   const step3aInput = (plan.queue || [])
     .filter((q) => ['reviewed', 'pending'].includes(outcomeOf(q.issue)))
     .map((q) => q.issue);
-  const base = { unsettled, errored, held, step3aInput };
+  const base = { unsettled, unrelayed, errored, held, step3aInput };
   if (unsettled.length > 0) {
     return { phase: 'review', settled: false, resolveOrder: [], skipped: null, ...base };
   }

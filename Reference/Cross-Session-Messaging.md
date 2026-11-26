@@ -1,5 +1,5 @@
 # Cross-Session Messaging
-**Version:** v0.122.0
+**Version:** v0.123.0
 **Source:** Reference/Cross-Session-Messaging.md
 **Purpose:** Forensics and provenance for cross-session messaging: peer discovery, reachability and liveness, what the session registry contains, and why each lever behaves as it does.
 ## How This Relates to Rule 03
@@ -32,6 +32,7 @@ The one **reception** lever; every other governs emission.
 ## Receipt Replies and Overlap Notices (#2922, #2914)
 A live `/overwatch` sends one **receipt reply** per announcement routed to it, making receipt observable. Never "acknowledgment" — taken by receiver-side narration.
 **Unknown ledger id: reported, never recorded** — applying it to the latest entry would attribute the receipt to whichever announcement was last. `lib/overwatch-receipt.js` `parseReceipt()` reads the id from the first line (`Receipt from /overwatch: … (ledger: <id>)`).
+**Sender recorded at routing, never passed in (#3911)** — the announcing session records the receipt and has nothing naming the monitor, so a remembered `--from` once credited five receipts to the sender itself. A targeted entry records `monitorPid`/`monitorName`; `--receipt-received` takes `receiptFrom` from it. Routing already refuses a shared monitor name, so the pair names one session among any number of peers and subagents. A `--from` naming another session is refused (exit 1, both named); a broadcast entry's receipt carries `receiptFlag: no-recorded-monitor` — flagged, never a silent null.
 **A receipt confirms one hop and nothing else.** `dispatch: sent` = the `SendMessage` succeeded; `receipt: received` = the monitor read it. Nothing about acting on it or relays; the ledger keeps the two axes separate.
 **Why an overlap notice is relayed in full under quiet narration:** a message whose first line begins `Overlap notice from /overwatch:` went to this session alone because its issue declares files another in-flight issue declares — the one inbound message actionable for the receiver, which a one-line acknowledgment would bury. The monitor already analyzed it; the notice names both issues, both sessions and the shared files. No reply obligation.
 ## Reachability

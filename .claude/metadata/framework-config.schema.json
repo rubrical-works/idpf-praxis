@@ -269,10 +269,19 @@
                 "minLength": 1,
                 "description": "Optional selector command for the Step 4f sweep (#3201). `{files}` expands to every changed file, shell-checked by test-runner.js. The command prints ONE JSON document: `mode` `selected` | `none` | `full`, `tests[]` (the test files to run), and optionally `total` (how many it chose from) and `reason`. On `selected` the sweep runs `scoped.command` with `{files}` = those tests and reports `selected N of M`; on `none` it runs nothing for this suite and reports `selected none` — never a pass. Absent, a non-zero exit, unparseable output, `mode: full`, or no `scoped.command` carrying `{files}` (the one placeholder that holds every selected test) all run `full` and name the fallback. The framework supplies no selector and no default: the project declares the command, as with every other suite command."
               },
+              "scopedSelect": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional selector command for /work's per-AC run (#3880), the narrower tier beside `sweepSelect`. Same contract as `sweepSelect`: `{files}` expands to every changed file, and the command prints one JSON document with `mode`, `tests[]` and optionally `total` and `reason`. A per-AC run (`test-runner.js scoped`) runs this selector when it is declared and `sweepSelect` when it is not; the Step 4f sweep and the Merge-Back Review Gate's Tier 1 always run `sweepSelect` and never read this key. A per-AC selection falls back to the suite's touched files, never to `full`, and Step 4f still sweeps the full tier."
+              },
               "concurrency": {
                 "type": "string",
                 "enum": ["parallel", "exclusive"],
                 "description": "Whether this suite may run inside a concurrent member's worktree (#3132). `parallel` suites run per member in the worktree; `exclusive` suites are deferred and run once, serially, on the tracker branch after the group's merge-back and worktree teardown — never skipped. Absent means the role default: `e2e` → `exclusive`, every other role → `parallel`, applied by `resolveConcurrency` in test-runner.js. An invalid value is refused by this enum at write time and, if it reaches the runner anyway, is reported as invalid rather than defaulted to `parallel`."
+              },
+              "wholeRepo": {
+                "type": "boolean",
+                "description": "Whether this suite reads files across the whole repository rather than only the files it matches — a spelling sweep, a contract test that enumerates every spec (#3856). A sparse framework worktree (`worktrees.sparse`) lacks the files outside its cone, and such a suite passes there without checking them. So inside a worktree that is not stated to be a full checkout, test-runner.js treats a `wholeRepo: true` suite as `concurrency: exclusive`: never run in the worktree, deferred to one run on the tracker by deferredInvocations(). Absent means false. A suite mixing whole-repo tests with ordinary ones is deferred whole when marked, or runs vacuously in part when not: split it if that matters."
               },
               "execution": {
                 "type": "string",
@@ -452,6 +461,90 @@
         "type": "string"
       },
       "description": "Path prefixes this project deploys to its users. Consumed by .claude/scripts/shared/lib/deployment-scope.js (#2602) as the classification basis for projects that have no minimize-config.json — which is every project except the framework repo itself. Without either basis the classifier returns \"unknown\" rather than a confident \"dev-only\", so an undeclared project is distinguishable from one whose files are genuinely internal. An empty array is not a declaration and does not establish a basis."
+    },
+    "worktrees": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How framework-created worktrees (`.tmp-wt-*`, made by .claude/hooks/worktree-create-hook.js) check out the repository (#3856). Two keys: `sparse` declares a cone-mode sparse checkout, and `lfs` declares how Git LFS content is treated. ABSENT OR EMPTY MEANS A FULL CHECKOUT with LFS content smudged, which is the behavior before this key existed. Only framework worktrees are affected; the main working tree is never made sparse. While `sparse` is absent or empty the startup hook evaluates the repository and offers a configuration; a decline writes nothing, so the offer recurs, and `sparse: false` records a decided full checkout. Praxis Hub Manager writes the same keys at clone time (rubrical-worker/px-manager#1689). Partial clone is deliberately NOT a key: it is a property of the clone, not of a worktree, and the hook only detects it. Read through .claude/scripts/shared/lib/framework-config.js resolveWorktreeConfig(); an entry this schema refuses, if hand-edited onto disk, is dropped and named by the resolver rather than applied. Lives here rather than in .claude/metadata/ for the reason #2702 recorded: that directory is a read-only hub junction in deployed projects. Recorded in Construction/Design-Decisions/2026-11-22-sparse-framework-worktrees.md.",
+      "properties": {
+        "sparse": {
+          "description": "The cone for framework worktrees. `false` is a decided full checkout (no startup offer). An object carries EITHER `include` (the directories checked out) OR `exclude` (top-level directories left out; every other top-level directory at the branch tip is checked out), never both. An object with neither, or with an empty list, is EMPTY: a full checkout, and the startup offer is made. Whatever is declared, the hook always adds the tracked `.claude/` and `Construction/` directories to the cone (the cone floor) so framework writes — /work Step 3b's Construction/Design-Decisions/ entry among them — always land, and cone mode always checks out root-level files.",
+          "anyOf": [
+            {
+              "const": false
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "not": {
+                "required": [
+                  "include",
+                  "exclude"
+                ]
+              },
+              "properties": {
+                "include": {
+                  "type": "array",
+                  "description": "Directories checked out, relative to the repository root, `/`-separated; nested paths are allowed (`src/app`). No glob characters, no line break (#3878), no `..` segment, no leading `/`; a trailing `/` is ignored. Cone mode also checks out the files directly inside each ancestor directory.",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!(?:.*/)?\\.{1,2}(?:/|$))[^*?\\[\\]!\\\\:\\r\\n]+$"
+                  }
+                },
+                "exclude": {
+                  "type": "array",
+                  "description": "Top-level directories left out of the cone. One path segment each, with no line break (#3878); a trailing `/` is ignored. Resolved against the branch tip at creation, so a directory added later is checked out unless it is listed.",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^(?!\\.{1,2}/?$)[^/*?\\[\\]!\\\\:\\r\\n]+/?$"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "lfs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "description": "How Git LFS content is treated in a new framework worktree. Absent means `smudge`. In a repository that uses no LFS (no `filter=lfs` in a tracked .gitattributes) a configured mode is reported by the hook and ignored, never a failure. Installing Git LFS is out of scope: with `pull` and no git-lfs available the hook fails the creation and names the cause.",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "smudge",
+                "skip",
+                "pull"
+              ],
+              "description": "`smudge` (default) checks out LFS content as git-lfs normally does; `skip` leaves pointer files (GIT_LFS_SKIP_SMUDGE=1 during the checkout); `pull` skips smudging and then fetches only the `include` paths with `git lfs pull --include`, bounded inside the hook budget."
+            },
+            "include": {
+              "type": "array",
+              "minItems": 1,
+              "description": "LFS path patterns fetched in `pull` mode, passed to `git lfs pull --include` joined by commas — so no pattern may contain a comma. REQUIRED when mode is `pull`.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[^,]+$"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "pull"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "include"
+            ]
+          }
+        }
+      }
     },
     "concurrency": {
       "type": "object",

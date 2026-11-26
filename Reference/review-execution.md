@@ -1,5 +1,5 @@
 # Review Execution Rule
-**Version:** v0.122.0
+**Version:** v0.123.0
 **Source:** Reference/review-execution.md
 Auto-loaded execution rule for `/review-issue` and `/resolve-review` (hybrid shell + rule). The shells `.claude/commands/review-issue.md` and `.claude/commands/resolve-review.md` carry arguments, prerequisites and error handling; this rule carries the Workflow for both.
 **Both commands are MANAGED with zero `USER-EXTENSION` blocks.** The three retired points live on in `extension-points.json` `deprecatedExtensionPoints`, beside `/work`'s four from #2368.
@@ -15,9 +15,10 @@ Multi-issue: each through Steps 1–3 — concurrently by default, one at a time
 **An epic is a multi-issue set.** A typed epic expands to every child in `gh pmu sub list $EPIC --json` (`children[]`, ascending), then the epic, each through Steps 1–3 as if typed; 2a-iii carries the contract.
 ### Step 1: Setup (Preamble Script)
 ```bash
-node ./.claude/scripts/shared/review-preamble.js $ISSUE [--with extensions] [--without extensions] [--mode mode] [--force] [--prior-art]
+node ./.claude/scripts/shared/review-preamble.js $ISSUE [--with extensions] [--without extensions] [--mode mode] [--force] [--prior-art] [--accept]
 ```
 **`--prior-art` is accepted here but consumed at 2a-iv, not by the preamble.** The preamble only records it; `decideFlagSweep` decides. Any flag-shaped token the loop does not recognize is collected into `unrecognizedFlags` and reported, never fatal, per `02-github-workflow.md`'s pass-through convention.
+**`--accept` is recorded here, consumed at Step 3c** — pass it when given; beside `--step-wise` the preamble returns `ACCEPT_NO_EFFECT`, relayed in the run report.
 Parse JSON. Branches:
 - `ok: false` → report `errors[0].message` → **STOP** (skip to next in batch)
 - `context.redirect` set → invoke skill **dynamically** using `context.redirect` (strip leading `/`) — all three rows below are equally normative:
@@ -76,7 +77,7 @@ with finalize's `labelAssigned` verbatim; the script applies the table and refus
 | `null` | **nothing** — emits nothing | n/a — the swap failed |
 **The trigger is the label, never the recommendation string**, which is why `/review-prd`, `/review-proposal` and `/review-test-plan` do **not** emit this. **`review-findings` is NOT terminal and its text must not claim finality** (absent from `TERMINAL_EVENTS` — do not add it), and **it closes `review-started` all the same.**
 **NOT suppressed under `--force` — the opposite of Step 1c, deliberately.** It fires on **both entry paths**: the nested re-review is how a resolve cycle reaches `Ready for work`. **No double-emission:** `/resolve-review` never emits this itself, and there is one finalize call per issue per review — once per issue, never batched.
-**Step 3c: Single Resolve Pass** — finalize gave `pending`, interactive, no `--step-wise`: once, inline, run `/resolve-review` Steps 1–3b (never `Skill("resolve-review")`), then one Steps 1–3 re-review with `--force --step-wise`. Outcome: `reviewed`; `pending` → name `/resolve-review #N`; `declined-all` → no re-review, body unchanged. Report `Resolve pass: N resolved, M skipped — outcome <outcome>`. `reviewed` at finalize → no pass. `--step-wise` → stop at `pending`, name `/resolve-review #N`. Multi-issue: conditional § 3c.
+**Step 3c: Single Resolve Pass** — finalize gave `pending`, interactive, no `--step-wise`: once, inline, run `/resolve-review` Steps 1–3b (never `Skill("resolve-review")`), then one Steps 1–3 re-review with `--force --step-wise`. Outcome: `reviewed`; `pending` → name `/resolve-review #N`; `declined-all` → no re-review, body unchanged. Report `Resolve pass: N resolved, M skipped — outcome <outcome>`. `reviewed` at finalize → no pass. `--step-wise` → stop at `pending`, name `/resolve-review #N`. Multi-issue: conditional § 3c. **`--accept`:** the inline Step 1 runs `resolve-preamble.js $ISSUE --accept` (sets `context.accept`); the inline Pass 2 runs as `/resolve-review` § Pass 2 under `--accept`; never passed to the re-review. `--accept` with `--step-wise` → Step 3c does not run; relay the preamble's `ACCEPT_NO_EFFECT` warning, never a silent drop.
 ### Step 3a: Interdependence Analysis (Multi-Issue Only)
 Trigger: 2+ issues reviewed AND all eligible per `typeFilter` in `.claude/metadata/review-interdependence.json` — read the eligible/excluded sets there; excluded wins. Do not restate them here.
 **Expanded epic: the children are the set, the epic is excluded** — `typeFilter.excluded` covers the epic type, so `reviewedIssues` holds the children only. Run over 2+ reviewed children; findings go into the epic's closing report (Step 4).
@@ -98,8 +99,9 @@ An unreached child keeps no review label; an errored child appears under `Not re
 **Expanded epic.** Trigger: Step 1's preamble returns `context.type === "epic"` for a typed issue. Body in `{frameworkPath}/Reference/review-execution-conditional.md` § `/resolve-review` — Epic Expansion (Step 1d), including the `resolveCap` from `resolveReviewExpansion`. Only a typed issue expands; a member that arrived by expansion is never expanded again.
 ### Step 1: Setup (Preamble Script)
 ```bash
-node ./.claude/scripts/shared/resolve-preamble.js $ISSUE
+node ./.claude/scripts/shared/resolve-preamble.js $ISSUE [--accept]
 ```
+Pass `--accept` when given: `context.accept` turns on Pass 2 under `--accept`.
 Parse JSON. `ok: false` → report `errors[0].message` → **STOP**.
 `earlyExit: true` (recommendation "Ready for") → "Already ready — no action needed." → **STOP**. `staleReview` set (latest review Ready, body changed since — `reviewed` or relabeled `pending`; `earlyExit` then false) → report `staleReview.message`, naming the re-review `staleReview.reReview` → **STOP**; no findings to resolve.
 **Step 1d: Load Conditional Sections.** Trigger: `context.type === "epic"`. Read `{frameworkPath}/Reference/review-execution-conditional.md` and hold it. After the early-exit check, before 1a. No trigger → one-line skip note. Own task entry.
@@ -114,14 +116,14 @@ Iterate `findings.autoFixable`. Apply and report:
 - **Missing labels:** `gh issue edit $ISSUE --add-label {label}` — inferred
 Report each under `Auto-resolved:` as `✓ <change>`.
 ### Step 3: Pass 2 — User Input
-Iterate `findings.needsUserInput`. **Print the finding as markdown before each `AskUserQuestion`** (issue, criterion, full detail; the proposed change as its complete BEFORE and AFTER text, quoted — never a summary line), then:
+Iterate `findings.needsUserInput`. **Print the finding as markdown before each `AskUserQuestion`** (issue, criterion, full detail; the proposed change as its complete BEFORE and AFTER text, quoted — never a summary line), in the same message as the `AskUserQuestion` call with no other output between them — a transcript record, readable after the dialog closes; not visible while it is open, so the user decides from the preview alone. Then:
 ```javascript
 AskUserQuestion({
   questions: [{
     question: `For Issue: #${ISSUE} — ${finding.criterion} How should this be resolved?`,
     header: "Resolution",
     options: [
-      { label: "Accept suggestion", description: "Apply the change shown", preview: "<BEFORE: text replaced / AFTER: text written; over the line budget, no preview>" },
+      { label: "Accept suggestion", description: "<change-preview.js description>", preview: "<change-preview.js preview>" },
       { label: "Provide alternative", description: "Specify your own resolution", preview: "<reviewer's alternative>" },
       { label: "Skip", description: "Leave unresolved" }
     ],
@@ -130,16 +132,25 @@ AskUserQuestion({
 });
 ```
 **One-line question; the change goes in the previews.** `Accept suggestion` previews the exact change, verbatim; `Provide alternative` the reviewer's alternative when one is named, else no `preview`.
-**Accept preview is BEFORE / AFTER, never the proposed text alone** (`{frameworkPath}/Reference/AskUserQuestion-Shape.md` § Previews that show a change): BEFORE quotes the replaced text verbatim, or states the section is absent, or quotes the placeholder replaced; AFTER is the exact text written.
-**The preview keeps to the line budget** (same § of `AskUserQuestion-Shape.md`): within it, BEFORE / AFTER; over it, no `preview` — the `description` points at the change (`Apply the change printed above`), and the complete text printed above is the only copy. The pane clips overflow, so an over-budget preview could only be a lossy restatement of text already on screen.
+**Accept preview is summary, AFTER, BEFORE, never the proposed text alone** (`{frameworkPath}/Reference/AskUserQuestion-Shape.md` § Previews that show a change): BEFORE quotes the replaced text verbatim, or states the section is absent, or quotes the placeholder replaced; AFTER is the exact text written.
+**The summary is yours:** two `/bluf`-style one-clause lines, `Changes: <clause>` and `Effect: <clause>`; `not stated` for a clause the finding does not support, never invented.
+**Preview and description come from `change-preview.js` — never composed by hand.** Write the summary, BEFORE (empty when the section is absent) and AFTER to three files in the session scratchpad, then:
+```bash
+node .claude/scripts/shared/lib/change-preview.js --issue $ISSUE --summary-file <summary> --before-file <before> --after-file <after> --scratch-dir <session scratchpad>
+```
+Use its `preview` and `description` verbatim for `Accept suggestion`; `ok: false` → report `error.message`, never fall back to a hand-built preview; no summary is `SUMMARY_REQUIRED`. Against the line budget (same § of `AskUserQuestion-Shape.md`): within it, summary, then the whole AFTER, then the whole BEFORE, no file; over it, summary, AFTER clipped with a `… (+N more lines)` marker, BEFORE kept as one clipped line under `BEFORE (clipped)`, the complete change written to `.tmp-<issue>-change-<random>.md` in the scratch directory, its full path named in `description`, never the preview. The printed text is the transcript record; on a multi-issue run it may be collapsed — the file stays reachable. **A scratch directory inside the repository root is refused** (`SCRATCH_IN_REPO`): a root `.tmp-` file lands in the tree a still-running reviewer reads.
 **A suggestion asserting runtime behavior** (reproduction steps, a command and its claimed result) **is run before the `AskUserQuestion`**: print the command and its captured output in the finding markdown; if it cannot be run, label the finding `unverified — <reason>` (`01-anti-hallucination.md` § Claim Labeling and Enumeration). Both directives govern `/review-issue` Step 3c's inline pass.
 - **Accept:** apply, `"✓ {change applied}"`
 - **Alternative:** ask conversationally, apply
 - **Skip:** `"⊘ Skipped: {finding}"`
+**Pass 2 under `--accept`** (`context.accept`): before the first prompt, sort every `needsUserInput` finding with `node .claude/scripts/shared/lib/accept-classifier.js --input <session scratchpad>/accept-$ISSUE.json` — the classifier `/review-issue` Step 3c shares. Input `{findings, judgments, runtime, type}`: `findings` = `needsUserInput`, `type` = `context.type`, `judgments` = your holds by criterion id, `{hold: true, reason}` only with a **specific** reason (two plausible fixes with different intent, discarding user-authored text), `runtime` = per id whose suggestion asserts runtime behavior, `{asserts: true, ran, why}` after running it. One decision each, in order: an `alwaysAsk` criterion → **held** with its reason; a runtime assertion that cannot be run → **held**, never auto-accepted as `unverified`; a judgment hold → **held** with its reason; else **accepted**. A hold with no reason is rejected (`HOLD_WITHOUT_REASON`, exit 1); unreadable criteria metadata holds every finding.
+- **Accepted** → the Accept path, unprompted: `change-preview.js` summary, AFTER, BEFORE, Step 1b on AC text, apply, `"✓ auto-accepted: {change applied}"`.
+- **Held** → asked as above, one `AskUserQuestion` at a time, the hold reason printed beside the finding.
+The closing report lists each auto-accepted finding and each held one with its reason. **Without `--accept`, every `needsUserInput` finding is asked** — nothing applied unprompted.
 **Both prompts name the issue.** The number comes from the command's own `$ISSUE` argument, never a `resolve-preamble.js` context field.
 **Accepted suggestions that add or reword an AC are authored AC text — apply Step 1b before writing them.**
-**Body-modifying** (`repair` set): `repair.description` shapes its BEFORE / AFTER preview within the same line budget, omitted over it; an added AC skeleton is authored AC text — apply Step 1b before writing it.
-**Title rewording:** Propose new title from content, print both titles as markdown, present "Accept", "Edit", "Skip"; one-line question prefixed `For Issue: #${ISSUE}`, proposed title in the `Accept` `preview` within the same line budget, omitted over it.
+**Body-modifying** (`repair` set): `repair.description` shapes the change; its preview and description come from `change-preview.js` as above; an added AC skeleton is authored AC text — apply Step 1b before writing it.
+**Title rewording:** Propose new title from content, print both titles as markdown, present "Accept", "Edit", "Skip"; one-line question prefixed `For Issue: #${ISSUE}`, `Accept` `preview` and `description` from `change-preview.js` as above — BEFORE the current title, AFTER the proposed one.
 **Flagged `severity-proportionate`:** re-read `.claude/metadata/bug-priority-rubric.json`, derive the priority as `/bug` Step 2c does and offer it with the matched class id and the board priority; **Accept** or an alternative `p0`–`p2` → `gh pmu move $ISSUE --priority <p>`. **Never auto-fix it** — `priority-set` fills only a *missing* priority.
 ### Step 3a: Report Suggestions
 Iterate `suggestions` — free-text findings that are **not** criteria. Report each verbatim as a bullet under `Suggestions from {reviewType} Review #M (not auto-resolved):`, and take no action. Empty array → **report nothing**: no heading, no "none" line.
@@ -150,6 +161,7 @@ After all findings resolved, mark the outer wrapper task (`Apply body edits and 
 ```
 Skill("review-issue", "#$ISSUE --force --step-wise --prior-art")
 ```
+**`--accept` is never forwarded:** it served this command's Pass 2; the `--step-wise` re-review runs no resolve pass.
 **Pass-through only.** No sweep logic here: no `decideFlagSweep`, no `reviewSweep` read, no `**Prior Art:**` write. `/review-issue` owns that decision at its 2a-iv; under `reviewSweep: off` the nested re-review reports the refusal and continues.
 Report:
 ```

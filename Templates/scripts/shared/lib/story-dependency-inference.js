@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * story-dependency-inference.js — Infer PRD story `**Depends on:**` edges
  * from acceptance criteria, and refuse a cyclic graph (#3785)
  *

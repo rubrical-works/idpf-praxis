@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Analyze a project and generate CI improvement recommendations based on detected languages, test tooling, deployment targets, and deprecated action versions. Produces structured recommendation objects consumed by ci-recommend-ui.js and ci-apply.js.
  * @checksum sha256:placeholder
  *
@@ -14,6 +14,7 @@ const path = require('path');
 const yaml = require('yaml');
 
 const { analyzeProject } = require('./ci-analyze.js');
+const { loadFeatureRegistry } = require('./ci-list.js');
 
 const RECOMMENDATION_TYPES = ['Add', 'Remove', 'Alter', 'Improve'];
 
@@ -334,6 +335,49 @@ const SCANNER_STEPS = [
 ];
 
 /**
+ * The SCANNER_STEPS a workflow's jobs run, each named once.
+ * @param {Array<{steps: object[]}>} jobs - inventoryWorkflows jobs
+ * @returns {{name: string, kind: string}[]}
+ */
+function scannerSteps(jobs) {
+  const scanners = [];
+  for (const job of jobs || []) {
+    for (const step of (job && job.steps) || []) {
+      if (!step) continue;
+      for (const s of SCANNER_STEPS) {
+        const hit = (s.run && typeof step.run === 'string' && s.run.test(step.run))
+          || (s.uses && typeof step.uses === 'string' && s.uses.test(step.uses));
+        if (hit && !scanners.some((x) => x.name === s.name)) scanners.push({ name: s.name, kind: s.kind });
+      }
+    }
+  }
+  return scanners;
+}
+
+/**
+ * Whether a workflow already has the shape addTriggerScope() writes (#3795):
+ * an audit or scanner step, push and/or pull_request each narrowed by
+ * `paths:`, a schedule with a cron, and workflow_dispatch. Judged on the
+ * parsed `on:` and steps — a schedule+dispatch maintenance job with no
+ * scanner, or a scanner that still runs on every push, is not trigger-scoped.
+ * @param {{on: *, jobs: object[]}} wf - an inventoryWorkflows entry, or any
+ *   object with the parsed `on:` value and jobs carrying `steps` arrays
+ * @returns {boolean}
+ */
+function triggerScopeApplied(wf) {
+  const on = wf && wf.on;
+  if (!on || typeof on !== 'object' || Array.isArray(on)) return false;
+  const has = (k) => Object.prototype.hasOwnProperty.call(on, k);
+  if (!has('workflow_dispatch') || !has('schedule')) return false;
+  if (!Array.isArray(on.schedule) || !on.schedule.some((e) => e && typeof e.cron === 'string' && e.cron.trim())) return false;
+  const events = ['push', 'pull_request'].filter(has);
+  if (!events.length) return false;
+  const filters = eventPathFilters(on);
+  if (!events.every((e) => Array.isArray(filters[e].paths) && filters[e].paths.length > 0)) return false;
+  return scannerSteps(wf.jobs).length > 0;
+}
+
+/**
  * Whether trigger-scope should be offered for a workflow (#3424): it runs on
  * every branch push (no branch list, no path filter), has no test step — the
  * same TEST_COMMAND match the paths-ignore offer uses — and has at least one
@@ -343,17 +387,7 @@ const SCANNER_STEPS = [
  * @returns {{eligible: boolean, reason: string, scanners: {name: string, kind: string}[]}}
  */
 function classifyTriggerScope(wf) {
-  const scanners = [];
-  for (const job of wf.jobs || []) {
-    for (const step of job.steps || []) {
-      if (!step) continue;
-      for (const s of SCANNER_STEPS) {
-        const hit = (s.run && typeof step.run === 'string' && s.run.test(step.run))
-          || (s.uses && typeof step.uses === 'string' && s.uses.test(step.uses));
-        if (hit && !scanners.some((x) => x.name === s.name)) scanners.push({ name: s.name, kind: s.kind });
-      }
-    }
-  }
+  const scanners = scannerSteps(wf.jobs);
   const scope = branchPushScope(wf.on);
   if (scope.branchPush !== 'all') return { eligible: false, reason: 'does not run on every branch push', scanners };
   if (scope.pathsFiltered) return { eligible: false, reason: 'push already filters by path', scanners };
@@ -1071,12 +1105,80 @@ function compareWithLocalSweep(workflows, projectDir, options = {}) {
 }
 
 /**
+ * Whether a CI feature is already present, judged by its ci-features.json
+ * `detectionPatterns.yaml` — the definition /ci --list and /ci --add use
+ * (#3790). Each pattern is tested only as a case-insensitive regex against the
+ * raw workflow text. Unlike ci-list.js isFeatureEnabled, dotted patterns are
+ * NOT resolved as nested paths in the parsed document: the only caller is the
+ * dependency-audit gap, whose patterns contain no dotted path.
+ * An unknown feature id or unreadable registry detects nothing.
+ * @param {Array<{raw: string}>} workflows - inventoryWorkflows() entries
+ * @param {string} featureId - ci-features.json key
+ * @returns {boolean}
+ */
+function featureDetected(workflows, featureId) {
+  let registry;
+  try { registry = loadFeatureRegistry(); } catch { return false; }
+  const feature = registry[featureId];
+  const patterns = (feature && feature.detectionPatterns && feature.detectionPatterns.yaml) || [];
+  const regexes = [];
+  for (const pattern of patterns) {
+    try { regexes.push(new RegExp(pattern, 'i')); } catch { /* skip an invalid pattern */ }
+  }
+  return workflows.some(wf => regexes.some(re => re.test(wf.raw || '')));
+}
+
+/** Visibilities `gh repo view --json visibility` reports, lowercased. */
+const REPO_VISIBILITIES = ['public', 'private', 'internal'];
+
+/**
+ * The repository's visibility from `gh repo view` (#3791), or null when it
+ * cannot be read: not a git checkout, gh missing or unauthenticated, no
+ * GitHub remote, or an answer outside REPO_VISIBILITIES. Never throws. Run as
+ * an argument array, with no shell.
+ * @param {string} projectDir
+ * @param {{ exec?: Function }} [options] - `exec`: execFileSync stand-in for tests
+ * @returns {'public'|'private'|'internal'|null}
+ */
+function readRepoVisibility(projectDir, { exec = require('child_process').execFileSync } = {}) {
+  if (!fs.existsSync(path.join(projectDir, '.git'))) return null;
+  try {
+    const out = exec('gh', ['repo', 'view', '--json', 'visibility', '--jq', '.visibility'], {
+      cwd: projectDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000
+    });
+    const visibility = String(out || '').trim().toLowerCase();
+    return REPO_VISIBILITIES.includes(visibility) ? visibility : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** What CodeQL gives a repository whose results GitHub accepts. */
+const CODEQL_IMPACT = 'Security: detects common vulnerability patterns in code';
+
+/**
+ * The prerequisite a CodeQL recommendation states for a visibility (#3791):
+ * code scanning on a private or internal repository needs GitHub Advanced
+ * Security, without which the analyze step cannot upload its results.
+ * @param {'public'|'private'|'internal'|null} visibility
+ * @returns {string|null} null for a public repository — nothing to state
+ */
+function codeqlPrerequisite(visibility) {
+  const needs = 'code scanning requires GitHub Advanced Security; without it the analyze step cannot upload results';
+  if (visibility === 'public') return null;
+  if (visibility === 'private' || visibility === 'internal') return `This repository is ${visibility}: ${needs}`;
+  return `If this repository is private or internal, ${needs}`;
+}
+
+/**
  * Analyze gaps between current workflows and best practices.
  * @param {string} projectDir - Path to project root
- * @param {{ now?: Date }} [options] - `now` is the date Node end-of-life is judged on (#3383)
- * @returns {Array<{ type: string, description: string, impact: string, feature?: string, file?: string }>}
+ * @param {{ now?: Date, readVisibility?: Function }} [options] - `now` is the date Node
+ *   end-of-life is judged on (#3383); `readVisibility(projectDir)` returns the repository
+ *   visibility or null, read only when CodeQL is recommended (#3791; default readRepoVisibility)
+ * @returns {Array<{ type: string, description: string, impact: string, feature?: string, file?: string, prerequisite?: string }>}
  */
-function analyzeGaps(projectDir, { now = new Date() } = {}) {
+function analyzeGaps(projectDir, { now = new Date(), readVisibility = readRepoVisibility } = {}) {
   const recommendations = [];
   const workflows = inventoryWorkflows(projectDir);
   const outdatedNode = outdatedNodeVersions(now);
@@ -1273,10 +1375,9 @@ function analyzeGaps(projectDir, { now = new Date() } = {}) {
   }
 
   // --- Add: Missing security audit ---
-  const hasAudit = workflows.some(wf =>
-    wf.raw.includes('npm audit') || wf.raw.includes('pip-audit') ||
-    wf.raw.includes('cargo audit') || wf.raw.includes('dependency-audit')
-  );
+  // audit-cooldown-check, the framework's own audit step, is a detection
+  // pattern there; the literal substrings here never matched it (#3790).
+  const hasAudit = featureDetected(workflows, 'dependency-audit');
   if (!hasAudit && analysis.buildSystem.length > 0) {
     recommendations.push({
       type: 'Add',
@@ -1290,12 +1391,16 @@ function analyzeGaps(projectDir, { now = new Date() } = {}) {
   const hasCodeQL = workflows.some(wf =>
     wf.raw.includes('codeql') || wf.raw.includes('CodeQL')
   );
-  if (!hasCodeQL && analysis.languages.length > 0) {
+  // Only a language CodeQL analyzes counts: ci-add refuses the rest (#3791).
+  const { codeqlLanguages } = require('./ci-add.js');
+  if (!hasCodeQL && codeqlLanguages(analysis.languages).length > 0) {
+    const prerequisite = codeqlPrerequisite(readVisibility(projectDir));
     recommendations.push({
       type: 'Add',
       description: 'Add CodeQL analysis for automated security scanning',
-      impact: 'Security: detects common vulnerability patterns in code',
-      feature: 'codeql-analysis'
+      impact: prerequisite ? `${CODEQL_IMPACT}. Requires: ${prerequisite}` : CODEQL_IMPACT,
+      feature: 'codeql-analysis',
+      ...(prerequisite ? { prerequisite } : {})
     });
   }
 
@@ -1312,7 +1417,28 @@ function analyzeGaps(projectDir, { now = new Date() } = {}) {
     });
   }
 
+  // #3789: an Add recommendation names the workflow it will change. Without a
+  // file ci-apply let ci-add guess one at apply time, unseen by the user — and
+  // for cross-os-testing it guessed a workflow_dispatch publish workflow.
+  for (const rec of recommendations) {
+    if (rec.type === 'Add' && rec.feature && !rec.file) Object.assign(rec, resolveAddTarget(projectDir, rec.feature));
+  }
+
   return recommendations;
+}
+
+/**
+ * The workflow an Add recommendation targets (#3789): an existing file's name,
+ * or the name of the file ci-add will create, flagged `createNew`.
+ * @param {string} projectDir
+ * @param {string} feature
+ * @returns {{ file: string, createNew?: true }}
+ */
+function resolveAddTarget(projectDir, feature) {
+  const { suggestWorkflowForFeature } = require('./ci-detect-workflow.js');
+  const target = suggestWorkflowForFeature(projectDir, feature);
+  if (target.createNew) return { file: target.suggestedName, createNew: true };
+  return { file: path.basename(target.file) };
 }
 
 /**
@@ -1364,7 +1490,13 @@ function formatPushReport(report) {
 
 // CLI entry point
 if (require.main === module) {
-  const dir = process.argv[2] || process.cwd();
+  const args = process.argv.slice(2);
+  const dir = args.find(a => !a.startsWith('--')) || process.cwd();
+  // #3794: --json emits the recommendation objects ci-apply.js --input reads.
+  if (args.includes('--json')) {
+    process.stdout.write(JSON.stringify(analyzeGaps(dir), null, 2) + '\n');
+    return;
+  }
   console.log(formatPushReport(inventoryPushJobs(dir)) + '\n');
   const recs = analyzeGaps(dir);
   if (recs.length === 0) {
@@ -1374,15 +1506,17 @@ if (require.main === module) {
     recs.forEach((r, i) => {
       console.log(`  ${i + 1}. [${r.type}] ${r.description}`);
       console.log(`     Impact: ${r.impact}`);
+      const target = require('./ci-recommend-ui.js').formatTarget(r);
+      if (target) console.log(`     ${target}`);
       if (r.tradeoff) console.log(`     Gives up: ${r.tradeoff}`);
     });
   }
 }
 
 module.exports = {
-  inventoryWorkflows, analyzeGaps, RECOMMENDATION_TYPES, NODE_EOL, outdatedNodeVersions, nodeUpgradeTarget,
+  inventoryWorkflows, analyzeGaps, resolveAddTarget, readRepoVisibility, codeqlPrerequisite, featureDetected, RECOMMENDATION_TYPES, NODE_EOL, outdatedNodeVersions, nodeUpgradeTarget,
   TEST_COMMAND, isTestStep, expandMatrix, branchPushScope, commandSignature, suiteKey, runsOnBranchPush,
   resolvePackageScript, normalizeWorkDir, isSetupCommand, inventoryPushJobs, compareWithLocalSweep, eventPathFilters, unfilteredEvents, acceptsPathFilter, PATH_FILTER_EVENTS,
-  classifyTriggerScope, SCANNER_STEPS, TRIGGER_SCOPE_TRADEOFF,
+  classifyTriggerScope, triggerScopeApplied, scannerSteps, SCANNER_STEPS, TRIGGER_SCOPE_TRADEOFF,
   formatPushReport
 };

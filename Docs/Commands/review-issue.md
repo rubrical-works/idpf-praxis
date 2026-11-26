@@ -11,9 +11,11 @@ Review one or more GitHub issues with type-specific criteria and tracked history
 | `--agents N` | No | For a multi-issue run, at most N reviewers at once. Resolved as `--agents N`, then the project default in `framework-config.json`, then 3, and the source is reported. N must be a positive integer; `--agents 1` reviews one issue at a time. Ignored, and reported so, on a single issue |
 | `--sequential` | No | Review a multi-issue selection one issue at a time, in typed order, instead of concurrently. Boolean — takes no value |
 | `--with` | No | Comma-separated domain extensions (e.g., `--with security,performance`) or `--with all` |
+| `--without` | No | Domain extensions to exclude, applied after `--with` (e.g., `--with all --without seo`) |
 | `--mode` | No | Transient review mode override: `solo`, `team`, or `enterprise` |
 | `--force` | No | Force re-review even if issue already has the `reviewed` label |
 | `--prior-art` | No | Force the prior-art sweep whatever the project’s `reviewSweep` mode (except `off`), and whatever the issue type. Boolean — takes no value |
+| `--accept` | No | In the resolve pass that follows a review with findings, apply each suggestion the shared classifier accepts without asking, and ask only about the held ones (always-ask criteria, runtime claims that could not be run, judgment holds), each with its reason. Has no effect when the resolve pass does not run, and the run report says so. Boolean — takes no value |
 | `--help` | No | Open this page. Takes precedence over every other argument and performs no action. |
 
 ## Usage
@@ -25,6 +27,8 @@ Review one or more GitHub issues with type-specific criteria and tracked history
 /review-issue --status ready --agents 2
 /review-issue #42 --with security,performance
 /review-issue #42 --force --mode team
+/review-issue #42 --with all --without seo
+/review-issue #42 --accept
 ```
 
 ## Key Behaviors
@@ -36,6 +40,7 @@ Review one or more GitHub issues with type-specific criteria and tracked history
 - Subjective criteria are asked via interactive prompts in `team`/`enterprise` mode; skipped entirely in `solo` mode
 - Applies the `security-finding` label automatically when `--with security` (or `--with all`) surfaces a warning or failure
 - After review, posts a structured comment, updates the `**Reviews:** N` count on the issue, and swaps `reviewed`/`pending` labels
+- **One resolve pass on findings.** When an interactive review ends `pending`, the review runs one `/resolve-review` pass inline, then a single re-review, and reports `Resolve pass: N resolved, M skipped — outcome <outcome>`. If findings still remain, it names `/resolve-review #N` for another cycle; if you decline every change, the body is left unchanged and no re-review runs. A review that ends `reviewed` runs no pass. Under `--accept`, that pass applies the classifier's accepted suggestions without prompting and asks only the held ones
 - Available domain extensions: `security`, `accessibility`, `performance`, `chaos`, `contract`, `qa`, `seo`, `privacy`
 
 ## Files-to-Modify Is Always Written

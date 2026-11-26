@@ -23,6 +23,7 @@
       "description": "A Count column, or a cell that is only a number."
     },
     "techStack": {
+      "heading": "Tech Stack",
       "version": { "pattern": "(?<=[A-Za-z][\\w.+#-]*\\s+)v?\\d+(?:\\.(?:\\d+|x))*(?![\\w/-])(?!\\.\\w)" },
       "parenthesizedQuantity": { "pattern": "\\(\\s*\\d[\\d,]*\\+?\\s+[A-Za-z][^)]*\\)" },
       "description": "A version after a technology name (Electron 41, Tailwind CSS v4, Node.js 24.x) or a parenthesized quantity ((5 workflows)). Every cell of the table is read."
@@ -50,6 +51,7 @@
     }
   },
   "shapeThresholds": {
+    "inScopeHeading": "In Scope",
     "inScopeBulletWords": 25
   },
   "cases": [
@@ -125,7 +127,7 @@
     {
       "id": "inline-code-double-brace",
       "description": "A double-braced token inside a double-backtick span is literal content; one outside code is a placeholder.",
-      "content": "Stamp ``0.122.0`` at build; vision: {{VISION}}\n",
+      "content": "Stamp ``0.123.0`` at build; vision: {{VISION}}\n",
       "expected": {
         "template": true,
         "placeholders": [

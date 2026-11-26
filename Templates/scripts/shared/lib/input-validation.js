@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Input validation utilities to prevent command injection, path traversal, and ReDoS from externally-sourced inputs. Exports validateIssueNumber(), validateBranchName(), validatePath(), and related guards. Used by all preamble scripts accepting user input.
  * @checksum sha256:placeholder
  *
@@ -30,7 +30,11 @@ const path = require('path');
 // A leading '#' is rejected for refs by rejectLeadingHash instead — not in
 // rejectUnsafeLeadingChar, which quoteShellPath (lib/shell-safe.js) shares and
 // which wraps a '#'-led path in double quotes rather than refusing it.
-const SHELL_META = /[`$(){}|;&<>!\\\s'"*?[\]]/;
+// Also '%' (#3836): git allows it in ref names, but lib/gh.js runs its command
+// strings through cmd.exe on win32, which expands %VAR% even inside double
+// quotes — 'fix/%USERPROFILE%' would reach gh as a home directory. Rejected on
+// every platform, so a ref accepted on one host is accepted on all of them.
+const SHELL_META = /[`$(){}|;&<>!\\\s'"*?[\]%]/;
 
 /**
  * Throw when a ref name starts with '#' (#3768). Interpolated unquoted into a

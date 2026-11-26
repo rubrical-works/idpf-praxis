@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * concurrent-orchestration.js — The parent's step sequence for
  * `/work --concurrent` (#3129, PRD Concurrent-Work Story 1.12)
  *
@@ -98,11 +98,12 @@ const STEP_INSTRUCTION_EXEMPT = Object.freeze({
   spawn: 'Carries its own Agent request (description, isolation, prompt); the parent passes it to the Agent tool unchanged, so there is nothing else to run.',
   'review-skip': 'Carries its reason (--no-review); the parent reports the skip, and Tier 3 is not run, so there is nothing to invoke.',
   'gate-stop': 'Records that the Review-State Gate stopped this member; nothing runs for it, which is the point of the step.',
+  excluded: 'Records a member the selection review gate excluded before any spawn (#3846); nothing runs for it, and the run report names it.',
   'not-started': 'Records a member whose worktree could not be created, with its path and error; the parent reports it and runs nothing for it.',
   halt: 'Carries its own report, the --nonstop halt text; the parent prints it and stops.',
   report: 'Carries its own text, the Sub-issue → In Review line the parent prints.',
   stop: 'Rule 08 Step 6 defines the STOP sequence: prune, report, event 2, STOP.',
-  summary: 'Rule 08 Steps 6 and 6a define the nonstop summary; `repeats` names what it repeats.',
+  summary: 'Rule 08 Steps 6 and 6a define the run summary — the nonstop summary, or under the groups schedule the run report in `text` (#3846); `repeats` names what it repeats.',
 });
 
 /**
@@ -249,6 +250,19 @@ function buildMemberBrief({ issue, title, acceptanceCriteria = [], tddChecklist,
     lines.push('TDD checklist unavailable — use the inline cycle: RED (a failing test, run and seen to fail), '
       + 'GREEN (minimal code until it passes), REFACTOR (report the decision; tests still pass).');
   }
+  lines.push('');
+
+  // #3880: the per-AC test command. "The tests scoped to the files you touch"
+  // read as the touched directory tree — 204 suites for a one-file change.
+  // Named by the parent's absolute path, as skills are: a sparse worktree may
+  // not carry .claude/scripts/. Run from the worktree, it reads the worktree's
+  // framework-config.json and runs each suite's per-AC selector there.
+  const testRunner = `${rootPath !== null ? `${rootPath}/` : ''}.claude/scripts/shared/lib/test-runner.js`;
+  lines.push('### Per-AC tests');
+  lines.push(`After each AC, from your worktree root run \`node ${testRunner} scoped --files <every file this AC changed>\`, `
+    + 'then run every command in its `runs[]` — each carries a `selection` line saying how its tests were chosen. All must pass before you commit. '
+    + 'A suite listed in `selectedNone` ran nothing: that is not a pass — say so in `acVerification`. '
+    + 'Do not run a whole test directory instead; the parent runs the full sweep after merge-back.');
   lines.push('');
 
   // The constant contract — commit rules, what the parent owns, the result
@@ -455,12 +469,15 @@ function extractBriefSections(body) {
  *   inside a group, `group` (1-based). Implementer and reviewer spawns carry
  *   the member's `slot` (1-based within its group).
  */
-function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = null, noReview = false, reviewStopped = [], notStarted = [], root = null, inlineBriefs = false, stateFile = null, ledgerFile = null, briefContext = null } = {}) {
+function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = null, noReview = false, reviewStopped = [], notStarted = [], excluded = [], root = null, inlineBriefs = false, stateFile = null, ledgerFile = null, briefContext = null } = {}) {
   const groups = Array.isArray(plan.groups) ? plan.groups : [];
   const tail = (Array.isArray(plan.tail) ? plan.tail : []).map((t) => t.number);
   // #3264: members a resumed run found already merged on the tracker.
   const finishOnly = Array.isArray(plan.finishOnly) ? plan.finishOnly : [];
-  const total = groups.reduce((sum, g) => sum + g.length, 0) + tail.length + finishOnly.length;
+  // #3846: members the selection review gate excluded before any spawn are
+  // dropped from the run, not halted on; they are named in the run report.
+  const dropped = new Set(Array.isArray(excluded) ? excluded : []);
+  const total = [...groups.flat(), ...tail, ...finishOnly].filter((n) => !dropped.has(n)).length;
   const stopped = new Set(Array.isArray(reviewStopped) ? reviewStopped : []);
   const failedCreation = new Map((Array.isArray(notStarted) ? notStarted : []).map((n) => [n.issue, n]));
   const steps = [];
@@ -475,24 +492,46 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
   // those members as unswept (#3202 merge-back; #3223 outcome, reconcile,
   // post-merge) — a resumed run skips in_review members.
   const unsweptFlags = () => (nonstop && swept.length ? ` ${swept.map((n) => `--unswept ${n}`).join(' ')}` : '');
+  // #3846: with no STOP between groups, every hard stop halts the run on both
+  // schedules. Default mode sweeps each group before its in_review moves, so
+  // its halts leave nothing unswept; it resumes without --nonstop.
+  const haltUnswept = () => (nonstop ? [...swept] : []);
+  const haltResume = nonstop ? {} : { epic: '<root>', resumeFlags: '--concurrent' };
+  const halt = (fields, reportArgs) => {
+    steps.push({
+      kind: 'halt', step: 'halt', owner: 'parent', ...fields, unswept: haltUnswept(),
+      report: haltReport({ ...reportArgs, ...haltResume, processed: swept.length, total, unswept: haltUnswept() }),
+    });
+    return { steps, total, templates: runTemplates(), specialistNotice };
+  };
+  const live = (list) => list.filter((n) => !dropped.has(n));
 
   // The Review-State Gate runs for every member (#3139); a member it stops
   // gets a `gate-stop` step and NOTHING after it — no Pre-Work gate, no event
   // 1, no spawn — so the ledger never holds an opener for work that never
-  // began. Returns the members that proceed.
+  // began. Since #3846 that stop is a hard stop: the run halts there.
   // Both decisions are made at run time, after this plan was built (#3269):
-  // with a run-state file each names the re-plan that drops the member's
-  // later steps, and the parent continues from the steps it prints.
+  // with a run-state file each names the re-plan, and the parent continues
+  // from the steps it prints. Returns the members that proceed, and the
+  // member that halted the run (or null).
   const replan = (flag) => `\`${ORCH_CLI} replan --state ${stateFile} ${flag}\``;
-  const reviewGate = (list, group) => list.filter((n) => {
-    step('review-state-gate', n, {
-      group,
-      ...(stateFile ? { instruction: `If this gate stops #${n}, run ${replan(`--stopped ${n}`)} and continue from #${n}'s gate-stop step in the steps it prints.` } : {}),
-    });
-    if (!stopped.has(n)) return true;
-    steps.push({ kind: 'gate-stop', step: 'gate-stop', owner: 'parent', issue: n, ...(group ? { group } : {}), reason: 'review-state-gate' });
-    return false;
-  });
+  const reviewGate = (list, group) => {
+    const proceed = [];
+    for (const n of list) {
+      if (dropped.has(n)) {
+        steps.push({ kind: 'excluded', step: 'excluded', owner: 'parent', issue: n, ...(group ? { group } : {}), reason: 'selection-review-gate' });
+        continue;
+      }
+      step('review-state-gate', n, {
+        group,
+        ...(stateFile ? { instruction: `If this gate stops #${n}, run ${replan(`--stopped ${n}`)} — it halts the run — and execute the steps it prints.` } : {}),
+      });
+      if (!stopped.has(n)) { proceed.push(n); continue; }
+      steps.push({ kind: 'gate-stop', step: 'gate-stop', owner: 'parent', issue: n, ...(group ? { group } : {}), reason: 'review-state-gate' });
+      return { proceed, halted: n };
+    }
+    return { proceed, halted: null };
+  };
 
   const step = (id, issue, extra = {}) => steps.push({
     kind: 'step', step: id, owner: MEMBER_STEPS.includes(id) && extra.inGroup ? 'member' : 'parent',
@@ -502,6 +541,7 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     // the root as sequential /work and defers nothing.
     ...(id === '3' ? { suiteScope: extra.inGroup ? 'worktree-parallel' : 'root' } : {}),
     ...(extra.instruction ? { instruction: extra.instruction } : {}),
+    ...(extra.onFailure ? { onFailure: extra.onFailure } : {}),
     ...(extra.template ? { template: extra.template, params: extra.params } : {}),
   });
   // A member's post-work steps, split at the sweep (#3262): `part` 'pre' is
@@ -516,7 +556,9 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
     const ids = part === 'pre' ? POST_WORK.slice(0, SWEEP_AT) : part === 'post' ? POST_WORK.slice(SWEEP_AT) : POST_WORK;
     for (const id of ids) {
       if (id === '4f' && (group || nonstop)) continue;
-      step(id, n, { group });
+      // #3846: a tail member's own sweep — no STOP follows it now, so a
+      // failure is a hard stop, as the group sweep's is.
+      step(id, n, { group, ...(id === '4f' ? { onFailure: `A failing sweep halts the run: #${n} does not move to in_review and no later member starts. Report each failing suite and resume with /work <root> --concurrent once a Refs #${n} fix commit makes the sweep pass.` } : {}) });
     }
     if (part === 'pre') return;
     swept.push(n);
@@ -528,10 +570,11 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
 
   // Finished before any group (#3264): no spawn, no gate, no merge-back —
   // their commits are on the tracker; only their remaining steps run.
-  for (const n of finishOnly) {
+  // No STOP after each one (#3846): the run STOPs once, after its report.
+  // An excluded member is skipped, as `total` skips it (#3861).
+  for (const n of live(finishOnly)) {
     steps.push(resumeFinish(n));
     finish(n);
-    if (!nonstop) steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'member', issue: n });
   }
 
   for (let i = 0; i < groups.length; i++) {
@@ -541,29 +584,55 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
       kind: 'group-start', owner: 'parent', group, members: [...planned],
       instruction: `Record the tracker tip before group ${group}: \`git rev-parse HEAD\` on the tracker branch. Every member's Tier 1 range (<tip>..<its wt/* branch>) and the post-merge pass's --base start there. After compaction it is the first parent of the group's first merge-back merge.`,
     });
+    const laterGroups = live(groups.slice(i + 1).flat());
+    const liveTail = live(tail);
+    // #3861: every earlier group merged and reached in_review before this one
+    // started (a halt returns), so a halt here names them as merged.
+    const mergedBefore = live(groups.slice(0, i).flat());
+    // A member the Review-State Gate stops halts the run (#3846): nothing
+    // after it starts — the rest of its group, later groups, the tail.
+    const gate = reviewGate(planned, group);
+    if (gate.halted !== null) {
+      // #3964: a member the gate let through whose worktree creation failed
+      // is named on its own Failed member line and carried as notStarted, as
+      // the creation halt does — never also listed as never started.
+      const failedBefore = gate.proceed.filter((n) => failedCreation.has(n));
+      const neverStarted = [...live(planned).filter((n) => n !== gate.halted && !failedBefore.includes(n)), ...laterGroups];
+      return halt(
+        { issue: gate.halted, group, reason: 'review-state-gate', ...(failedBefore.length ? { notStarted: failedBefore } : {}), neverStarted, tailNotStarted: liveTail },
+        {
+          reason: `#${gate.halted} stopped by the review-state-gate; never started: ${list(neverStarted)}`, failed: { issue: gate.halted, worktreePath: null, branch: null, files: [] },
+          moreFailed: failedBefore.map((n) => ({ issue: n, worktreePath: failedCreation.get(n).path || null })),
+          merged: mergedBefore, unmerged: [], tailNotStarted: liveTail, worktreesKept: [],
+        },
+      );
+    }
     // A member whose worktree could not be created is NOT STARTED (#3140):
     // reported with the half-made path, no Pre-Work gate, no event 1, no
-    // spawn. Default mode continues with the rest; --nonstop halts here and
-    // names the tail that never started — the run's last step.
-    const groupMembers = reviewGate(planned, group).filter((n) => {
+    // spawn. The run halts here on both schedules (#3846) and names the
+    // tail that never started — the run's last step.
+    const groupMembers = gate.proceed.filter((n) => {
       if (!failedCreation.has(n)) return true;
       const f = failedCreation.get(n);
       steps.push({ kind: 'not-started', step: 'not-started', owner: 'parent', issue: n, group, path: f.path || null, error: f.error || null });
       return false;
     });
-    const failedHere = planned.filter((n) => failedCreation.has(n));
-    if (nonstop && failedHere.length > 0) {
-      const laterGroups = groups.slice(i + 1).flat();
-      steps.push({
-        kind: 'halt', step: 'halt', owner: 'parent', group, reason: 'worktree-creation-failed',
-        notStarted: failedHere, neverStarted: laterGroups, tailNotStarted: [...tail], unswept: [...swept],
-        report: haltReport({
-          reason: 'worktree creation failed', processed: swept.length, total, unswept: swept,
+    const failedHere = gate.proceed.filter((n) => failedCreation.has(n));
+    if (failedHere.length > 0) {
+      return halt(
+        { group, reason: 'worktree-creation-failed', notStarted: failedHere, neverStarted: laterGroups, tailNotStarted: liveTail },
+        {
+          reason: `worktree creation failed for ${list(failedHere)}`,
           failed: { issue: failedHere[0], worktreePath: failedCreation.get(failedHere[0]).path || null, branch: null, files: [] },
-          merged: [], unmerged: [...planned.filter((n) => !failedCreation.has(n)), ...laterGroups], tailNotStarted: tail, worktreesKept: [],
-        }),
-      });
-      return { steps, total, templates: runTemplates(), specialistNotice };
+          // #3938: every failed member is named, not only the first.
+          moreFailed: failedHere.slice(1).map((n) => ({ issue: n, worktreePath: failedCreation.get(n).path || null })),
+          // #3938: the group's created sibling worktrees — and any member
+          // already running in one — are kept, in the placeholder form the
+          // other steps use, so the Resume line's "kept worktree" names them.
+          merged: mergedBefore, unmerged: [...groupMembers, ...laterGroups], tailNotStarted: liveTail,
+          worktreesKept: groupMembers.map((n) => ({ issue: n, worktreePath: `<#${n}'s worktree path>`, branch: `<#${n}'s wt/* branch>` })),
+        },
+      );
     }
     for (const n of groupMembers) for (const id of PRE_WORK.slice(1)) step(id, n, { group });
     groupMembers.forEach((n, j) => {
@@ -662,24 +731,51 @@ function buildRun({ plan = {}, members = {}, nonstop = false, tddChecklist = nul
       },
     });
     if (!nonstop) {
-      steps.push({ kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers] });
+      steps.push({
+        kind: 'step', step: '4f', owner: 'parent', group, cwd: 'tracker', members: [...groupMembers],
+        // #3846: the next group starts right after this one, so a failing
+        // group sweep is a hard stop rather than something a STOP surfaces.
+        onFailure: `A failing sweep halts the run: no member of group ${group} moves to in_review, ${laterGroups.length ? `later groups (${list(laterGroups)})` : 'no later group'} and the tail (${list(liveTail)}) never start. Report each failing suite, keep every worktree, and resume with /work <root> --concurrent once a Refs #N fix commit makes the sweep pass.`,
+      });
     }
     for (const n of groupMembers) finish(n, group, 'post');
     // #3360: every sibling outcome ran before the group's merge-back, so each
     // member's five scratch files go once the group is reported. Default mode
     // only: under --nonstop the preamble runs groups on the rolling schedule
-    // (nextSteps), which emits its own cleanup.
+    // (nextSteps), which emits its own cleanup. No STOP follows (#3846): the
+    // next group's steps come straight after.
     if (!nonstop) {
       for (const n of groupMembers) steps.push(memberClear(n, { ledgerFile, where: { group } }));
-      steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'group', group });
     }
   }
 
-  for (const n of reviewGate(tail)) {
+  // The sequential tail: standard /work per member, with no STOP between
+  // members (#3846); a gate stop halts the run as it does inside a group.
+  const tailGate = reviewGate(tail);
+  for (const n of tailGate.proceed) {
     for (const id of PRE_WORK.slice(1)) step(id, n);
     step('3', n);
     finish(n);
-    if (!nonstop) steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'member', issue: n });
+  }
+  if (tailGate.halted !== null) {
+    const rest = live(tail).slice(live(tail).indexOf(tailGate.halted) + 1);
+    return halt(
+      { issue: tailGate.halted, reason: 'review-state-gate', neverStarted: [], tailNotStarted: rest },
+      { reason: `#${tailGate.halted} stopped by the review-state-gate; never started: ${list(rest)}`, failed: { issue: tailGate.halted, worktreePath: null, branch: null, files: [] }, merged: live(groups.flat()), unmerged: [], tailNotStarted: rest, worktreesKept: [] },
+    );
+  }
+
+  // Default mode (#3846): one report naming every group, each member's
+  // status and the tail, then the run's only STOP. Reaching it means no hard
+  // stop fired, so every member not excluded is In Review.
+  if (!nonstop && groups.length + tail.length + finishOnly.length > 0) {
+    steps.push({
+      kind: 'summary', step: '6', owner: 'parent', schedule: 'groups',
+      groups: groups.map((g) => [...g]), tail: [...tail], excluded: [...dropped], processed: swept.length, total,
+      repeats: groups.length > 0 ? ['leftover-worktrees'] : [],
+      text: runReport({ groups, tail, finishOnly, excluded: [...dropped], members, processed: swept.length, total }),
+    });
+    steps.push({ kind: 'stop', step: '6', owner: 'parent', scope: 'run' });
   }
 
   // --nonstop: the run's only full sweep, over every processed member's
@@ -735,11 +831,19 @@ function nextSteps(runState = {}) {
   const batched = [...(runState.batched || [])];
   const slotOf = { ...(runState.slotOf || {}) };
   let batches = runState.batches || 0;
-  const order = layers.flat();
+  // #3846: members a selection's review gate excluded before the first start
+  // are never started, never counted, and never block a dependent — as under
+  // the groups schedule, where `replan --excluded` drops them the same way.
+  const excludedSet = new Set(Array.isArray(runState.excluded) ? runState.excluded : []);
+  const order = layers.flat().filter((n) => !excludedSet.has(n));
   // #3301: finishOnly members are part of the run and count as passed once
   // finished, so T counts them too — buildRun's total already does.
-  const finishOnlyAll = Array.isArray(runState.finishOnly) ? runState.finishOnly : [];
-  const total = new Set([...order, ...finishOnlyAll]).size;
+  // #3937: an excluded one is neither finished nor counted, as in buildRun.
+  const finishOnlyAll = (Array.isArray(runState.finishOnly) ? runState.finishOnly : []).filter((n) => !excludedSet.has(n));
+  // #3888: the tail is counted from the first report, as buildRun's total
+  // counts it — one denominator for every report and halt in the run.
+  const tail = (Array.isArray(runState.tail) ? runState.tail : []).filter((n) => !excludedSet.has(n));
+  const total = new Set([...order, ...finishOnlyAll, ...tail]).size;
   const mergedSet = new Set(merged);
   const steps = [];
   const unswept = passed.length ? ` ${passed.map((n) => `--unswept ${n}`).join(' ')}` : '';
@@ -755,15 +859,34 @@ function nextSteps(runState = {}) {
   if (halting !== undefined) {
     const failed = failedCreation.get(halting);
     const neverStarted = order.filter((n) => !started.includes(n));
-    const cause = failed ? `worktree creation failed for #${halting}` : `#${halting} stopped by the review-state-gate`;
+    // #3938: every started member whose creation failed is named, and every
+    // started, unmerged member that has a worktree (its creation did not fail
+    // and the Review-State Gate did not stop it before the spawn) is kept —
+    // in the placeholder form the other steps use.
+    const unmergedStarted = started.filter((n) => !mergedSet.has(n));
+    // #3964: a review-state-gate halt names the failed creations after the
+    // halting member, so each gets its own Failed member line too.
+    const failedCreations = unmergedStarted.filter((n) => failedCreation.has(n));
+    const failedAll = failed ? failedCreations : [halting, ...failedCreations];
+    const kept = unmergedStarted.filter((n) => !failedCreation.has(n) && !stoppedSet.has(n));
+    // #3964: a creation halt also names the started members the gate stopped.
+    const gateStopped = unmergedStarted.filter((n) => stoppedSet.has(n));
+    const cause = failed
+      ? `worktree creation failed for ${list(failedAll)}${gateStopped.length ? `; ${list(gateStopped)} stopped by the review-state-gate` : ''}`
+      : `#${halting} stopped by the review-state-gate`;
+    // #3861: a tail member the selection review gate excluded never starts
+    // and is never reported as not started — as at the run's end.
+    const tailNotStarted = tail;
     steps.push({
       kind: 'halt', step: 'halt', owner: 'parent', issue: halting, reason: failed ? 'worktree-creation-failed' : 'review-state-gate',
-      neverStarted, tailNotStarted: [...(runState.tail || [])], unswept: [...passed],
+      neverStarted, tailNotStarted: [...tailNotStarted], unswept: [...passed],
       report: haltReport({
         reason: `${cause}; never started: ${list(neverStarted)}`, processed: passed.length, total, unswept: passed,
         failed: { issue: halting, worktreePath: (failed && failed.path) || null, branch: null, files: [] },
+        moreFailed: failedAll.slice(1).map((n) => ({ issue: n, worktreePath: failedCreation.get(n).path || null })),
         merged: [...merged], unmerged: started.filter((n) => !mergedSet.has(n) && n !== halting),
-        tailNotStarted: runState.tail || [], worktreesKept: [],
+        tailNotStarted,
+        worktreesKept: kept.map((n) => ({ issue: n, worktreePath: `<#${n}'s worktree path>`, branch: `<#${n}'s wt/* branch>` })),
       }),
     });
     return { start: [], batch: null, steps, done: true, state: { ...runState, ended: true, halted: true } };
@@ -771,7 +894,7 @@ function nextSteps(runState = {}) {
 
   // #3264: a resumed run's already-merged members are finished first, once —
   // never started, never spawned — and count as passed from then on.
-  const finishing = !runState.resumeFinished && Array.isArray(runState.finishOnly) ? runState.finishOnly : [];
+  const finishing = !runState.resumeFinished ? finishOnlyAll : [];
   for (const n of finishing) {
     steps.push(resumeFinish(n));
     for (const sid of POST_WORK) if (sid !== '4f') steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n });
@@ -845,7 +968,7 @@ function nextSteps(runState = {}) {
   // Start members while a slot is free and their dependencies are done: merged
   // back, or — for a member worked inline (#3342) — passed.
   const passedSet = new Set(passed);
-  const doneDep = (d) => mergedSet.has(d) || passedSet.has(d);
+  const doneDep = (d) => mergedSet.has(d) || passedSet.has(d) || excludedSet.has(d);
   const running = started.filter((n) => !mergedSet.has(n) && !passedSet.has(n));
   const runnable = order.filter((n) => !started.includes(n) && (dependsOn[n] || []).every(doneDep));
   const start = [];
@@ -921,8 +1044,11 @@ function nextSteps(runState = {}) {
   // The run ends once every member has passed its batch: the sequential tail,
   // worked in the root as standard /work, then the end-of-run steps.
   let ended = false;
-  const tail = Array.isArray(runState.tail) ? runState.tail : [];
-  const done = total + tail.length > 0 && order.every((n) => passed.includes(n));
+  // #3888: a run that had members but nothing left to work once the excluded
+  // ones were dropped is done too, as buildRun's is: it still prints its
+  // summary and clears its run files. Only a run with no members never ends.
+  const planned = layers.flat().length + (Array.isArray(runState.tail) ? runState.tail.length : 0) + (Array.isArray(runState.finishOnly) ? runState.finishOnly.length : 0);
+  const done = planned > 0 && order.every((n) => passed.includes(n));
   if (done && !batch && start.length === 0) {
     ended = true;
     tail.forEach((n, i) => {
@@ -931,15 +1057,18 @@ function nextSteps(runState = {}) {
       for (const sid of POST_WORK) if (sid !== '4f') steps.push({ kind: 'step', step: sid, owner: 'parent', issue: n });
       steps.push({
         kind: 'report', step: 'report', owner: 'parent', issue: n,
-        text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${passed.length + i + 1}/${total + tail.length} processed)`,
+        text: `Sub-issue #${n}: ${titleOf(members, n)} → In Review (${passed.length + i + 1}/${total} processed)`,
       });
     });
-    steps.push({
-      kind: 'deferred-suites', step: 'deferred-suites', owner: 'parent', serial: true,
-      members: [...order], scope: 'run-union', deferredReasons: ['exclusive', 'cannot-narrow'],
-      instruction: 'Now that no member worktree exists, run deferredInvocations({suites, changedFiles, cannotNarrow}) (test-runner.js) with changedFiles = the union of every member\'s changed files plus every reconcile step\'s regenerated paths, and cannotNarrow = every suiteId a member\'s Tier 1 deferredSuites lists with reason cannot-narrow (#3159). Run each returned run once, serially, on the tracker branch: the exclusive suites, then the cannot-narrow ones. Name manualOnly, invalid, unmatchedExclusive, unmatchedCannotNarrow and every warning.',
-    });
-    steps.push({ kind: 'step', step: '4f', owner: 'parent', scope: 'run', cwd: 'tracker', members: [...passed, ...tail] });
+    // Nothing was worked when every member was excluded: no suite to run.
+    if (total > 0) {
+      steps.push({
+        kind: 'deferred-suites', step: 'deferred-suites', owner: 'parent', serial: true,
+        members: [...order], scope: 'run-union', deferredReasons: ['exclusive', 'cannot-narrow'],
+        instruction: 'Now that no member worktree exists, run deferredInvocations({suites, changedFiles, cannotNarrow}) (test-runner.js) with changedFiles = the union of every member\'s changed files plus every reconcile step\'s regenerated paths, and cannotNarrow = every suiteId a member\'s Tier 1 deferredSuites lists with reason cannot-narrow (#3159). Run each returned run once, serially, on the tracker branch: the exclusive suites, then the cannot-narrow ones. Name manualOnly, invalid, unmatchedExclusive, unmatchedCannotNarrow and every warning.',
+      });
+      steps.push({ kind: 'step', step: '4f', owner: 'parent', scope: 'run', cwd: 'tracker', members: [...passed, ...tail] });
+    }
     steps.push({ kind: 'summary', step: '6', owner: 'parent', processed: passed.length + tail.length, repeats: ['leftover-worktrees'] });
     const runFiles = [runState.stateFile, ledgerFile].filter(Boolean);
     if (runFiles.length) steps.push(runClear(runFiles));
@@ -1061,12 +1190,35 @@ function unsweptLine(unswept) {
 }
 
 /**
+ * The one report a default `--concurrent` run ends with (#3846): every group,
+ * each member's resulting status, and the tail — printed before the run's
+ * only STOP. The run reaches it only when no hard stop fired, so every member
+ * not excluded by the selection review gate is In Review. Pure.
+ *
+ * @param {{groups?: number[][], tail?: number[], finishOnly?: number[], excluded?: number[],
+ *   members?: object, processed?: number, total?: number}} input
+ * @returns {string}
+ */
+function runReport({ groups = [], tail = [], finishOnly = [], excluded = [], members = {}, processed = 0, total = 0 } = {}) {
+  const out = new Set(excluded);
+  const status = (n) => `#${n} ${titleOf(members, n)} → ${out.has(n) ? 'excluded by the selection review gate (not worked)' : 'In Review'}`;
+  const lines = [`Concurrent run complete: ${processed} of ${total} processed`];
+  // #3888: an excluded finish-only member ran no steps, so it is labeled as excluded.
+  if (finishOnly.length) lines.push(`  Finished on resume: ${finishOnly.map(status).join(' · ')}`);
+  groups.forEach((g, i) => lines.push(`  Group ${i + 1}: ${g.map(status).join(' · ')}`));
+  lines.push(`  Tail: ${tail.length ? tail.map(status).join(' · ') : 'none'}`);
+  return lines.join('\n');
+}
+
+/**
  * The `--nonstop` halt report for a concurrent run (#3140): what failed,
  * what was kept, what never merged, what never started, and how to resume.
  * Same contract as the sequential halt — sub-issue, completed count, resume
  * instructions — with the worktrees added, because they are the state.
+ * `moreFailed` names members that failed alongside `failed` (#3938) — each
+ * on its own Failed member line, so none is reported only in a step field.
  */
-function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotStarted = [], processed = 0, total = 0, worktreesKept = [], unswept = [] } = {}) {
+function haltReport({ epic, reason, failed, moreFailed = [], merged = [], unmerged = [], tailNotStarted = [], processed = 0, total = 0, worktreesKept = [], unswept = [], resumeFlags = '--nonstop --concurrent' } = {}) {
   const lines = [`Halted: ${reason}`];
   if (failed) {
     const where = failed.worktreePath ? ` — worktree kept: ${failed.worktreePath}${failed.branch ? ` (${failed.branch})` : ''}` : '';
@@ -1082,6 +1234,9 @@ function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotS
       for (const l of stderr.split('\n')) lines.push(`    ${l.trimEnd()}`);
     }
   }
+  for (const f of moreFailed) {
+    lines.push(`  Failed member: #${f.issue}${f.worktreePath ? ` — worktree kept: ${f.worktreePath}` : ''}`);
+  }
   lines.push(`  Merged before the halt: ${list(merged)}`);
   lines.push(`  Not merged: ${list(unmerged)}`);
   lines.push(`  Never started (tail): ${list(tailNotStarted)}`);
@@ -1091,7 +1246,8 @@ function haltReport({ epic, reason, failed, merged = [], unmerged = [], tailNotS
   }
   if (unswept.length) lines.push(unsweptLine(unswept));
   lines.push(`  ${processed} of ${total} processed.`);
-  lines.push(`  Resume: inspect with git worktree list, resolve in the kept worktree, then /work ${epic || '<epic>'} --nonstop --concurrent; nothing was merged past the halt.`);
+  // #3846: a default --concurrent run halts too now; it resumes without --nonstop.
+  lines.push(`  Resume: inspect with git worktree list, resolve in the kept worktree, then /work ${epic || '<epic>'} ${resumeFlags}; nothing was merged past the halt.`);
   return lines.join('\n');
 }
 
@@ -1341,6 +1497,7 @@ module.exports = {
   mergeBack,
   createWorktrees,
   haltReport,
+  runReport,
   unsweptLine,
   expectedLedger,
   attributionOf,
@@ -1466,7 +1623,7 @@ const addNotStarted = (list, more) => [...(list || []), ...more.filter((f) => is
 /**
  * `next-steps` CLI (#3274) — the parent's handle on nextSteps between events.
  *   node .claude/scripts/shared/lib/concurrent-orchestration.js next-steps --state F
- *     [--merged N ...] [--passed N ...] [--stopped N ...] [--not-started N[=<path>] ...]
+ *     [--merged N ...] [--passed N ...] [--stopped N ...] [--not-started N[=<path>] ...] [--excluded N ...]
  *   ... next-steps --state F --show-batch <id> | --show-start <N>   (#3349, read-only replay)
  * Reads the run state the preamble wrote, adds the merges, passes, gate stops
  * and failed worktree creations (#3269) the parent records, prints {ok, start, batch, steps, done, templates} and
@@ -1475,11 +1632,11 @@ const addNotStarted = (list, more) => [...(list || []), ...more.filter((f) => is
  */
 function runNextStepsCli(argv) {
   const fs = require('fs');
-  const opts = { merged: [], passed: [], stopped: [], notStarted: [] };
+  const opts = { merged: [], passed: [], stopped: [], notStarted: [], excluded: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--state') opts.state = argv[++i];
-    else if (a === '--merged' || a === '--passed' || a === '--stopped') {
+    else if (a === '--merged' || a === '--passed' || a === '--stopped' || a === '--excluded') {
       const v = argv[++i];
       const n = parseIssueFlag(v);
       if (n === null) return { code: 1, envelope: { ok: false, error: issueFlagError(a, v) } };
@@ -1515,6 +1672,7 @@ function runNextStepsCli(argv) {
   const recorded = {
     merged: addNums(state.merged, opts.merged), passed: addNums(state.passed, opts.passed),
     stopped: addNums(state.stopped, opts.stopped), notStarted: addNotStarted(state.notStarted, opts.notStarted),
+    excluded: addNums(state.excluded, opts.excluded),
   };
   const r = nextSteps({ ...state, ...recorded });
   fs.writeFileSync(opts.state, JSON.stringify({ ...r.state, ...recorded }, null, 2));
@@ -1522,23 +1680,24 @@ function runNextStepsCli(argv) {
 }
 
 /**
- * `replan --state F [--stopped N]... [--not-started N[=<path>]]...` (#3269):
- * the default-mode counterpart of next-steps. The preamble writes the run's
- * inputs to F; each run-time decision is recorded there and buildRun runs
- * again, so the plan the parent follows drops every later step of a member
- * the Review-State Gate stopped or whose worktree could not be created.
+ * `replan --state F [--stopped N]... [--not-started N[=<path>]]... [--excluded N]...`
+ * (#3269): the default-mode counterpart of next-steps. The preamble writes
+ * the run's inputs to F; each run-time decision is recorded there and buildRun
+ * runs again. A member the Review-State Gate stopped, or whose worktree could
+ * not be created, halts the run (#3846); a member the selection review gate
+ * excluded before any spawn is dropped and the run carries on.
  */
 function runReplanCli(argv) {
   const fs = require('fs');
-  const opts = { stopped: [], notStarted: [] };
+  const opts = { stopped: [], notStarted: [], excluded: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--state') opts.state = argv[++i];
-    else if (a === '--stopped') {
+    else if (a === '--stopped' || a === '--excluded') {
       const v = argv[++i];
       const n = parseIssueFlag(v);
       if (n === null) return { code: 1, envelope: { ok: false, error: issueFlagError(a, v) } };
-      opts.stopped.push(n);
+      opts[a.slice(2)].push(n);
     } else if (a === '--not-started') {
       const v = argv[++i];
       const f = parseNotStarted(v);
@@ -1553,7 +1712,12 @@ function runReplanCli(argv) {
   } catch (e) {
     return { code: 1, envelope: { ok: false, error: `cannot read run state ${opts.state}: ${e.message}` } };
   }
-  const next = { ...state, reviewStopped: addNums(state.reviewStopped, opts.stopped), notStarted: addNotStarted(state.notStarted, opts.notStarted) };
+  const next = {
+    ...state,
+    reviewStopped: addNums(state.reviewStopped, opts.stopped),
+    notStarted: addNotStarted(state.notStarted, opts.notStarted),
+    excluded: addNums(state.excluded, opts.excluded),
+  };
   fs.writeFileSync(opts.state, JSON.stringify(next, null, 2));
   const { steps, total, templates } = buildRun({ ...next, stateFile: opts.state });
   return { code: 0, envelope: { ok: true, steps, total, templates } };

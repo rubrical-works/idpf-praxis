@@ -1,5 +1,5 @@
 ---
-version: "v0.122.0"
+version: "v0.123.0"
 description: Manage GitHub Actions CI workflows interactively, using the IDPF framework.
 argument-hint: "[--list|--validate|--add <feature> [--file <workflow>] [--paths <p1,p2>]|--recommend|--watch [--sha <commit>]] (no args shows status) [--help]"
 copyright: "Rubrical Works (c) 2026"
@@ -59,7 +59,7 @@ node .claude/scripts/shared/ci-validate.js
 3. Target workflow: the one `--file` names (must exist in `.github/workflows/`; no auto-detection), else `ci-detect-workflow.js` — for `trigger-scope`, the single workflow its classifier qualifies (several → refused, asks for `--file`)
 4. Confirm target file with user before modifying
 5. Add feature configuration via `ci-modify.js` (YAML-safe)
-6. Create backup before modification
+6. Back up the workflow to `.github/workflows/.backup/` before writing; once the written file parses, delete the backup (and the emptied `.backup/`) so nothing is left for a later `git add`. A failed write keeps the backup and the result names its path (`backupPath`) (#3793)
 7. Report changes and target file
 
 **Trigger features:**
@@ -94,10 +94,17 @@ node .claude/scripts/shared/ci-add.js <feature> [--file <workflow>] [--paths <p1
 <!-- USER-EXTENSION-START: post-recommend -->
 <!-- USER-EXTENSION-END: post-recommend -->
 
+One command per step. Generate the recommendations file name **once** (`RECS=".tmp-ci-recs-<random>.json"`, suffix shelled out) and reuse it for steps 4–6.
 ```bash
-node .claude/scripts/shared/ci-analyze.js
-node .claude/scripts/shared/ci-recommend.js
+node .claude/scripts/shared/ci-analyze.js                                    # 1. stack
+node .claude/scripts/shared/ci-recommend.js                                  # 2–3. per-push report + recommendations
+node .claude/scripts/shared/ci-recommend.js --json > $RECS                   # recommendation objects for steps 4–5
+node .claude/scripts/shared/ci-recommend-ui.js --input $RECS                 # 4. numbered menu
+node .claude/scripts/shared/ci-apply.js --input $RECS --select "<numbers>" --dry-run   # 5. confirmation summary
+node .claude/scripts/shared/ci-apply.js --input $RECS --select "<numbers>"   # 5–6. apply + report
+rm $RECS
 ```
+`--select` takes the user's menu answer verbatim (`1,2,4`, `all`, `none`) and is **required** — `ci-apply.js` refuses without it, so nothing unpicked is applied. Show the `--dry-run` summary and confirm before the apply run; on cancel, skip it. Never compose `node -e` calls against these scripts' exports.
 ### `/ci --watch` — Monitor CI Run
 Monitor a workflow run by commit SHA; report structured results.
 | Argument | Required | Default | Description |
@@ -137,7 +144,7 @@ To set up CI manually: create .github/workflows/ and add workflow YAML files.
 | `--list` | Execute `ci-list.js` |
 | `--validate` | Execute `ci-validate.js` |
 | `--add <feature> [--file X] [--paths P]` | Execute `ci-add.js <feature> [--file X] [--paths P]` |
-| `--recommend` | Execute `ci-analyze.js` + `ci-recommend.js` flow |
+| `--recommend` | Execute `ci-analyze.js` → `ci-recommend.js` → `ci-recommend-ui.js` → `ci-apply.js` flow |
 | `--watch [--sha X]` | Execute `ci-watch.js --sha X` (default: HEAD) |
 | Other | Error: `Unknown subcommand: $1` |
 ### Step 4: Execute Handler

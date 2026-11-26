@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * review-repair.js — Which review findings carry a deterministic fix, decided
  * by criterion id (#3544).
  *

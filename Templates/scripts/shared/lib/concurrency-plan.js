@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * concurrency-plan.js — Disjointness over declared scope, and the
  * `--concurrent` grouping plan (#3126, PRD Concurrent-Work Story 1.9)
  *
@@ -10,22 +10,26 @@
  * Step 4c drift gate. So a member falls to the sequential TAIL when:
  *   - its scope is UNDECLARED (no `Files to modify:`, or one with no
  *     backticked path) — nothing can be proved about it;
- *   - it names an ALWAYS-PROTECTED path (`scope-drift-protected-paths.json`)
- *     that is CONTESTED — another member declares a path matching the same
- *     protected pattern (#3287). A merge of two such edits is exactly what
- *     the drift gate halts on, so both are kept sequential; the reason names
- *     the pattern, the other member and that file. An uncontested protected
- *     path is an ordinary path: parent-owned edits to protected files (Step
- *     4e's registrar, reconcile's regeneration) run on the tracker after
- *     merge-back, never in a member worktree.
+ *   - the protected-path list (`scope-drift-protected-paths.json`) is
+ *     UNREADABLE (#3266) — no contest can be ruled out, so every member tails.
  * Two members whose scopes OVERLAP — the same path, or a glob on one side
  * covering a path on the other — are not tailed (#3287): groups merge back
- * one after another, so the later member is DEFERRED to a later group. Within
- * each dependency layer members are placed greedily in Processing Order: a
- * member joins the first group of its layer that is under `maxAgents`
- * (`--agents N`, default 3) and disjoint from every member already in it,
- * opening a new group when none is. A plan with ZERO groups is the
- * sequential run, reported as such rather than silently equivalent.
+ * one after another, so the later member is DEFERRED to a later group. A
+ * PROTECTED-PATH CONTEST — both members declare a path matching the same
+ * always-protected pattern, even different files — is a separation
+ * constraint of the same kind (#3875): the two are placed in DIFFERENT
+ * groups, never tailed, so protected files still change one member at a
+ * time, each merged back before the next starts. Each contested member's
+ * reason names the pattern, the member it is kept apart from and the
+ * protected-paths file. An uncontested protected path is an ordinary path:
+ * parent-owned edits to protected files (Step 4e's registrar, reconcile's
+ * regeneration) run on the tracker after merge-back, never in a member
+ * worktree. Within each dependency layer members are placed greedily in
+ * Processing Order: a member joins the first group of its layer that is
+ * under `maxAgents` (`--agents N`, default 3) and holds none of the members
+ * it is separated from, opening a new group when none is. A plan with ZERO
+ * groups is the sequential run, reported as such rather than silently
+ * equivalent.
  *
  * With the `**Depends on:**` graph (#3128), groups are topological LAYERS
  * intersected with that disjointness: a member joins a group only after
@@ -328,13 +332,18 @@ function declaredConcurrencyMatcher(concurrency) {
  * @returns {Array<{number: number, title: string, scope: string[],
  *   excluded: string[], disposition: 'eligible'|'tail',
  *   cause: 'undeclared'|'protected'|null, reason: string|null,
- *   overlaps: Array<{number: number, paths: string[]}>}>}
+ *   overlaps: Array<{number: number, paths: string[]}>,
+ *   contests: Array<{number: number, pattern: string, paths: string[], otherPaths: string[]}>}>}
  *   In input order. `scope` is the declared scope; `excluded` the part of it
  *   that is a declared accumulator or derived artifact, which neither the
  *   protected nor the overlap check sees (#3287). `overlaps` lists every
  *   member sharing a path, whatever either one's disposition; an overlap
  *   alone never tails a member (#3287) — buildPlan defers one side to a
- *   later group instead.
+ *   later group instead. `contests` lists, on both sides, every member
+ *   declaring a path that matches the same always-protected pattern (#3875):
+ *   `paths` are this member's matching paths, `otherPaths` the other's. A
+ *   contest never tails a member either — buildPlan keeps the two apart.
+ *   `cause: 'protected'` now means only an unreadable protected list (#3266).
  */
 function classifyMembers({ members = [], protectedPatterns, exists, concurrency } = {}) {
   const patterns = Array.isArray(protectedPatterns) ? protectedPatterns : defaultProtectedPatterns();
@@ -350,6 +359,7 @@ function classifyMembers({ members = [], protectedPatterns, exists, concurrency 
       cause: null,
       reason: null,
       overlaps: [],
+      contests: [],
     };
   });
   // The scope the protected and overlap checks compare.
@@ -371,9 +381,10 @@ function classifyMembers({ members = [], protectedPatterns, exists, concurrency 
     }
   }
 
-  // #3287: a protected path tails a member only when CONTESTED — another
-  // member declares a path matching the same protected pattern. Uncontested,
-  // it is an ordinary path for the overlap check.
+  // #3287: a protected path matters only when CONTESTED — another member
+  // declares a path matching the same protected pattern. Uncontested, it is an
+  // ordinary path for the overlap check. #3875: a contest SEPARATES the two
+  // members into different groups, as an overlap does; it no longer tails them.
   const protectedHits = new Map();
   if (patterns !== null) {
     for (const info of infos) {
@@ -391,16 +402,19 @@ function classifyMembers({ members = [], protectedPatterns, exists, concurrency 
   for (const info of infos) {
     const own = protectedHits.get(info.number);
     if (!own || own.size === 0) continue;
-    const contests = [];
     for (const [pattern, hits] of own) {
       const others = infos.filter((o) => o !== info && protectedHits.has(o.number) && protectedHits.get(o.number).has(pattern));
-      if (others.length === 0) continue;
-      contests.push(`${hits.join(', ')} matching ${pattern}, which ${others.map((o) => `#${o.number} (${protectedHits.get(o.number).get(pattern).join(', ')})`).join(', ')} also declare${others.length === 1 ? 's' : ''}`);
+      for (const o of others) {
+        info.contests.push({ number: o.number, pattern, paths: hits, otherPaths: protectedHits.get(o.number).get(pattern) });
+      }
     }
-    if (contests.length === 0) continue;
-    info.disposition = 'tail';
-    info.cause = 'protected';
-    info.reason = `declares always-protected path(s) ${contests.join('; ')} (${PROTECTED_PATHS_FILE})`;
+    // The plan says why the two never share a group; protected files still
+    // change one member at a time, each merged back before the next starts.
+    if (info.contests.length > 0) {
+      const apart = [...new Set(info.contests.map((k) => `#${k.number}`))];
+      const named = info.contests.map((k) => `${k.paths.join(', ')} matching ${k.pattern}, which #${k.number} (${k.otherPaths.join(', ')}) also declares`);
+      info.reason = `kept apart from ${apart.join(', ')} in a different group — protected-path contest: declares always-protected path(s) ${named.join('; ')} (${PROTECTED_PATHS_FILE})`;
+    }
   }
 
   for (let i = 0; i < infos.length; i++) {
@@ -515,10 +529,38 @@ function applyDependencies(ordered, dependencies) {
 }
 
 /**
+ * The members `c` must never share a group with, each with the paths that
+ * keep them apart: every overlap (#3287) and every protected-path contest
+ * (#3875), merged per member. A contest contributes both sides' protected
+ * paths and names its pattern under `patterns`.
+ *
+ * @returns {Array<{number: number, paths: string[], patterns?: string[]}>}
+ */
+function separationsOf(c) {
+  const byNumber = new Map();
+  const entry = (n) => {
+    if (!byNumber.has(n)) byNumber.set(n, { number: n, paths: new Set(), patterns: new Set() });
+    return byNumber.get(n);
+  };
+  for (const o of c.overlaps) o.paths.forEach((p) => entry(o.number).paths.add(p));
+  for (const k of c.contests || []) {
+    const e = entry(k.number);
+    [...k.paths, ...k.otherPaths].forEach((p) => e.paths.add(p));
+    e.patterns.add(k.pattern);
+  }
+  return [...byNumber.values()].map((e) => ({
+    number: e.number,
+    paths: [...e.paths].sort(),
+    ...(e.patterns.size > 0 ? { patterns: [...e.patterns] } : {}),
+  }));
+}
+
+/**
  * Place one dependency layer's members into groups (#3287). Greedy in the
- * given order: a member joins the first group under `cap` whose members it
- * overlaps none of, else opens a new one. Disjoint members therefore chunk
- * exactly as before; an overlapping member lands in a later group.
+ * given order: a member joins the first group under `cap` holding none of
+ * the members it is separated from — an overlap (#3287) or a protected-path
+ * contest (#3875) — else opens a new one. Disjoint members therefore chunk
+ * exactly as before; a separated member lands in a later group.
  *
  * @param {object[]} layerMembers - classified infos, in Processing Order
  * @param {number} cap
@@ -527,7 +569,7 @@ function applyDependencies(ordered, dependencies) {
 function placeLayer(layerMembers, cap) {
   const groups = [];
   for (const c of layerMembers) {
-    const clashes = new Set(c.overlaps.map((o) => o.number));
+    const clashes = new Set(separationsOf(c).map((o) => o.number));
     let g = groups.find((grp) => grp.length < cap && !grp.some((n) => clashes.has(n)));
     if (!g) {
       g = [];
@@ -633,15 +675,16 @@ function buildPlan({ members: allMembers = [], processingOrder = [], maxAgents, 
   groups.forEach((g, i) => g.forEach((n) => groupOf.set(n, i)));
   const eligible = new Set(eligibleInfos.map((c) => c.number));
   const edges = (dependencies && dependencies.edges) || {};
-  // The rolling schedule (#3274) has no groups, only these edges: an overlap
-  // deferral becomes a dependency on each overlapping member placed earlier.
+  // The rolling schedule (#3274) has no groups, only these edges: a deferral
+  // — an overlap (#3287) or a protected-path contest (#3875) — becomes a
+  // dependency on each separated member placed earlier.
   const dependsOn = {};
   const deferred = [];
   for (const c of eligibleInfos) {
-    const behind = c.overlaps.filter((o) => eligible.has(o.number) && groupOf.get(o.number) < groupOf.get(c.number));
+    const behind = separationsOf(c).filter((o) => eligible.has(o.number) && groupOf.get(o.number) < groupOf.get(c.number));
     const declared = (edges[c.number] || []).filter((d) => eligible.has(d));
     dependsOn[c.number] = [...new Set([...declared, ...behind.map((o) => o.number)])];
-    if (behind.length > 0) deferred.push({ number: c.number, behind: behind.map((o) => ({ number: o.number, paths: o.paths })) });
+    if (behind.length > 0) deferred.push({ number: c.number, behind });
   }
   const layers = scheduleLayers(eligibleInfos.map((c) => c.number), dependsOn);
   const tail = ordered

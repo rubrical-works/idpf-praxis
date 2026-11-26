@@ -64,6 +64,20 @@
             "type": "string",
             "description": "Human-readable description"
           },
+          "alwaysAsk": {
+            "type": "object",
+            "description": "Marks a criterion whose finding is always asked under --accept (#3879): the shared accept-classifier holds it, and /review-issue Step 3c or /resolve-review Pass 2 asks it through AskUserQuestion instead of applying it. `reason` is shown beside the held finding. Omitted means the finding may be auto-accepted.",
+            "required": ["reason"],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "description": "Why a change to this criterion needs the user's decision"
+              }
+            },
+            "additionalProperties": false
+          },
           "header": {
             "type": "string",
             "description": "AskUserQuestion header (subjective criteria)"

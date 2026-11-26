@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * measure-tap.js
  *
  * PostToolUse hook for `/idpf-measure` (#2794). Appends one JSONL record per
@@ -18,7 +18,8 @@
  *
  * This runs on every matched call, so its cost is charged to the run it is
  * measuring. It does no work beyond building one record and appending it: no
- * requires beyond Node built-ins, no parsing of tool_input or tool_response,
+ * requires beyond Node built-ins, no parsing of tool_input or tool_response
+ * (beyond two properties of an Agent call's already-parsed response, #3914),
  * no validation that could throw.
  *
  * Paths resolve from __dirname, never process.cwd() (#2626) — a hook invoked
@@ -80,15 +81,48 @@ function resolveSessionId(p, env) {
   return null;
 }
 
+function nonBlank(v) {
+  return typeof v === 'string' && v.trim() !== '' ? v : null;
+}
+
+/**
+ * Which TIMELINE produced this call (#3914): the main thread, or one agent.
+ *
+ * Agents run under their parent's session_id, so the session split above folds
+ * an agent's calls into the main thread. A live dump showed `agent_id` and
+ * `agent_type` on the PostToolUse input of a call made inside an agent and
+ * absent on a main-thread call; `transcript_path` and the hook environment were
+ * identical for both, so the payload is the only source.
+ *
+ * Both keys are written on EVERY record, null on the main thread. A record
+ * with no key at all was written before this change — the report keeps that
+ * distinction rather than reading an old record as a main-thread one.
+ *
+ * On an `Agent` call only, two properties of `tool_response` are kept — the one
+ * exception to "never record tool_response" above: `background` (its `isAsync`)
+ * and `launched_agent_id` (its `agentId`). A background launch's duration_ms is
+ * launch time, not the agent's work, and without these the report could only
+ * present it as the agent's cost. Nothing else of the response is read.
+ */
+function agentFields(p) {
+  const out = { agent_id: nonBlank(p.agent_id), agent_type: nonBlank(p.agent_type) };
+  if (p.tool_name === 'Agent') {
+    const r = p.tool_response && typeof p.tool_response === 'object' ? p.tool_response : {};
+    out.background = typeof r.isAsync === 'boolean' ? r.isAsync : null;
+    out.launched_agent_id = nonBlank(r.agentId);
+  }
+  return out;
+}
+
 function buildRecord(payload, env) {
   const p = payload || {};
-  return {
+  return Object.assign({
     t: Date.now(),
     tool_name: typeof p.tool_name === 'string' ? p.tool_name : null,
     duration_ms: typeof p.duration_ms === 'number' ? p.duration_ms : null,
     tool_use_id: typeof p.tool_use_id === 'string' ? p.tool_use_id : null,
     session_id: resolveSessionId(p, env === undefined ? process.env : env),
-  };
+  }, agentFields(p));
 }
 
 /**

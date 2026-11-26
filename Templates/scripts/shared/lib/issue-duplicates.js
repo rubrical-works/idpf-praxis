@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Duplicate check for `/code-review` Step 8 (#3516): classify each
  * approved finding against open `bug` and `enhancement` issues before it is
  * filed, as `new`, `duplicate` or `related`.
@@ -92,21 +92,101 @@ function namesPath(text, file) {
   return false;
 }
 
+// ─── Findings the review gate filed (#3907) ───
+//
+// When /work Step 4g or the Merge-Back Review Gate cannot resolve a
+// correctness finding, merge-back-gate.js files it with a marker naming the
+// file, criterion, line range and the /code-review categories the criterion
+// maps to (review-criterion-classes.json). A /code-review finding with the
+// same file, a matching criterion or category, and a line range touching the
+// filed one is `already-filed`: reported, never filed again.
+
+const FINDING_MARKER = /<!--\s*review-finding:\s*(\{[^\n]*?\})\s*-->/;
+
+/** The gate's review-finding marker in an issue body, or null. */
+function parseFindingMarker(body) {
+  const m = String(body || '').match(FINDING_MARKER);
+  if (!m) return null;
+  try {
+    const p = JSON.parse(m[1]);
+    if (!p || typeof p.file !== 'string' || typeof p.criterion !== 'string') return null;
+    const lines = Array.isArray(p.lines) && p.lines.length === 2 && p.lines.every(Number.isInteger) ? p.lines : null;
+    return { from: Number.isInteger(p.from) ? p.from : null, file: p.file, criterion: p.criterion, lines, categories: Array.isArray(p.categories) ? p.categories.map(String) : [] };
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** A /code-review category or criterion id, compared lowercased with spaces as hyphens. */
+const normalizeCategory = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '-');
+
+/** `source.lines` as `[start, end]`: "44-46", "44", or a number; null when absent. */
+function parseLineRange(lines) {
+  if (Number.isInteger(lines)) return [lines, lines];
+  const nums = String(lines === undefined || lines === null ? '' : lines).split(/[-–]/).map((s) => s.trim()).filter(Boolean).slice(0, 2);
+  if (!nums.length || !nums.every((s) => /^\d+$/.test(s))) return null;
+  const a = Number(nums[0]);
+  const b = nums[1] !== undefined ? Number(nums[1]) : a;
+  return [Math.min(a, b), Math.max(a, b)];
+}
+
+/** A repo-relative path compared without a leading ./ and with forward slashes. */
+const normalizePath = (p) => String(p || '').split('\\').join('/').replace(/^(?:\.\/)+/, '');
+
+/**
+ * The open issue the gate filed for this entry's finding, or null. A marker
+ * with no line range, or an entry with no source.lines (a file-level
+ * finding), matches on file and criterion alone; two ranges must overlap.
+ * Lines given but unreadable ("120, 130", "L44") never match.
+ */
+function alreadyFiled(entry, issues) {
+  const file = sourceFile(entry) && normalizePath(sourceFile(entry));
+  const category = normalizeCategory(entry && entry.source && entry.source.category);
+  const rawLines = entry && entry.source ? entry.source.lines : undefined;
+  const range = parseLineRange(rawLines);
+  // No lines at all is a file-level finding; lines given but unreadable are
+  // not, and never match on file and criterion alone.
+  const fileLevel = rawLines === undefined || rawLines === null || String(rawLines).trim() === '';
+  if (!file || !category || (!range && !fileLevel)) return null;
+  for (const issue of Array.isArray(issues) ? issues : []) {
+    const mk = parseFindingMarker(issue.body);
+    if (!mk || normalizePath(mk.file) !== file) continue;
+    const criterionMatch = normalizeCategory(mk.criterion) === category || mk.categories.map(normalizeCategory).includes(category);
+    if (!criterionMatch) continue;
+    // Either side naming no line (a file-level finding) matches on file and
+    // criterion alone; two ranges must touch.
+    if (mk.lines && range && (range[1] < mk.lines[0] || range[0] > mk.lines[1])) continue;
+    const where = mk.lines ? `${mk.file}:${mk.lines[0]}${mk.lines[1] !== mk.lines[0] ? `-${mk.lines[1]}` : ''}` : `${mk.file} (no line)`;
+    return {
+      classification: 'already-filed',
+      match: issue.number,
+      similarity: similarity(entry && entry.title, issue.title),
+      reasons: [`filed by the review gate of #${mk.from} for ${mk.criterion} at ${where}; this finding (${category}${range ? `, lines ${range[0]}-${range[1]}` : ''}) ${mk.lines && range ? 'overlaps it' : 'is on the same file and criterion (one side names no line)'}`],
+    };
+  }
+  return null;
+}
+
 /**
  * Classify one entry against a list of open issues.
  *
- * @param {object} entry - a file-issue.js entry (`title`, `source.file`)
+ * @param {object} entry - a file-issue.js entry (`title`, `source.file`, and
+ *   `source.lines` + `source.category` for the #3907 already-filed match)
  * @param {object[]} issues - `{number, title, body}`
  * @param {{issueRefs?: number[]}} [opts] - the source file's manifest issueRefs
- * @returns {{classification: 'new'|'duplicate'|'related', match: number|null, similarity: number, reasons: string[]}}
+ * @returns {{classification: 'new'|'duplicate'|'related'|'already-filed', match: number|null, similarity: number, reasons: string[]}}
  */
 function classifyEntry(entry, issues, { issueRefs = [] } = {}) {
+  const filed = alreadyFiled(entry, issues);
+  if (filed) return filed;
   const file = sourceFile(entry);
   let best = null;
   for (const issue of Array.isArray(issues) ? issues : []) {
     const reasons = [];
     const haystack = `${issue.title || ''}\n${issue.body || ''}`;
-    if (file && namesPath(haystack, file)) reasons.push(`path ${file} named in #${issue.number}`);
+    // A gate-filed bug's file link is its marker's range (#3907): naming the
+    // file alone does not link a finding outside that range to it.
+    if (file && !parseFindingMarker(issue.body) && namesPath(haystack, file)) reasons.push(`path ${file} named in #${issue.number}`);
     if (issueRefs.includes(issue.number)) reasons.push(`#${issue.number} is in ${file || 'the file'}'s manifest issueRefs`);
     const linked = reasons.length > 0;
     const sim = similarity(entry && entry.title, issue.title);
@@ -189,6 +269,8 @@ module.exports = {
   SEARCH_LABELS,
   titleTerms,
   similarity,
+  parseFindingMarker,
+  parseLineRange,
   classifyEntry,
   searchOpenIssues,
   checkDuplicates,

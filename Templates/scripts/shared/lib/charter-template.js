@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description The one rule deciding whether CHARTER.md is an unfilled template (#2893).
  * Consulted by the startup hook, the /charter spec and Charter-Enforcement.md.
  * @checksum sha256:placeholder
@@ -150,6 +150,26 @@ function loadCharterContract() {
   err.code = r.error.code;
   err.contractPath = r.error.path;
   throw err;
+}
+
+/** The section names before the contract keyed them (#3854): the fallback when a key is absent. */
+const LITERAL_HEADINGS = Object.freeze({ techStack: 'Tech Stack', inScope: 'In Scope' });
+
+/**
+ * The Tech Stack and In Scope headings a contract names (#3854), each from its
+ * key — `storedValues.techStack.heading`, `shapeThresholds.inScopeHeading` —
+ * or the literal name when the key is absent. The keys are additive at
+ * contract version 2, so an older contract without them still reads.
+ * @param {object} contract
+ * @returns {{techStack: string, inScope: string}}
+ */
+function contractHeadings(contract) {
+  const c = contract || {};
+  const nonEmpty = (v) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return {
+    techStack: nonEmpty(c.storedValues && c.storedValues.techStack && c.storedValues.techStack.heading) || LITERAL_HEADINGS.techStack,
+    inScope: nonEmpty(c.shapeThresholds && c.shapeThresholds.inScopeHeading) || LITERAL_HEADINGS.inScope,
+  };
 }
 
 /** The compiled placeholder rule; throws as loadCharterContract() does. */
@@ -344,7 +364,9 @@ function matchesOf(text, entries, section) {
  * @returns {Array<{section: string, kind: string, text: string}>}
  */
 function findStoredValues(content) {
-  const { storedValues, keyEntities } = loadCharterContract();
+  const contract = loadCharterContract();
+  const { storedValues, keyEntities } = contract;
+  const techStackHeading = contractHeadings(contract).techStack;
   const excluded = storedValues.never.excludedSections;
   const techEntries = [
     { kind: 'version', re: globalRe(storedValues.techStack.version) },
@@ -352,7 +374,7 @@ function findStoredValues(content) {
   ];
   const proseEntries = [{ kind: 'counted-noun', re: globalRe(storedValues.prose.countedNoun) }];
   const numberOnly = testRe(storedValues.keyEntities.numberOnlyCell);
-  const names = [keyEntities.heading, 'Tech Stack', ...storedValues.prose.sections, ...excluded];
+  const names = [keyEntities.heading, techStackHeading, ...storedValues.prose.sections, ...excluded];
   const found = [];
 
   for (const { heading, lines } of h2Sections(content)) {
@@ -374,7 +396,7 @@ function findStoredValues(content) {
       continue;
     }
 
-    if (name === 'Tech Stack') {
+    if (name === techStackHeading) {
       let seenHeader = false;
       for (const line of lines) {
         if (isTableRow(line)) {
@@ -464,6 +486,7 @@ function sectionsOutOfOrder(present, order) {
 module.exports = {
   loadCharterContract,
   tryLoadCharterContract,
+  contractHeadings,
   stripCode,
   fencedLines,
   tableCells,

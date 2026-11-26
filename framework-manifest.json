@@ -1,7 +1,7 @@
 {
   "$schema": "./.claude/scripts/framework/manifest-schema.json",
   "name": "IDPF Framework",
-  "version": "0.122.0",
+  "version": "0.123.0",
   "description": "Interactive Development Process Frameworks for AI-assisted software development",
   "consumerCompatibility": {
     "praxisHubManager": {
@@ -630,6 +630,7 @@
         "source": "Templates/scripts/shared/lib/",
         "target": ".claude/scripts/shared/lib/",
         "files": [
+          "accept-classifier.js",
           "active-label.js",
           "announce-ledger.js",
           "announce-routing.js",
@@ -637,6 +638,7 @@
           "branch-diff.js",
           "branch-review-gate.js",
           "bulk-discover-screens.js",
+          "change-preview.js",
           "charter-scope.js",
           "charter-shape.js",
           "charter-template.js",
@@ -768,7 +770,8 @@
           "compact-hook.js",
           "measure-tap.js",
           "worktree-create-hook.js",
-          "worktree-remove-hook.js"
+          "worktree-remove-hook.js",
+          "session-end-hook.js"
         ]
       }
     },
@@ -835,12 +838,17 @@
       {
         "event": "WorktreeCreate",
         "file": "worktree-create-hook.js",
-        "timeout": 120
+        "timeout": 600
       },
       {
         "event": "WorktreeRemove",
         "file": "worktree-remove-hook.js",
         "timeout": 120
+      },
+      {
+        "event": "SessionEnd",
+        "file": "session-end-hook.js",
+        "timeout": 5
       }
     ],
     "rulesDeploymentMode": "copied",
@@ -1179,6 +1187,16 @@
           "name": "review-criteria-schema",
           "source": ".claude/metadata/review-criteria-schema.json",
           "description": "JSON Schema for review-criteria.json"
+        },
+        {
+          "name": "review-criterion-classes",
+          "source": ".claude/metadata/review-criterion-classes.json",
+          "description": "Diff-review criteria classified correctness (a warn is fixed before merge) or process, read by merge-back-gate.js and issue-duplicates.js (#3907)"
+        },
+        {
+          "name": "review-criterion-classes-schema",
+          "source": ".claude/metadata/review-criterion-classes-schema.json",
+          "description": "JSON schema (Draft 2020-12) for review-criterion-classes.json (#3907)"
         },
         {
           "name": "review-extensions",

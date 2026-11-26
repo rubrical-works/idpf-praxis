@@ -1,6 +1,6 @@
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Multi-issue review aggregator (#3807): renders a `#N <state> (M/T)` progress line as each review result returns, then one closing roster in typed order naming every member's state and reviewer. Pure renderers; no aggregate verdict. A reviewer's raw reply becomes its member only through issue-reviewer-result-schema.json validation (#3806): a failed reply is an error under its issue with no verdict event, never retried; a skipped 2a-ii or 2a-iv write is flagged on its roster line.
  * @checksum sha256:placeholder
  *

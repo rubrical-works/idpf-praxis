@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
+ * @framework-script 0.123.0
  * @description Post-review checklist updates for tracker-shaped reviews (prd/proposal/test-plan): checks the one lifecycle gate the review owns, by label, and applies an optional status transition. Any other review type is refused (#3059). Exports checkOffACs(), and checkLifecycleBoxIn()/checkLifecycleBox() (CLI --check-box) for the PRD tracker lifecycle boxes other commands own (#3636). Used by /review-prd, /review-test-plan, /done and /create-backlog.
  * @checksum sha256:placeholder
  *
@@ -336,6 +336,39 @@ function resolveApprovalGates(body, gateMap, heading) {
   const { start, end } = headingBounds(body, heading);
   const boxes = [...scanCheckboxes(body)].filter((b) => b.line > start && b.line < end);
 
+  // A gate's legacyTexts (#3787) are wordings it was rendered with before a
+  // text change; bodies written then still carry them and must still resolve.
+  const textsOf = (g) =>
+    [g.text, ...(Array.isArray(g.legacyTexts) ? g.legacyTexts : [])].filter(
+      (t) => typeof t === 'string' && t.length > 0
+    );
+  const isExact = (b, texts) => texts.some((t) => b.text === t);
+  const isPrefix = (b, texts) => texts.some((t) => b.text.startsWith(t));
+
+  // Each box resolves to at most one gate (#3827): a text that is a prefix of
+  // another gate's text must not resolve both gates to the same line. Exact
+  // matches claim their lines first, across every gate; prefix matches then
+  // take only lines no gate has claimed.
+  const valid = declared.filter((g) => typeof g.text === 'string' && g.text.length > 0);
+  const claimedBy = new Map(); // line -> gate id
+  const matchOf = new Map(); // gate id -> box
+  const claim = (g, pass, texts) => {
+    if (matchOf.has(g.id)) return;
+    const box = boxes.find((b) => !claimedBy.has(b.line) && pass(b, texts));
+    if (box) {
+      claimedBy.set(box.line, g.id);
+      matchOf.set(g.id, box);
+    }
+  };
+  for (const g of valid) claim(g, isExact, textsOf(g));
+  // Prefix pass (#3864): the longest text claims first, so a gate whose text
+  // prefixes another gate's text cannot take the more specific gate's box.
+  // The sort is stable, so equal lengths keep declaration order.
+  const prefixCandidates = valid
+    .flatMap((g) => textsOf(g).map((t) => ({ g, t })))
+    .sort((x, y) => y.t.length - x.t.length);
+  for (const { g, t } of prefixCandidates) claim(g, isPrefix, [t]);
+
   const resolved = [];
   const unresolvable = [];
   for (const g of declared) {
@@ -343,23 +376,23 @@ function resolveApprovalGates(body, gateMap, heading) {
       unresolvable.push({ id: g.id, text: '', reason: 'Gate ' + g.id + ' declares no text to match.' });
       continue;
     }
-    // A gate's legacyTexts (#3787) are wordings it was rendered with before a
-    // text change; bodies written then still carry them and must still resolve.
-    const texts = [g.text, ...(Array.isArray(g.legacyTexts) ? g.legacyTexts : [])].filter(
-      (t) => typeof t === 'string' && t.length > 0
-    );
-    const match = boxes.find((b) => texts.some((t) => b.text === t || b.text.startsWith(t)));
+    const match = matchOf.get(g.id);
     if (match) {
       resolved.push({ id: g.id, line: match.line, alreadyChecked: match.checked });
-    } else {
-      unresolvable.push({
-        id: g.id,
-        text: g.text,
-        reason:
-          'No checklist line under ' + (heading || 'the body') + ' matches gate ' + g.id +
-          '; left unchecked rather than resolved by position.',
-      });
+      continue;
     }
+    const texts = textsOf(g);
+    const taken = boxes.find((b) => isPrefix(b, texts));
+    unresolvable.push({
+      id: g.id,
+      text: g.text,
+      reason: taken
+        ? 'The only checklist line under ' + (heading || 'the body') + ' matching gate ' + g.id +
+          ' is already resolved to gate ' + claimedBy.get(taken.line) +
+          '; left unchecked rather than checking the wrong box.'
+        : 'No checklist line under ' + (heading || 'the body') + ' matches gate ' + g.id +
+          '; left unchecked rather than resolved by position.',
+    });
   }
   return { resolved, unresolvable };
 }

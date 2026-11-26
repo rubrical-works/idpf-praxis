@@ -1,7 +1,7 @@
 ---
-version: "v0.122.0"
+version: "v0.123.0"
 description: Review issues against the IDPF framework's type-specific criteria.
-argument-hint: "#issue [#issue...] | --status <status> [--agents N] [--sequential] [--with ...] [--mode ...] [--force] [--prior-art] [--help]"
+argument-hint: "#issue [#issue...] | --status <status> [--agents N] [--sequential] [--with ...] [--mode ...] [--force] [--prior-art] [--accept] [--help]"
 copyright: "Rubrical Works (c) 2026"
 ---
 <!-- MANAGED -->
@@ -21,6 +21,7 @@ Delegates setup to `review-preamble.js`, cleanup to `review-finalize.js`.
 | `--without` | No | Domain extensions to exclude, applied after `--with` (`--with all --without seo`) |
 | `--force` | No | Force re-review even if `reviewed` label present |
 | `--prior-art` | No | Force the 2a-iv sweep whatever the `reviewSweep` mode (except `off`) and whatever the issue type. Boolean, takes no value |
+| `--accept` | No | Step 3c resolve pass: apply each Pass 2 suggestion the shared classifier accepts, ask only the held ones (always-ask criteria, unrun runtime claims, judgment holds), each with its reason. No effect with `--step-wise` (Step 3c does not run), reported. Boolean, takes no value |
 | `--help` | No | Open this command's docs page. Takes precedence over every other argument and performs no action. |
 
 **`--help` takes precedence over every other argument and performs no action:** run `node .claude/scripts/shared/command-help.js review-issue`, report its output, and STOP.

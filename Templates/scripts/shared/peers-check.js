@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rubrical Works (c) 2026
 /**
- * @framework-script 0.122.0
- * @description Report other Claude Code sessions running in this same working directory at session startup. Reads the session registry (<claude-config-dir>/sessions/<pid>.json) with Node built-ins only, matches peers on exact cwd, excludes the calling session and dead entries, and distinguishes peers that carry a messaging address from those that do not. Read-only; never opens a socket and never mutates the working tree.
+ * @framework-script 0.123.0
+ * @description Report other Claude Code sessions running in this same working directory at session startup. Reads the session registry (<claude-config-dir>/sessions/<pid>.json) with Node built-ins only, matches peers on exact cwd, excludes the calling session and dead entries, and distinguishes peers that carry a messaging address from those that do not. Reports the session-exit records (#3912) addressed to the calling session and drops an exited session from the peer list. The check is read-only and never opens a socket; appendExitRecord, the one writer, is exported for the SessionEnd path in announce.js.
  * @checksum sha256:placeholder
  *
  * This script is provided by the framework and may be updated.
@@ -192,6 +192,202 @@ function readRegistry(dir) {
   return { available: true, entries, warnings };
 }
 
+// ─── Exit records (#3912) ───
+
+/**
+ * Where a session's exit announcement is recorded, relative to the working
+ * directory. Peers are matched on exact cwd, so the record lives in that cwd —
+ * in /overwatch's own directory, which is per-developer and gitignored.
+ *
+ * RECORDED, NOT PUSHED. The SessionEnd hook composes the announcement and
+ * writes it here addressed by the routing decision; the model gets no turn
+ * after SessionEnd and a subprocess cannot call SendMessage (#2660). Each
+ * recipient reads the records addressed to it at its next pass: a sibling at
+ * its next peer discovery (checkPeers), /overwatch on its next tick (`--exits`).
+ *
+ * ONE FILE PER EXIT. Each record is `<id>.json` in this directory, written to
+ * a temp name and renamed into place, so no writer ever rewrites another's
+ * record: sessions exiting at the same moment cannot drop each other's exit,
+ * and a reader never sees a half-written one.
+ */
+const EXIT_RECORD_DIR = '.claude/.overwatch/session-exits';
+
+/** Records older than this are neither reported nor kept. */
+const EXIT_RECORD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** A temp file older than this is a write that never finished. */
+const EXIT_TEMP_MAX_AGE_MS = 60 * 1000;
+
+function exitRecordDir(cwd) {
+  return path.join(cwd || process.cwd(), ...EXIT_RECORD_DIR.split('/'));
+}
+
+/** A record id as a file name: anything outside [A-Za-z0-9._-] becomes '_'. */
+function exitRecordName(id) {
+  const safe = String(id || '').replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '') || 'exit';
+  return `${safe}.json`;
+}
+
+function parseExitRecord(raw) {
+  try {
+    const row = JSON.parse(raw);
+    return row && typeof row === 'object' && row.event === 'session-exited' && typeof row.ts === 'string' ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+function isFresh(row, now, maxAgeMs) {
+  const t = Date.parse(row.ts);
+  return Number.isFinite(t) && now - t <= maxAgeMs;
+}
+
+/**
+ * A record that does not parse has no `ts` to age by: its file's mtime stands
+ * in, so the writer's housekeeping and the reader agree on when it expires —
+ * otherwise a garbled record would be counted malformed forever. Throws when
+ * the file cannot be stat'd; callers treat that as they treat a failed read.
+ */
+function isUnparsedStale(full, now, maxAgeMs) {
+  return now - fs.statSync(full).mtimeMs > maxAgeMs;
+}
+
+/**
+ * Write one exit record as its own file, then remove records past their age.
+ * Never throws: the caller is a SessionEnd hook that must not block. Removing
+ * a stale record is safe from any session — it is the same file whoever
+ * removes it, and one already gone is skipped.
+ */
+function appendExitRecord(cwd, record, options = {}) {
+  const dir = exitRecordDir(cwd);
+  const now = options.now !== undefined ? options.now : Date.now();
+  const maxAgeMs = options.maxAgeMs || EXIT_RECORD_MAX_AGE_MS;
+  let file = path.join(dir, exitRecordName(record && record.id));
+  let tmp = null;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    if (fs.existsSync(file)) {
+      file = path.join(dir, exitRecordName(`${record && record.id}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`));
+    }
+    tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(record) + '\n', { flag: 'wx' });
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    // Never leave a half-made temp file behind a failed write.
+    if (tmp) { try { fs.unlinkSync(tmp); } catch { /* never created, or already gone */ } }
+    return { ok: false, path: file, error: err && err.message ? err.message : 'exit record write failed' };
+  }
+  // Housekeeping: remove records past their age and temp files an interrupted
+  // write left (older than a minute, so a write in flight is never touched).
+  // A failure here leaves a file for the next write; the record is written.
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      const full = path.join(dir, name);
+      if (name.endsWith('.tmp')) {
+        try {
+          if (now - fs.statSync(full).mtimeMs > EXIT_TEMP_MAX_AGE_MS) fs.unlinkSync(full);
+        } catch { /* removed meanwhile, or retried by the next write */ }
+        continue;
+      }
+      if (!name.endsWith('.json') || full === file) continue;
+      let row = null;
+      let stale = false;
+      try {
+        row = parseExitRecord(fs.readFileSync(full, 'utf8'));
+        stale = row ? !isFresh(row, now, maxAgeMs) : isUnparsedStale(full, now, maxAgeMs);
+      } catch { continue; /* retried by the next write */ }
+      if (stale) {
+        try { fs.unlinkSync(full); } catch { /* already removed by another session */ }
+      }
+    }
+  } catch { /* directory unlistable now: the next write retries */ }
+  return { ok: true, path: file };
+}
+
+/**
+ * Read the exit records for this working directory.
+ *
+ * `records` is every fresh record; `addressed` the ones whose `addressedTo`
+ * names `selfPid` — what this session was told. A null `selfPid` is
+ * addressed nothing: without it the reader cannot tell whose records are whose.
+ * No directory is "no exits"; any other failure to list it is `error`.
+ */
+function readExitRecords(options = {}) {
+  const now = options.now !== undefined ? options.now : Date.now();
+  const maxAgeMs = options.maxAgeMs || EXIT_RECORD_MAX_AGE_MS;
+  const selfPid = Number.isInteger(options.selfPid) ? options.selfPid : null;
+  const dir = exitRecordDir(options.cwd);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return { records: [], addressed: [], malformed: 0 };
+    return { records: [], addressed: [], malformed: 0, error: `${EXIT_RECORD_DIR} could not be read (${err && err.code ? err.code : (err && err.message) || 'unknown'})` };
+  }
+  const rows = [];
+  let malformed = 0;
+  let unreadable = 0;
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    const full = path.join(dir, name);
+    let raw;
+    try {
+      raw = fs.readFileSync(full, 'utf8');
+    } catch (err) {
+      // Removed meanwhile (another reader's trim) is expected; anything else
+      // is a record this reader could not see, so the read is incomplete.
+      if (!(err && err.code === 'ENOENT')) unreadable += 1;
+      continue;
+    }
+    const row = parseExitRecord(raw);
+    if (row) { rows.push(row); continue; }
+    // Past the record age, an unparseable record is ignored exactly as a stale
+    // parseable one is: the writer's housekeeping removes both.
+    try {
+      if (isUnparsedStale(full, now, maxAgeMs)) continue;
+    } catch (err) {
+      if (err && err.code === 'ENOENT') continue; // removed meanwhile
+    }
+    malformed += 1;
+  }
+  const records = rows.filter((r) => isFresh(r, now, maxAgeMs)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+  const addressed = selfPid === null
+    ? []
+    : records.filter((r) => Array.isArray(r.addressedTo) && r.addressedTo.some((p) => p && Number(p.pid) === selfPid));
+  return { records, addressed, malformed, unreadable };
+}
+
+/** One exited session as a reader reports it. */
+function exitedSummary(row) {
+  const s = row.session && typeof row.session === 'object' ? row.session : {};
+  return {
+    id: row.id || null,
+    pid: Number.isInteger(s.pid) ? s.pid : null,
+    name: typeof s.name === 'string' ? s.name : null,
+    sessionId: typeof s.sessionId === 'string' ? s.sessionId : null,
+    exitedAt: row.ts,
+    reason: typeof row.reason === 'string' ? row.reason : null,
+    routing: row.routing && typeof row.routing === 'object' ? row.routing.applied || null : null,
+    // A degraded exit says so to its reader (#3912); absent when nothing was.
+    ...(Array.isArray(row.warnings) && row.warnings.length ? { warnings: row.warnings.filter((w) => typeof w === 'string') } : {}),
+  };
+}
+
+/**
+ * Does an exit record describe this registry entry? Pid alone is not enough
+ * on win32, where a pid is recycled: a differing sessionId, or a registry
+ * entry started after the exit, is a different session.
+ */
+function exitMatchesEntry(row, entry) {
+  const s = row && row.session;
+  if (!s || Number(s.pid) !== Number(entry.pid)) return false;
+  if (typeof s.sessionId === 'string' && typeof entry.sessionId === 'string' && s.sessionId !== entry.sessionId) return false;
+  const exitedAt = Date.parse(row.ts);
+  const startedAt = Number(entry.startedAt);
+  if (Number.isFinite(exitedAt) && Number.isFinite(startedAt) && startedAt > exitedAt) return false;
+  return true;
+}
+
 // ─── Check ───
 
 /**
@@ -260,13 +456,25 @@ function checkPeers(options = {}) {
   const registry = readRegistry(registryDir);
   warnings.push(...registry.warnings);
 
+  const resolvedSelf = selfPid === null || Number.isNaN(selfPid) ? null : selfPid;
+  // Exit records (#3912): the sessions that told THIS session they exited.
+  const exits = options.exitRecords === false
+    ? { records: [], addressed: [] }
+    : readExitRecords({ cwd, selfPid: resolvedSelf, now: options.now });
+  if (exits.error) warnings.push(`Exit records not read: ${exits.error}.`);
+  const exitsIncomplete = (exits.malformed || 0) + (exits.unreadable || 0);
+  if (exitsIncomplete > 0) warnings.push(`${exitsIncomplete} exit record(s) could not be read; the exits reported are incomplete.`);
+
   const base = {
     registryDir,
     platform,
     livenessBasis,
-    selfPid: selfPid === null || Number.isNaN(selfPid) ? null : selfPid,
+    selfPid: resolvedSelf,
     peers: [],
     addressableCount: 0,
+    exited: exits.addressed.map(exitedSummary),
+    exitsError: exits.error || null,
+    exitsIncomplete,
     warnings,
   };
 
@@ -286,6 +494,10 @@ function checkPeers(options = {}) {
 
     // Existence is the floor on both platforms.
     if (!pidExists(pid)) continue;
+
+    // A session that recorded its exit is out of the picture even while its
+    // process or registry entry lingers (#3912).
+    if (exits.records.some((row) => exitMatchesEntry(row, entry))) continue;
 
     if (livenessBasis === 'pid-and-procstart') {
       // The stamp is boot-relative: an entry that survived a reboot can collide
@@ -361,11 +573,13 @@ function checkPeers(options = {}) {
  * "reachable".
  */
 function formatPeersRow(result) {
+  // The exit clause is appended on every state (#3933): the last sibling
+  // exiting leaves no live peer, which is exactly when its exit must show.
   if (!result || result.state === 'unavailable') {
-    return 'unavailable — session registry not readable';
+    return `unavailable — session registry not readable${formatExitedClause(result && result.exited)}`;
   }
   if (result.state === 'none' || result.peers.length === 0) {
-    return 'none';
+    return `none${formatExitedClause(result.exited)}`;
   }
 
   // Vocabulary is shared with the announcement skip notice (#2672). Both
@@ -383,7 +597,14 @@ function formatPeersRow(result) {
     ? `${total} reachable`
     : `${addressableCount} reachable of ${total}`;
 
-  return `${rendered} — ${suffix}`;
+  return `${rendered} — ${suffix}${formatExitedClause(result.exited)}`;
+}
+
+/** `; exited: name (#pid) at <ts>` for each exit addressed to this session (#3912). */
+function formatExitedClause(exited) {
+  if (!Array.isArray(exited) || exited.length === 0) return '';
+  const named = exited.map((e) => `${e.name || 'unidentified session'}${e.pid ? ` (#${e.pid})` : ''} at ${e.exitedAt}`);
+  return `; exited: ${named.join(', ')}`;
 }
 
 const MESSAGES = {
@@ -396,7 +617,25 @@ const MESSAGES = {
 // `data.peers` for anything reading this output, and at `.peers` for anything
 // calling the function. Changing either shape breaks the other's callers, so
 // change both or neither.
-if (require.main === module) {
+if (require.main === module && process.argv.includes('--exits')) {
+  // /overwatch's per-tick read (#3912): the exit records addressed to this
+  // session, nothing else. Read-only, like the rest of this script.
+  // A read that could not happen is success:false, never "0 exits": an
+  // unreadable record file, or no CLAUDE_PID to tell which rows are ours.
+  const result = checkPeers();
+  const failure = result.exitsError
+    ? `Exit records ${result.exitsError.replace(/^\S+ /, '')}; exits addressed to this session are unknown.`
+    : result.selfPid === null
+      ? 'CLAUDE_PID is unset, so this session cannot tell which exit records are addressed to it; exits are unknown.'
+      : result.exitsIncomplete > 0
+        ? `${result.exitsIncomplete} exit record(s) could not be read; the exits listed are incomplete.`
+        : null;
+  process.stdout.write(JSON.stringify({
+    success: failure === null,
+    message: failure || `${result.exited.length} exited session(s) addressed to this session.`,
+    data: { selfPid: result.selfPid, exited: result.exited, error: failure, warnings: result.warnings },
+  }) + '\n');
+} else if (require.main === module) {
   const result = checkPeers();
   process.stdout.write(JSON.stringify({
     success: true,
@@ -412,6 +651,13 @@ module.exports = {
   sameCwd,
   procStartMatches,
   formatPeersRow,
+  formatExitedClause,
+  EXIT_RECORD_DIR,
+  EXIT_RECORD_MAX_AGE_MS,
+  exitRecordDir,
+  appendExitRecord,
+  readExitRecords,
+  exitMatchesEntry,
   parseProcStat,
   livenessBasisFor,
   defaultPidExists,
